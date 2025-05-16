@@ -18,6 +18,7 @@
 #include "SimulationCore/scene_params.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/solver_interface.h"
+#include "SimulationSolver/descent_solver.h"
 
 #include <polyscope/polyscope.h>
 #include <polyscope/surface_mesh.h>
@@ -142,7 +143,7 @@ namespace Initializater
 {
 
 // template<template<typename> typename BasicBuffer>
-void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
+void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
 {
     std::string model_name = "square8K.obj";
     float3 transform = luisa::make_float3(0.0f);
@@ -290,7 +291,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
             for (uint j = 0; j < 3; j++)
                 mesh_data->vert_adj_faces[edge[j]].push_back(eid);
         } 
-        upload_2d_csr_from(mesh_data->sa_vert_adj_faces, mesh_data->vert_adj_faces); 
+        upload_2d_csr_from(mesh_data->sa_vert_adj_faces_csr, mesh_data->vert_adj_faces); 
 
         // Vert adj edges
         for (uint eid = 0; eid < num_edges; eid++)
@@ -299,7 +300,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
             for (uint j = 0; j < 2; j++)
                 mesh_data->vert_adj_edges[edge[j]].push_back(eid);
         } 
-        upload_2d_csr_from(mesh_data->sa_vert_adj_edges, mesh_data->vert_adj_edges);
+        upload_2d_csr_from(mesh_data->sa_vert_adj_edges_csr, mesh_data->vert_adj_edges);
 
         // Vert adj bending-edges
         for (uint eid = 0; eid < num_bending_edges; eid++)
@@ -308,7 +309,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
             for (uint j = 0; j < 4; j++)
                 mesh_data->vert_adj_bending_edges[edge[j]].push_back(eid);
         }  
-        upload_2d_csr_from(mesh_data->sa_vert_adj_bending_edges, mesh_data->vert_adj_bending_edges);
+        upload_2d_csr_from(mesh_data->sa_vert_adj_bending_edges_csr, mesh_data->vert_adj_bending_edges);
 
         // Vert adj verts based on 1-order connection
         mesh_data->vert_adj_verts.resize(num_verts);
@@ -322,7 +323,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
                 mesh_data->vert_adj_verts[left].push_back(right);
             }
         } 
-        upload_2d_csr_from(mesh_data->sa_vert_adj_verts, mesh_data->vert_adj_verts);
+        upload_2d_csr_from(mesh_data->sa_vert_adj_verts_csr, mesh_data->vert_adj_verts);
         
         // Vert adj verts based on 1-order bending-connection
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2) 
@@ -351,7 +352,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
                 }
             }
         }
-        upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_bending, mesh_data->vert_adj_verts_with_bending);
+        upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_bending_csr, mesh_data->vert_adj_verts_with_bending);
     }
 
     // Init energy
@@ -441,7 +442,7 @@ void init_mesh_data(lcsv::BasicMeshData<std::vector>* mesh_data)
     }
     
 }
-void init_xpbd_data(lcsv::BasicMeshData<std::vector>* mesh_data, lcsv::XpbdData<std::vector>* xpbd_data)
+void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::vector>* xpbd_data)
 {
     xpbd_data->sa_x_tilde.resize(mesh_data->num_verts); 
     xpbd_data->sa_x.resize(mesh_data->num_verts);
@@ -571,7 +572,7 @@ void init_xpbd_data(lcsv::BasicMeshData<std::vector>* mesh_data, lcsv::XpbdData<
     {
         // Graph Coloring
         const uint num_verts_total = mesh_data->num_verts;
-        // xpbd_data->sa_Hf.resize(mesh_data->num_verts);
+        xpbd_data->sa_Hf.resize(mesh_data->num_verts * 12);
 
         const std::vector< std::vector<uint> >& vert_adj_verts = mesh_data->vert_adj_verts_with_bending;
         std::vector<std::vector<uint>> clusterd_vertices_bending; std::vector<uint> prefix_vertices_bending;
@@ -697,8 +698,8 @@ void init_xpbd_data(lcsv::BasicMeshData<std::vector>* mesh_data, lcsv::XpbdData<
 void upload_mesh_buffers(
     luisa::compute::Device& device, 
     luisa::compute::Stream& stream, 
-    lcsv::BasicMeshData<std::vector>* input_data, 
-    lcsv::BasicMeshData<luisa::compute::Buffer>* output_data)
+    lcsv::MeshData<std::vector>* input_data, 
+    lcsv::MeshData<luisa::compute::Buffer>* output_data)
 {
     output_data->num_verts = input_data->num_verts;
     output_data->num_faces = input_data->num_faces;
@@ -708,12 +709,6 @@ void upload_mesh_buffers(
     stream 
         << upload_buffer(device, output_data->sa_rest_x, input_data->sa_rest_x)
         << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)
-        // << upload_buffer(device, output_data->sa_x_frame_start, input_data->sa_x_frame_start)
-        // << upload_buffer(device, output_data->sa_v_frame_start, input_data->sa_v_frame_start)
-        // << upload_buffer(device, output_data->sa_x_frame_saved, input_data->sa_x_frame_saved)
-        // << upload_buffer(device, output_data->sa_v_frame_saved, input_data->sa_v_frame_saved)
-        // << upload_buffer(device, output_data->sa_x_frame_end, input_data->sa_x_frame_end)
-        // << upload_buffer(device, output_data->sa_v_frame_end, input_data->sa_v_frame_end)
         << upload_buffer(device, output_data->sa_faces, input_data->sa_faces)
         << upload_buffer(device, output_data->sa_edges, input_data->sa_edges)
         << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
@@ -724,11 +719,11 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
         << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
         // No std::vector<std::vector<uint>> vert_adj_verts info
-        << upload_buffer(device, output_data->sa_vert_adj_verts, input_data->sa_vert_adj_verts) 
-        << upload_buffer(device, output_data->sa_vert_adj_verts_with_bending, input_data->sa_vert_adj_verts_with_bending) 
-        << upload_buffer(device, output_data->sa_vert_adj_faces, input_data->sa_vert_adj_faces) 
-        << upload_buffer(device, output_data->sa_vert_adj_edges, input_data->sa_vert_adj_edges) 
-        << upload_buffer(device, output_data->sa_vert_adj_bending_edges, input_data->sa_vert_adj_bending_edges) 
+        << upload_buffer(device, output_data->sa_vert_adj_verts_csr, input_data->sa_vert_adj_verts_csr) 
+        << upload_buffer(device, output_data->sa_vert_adj_verts_with_bending_csr, input_data->sa_vert_adj_verts_with_bending_csr) 
+        << upload_buffer(device, output_data->sa_vert_adj_faces_csr, input_data->sa_vert_adj_faces_csr) 
+        << upload_buffer(device, output_data->sa_vert_adj_edges_csr, input_data->sa_vert_adj_edges_csr) 
+        << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr) 
         << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy) 
         << luisa::compute::synchronize();
 }
@@ -758,7 +753,7 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->prefix_per_vertex_bending, input_data->prefix_per_vertex_bending)
         << upload_buffer(device, output_data->clusterd_per_vertex_bending, input_data->clusterd_per_vertex_bending)
         << upload_buffer(device, output_data->per_vertex_bending_cluster_id, input_data->per_vertex_bending_cluster_id)
-        // << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
+        << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
         << luisa::compute::synchronize();
 }
 
@@ -796,353 +791,11 @@ void init_simulation_params()
 
 }
 
-class CpuSolver : public lcsv::SolverInterface
-{
-public:
-    CpuSolver() : lcsv::SolverInterface() {}
-    ~CpuSolver() {}
-
-public:    
-    void physics_step_vbd(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compute_energy(const Buffer<float3>& curr_cloth_position);
-
-private:
-    void collision_detection(luisa::compute::Stream& stream);
-    void predict_position(luisa::compute::Stream& stream);
-    void update_velocity(luisa::compute::Stream& stream);
-    void reset_constrains(luisa::compute::Stream& stream);
-    void reset_collision_constrains(luisa::compute::Stream& stream);
-
-private:
-    // Buffer<float4x3>& get_Hf();
-    // void solve_constraints_XPBD();
-    // void solve_constraint_stretch_spring(Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-    // void solve_constraint_bending(Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-
-private:
-    void solve_constraints_VBD(luisa::compute::Stream& stream);
-    void vbd_evaluate_inertia(luisa::compute::Stream& stream, Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_evaluate_stretch_spring(luisa::compute::Stream& stream, Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_evaluate_bending(luisa::compute::Stream& stream, Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_step(luisa::compute::Stream& stream, Buffer<float3>& curr_cloth_position, const uint cluster_idx);
-};
 static uint energy_idx = 0; 
 
-void CpuSolver::reset_constrains(luisa::compute::Stream& stream)
-{
-    // auto fn_reset_template = [&](Buffer<float>& buffer)
-    // {
-    //     parallel_set(
-    //         buffer.data(), 
-    //         buffer.size(), 
-    //         0.0f);
-    // };
-
-    // fn_reset_template(xpbd_data->sa_lambda_stretch_mass_spring);
-    // fn_reset_template(xpbd_data->sa_lambda_bending);
-}
-void CpuSolver::reset_collision_constrains(luisa::compute::Stream& stream)
-{
-
-}
-
-void CpuSolver::collision_detection(luisa::compute::Stream& stream)
-{
-    // TODO
-}
-void CpuSolver::predict_position(luisa::compute::Stream& stream)
-{
-    // CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-    // {
-    //     Constrains::Core::predict_position(vid, 
-    //         xpbd_data->sa_x.data(), 
-    //         xpbd_data->sa_v.data(), 
-    //         xpbd_data->sa_x_start.data(),
-    //         false, 
-    //         nullptr, 
-    //         mesh_data->sa_vert_mass.data(), 
-    //         mesh_data->sa_is_fixed.data(), 
-    //         lcsv::get_scene_params().get_substep_dt(), 
-    //         false);
-    // });
-}
-void CpuSolver::update_velocity(luisa::compute::Stream& stream)
-{
-    // CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-    // {
-    //     Constrains::Core::update_velocity(vid, 
-    //         xpbd_data->sa_v.data(), 
-    //         xpbd_data->sa_x.data(), 
-    //         xpbd_data->sa_x_start.data(), 
-    //         mesh_data->sa_x_frame_start.data(), 
-    //         xpbd_data->sa_v_start.data(), 
-    //         lcsv::get_scene_params().get_substep_dt(), 
-    //         lcsv::get_scene_params().damping_cloth, 
-    //         false);
-    // });
-}
-void CpuSolver::compute_energy(const Buffer<float3>& curr_position)
-{
-    // if (!lcsv::get_scene_params().print_xpbd_convergence) return;
-    // // luisa::log_info("buffer size = {}", curr_position.size());
-
-    // double energy = 0.0;
-    // double energy_inertia = 0.f, energy_stretch = 0.f, energy_bending = 0.f;
-
-    // // Inertia
-    // {
-    //     energy_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
-    //     {
-    //         return Constrains::Energy::compute_energy_inertia(vid, 
-    //             curr_position.data(), 
-    //             &lcsv::get_scene_params(), 
-    //             mesh_data->sa_is_fixed.data(), 
-    //             mesh_data->sa_vert_mass.data(), 
-    //             xpbd_data->sa_x_start.data(), 
-    //             xpbd_data->sa_v_start.data());
-    //     });
-    // }
-    
-    // // Stretch 
-    // {
-    //     const float stiffness = lcsv::get_scene_params().stiffness_stretch_spring;
-    //     energy_stretch = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_edges, [&](const uint eid)
-    //     {
-    //         return Constrains::Energy::compute_energy_stretch_mass_spring(
-    //             eid, curr_position.data(), 
-    //             xpbd_data->sa_merged_edges.data(), 
-    //             xpbd_data->sa_merged_edges_rest_length.data(), 
-    //             stiffness);
-    //     });
-    // }
-
-    // // Bending
-    // if (lcsv::get_scene_params().use_bending)
-    // {   
-    //     const auto bending_type = 
-    //         (lcsv::get_scene_params().use_vbd_solver // Our VBD solver only add quadratic bending implementation
-    //         || lcsv::get_scene_params().use_quadratic_bending_model) ?  
-    //         Constrains::BendingTypeQuadratic : Constrains::BendingTypeDAB;
-    //     const bool use_xpbd_solver = lcsv::get_scene_params().use_xpbd_solver;
-
-    //     const float stiffness_bending_quadratic = lcsv::get_scene_params().get_stiffness_quadratic_bending();
-    //     const float stiffness_bending_DAB = lcsv::get_scene_params().get_stiffness_DAB_bending();
-
-    //     energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_bending_edges, [&](const uint eid)
-    //     {
-    //         float energy = 0.f;
-    //         Constrains::Energy::compute_energy_bending(bending_type, eid, curr_position.data(), 
-    //             xpbd_data->sa_merged_bending_edges.data(), 
-    //             nullptr,
-    //             nullptr, 
-    //             xpbd_data->sa_merged_bending_edges_Q.data(),
-    //             xpbd_data->sa_merged_bending_edges_angle.data(), 
-    //             stiffness_bending_DAB, 
-    //             stiffness_bending_quadratic, 
-    //             use_xpbd_solver
-    //         );
-    //         return energy;
-    //     });
-    // }
-    
-    // // Obstacle Collisoin
-    // float energy_obs_collision = 0.0f;
-
-    // // Self Collision
-    // float energy_self_collision = 0.0f;
-
-    // double total_energy = energy_inertia + energy_stretch + energy_bending + energy_obs_collision + energy_self_collision;
-
-    // mesh_data->sa_system_energy[energy_idx++] = total_energy;
-}
 
 
-// VBD constraints (energy)
-// Buffer<float4x3>& CpuSolver::get_Hf()
-// {
-//     return xpbd_data->sa_Hf;
-// }
-void CpuSolver::vbd_evaluate_inertia(luisa::compute::Stream& stream, Buffer<float3>& sa_iter_position, const uint cluster_idx)
-{
-    // auto& clusters = xpbd_data->clusterd_per_vertex_bending;
-    // const uint next_prefix = clusters[cluster_idx + 1];
-    // const uint curr_prefix = clusters[cluster_idx];
-    // const uint num_verts_cluster = next_prefix - curr_prefix;
 
-    // CpuParallel::parallel_for(0, num_verts_cluster, [&](const uint i)
-    // {
-    //     const uint vid = clusters[curr_prefix + i];
-    //     float4x3 Hf = Constrains::VBD::compute_inertia(
-    //         vid, sa_iter_position.data(), 
-    //         xpbd_data->sa_x_start.data(), xpbd_data->sa_v.data(), 
-    //         mesh_data->sa_is_fixed.data(), mesh_data->sa_vert_mass.data(), &lcsv::get_scene_params(),
-    //         lcsv::get_scene_params().get_substep_dt());
-    //     get_Hf()[vid] = Hf;
-    // });
-}
-void CpuSolver::vbd_evaluate_stretch_spring(luisa::compute::Stream& stream, Buffer<float3>& sa_iter_position, const uint cluster_idx)
-{
-    // auto& clusters = xpbd_data->clusterd_per_vertex_bending;
-    // const uint next_prefix = clusters[cluster_idx + 1];
-    // const uint curr_prefix = clusters[cluster_idx];
-    // const uint num_verts_cluster = next_prefix - curr_prefix;
-    
-    // CpuParallel::parallel_for(0, num_verts_cluster, [&](const uint i)
-    // {
-    //     const uint vid = clusters[curr_prefix + i];
-    //     float4x3 Hf = Constrains::VBD::compute_stretch_mass_spring(
-    //             vid, sa_iter_position.data(), 
-    //             mesh_data->sa_vert_adj_edges.data(),
-    //             mesh_data->sa_edges.data(), mesh_data->sa_edges_rest_state_length.data(), 
-    //             lcsv::get_scene_params().stiffness_stretch_spring);
-    //     get_Hf()[vid] += Hf;
-    // }, 32);
-}
-void CpuSolver::vbd_evaluate_bending(luisa::compute::Stream& stream, Buffer<float3>& sa_iter_position, const uint cluster_idx)
-{
-    // auto& clusters = xpbd_data->clusterd_per_vertex_bending;
-    // const uint next_prefix = clusters[cluster_idx + 1];
-    // const uint curr_prefix = clusters[cluster_idx];
-    // const uint num_verts_cluster = next_prefix - curr_prefix;
-
-    // CpuParallel::parallel_for(0, num_verts_cluster, [&](const uint i)
-    // {
-    //     const uint vid = clusters[curr_prefix + i];
-    //     float4x3 Hf = Constrains::VBD::compute_bending_quadratic(
-    //             vid, sa_iter_position.data(),
-    //             mesh_data->sa_vert_adj_bending_edges.data(), mesh_data->sa_bending_edges.data(), 
-    //             mesh_data->sa_bending_edges_Q.data(), 
-    //             lcsv::get_scene_params().get_stiffness_quadratic_bending());
-    //     get_Hf()[vid] += Hf;
-    // }, 32);
-}
-void CpuSolver::vbd_step(luisa::compute::Stream& stream, Buffer<float3>& sa_iter_position, const uint cluster_idx)
-{
-    // auto& clusters = xpbd_data->clusterd_per_vertex_bending;
-    // const uint next_prefix = clusters[cluster_idx + 1];
-    // const uint curr_prefix = clusters[cluster_idx];
-    // const uint num_verts_cluster = next_prefix - curr_prefix;
-
-    // CpuParallel::parallel_for(0, num_verts_cluster, [&](const uint i)
-    // {
-    //     const uint vid = clusters[curr_prefix + i];
-    //     float4x3 Hf = get_Hf()[vid];
-    //     Float3x3 H = make_float3x3(get(Hf, 0), get(Hf, 1), get(Hf, 2));
-    //     float3 f = get(Hf, 3);
-    //     float det = determinant_mat(H);
-    //     if (abs_scalar(det) > Epsilon)
-    //     {
-    //         Float3x3 H_inv = inverse_mat(H, det);
-    //         float3 dx = H_inv * f;
-    //         sa_iter_position[vid] += dx;
-    //     }
-    // }, 32);
-}
-
-
-void CpuSolver::physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream)
-{
-    lcsv::SolverInterface::physics_step_prev_operation(device, stream);
-}
-void CpuSolver::physics_step_vbd(luisa::compute::Device& device, luisa::compute::Stream& stream)
-{
-    lcsv::SolverInterface::physics_step_prev_operation(device, stream); 
-    // Get frame start position and velocity
-    CpuParallel::parallel_for(0, host_xpbd_data->sa_x.size(), [&](const uint vid)
-    {
-        host_xpbd_data->sa_x[vid] = host_mesh_data->sa_x_frame_start[vid];
-        host_xpbd_data->sa_v[vid] = host_mesh_data->sa_v_frame_start[vid];
-    });
-    
-    stream << xpbd_data->sa_x.copy_from(host_xpbd_data->sa_x.data())
-           << xpbd_data->sa_v.copy_from(host_xpbd_data->sa_v.data())
-           << xpbd_data->sa_x_start.copy_from(host_xpbd_data->sa_x.data())
-           << xpbd_data->sa_v_start.copy_from(host_xpbd_data->sa_v.data())
-           << mp_buffer_filler->fill(device, mesh_data->sa_system_energy, 0.0f)
-           << luisa::compute::synchronize();
-    
-    const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
-    const uint constraint_iter_count = lcsv::get_scene_params().constraint_iter_count;
-
-    energy_idx = 0;
-
-    // for (uint substep = 0; substep < num_substep; substep++) // 1 or 50 ?
-    // {   { lcsv::get_scene_params().current_substep = substep; }
-        
-    //     {   
-    //         predict_position(stream); 
-
-    //         collision_detection(stream);
-
-    //         // Constraint iteration part
-    //         {
-    //             for (uint iter = 0; iter < constraint_iter_count; iter++) // 200 or 1 ?
-    //             {   
-    //                 { lcsv::get_scene_params().current_it = iter; }
-    //                 if (lcsv::get_scene_params().use_vbd_solver) { solve_constraints_VBD(stream); }
-    //                 else { luisa::log_error("empty solver"); }
-    //             }
-    //         }
-
-    //         update_velocity(stream); 
-    //     }
-    // }
-    // luisa::log_info("Frame {:3} : cost = {:6.3f}", lcsv::get_scene_params().current_frame, frame_cost);
-    
-    CpuParallel::parallel_for(0, host_xpbd_data->sa_x.size(), [&](const uint vid)
-    {
-        if (!host_mesh_data->sa_is_fixed[vid])
-        {
-            host_xpbd_data->sa_x[vid] -= luisa::make_float3(0, 0.1, 0);
-        }
-    });
-
-    // Copy to host (if use GPU)
-    if constexpr (false)
-    {
-        stream << xpbd_data->sa_x.copy_to(host_xpbd_data->sa_x.data())
-           << xpbd_data->sa_v.copy_to(host_xpbd_data->sa_v.data())
-           << luisa::compute::synchronize();
-    }
-    
-    // Return frame end position and velocity
-    CpuParallel::parallel_for(0, host_xpbd_data->sa_x.size(), [&](const uint vid)
-    {
-        host_mesh_data->sa_x_frame_end[vid] = host_xpbd_data->sa_x[vid];
-        host_mesh_data->sa_v_frame_end[vid] = host_xpbd_data->sa_v[vid];
-    });
-    lcsv::SolverInterface::physics_step_post_operation(device, stream); 
-}
-void CpuSolver::solve_constraints_VBD(luisa::compute::Stream& stream)
-{
-    // auto& iter_position = xpbd_data->sa_x;
-
-    // if (lcsv::get_scene_params().print_xpbd_convergence && lcsv::get_scene_params().current_it == 0) 
-    // { 
-    //     compute_energy(iter_position); 
-    // }
-
-    // for (uint cluster = 0; cluster < xpbd_data->num_clusters_per_vertex_bending; cluster++)
-    // {
-    //     const uint next_prefix = xpbd_data->clusterd_per_vertex_bending[cluster + 1];
-    //     const uint curr_prefix = xpbd_data->clusterd_per_vertex_bending[cluster];
-    //     const uint num_verts_cluster = next_prefix - curr_prefix;
-
-    //     vbd_evaluate_inertia(iter_position, cluster);
-
-    //     vbd_evaluate_stretch_spring(iter_position, cluster);
-        
-    //     vbd_evaluate_bending(iter_position, cluster);
-        
-    //     vbd_step(iter_position, cluster);
-    // }
-
-    // if (lcsv::get_scene_params().print_xpbd_convergence) 
-    // { 
-    //     compute_energy(iter_position); 
-    // }
-}
 
 enum SolverType
 {
@@ -1170,8 +823,8 @@ int main(int argc, char** argv)
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
     // Init data
-    lcsv::BasicMeshData<std::vector> cpu_mesh_data;
-    lcsv::BasicMeshData<luisa::compute::Buffer> mesh_data;
+    lcsv::MeshData<std::vector> cpu_mesh_data;
+    lcsv::MeshData<luisa::compute::Buffer> mesh_data;
     {
         Initializater::init_mesh_data(&cpu_mesh_data);
         Initializater::upload_mesh_buffers(device, stream, &cpu_mesh_data, &mesh_data);
@@ -1188,7 +841,7 @@ int main(int argc, char** argv)
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
-    CpuSolver solver;
+    lcsv::DescentSolverCPU solver;
     {
         device_parallel.create(device);
         solver.lcsv::SolverInterface::set_data_pointer(

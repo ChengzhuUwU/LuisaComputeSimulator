@@ -372,9 +372,9 @@ void svd_built_in(// input A
 
 }
 
-inline void svd(const Float3x3& F, Float3x3& U, Float3& Sigma, Float3x3& V)
+inline void svd(const float3x3& F, float3x3& U, float3& Sigma, float3x3& V)
 {
-    Float3x3 tmpSigma;
+    float3x3 tmpSigma;
     Local::svd_built_in(
         F[0][0], F[0][1], F[0][2], 
         F[1][0], F[1][1], F[1][2], 

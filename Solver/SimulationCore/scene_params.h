@@ -136,8 +136,8 @@ struct SceneParams
     
     float chebyshev_omega = 1.0f;
     
-    lcsv::Float3 gravity{0, -9.8f, 0};
-    lcsv::Float3 floor{0, -0.5f, 0};
+    lcsv::float3 gravity{0, -9.8f, 0};
+    lcsv::float3 floor{0, -0.5f, 0};
 
     // constant
     bool use_fixed_verts = false;

@@ -4,6 +4,7 @@
 #include <string>
 #include "Core/xbasic_types.h"
 #include "SimulationCore/base_mesh.h"
+#include "SimulationCore/simulation_data.h"
 #include "Utils/buffer_filler.h"
 #include "Utils/device_parallel.h"
 
@@ -23,8 +24,8 @@ public:
 
 
     void set_data_pointer(
-        BasicMeshData<std::vector>* host_mesh_ptr, 
-        BasicMeshData<luisa::compute::Buffer>* mesh_ptr, 
+        MeshData<std::vector>* host_mesh_ptr, 
+        MeshData<luisa::compute::Buffer>* mesh_ptr, 
         XpbdData<std::vector>* host_xpbd_ptr, 
         XpbdData<luisa::compute::Buffer>* xpbd_ptr, 
         lcsv::BufferFiller* buffer_filler_ptr, 
@@ -42,17 +43,6 @@ public:
         mp_device_parallel = device_parallel_ptr;
         mp_buffer_filler = buffer_filler_ptr;
     }
-    // void register_solver_type(SolverType type)
-    // {        
-    //     if (type == SolverTypeGaussNewton)
-    //     {
-    //         luisa::log_error("Empty NewtonSolver implementation");
-    //     }
-    //     else 
-    //     {
-    //         cpu_solver.get_data_pointer(&xpbd_data, mesh_data);
-    //     }
-    // }
 
 public:
     void physics_step_prev_operation(luisa::compute::Device& device, luisa::compute::Stream& stream);
@@ -63,10 +53,10 @@ public:
     void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
 
 protected:
-    BasicMeshData<std::vector>* host_mesh_data;
+    MeshData<std::vector>* host_mesh_data;
     XpbdData<std::vector>* host_xpbd_data;
     
-    BasicMeshData<luisa::compute::Buffer>* mesh_data;
+    MeshData<luisa::compute::Buffer>* mesh_data;
     XpbdData<luisa::compute::Buffer>* xpbd_data;
 
     lcsv::BufferFiller*   mp_buffer_filler;

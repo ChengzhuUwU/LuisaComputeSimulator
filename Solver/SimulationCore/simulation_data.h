@@ -1,8 +1,57 @@
 #pragma once
 
+#include "SimulationCore/simulation_type.h"
 #include <vector>
+#include <string>
 #include <luisa/luisa-compute.h>
+#include <glm/glm.hpp>
 
+namespace lcsv 
+{
+
+template<template<typename...> typename BufferType>
+struct XpbdData : SimulationType
+{
+    // template<typename T>
+    // using BufferType = Buffer<T>;
+    BufferType<float3> sa_x_tilde;
+    BufferType<float3> sa_x;
+    BufferType<float3> sa_v;
+    BufferType<float3> sa_v_start;
+    BufferType<float3> sa_x_start; // For calculating velocity
+
+    BufferType<uint2> sa_merged_edges; 
+    BufferType<float> sa_merged_edges_rest_length;
+
+    BufferType<uint4> sa_merged_bending_edges; 
+    BufferType<float> sa_merged_bending_edges_angle;
+    BufferType<float4x4> sa_merged_bending_edges_Q;
+
+    uint num_clusters_stretch_mass_spring = 0;
+    BufferType<uint> clusterd_constraint_stretch_mass_spring; 
+    BufferType<uint> prefix_stretch_mass_spring;
+    BufferType<float> sa_lambda_stretch_mass_spring;
+
+    uint num_clusters_bending = 0;
+    BufferType<uint> clusterd_constraint_bending; 
+    BufferType<uint> prefix_bending; 
+    BufferType<float> sa_lambda_bending;
+
+    // VBD
+    uint num_clusters_per_vertex_bending = 0; 
+    BufferType<uint> prefix_per_vertex_bending; 
+    BufferType<uint> clusterd_per_vertex_bending; 
+    BufferType<uint> per_vertex_bending_cluster_id; // ubyte
+    
+    BufferType<float> sa_Hf; 
+};
+
+
+}
+
+
+
+/*
 struct BaseSimulationData
 {
 
@@ -85,13 +134,7 @@ public:
     Buffer<Float3> sa_x_prev_2;
     Buffer<Float3> sa_x_jacobi;
     Buffer<Float3> sa_dx;
-
-
-
-
 public:
-
-
 public:
     void assemble_from_scene()
     {
@@ -101,6 +144,6 @@ public:
     {
 
     }
-
-
 };
+
+*/

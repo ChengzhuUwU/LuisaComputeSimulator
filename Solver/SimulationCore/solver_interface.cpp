@@ -17,6 +17,7 @@ void SolverInterface::physics_step_post_operation(luisa::compute::Device& device
 {
     
 }
+
 void SolverInterface::restart_system()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)

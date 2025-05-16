@@ -7,6 +7,8 @@
 // #include <luisa/core/stl/hash_fwd.h>
 // #include <luisa/core/basic_traits.h>
 
+#define PTR(T) luisa::compute::BufferVar<T>
+
 namespace luisa {
 
 /// Matrix only allows size of 2, 3, 4
