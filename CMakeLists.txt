@@ -25,6 +25,9 @@ if (NOT TARGET luisa::compute)
     set(LUISA_COMPUTE_USE_SYSTEM_STL ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_RUST OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_DX  OFF CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_CUDA  OFF CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_REMOTE OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_GUI ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_WAYLAND ON CACHE BOOL "" FORCE)
@@ -56,10 +59,10 @@ if (NOT TARGET polyscope)
 
     FetchContent_Declare(
             polyscope
-            # GIT_REPOSITORY https://gitee.com/yunchengliu/polyscope.git
+            GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
+            GIT_TAG master
+            # GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
             # GIT_TAG 2cd38b7496a1e8ff79f615920de2980295bedef7
-            GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
-            GIT_TAG 2cd38b7496a1e8ff79f615920de2980295bedef7
     )
     FetchContent_GetProperties(polyscope)
     if(NOT polyscope_POPULATED)
@@ -78,6 +81,7 @@ endif()
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
 add_library(luisa-compute-solver-lib SHARED ${LUISA_COMPUTE_SOLVER_LIB_SOURCES})
+# message("${LUISA_COMPUTE_SOLVER_LIB_SOURCES}")
 set_target_properties(luisa-compute-solver-lib PROPERTIES PUBLIC_HEADER "${LUISA_COMPUTE_SOLVER_LIB_HEADERS}")
 target_compile_definitions(luisa-compute-solver-lib PRIVATE LS_DLL_EXPORTS=1)
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
@@ -88,6 +92,7 @@ target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${C
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/PrecondConjugateGradient>)
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute)
 
+set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
 find_package(TBB REQUIRED)
 target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb)
 

@@ -235,6 +235,7 @@ namespace lcsv
 using float2 = luisa::float2;
 using float3 = luisa::float3;
 using float4 = luisa::float4;
+using uint = unsigned int; // luisa::uint;
 using uint2 = luisa::uint2;
 using uint3 = luisa::uint3;
 using uint4 = luisa::uint4;

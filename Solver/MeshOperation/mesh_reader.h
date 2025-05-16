@@ -18,6 +18,7 @@ using MeshShape = std::vector<tinyobj::shape_t>;
 using MeshAttrib= tinyobj::attrib_t;
 using MeshMat = std::vector<tinyobj::material_t>;
 
+using uint = unsigned int;
 using Float2 = std::array<float, 2>;
 using Float3 = std::array<float, 3>;
 using Int2 = std::array<uint, 2>;

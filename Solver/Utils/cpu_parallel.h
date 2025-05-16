@@ -1,11 +1,14 @@
 #pragma once
 
-#undef max
-#undef min
+// #include <vcruntime_typeinfo.h>
+// #undef max
+// #undef min
 #include <tbb/tbb.h>
 
 namespace CpuParallel
 {
+
+using uint = unsigned int;
 
 // ------------------- openmp ------------------- //
 // extern int CPU_THREAD_NUM;
@@ -27,6 +30,11 @@ namespace CpuParallel
 
 // ------------------- tbb ------------------- //
 
+template<typename T>
+inline T max_scalar(const T& left, const T& right) { return left > right ? left : right; }
+template<typename T>
+inline T min_scalar(const T& left, const T& right) { return left < right ? left : right; }
+
 template<typename FuncName>
 void parallel_for(uint start_pos, uint end_pos, FuncName func, const uint blockDim = 256)
 {
@@ -37,8 +45,8 @@ void parallel_for(uint start_pos, uint end_pos, FuncName func, const uint blockD
         [&](tbb::blocked_range<uint> r) 
         { 
             uint blockIdx = r.begin();
-            uint startIdx = std::max(blockDim * blockIdx, start_pos);
-            uint endIdx = std::min(blockDim * (blockIdx + 1), end_pos);
+            uint startIdx = max_scalar(blockDim * blockIdx, start_pos);
+            uint endIdx = min_scalar(blockDim * (blockIdx + 1), end_pos);
             for (uint index = startIdx; index < endIdx; index++) 
             {
                 func(index); 
@@ -64,8 +72,8 @@ void parallel_for_in_block(uint start_pos, uint end_pos, uint blockDim, FuncName
         [&](tbb::blocked_range<uint> r) 
         { 
             uint blockIdx = r.begin();
-            uint startIdx = std::max(blockDim * blockIdx, start_pos);
-            uint endIdx = std::min(blockDim * (blockIdx + 1), end_pos);
+            uint startIdx = max_scalar(blockDim * blockIdx, start_pos);
+            uint endIdx = min_scalar(blockDim * (blockIdx + 1), end_pos);
             func(startIdx, endIdx);
         }, 
         tbb::simple_partitioner{});
@@ -93,8 +101,8 @@ inline T parallel_for_and_reduce(uint start_pos, uint end_pos, ParallelFunc func
         [&]( tbb::blocked_range<uint> r, T result ) 
         {
             uint blockIdx = r.begin();
-            uint startIdx = std::max(blockDim * blockIdx, start_pos);
-            uint endIdx = std::min(blockDim * (blockIdx + 1), end_pos);
+            uint startIdx = max_scalar(blockDim * blockIdx, start_pos);
+            uint endIdx = min_scalar(blockDim * (blockIdx + 1), end_pos);
 
             for (uint index = startIdx; index < endIdx; index++) 
             {
@@ -118,26 +126,6 @@ inline T parallel_for_and_reduce_sum(uint start_pos, uint end_pos, ParallelFunc 
         T()
         ); 
 }
-template<typename T, typename ParallelFunc>
-inline T parallel_for_and_reduce_max(uint start_pos, uint end_pos, ParallelFunc func_parallel)
-{
-    return parallel_for_and_reduce<T>(start_pos, end_pos, 
-        func_parallel, 
-        // [](T& result, const T& parallel_result) -> void { result = std::max(parallel_result, parallel_result); }, // func_unary
-        [](const T& x, const T& y) -> T{ return std::max(x, y); }, // func_binary
-        std::numeric_limits<T>::lowest()
-        ); 
-}
-template<typename T, typename ParallelFunc>
-inline T parallel_for_and_reduce_min(uint start_pos, uint end_pos, ParallelFunc func_parallel)
-{
-    return parallel_for_and_reduce<T>(start_pos, end_pos, 
-        func_parallel, 
-        // [](T& result, const T& parallel_result) -> void { result = std::min(parallel_result, parallel_result); }, // func_unary
-        [](const T& x, const T& y) -> T{ return std::min(x, y); }, // func_binary
-        std::numeric_limits<T>::max()
-        ); 
-}
 
 // inclusive : 包含第一个元素
 template<typename T, typename ParallelFunc, typename OutputFunc>
@@ -155,8 +143,8 @@ inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc fun
             uint start_blockIdx = r.begin();
             uint end_blockIdx = r.end() - 1;
 
-            uint startIdx = std::max(blockDim * start_blockIdx, start_pos);
-            uint endIdx   = std::min(blockDim * (end_blockIdx + 1), end_pos);
+            uint startIdx = max_scalar(blockDim * start_blockIdx, start_pos);
+            uint endIdx   = min_scalar(blockDim * (end_blockIdx + 1), end_pos);
 
             for (uint index = startIdx; index < endIdx; index++) 
             {

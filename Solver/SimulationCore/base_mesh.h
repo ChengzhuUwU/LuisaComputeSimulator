@@ -1,10 +1,11 @@
 #pragma once
 
 #include "SimulationCore/simulation_type.h"
+#include "luisa/core/basic_types.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
-#include <glm/glm.hpp>
+// #include <glm/glm.hpp>
 
 namespace lcsv
 {
@@ -22,13 +23,13 @@ public:
     uint num_bending_edges = 0;
 
 public:
-    std::vector<glm::vec<3, float>> rest_x;
-    std::vector<glm::vec<3, float>> rest_v;
-    std::vector<glm::vec<2, float>> rest_uv;
+    std::vector<luisa::float3> rest_x;
+    std::vector<luisa::float3> rest_v;
+    std::vector<luisa::float2> rest_uv;
 
-    std::vector<glm::vec<3, uint>> faces;
-    std::vector<glm::vec<2, uint>> edges;
-    std::vector<glm::vec<4, uint>> bending_edges;
+    std::vector<luisa::uint3> faces;
+    std::vector<luisa::uint2> edges;
+    std::vector<luisa::uint4> bending_edges;
 
     std::vector<float> vert_mass;
     std::vector<float> vert_mass_inv;

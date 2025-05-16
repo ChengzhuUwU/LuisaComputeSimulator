@@ -894,8 +894,8 @@ int main(int argc, char** argv)
     
     // Synchronous Implementation
     {
-        solver.restart_system();
-        solver.save_mesh_to_obj(0, "_init"); 
+        solver.lcsv::SolverInterface::restart_system();
+        solver.lcsv::SolverInterface::save_mesh_to_obj(0, "_init"); 
         luisa::log_info("");
         luisa::log_info("");
         luisa::log_info("Sync part");
@@ -908,7 +908,7 @@ int main(int argc, char** argv)
         }
     }
     {
-        solver.save_mesh_to_obj(lcsv::get_scene_params().current_frame, "_sync"); 
+        solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, "_sync"); 
     }   
 
 
