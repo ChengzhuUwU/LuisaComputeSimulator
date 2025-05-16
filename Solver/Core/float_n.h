@@ -4,7 +4,113 @@
 #include "Core/constant_value.h"
 #include "luisa/core/mathematics.h"
 #include "luisa/dsl/var.h"
+#include <luisa/dsl/struct.h>
 
+namespace luisa::compute
+{
+
+/// Matrix only allows size of 2, 3, 4
+template<size_t M, size_t N>
+struct XMatrix {
+    static_assert(always_false_v<std::integral_constant<size_t, N>>, "Invalid matrix type");
+};
+
+/// 4x3 matrix
+template<>
+struct XMatrix<4, 3> {
+
+    union {
+        struct {
+            float3 cols1, cols2, cols3, cols4;
+        };
+        float3 cols[4];
+    };
+    // float3 cols[4];
+
+    constexpr XMatrix() noexcept
+        : cols{float3{0.0f}, float3{0.0f}, float3{0.0f}, float3{0.0f}} {}
+
+    constexpr XMatrix(const float3 c0, const float3 c1, const float3 c2, const float3 c3) noexcept
+        : cols{c0, c1, c2, c3} {}
+
+    static constexpr XMatrix fill(const float c) noexcept {
+        return XMatrix{
+            float3{c, c, c},
+            float3{c, c, c},
+            float3{c, c, c},
+            float3{c, c, c}};
+    }
+
+    [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
+    [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
+};
+
+/// 4x3 matrix
+template<>
+struct XMatrix<2, 3> {
+
+    // float3 cols[2];
+    union {
+        struct {
+            float3 cols1, cols2;
+        };
+        float3 cols[2];
+    };
+
+    constexpr XMatrix() noexcept
+        : cols{float3{0.0f}, float3{0.0f}} {}
+
+    constexpr XMatrix(const float3 c0, const float3 c1) noexcept
+        : cols{c0, c1} {}
+
+    static constexpr XMatrix fill(const float c) noexcept {
+        return XMatrix{
+            float3{c, c, c},
+            float3{c, c, c}};
+    }
+
+    [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
+    [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
+};
+
+/// 3x4 matrix
+template<>
+struct XMatrix<3, 4> {
+
+    // float4 cols[3];
+    union {
+        struct {
+            float4 cols1, cols2, cols3;
+        };
+        float4 cols[3];
+    };
+
+    constexpr XMatrix() noexcept
+        : cols{float4{0.0f}, float4{0.0f}, float4{0.0f}} {}
+
+    constexpr XMatrix(const float4 c0, const float4 c1, const float4 c2) noexcept
+        : cols{c0, c1, c2} {}
+
+    static constexpr XMatrix fill(const float c) noexcept {
+        return XMatrix{
+            float4{c, c, c, c},
+            float4{c, c, c, c},
+            float4{c, c, c, c}};
+    }
+
+    [[nodiscard]] constexpr float4 &operator[](size_t i) noexcept { return cols[i]; }
+    [[nodiscard]] constexpr const float4 &operator[](size_t i) const noexcept { return cols[i]; }
+};
+
+using float4x3 = XMatrix<4, 3>;
+using float2x3 = XMatrix<2, 3>;
+using float3x4 = XMatrix<3, 4>;
+
+}
+
+LUISA_STRUCT(luisa::compute::float2x3, cols1, cols2) {};
+LUISA_STRUCT(luisa::compute::float4x3, cols1, cols2, cols3, cols4) {};
+LUISA_STRUCT(luisa::compute::float3x4, cols1, cols2, cols3) {};
 
 namespace luisa::compute 
 {
@@ -14,8 +120,10 @@ using Uint3 = luisa::compute::Var<uint3>;
 using Uint4 = luisa::compute::Var<uint4>;
 using Float2x3 = luisa::compute::Var<float2x3>;
 using Float4x3 = luisa::compute::Var<float4x3>;
+using Float3x4 = luisa::compute::Var<float3x4>;
 
 /*
+
 namespace detail 
 {
 
@@ -30,8 +138,9 @@ struct TypeDesc<float4x3> {
 template<typename T, size_t M = 0u, size_t N = 0u>
 struct is_xmatrix_impl : std::false_type {};
 
-template<>
-struct is_xmatrix_impl<luisa::float4x3, 4u, 3u> : std::true_type {};
+template<> struct is_xmatrix_impl<luisa::float4x3, 2u, 3u> : std::true_type {};
+template<> struct is_xmatrix_impl<luisa::float4x3, 4u, 3u> : std::true_type {};
+
 
 /// Ref class common definition
 #define LUISA_REF_COMMON(...)                                              \
@@ -103,10 +212,18 @@ using is_matrix23 = is_xmatrix<T, 2u, 3u>;
 
 template<typename T>
 using is_matrix43 = is_xmatrix<T, 4u, 3u>;
+
+template<>
+struct is_custom_struct<luisa::XMatrix<4, 3>> : std::true_type {};
+
+template<>
+struct struct_member_tuple<luisa::XMatrix<4, 3>> {
+    using type = std::tuple<luisa::float3, luisa::float3, luisa::float3, luisa::float3>;
+};
+
 */
 
 } // namespace luisa::compute
-
 
 
 
@@ -126,11 +243,9 @@ using uchar4 = luisa::ubyte4;
 using float2x2 = luisa::float2x2;
 using float3x3 = luisa::float3x3;
 using float4x4 = luisa::float4x4;
-// using Float2x3 = luisa::float2x3;
-// using Float3x2 = luisa::float3x2;
 using float2x3 = luisa::float2x3;
 using float4x3 = luisa::float4x3;
-using ElementOffset = luisa::ubyte4;
+// using ElementOffset = luisa::ubyte4;
 
 
 #define Float3_zero make<Float3>(0)

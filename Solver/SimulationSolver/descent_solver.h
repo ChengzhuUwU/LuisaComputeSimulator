@@ -42,6 +42,16 @@ private:
     void vbd_evaluate_stretch_spring(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
     void vbd_evaluate_bending(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
     void vbd_step(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
+
+private:
+    using Shader = luisa::compute::Shader<1>;
+    Shader fn_predict_position;
+    Shader fn_update_velocity;
+    
+    Shader fn_evaluate_inertia;
+    Shader fn_evaluate_stretch_spring;
+    Shader fn_evaluate_bending;
+    Shader fn_step;
 };
 
 

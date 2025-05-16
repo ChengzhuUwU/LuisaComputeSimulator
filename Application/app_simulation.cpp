@@ -852,6 +852,7 @@ int main(int argc, char** argv)
             &buffer_filler, 
             &device_parallel
         );
+        solver.compile(device);
     }
 
     // Some params
@@ -889,26 +890,26 @@ int main(int argc, char** argv)
 
     polyscope::show();
 
-    // const uint num_frames = 10;
+    const uint num_frames = 30;
     
     // Synchronous Implementation
-    // {
-    //     solver.restart_system();
-    //     solver.save_mesh_to_obj(0, "_init"); 
-    //     luisa::log_info("");
-    //     luisa::log_info("");
-    //     luisa::log_info("Sync part");
-    // }
-    // {   
-    //     for (uint frame = 0; frame < num_frames; frame++)
-    //     {   lcsv::get_scene_params().current_frame = frame; luisa::log_info("     Sync frame {}", frame);   
+    {
+        solver.restart_system();
+        solver.save_mesh_to_obj(0, "_init"); 
+        luisa::log_info("");
+        luisa::log_info("");
+        luisa::log_info("Sync part");
+    }
+    {   
+        for (uint frame = 0; frame < num_frames; frame++)
+        {   lcsv::get_scene_params().current_frame = frame; luisa::log_info("     Sync frame {}", frame);   
 
-    //         solver.physics_step_vbd(device, stream);
-    //     }
-    // }
-    // {
-    //     solver.save_mesh_to_obj(lcsv::get_scene_params().current_frame, "_sync"); 
-    // }   
+            solver.physics_step_vbd(device, stream);
+        }
+    }
+    {
+        solver.save_mesh_to_obj(lcsv::get_scene_params().current_frame, "_sync"); 
+    }   
 
 
     return 0;

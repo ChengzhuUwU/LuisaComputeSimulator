@@ -21,7 +21,13 @@ struct XMatrix {
 template<>
 struct XMatrix<4, 3> {
 
-    float3 cols[4];
+    union {
+        struct {
+            float3 cols1, cols2, cols3, cols4;
+        };
+        float3 cols[4];
+    };
+    // float3 cols[4];
 
     constexpr XMatrix() noexcept
         : cols{float3{0.0f}, float3{0.0f}, float3{0.0f}, float3{0.0f}} {}
@@ -45,7 +51,13 @@ struct XMatrix<4, 3> {
 template<>
 struct XMatrix<2, 3> {
 
-    float3 cols[2];
+    // float3 cols[2];
+    union {
+        struct {
+            float3 cols1, cols2;
+        };
+        float3 cols[2];
+    };
 
     constexpr XMatrix() noexcept
         : cols{float3{0.0f}, float3{0.0f}} {}
@@ -67,7 +79,13 @@ struct XMatrix<2, 3> {
 template<>
 struct XMatrix<3, 4> {
 
-    float4 cols[3];
+    // float4 cols[3];
+    union {
+        struct {
+            float4 cols1, cols2, cols3;
+        };
+        float4 cols[3];
+    };
 
     constexpr XMatrix() noexcept
         : cols{float4{0.0f}, float4{0.0f}, float4{0.0f}} {}

@@ -101,6 +101,7 @@ struct SceneParams
     float density_tet = 10.0;
 
     // Stiffness
+    float stiffness_spring = 1e4;
     float youngs_modulus_cloth = 1e7;
     float youngs_modulus_tet = 1e7;
     float poisson_ratio_cloth = 0.2f;
