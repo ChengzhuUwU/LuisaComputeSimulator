@@ -4,113 +4,22 @@
 #include "Core/constant_value.h"
 #include "luisa/core/mathematics.h"
 #include "luisa/dsl/var.h"
-#include <luisa/dsl/struct.h>
 
-namespace luisa::compute
+
+// LUISA_STRUCT(luisa::compute::float2x3, cols1, cols2) {};
+// LUISA_STRUCT(luisa::compute::float4x3, cols1, cols2, cols3, cols4) {};
+// LUISA_STRUCT(luisa::compute::float3x4, cols1, cols2, cols3) {};
+
+namespace luisa 
 {
-
-/// Matrix only allows size of 2, 3, 4
-template<size_t M, size_t N>
-struct XMatrix {
-    static_assert(always_false_v<std::integral_constant<size_t, N>>, "Invalid matrix type");
+    using float4x3 = XMatrix<4, 3>;
+    using float2x3 = XMatrix<2, 3>;
+    using float3x4 = XMatrix<3, 4>;
 };
 
-/// 4x3 matrix
-template<>
-struct XMatrix<4, 3> {
-
-    union {
-        struct {
-            float3 cols1, cols2, cols3, cols4;
-        };
-        float3 cols[4];
-    };
-    // float3 cols[4];
-
-    constexpr XMatrix() noexcept
-        : cols{float3{0.0f}, float3{0.0f}, float3{0.0f}, float3{0.0f}} {}
-
-    constexpr XMatrix(const float3 c0, const float3 c1, const float3 c2, const float3 c3) noexcept
-        : cols{c0, c1, c2, c3} {}
-
-    static constexpr XMatrix fill(const float c) noexcept {
-        return XMatrix{
-            float3{c, c, c},
-            float3{c, c, c},
-            float3{c, c, c},
-            float3{c, c, c}};
-    }
-
-    [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
-    [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
-};
-
-/// 4x3 matrix
-template<>
-struct XMatrix<2, 3> {
-
-    // float3 cols[2];
-    union {
-        struct {
-            float3 cols1, cols2;
-        };
-        float3 cols[2];
-    };
-
-    constexpr XMatrix() noexcept
-        : cols{float3{0.0f}, float3{0.0f}} {}
-
-    constexpr XMatrix(const float3 c0, const float3 c1) noexcept
-        : cols{c0, c1} {}
-
-    static constexpr XMatrix fill(const float c) noexcept {
-        return XMatrix{
-            float3{c, c, c},
-            float3{c, c, c}};
-    }
-
-    [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
-    [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
-};
-
-/// 3x4 matrix
-template<>
-struct XMatrix<3, 4> {
-
-    // float4 cols[3];
-    union {
-        struct {
-            float4 cols1, cols2, cols3;
-        };
-        float4 cols[3];
-    };
-
-    constexpr XMatrix() noexcept
-        : cols{float4{0.0f}, float4{0.0f}, float4{0.0f}} {}
-
-    constexpr XMatrix(const float4 c0, const float4 c1, const float4 c2) noexcept
-        : cols{c0, c1, c2} {}
-
-    static constexpr XMatrix fill(const float c) noexcept {
-        return XMatrix{
-            float4{c, c, c, c},
-            float4{c, c, c, c},
-            float4{c, c, c, c}};
-    }
-
-    [[nodiscard]] constexpr float4 &operator[](size_t i) noexcept { return cols[i]; }
-    [[nodiscard]] constexpr const float4 &operator[](size_t i) const noexcept { return cols[i]; }
-};
-
-using float4x3 = XMatrix<4, 3>;
-using float2x3 = XMatrix<2, 3>;
-using float3x4 = XMatrix<3, 4>;
-
-}
-
-LUISA_STRUCT(luisa::compute::float2x3, cols1, cols2) {};
-LUISA_STRUCT(luisa::compute::float4x3, cols1, cols2, cols3, cols4) {};
-LUISA_STRUCT(luisa::compute::float3x4, cols1, cols2, cols3) {};
+LUISA_STRUCT(luisa::float2x3, cols) {};
+LUISA_STRUCT(luisa::float4x3, cols) {};
+LUISA_STRUCT(luisa::float3x4, cols) {};
 
 namespace luisa::compute 
 {
@@ -118,9 +27,9 @@ using Uint = luisa::compute::Var<uint>;
 using Uint2 = luisa::compute::Var<uint2>;
 using Uint3 = luisa::compute::Var<uint3>;
 using Uint4 = luisa::compute::Var<uint4>;
-using Float2x3 = luisa::compute::Var<float2x3>;
-using Float4x3 = luisa::compute::Var<float4x3>;
-using Float3x4 = luisa::compute::Var<float3x4>;
+using Float2x3 = luisa::compute::Var<luisa::float2x3>;
+using Float4x3 = luisa::compute::Var<luisa::float4x3>;
+using Float3x4 = luisa::compute::Var<luisa::float3x4>;
 
 /*
 
@@ -225,7 +134,28 @@ struct struct_member_tuple<luisa::XMatrix<4, 3>> {
 
 } // namespace luisa::compute
 
+namespace luisa::compute 
+{
 
+    [[nodiscard]] inline Float4x3 make_float4x3(const Float3& c0, const Float3& c1, const Float3& c2, const Float3& c3) noexcept 
+    {
+        Float4x3 mat;
+        mat.cols[0] = c0;
+        mat.cols[1] = c1;
+        mat.cols[2] = c2;
+        mat.cols[3] = c3;
+        return mat;
+    }
+    // inline Float4x3 operator+(const Float4x3& lhs, const Float4x3& rhs) 
+    // {
+    //     return make_float4x3(
+    //         lhs.cols[0] + rhs.cols[0], 
+    //         lhs.cols[1] + rhs.cols[1], 
+    //         lhs.cols[2] + rhs.cols[2], 
+    //         lhs.cols[3] + rhs.cols[3]);
+    // }
+
+}
 
 
 

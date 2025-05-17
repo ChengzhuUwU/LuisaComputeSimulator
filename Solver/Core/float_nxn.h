@@ -47,13 +47,13 @@ inline void kronecker_product(float3 output[3], const float3& left, const float3
     output[1] = left[1] * right;
     output[2] = left[2] * right;
 }
-inline float4x3 kronecker_product(const float4& left, const float3& right)
-{
-	return luisa::make_float4x3(left[0] * right, 
-                          left[1] * right, 
-                          left[2] * right,
-                          left[3] * right);
-}
+// inline float4x3 kronecker_product(const float4& left, const float3& right)
+// {
+// 	return luisa::make_float4x3(left[0] * right, 
+//                           left[1] * right, 
+//                           left[2] * right,
+//                           left[3] * right);
+// }
 inline void kronecker_product(float3 output[4], const float4& left, const float3& right)
 {
 	output[0] = left[0] * right;

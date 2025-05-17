@@ -573,6 +573,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
         // Graph Coloring
         const uint num_verts_total = mesh_data->num_verts;
         xpbd_data->sa_Hf.resize(mesh_data->num_verts * 12);
+        xpbd_data->sa_Hf1.resize(mesh_data->num_verts);
 
         const std::vector< std::vector<uint> >& vert_adj_verts = mesh_data->vert_adj_verts_with_bending;
         std::vector<std::vector<uint>> clusterd_vertices_bending; std::vector<uint> prefix_vertices_bending;
@@ -754,22 +755,13 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->clusterd_per_vertex_bending, input_data->clusterd_per_vertex_bending)
         << upload_buffer(device, output_data->per_vertex_bending_cluster_id, input_data->per_vertex_bending_cluster_id)
         << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
+        << upload_buffer(device, output_data->sa_Hf1, input_data->sa_Hf1)
         << luisa::compute::synchronize();
 }
 
 void init_simulation_params()
 {
     lcsv::get_scene_params().print_xpbd_convergence = false; // false true
-
-    if (lcsv::get_scene_params().use_substep)
-    {
-        lcsv::get_scene_params().implicit_dt = 1.f / 60.f;
-    }
-    else 
-    {
-        lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().constraint_iter_count = 200;
-    }
 
     if (lcsv::get_scene_params().use_small_timestep) { lcsv::get_scene_params().implicit_dt = 0.001f; }
     
@@ -859,7 +851,7 @@ int main(int argc, char** argv)
     {
         lcsv::get_scene_params().use_substep = false;
         lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().constraint_iter_count = 100; // 
+        lcsv::get_scene_params().constraint_iter_count = 10; // 
         lcsv::get_scene_params().use_bending = true;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().print_xpbd_convergence = false;
@@ -882,13 +874,14 @@ int main(int argc, char** argv)
             sa_rendering_faces[fid] = {face[0], face[1], face[2]};
         });
     }
-    // polyscope::init("openGL_mock");
-    polyscope::init("openGL3_glfw");
 
-    auto surface_mesh = polyscope::registerSurfaceMesh("cloth1", sa_rendering_vertices, sa_rendering_faces);
-    // surface_mesh->setEnabled(false);
+    solver.test_luisa();
 
-    polyscope::show();
+    constexpr bool use_ui = false;
+    if constexpr (use_ui) polyscope::init("openGL3_glfw");
+    if constexpr (use_ui) polyscope::registerSurfaceMesh("cloth1", sa_rendering_vertices, sa_rendering_faces);
+    // auto surface_mesh = polyscope::getSurfaceMesh("cloth1"); surface_mesh->setEnabled(false);
+    if constexpr (use_ui) polyscope::show();
 
     const uint num_frames = 30;
     

@@ -2,14 +2,15 @@
 
 #include <cstddef>
 #include <array>
-
 #include <luisa/core/basic_types.h>
+#include <luisa/dsl/struct.h>
 // #include <luisa/core/stl/hash_fwd.h>
 // #include <luisa/core/basic_traits.h>
 
 #define PTR(T) luisa::compute::BufferVar<T>
 
 namespace luisa {
+
 
 /// Matrix only allows size of 2, 3, 4
 template<size_t M, size_t N>
@@ -21,13 +22,7 @@ struct XMatrix {
 template<>
 struct XMatrix<4, 3> {
 
-    union {
-        struct {
-            float3 cols1, cols2, cols3, cols4;
-        };
-        float3 cols[4];
-    };
-    // float3 cols[4];
+    float3 cols[4];
 
     constexpr XMatrix() noexcept
         : cols{float3{0.0f}, float3{0.0f}, float3{0.0f}, float3{0.0f}} {}
@@ -51,13 +46,7 @@ struct XMatrix<4, 3> {
 template<>
 struct XMatrix<2, 3> {
 
-    // float3 cols[2];
-    union {
-        struct {
-            float3 cols1, cols2;
-        };
-        float3 cols[2];
-    };
+    float3 cols[2];
 
     constexpr XMatrix() noexcept
         : cols{float3{0.0f}, float3{0.0f}} {}
@@ -79,13 +68,7 @@ struct XMatrix<2, 3> {
 template<>
 struct XMatrix<3, 4> {
 
-    // float4 cols[3];
-    union {
-        struct {
-            float4 cols1, cols2, cols3;
-        };
-        float4 cols[3];
-    };
+    float4 cols[3];
 
     constexpr XMatrix() noexcept
         : cols{float4{0.0f}, float4{0.0f}, float4{0.0f}} {}
@@ -104,6 +87,19 @@ struct XMatrix<3, 4> {
     [[nodiscard]] constexpr const float4 &operator[](size_t i) const noexcept { return cols[i]; }
 };
 
+// template<> struct XMatrix<2, 3>; 
+// template<> struct XMatrix<4, 3>; 
+// template<> struct XMatrix<3, 4>; 
+
+
+
+// template<size_t M, size_t N>
+// struct XMatrix {
+//     luisa::Vector<float, N> cols[M];
+//     [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
+//     [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
+// };
+
 template<size_t M, size_t N>
 struct hash<XMatrix<M, N>> {
     using is_avalanching = void;
@@ -118,13 +114,86 @@ struct hash<XMatrix<M, N>> {
     }
 };
 
-using float4x3 = XMatrix<4, 3>;
-using float2x3 = XMatrix<2, 3>;
-using float3x4 = XMatrix<3, 4>;
-
 }// namespace luisa
 
 
+
+// template<typename T, typename... Args>
+// static inline constexpr T make_matrix(Args... args) {
+//     return T{ args... };
+// }
+
+//      M              L              L
+//    |||||           ||||||         |||||
+//  N |||||    *    M ||||||   => N  |||||
+//    |||||           ||||||         |||||
+template<uint M, uint N, uint L> // TODO: use column acceleration
+[[nodiscard]] constexpr auto operator*(
+    const luisa::XMatrix<M, N>& left, 
+    const luisa::XMatrix<L, M>& right) noexcept {
+    luisa::XMatrix<L, N> result;
+    for (uint i = 0; i < L; i++) {
+        for(uint j = 0; j < N; j++){
+            result[i][j] = 0.0f;
+            for(uint k = 0; k < M; k++){
+                result[i][j] += left[k][j] * right[i][k];
+            }
+        }
+    }
+    return result;
+}
+template<uint M, uint N>
+[[nodiscard]] constexpr luisa::XMatrix<M, N> operator+(
+    const luisa::XMatrix<M, N>& left, 
+    const luisa::XMatrix<M, N>& right) noexcept {
+    luisa::XMatrix<M, N> result;
+    for (uint i = 0; i < M; i++) {
+        result[i] = left[i] + right[i];
+    }
+    return result;
+}
+
+namespace luisa::compute {
+
+template<uint M, uint N, uint L> // TODO: use column acceleration
+[[nodiscard]] constexpr auto mult_mat(
+    const luisa::compute::Var<luisa::compute::XMatrix<M, N>>& left, 
+    const luisa::compute::Var<luisa::compute::XMatrix<L, M>>& right) noexcept {
+    luisa::compute::Var<luisa::compute::XMatrix<L, N>> result;
+    for (uint i = 0; i < L; i++) {
+        for(uint j = 0; j < N; j++){
+            result[i][j] = 0.0f;
+            for(uint k = 0; k < M; k++){
+                result[i][j] += left[k][j] * right[i][k];
+            }
+        }
+    }
+    return result;
+}
+template<uint M, uint N>
+[[nodiscard]] constexpr luisa::compute::Var<luisa::XMatrix<M, N>> add(
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& left, 
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& right) noexcept {
+    luisa::compute::Var<luisa::XMatrix<M, N>> result;
+    for (uint i = 0; i < M; i++) {
+        result.cols[i] = left.cols[i] + right.cols[i];
+    }
+    return result;
+}
+template<uint M, uint N>
+[[nodiscard]] constexpr luisa::compute::Var<luisa::XMatrix<M, N>> sub(
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& left, 
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& right) noexcept {
+    luisa::compute::Var<luisa::XMatrix<M, N>> result;
+    for (uint i = 0; i < M; i++) {
+        result.cols[i] = left.cols[i] - right.cols[i];
+    }
+    return result;
+}
+
+} // namespace luisa::compute
+
+/*
 /// float4x3 multiplied by float
 [[nodiscard]] constexpr auto operator*(const luisa::float4x3 m, float s) noexcept {
     return luisa::float4x3{m[0] * s, m[1] * s, m[2] * s, m[3] * s};
@@ -198,8 +267,6 @@ using float3x4 = XMatrix<3, 4>;
     return luisa::float2x3{lhs[0] - rhs[0], lhs[1] - rhs[1]};
 }
 
-
-
 namespace luisa {
 
 /// make float4x3
@@ -266,6 +333,5 @@ namespace luisa {
 [[nodiscard]] constexpr auto make_float4x3(float2x3 m) noexcept {
     return m;
 }
-
-
 }// namespace luisa
+*/

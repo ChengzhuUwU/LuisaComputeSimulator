@@ -44,6 +44,7 @@ struct XpbdData : SimulationType
     BufferType<uint> per_vertex_bending_cluster_id; // ubyte
     
     BufferType<float> sa_Hf; 
+    BufferType<float4x3> sa_Hf1; 
 };
 
 

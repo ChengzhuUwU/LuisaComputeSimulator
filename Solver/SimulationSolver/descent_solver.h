@@ -22,6 +22,7 @@ public:
     void physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream);
     // void compute_energy(const Buffer<float3>& curr_cloth_position);
     void compile(luisa::compute::Device& device);
+    void test_luisa();
 
 private:
     void collision_detection(luisa::compute::Stream& stream);
@@ -44,14 +45,18 @@ private:
     void vbd_step(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
 
 private:
-    using Shader = luisa::compute::Shader<1>;
-    Shader fn_predict_position;
-    Shader fn_update_velocity;
     
-    Shader fn_evaluate_inertia;
-    Shader fn_evaluate_stretch_spring;
-    Shader fn_evaluate_bending;
-    Shader fn_step;
+private:
+    template<typename... Args>
+    using Shader = luisa::compute::Shader<1, Args...>;
+    
+    Shader<float> fn_predict_position ; // const Float substep_dt
+    Shader<float, bool, float> fn_update_velocity; // const Float substep_dt, const Bool fix_scene, const Float damping
+    
+    Shader<float> fn_evaluate_inertia; // const Float substep_dt
+    Shader<float> fn_evaluate_stretch_spring; // const Float stiffness_spring
+    Shader<> fn_evaluate_bending;
+    Shader<> fn_step;
 };
 
 

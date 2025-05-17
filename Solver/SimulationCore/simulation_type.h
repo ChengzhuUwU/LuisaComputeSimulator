@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/float_n.h"
 #include "Core/xbasic_types.h"
 #include <luisa/luisa-compute.h>
 
