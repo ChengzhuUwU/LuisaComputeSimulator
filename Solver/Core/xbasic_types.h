@@ -11,7 +11,7 @@
 
 namespace luisa {
 
-
+/*
 /// Matrix only allows size of 2, 3, 4
 template<size_t M, size_t N>
 struct XMatrix {
@@ -40,6 +40,12 @@ struct XMatrix<4, 3> {
 
     [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
     [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
+    // constexpr void operator+=(
+    //     const luisa::XMatrix<4, 3>& right) noexcept {
+    //     for (uint i = 0; i < 4; i++) {
+    //         cols[i] += right[i];
+    //     }
+    // }
 };
 
 /// 4x3 matrix
@@ -87,18 +93,36 @@ struct XMatrix<3, 4> {
     [[nodiscard]] constexpr const float4 &operator[](size_t i) const noexcept { return cols[i]; }
 };
 
+
+
 // template<> struct XMatrix<2, 3>; 
 // template<> struct XMatrix<4, 3>; 
 // template<> struct XMatrix<3, 4>; 
+*/
 
 
-
-// template<size_t M, size_t N>
-// struct XMatrix {
-//     luisa::Vector<float, N> cols[M];
-//     [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
-//     [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
-// };
+// /*
+template<size_t M, size_t N>
+struct XMatrix {
+    luisa::Vector<float, N> cols[M];
+    [[nodiscard]] constexpr float3 &operator[](size_t i) noexcept { return cols[i]; }
+    [[nodiscard]] constexpr const float3 &operator[](size_t i) const noexcept { return cols[i]; }
+    constexpr void operator+=(
+        const luisa::XMatrix<M, N>& right) noexcept {
+        for (uint i = 0; i < M; i++) {
+            cols[i] += right[i];
+        }
+    }
+    constexpr void operator+(
+        const luisa::XMatrix<M, N>& right) noexcept {
+        luisa::XMatrix<M, N> result;
+        for (uint i = 0; i < M; i++) {
+            result[i] = cols[i] = right[i];
+        }
+        return result;
+    }
+};
+// */
 
 template<size_t M, size_t N>
 struct hash<XMatrix<M, N>> {
@@ -127,31 +151,31 @@ struct hash<XMatrix<M, N>> {
 //    |||||           ||||||         |||||
 //  N |||||    *    M ||||||   => N  |||||
 //    |||||           ||||||         |||||
-template<uint M, uint N, uint L> // TODO: use column acceleration
-[[nodiscard]] constexpr auto operator*(
-    const luisa::XMatrix<M, N>& left, 
-    const luisa::XMatrix<L, M>& right) noexcept {
-    luisa::XMatrix<L, N> result;
-    for (uint i = 0; i < L; i++) {
-        for(uint j = 0; j < N; j++){
-            result[i][j] = 0.0f;
-            for(uint k = 0; k < M; k++){
-                result[i][j] += left[k][j] * right[i][k];
-            }
-        }
-    }
-    return result;
-}
-template<uint M, uint N>
-[[nodiscard]] constexpr luisa::XMatrix<M, N> operator+(
-    const luisa::XMatrix<M, N>& left, 
-    const luisa::XMatrix<M, N>& right) noexcept {
-    luisa::XMatrix<M, N> result;
-    for (uint i = 0; i < M; i++) {
-        result[i] = left[i] + right[i];
-    }
-    return result;
-}
+// template<uint M, uint N, uint L> // TODO: use column acceleration
+// [[nodiscard]] constexpr auto operator*(
+//     const luisa::XMatrix<M, N>& left, 
+//     const luisa::XMatrix<L, M>& right) noexcept {
+//     luisa::XMatrix<L, N> result;
+//     for (uint i = 0; i < L; i++) {
+//         for(uint j = 0; j < N; j++){
+//             result[i][j] = 0.0f;
+//             for(uint k = 0; k < M; k++){
+//                 result[i][j] += left[k][j] * right[i][k];
+//             }
+//         }
+//     }
+//     return result;
+// }
+// template<uint M, uint N>
+// [[nodiscard]] constexpr luisa::XMatrix<M, N> operator+(
+//     const luisa::XMatrix<M, N>& left, 
+//     const luisa::XMatrix<M, N>& right) noexcept {
+//     luisa::XMatrix<M, N> result;
+//     for (uint i = 0; i < M; i++) {
+//         result[i] = left[i] + right[i];
+//     }
+//     return result;
+// }
 
 namespace luisa::compute {
 
@@ -179,6 +203,15 @@ template<uint M, uint N>
         result.cols[i] = left.cols[i] + right.cols[i];
     }
     return result;
+}
+template<uint M, uint N>
+constexpr void add(
+    luisa::compute::Var<luisa::XMatrix<M, N>>& result,
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& left, 
+    const luisa::compute::Var<luisa::XMatrix<M, N>>& right) noexcept {
+    for (uint i = 0; i < M; i++) {
+        result.cols[i] = left.cols[i] + right.cols[i];
+    }
 }
 template<uint M, uint N>
 [[nodiscard]] constexpr luisa::compute::Var<luisa::XMatrix<M, N>> sub(

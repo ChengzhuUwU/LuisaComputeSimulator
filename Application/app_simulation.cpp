@@ -850,8 +850,8 @@ int main(int argc, char** argv)
     // Some params
     {
         lcsv::get_scene_params().use_substep = false;
-        lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().constraint_iter_count = 10; // 
+        lcsv::get_scene_params().num_substep = 10;
+        lcsv::get_scene_params().constraint_iter_count = 1; // 
         lcsv::get_scene_params().use_bending = true;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().print_xpbd_convergence = false;
@@ -883,7 +883,7 @@ int main(int argc, char** argv)
     // auto surface_mesh = polyscope::getSurfaceMesh("cloth1"); surface_mesh->setEnabled(false);
     if constexpr (use_ui) polyscope::show();
 
-    const uint num_frames = 30;
+    const uint num_frames = 10;
     
     // Synchronous Implementation
     {
@@ -897,7 +897,8 @@ int main(int argc, char** argv)
         for (uint frame = 0; frame < num_frames; frame++)
         {   lcsv::get_scene_params().current_frame = frame; luisa::log_info("     Sync frame {}", frame);   
 
-            solver.physics_step_vbd(device, stream);
+            // solver.physics_step_vbd_GPU(device, stream);
+            solver.physics_step_vbd_CPU(device, stream);
         }
     }
     {
