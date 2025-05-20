@@ -6,7 +6,7 @@
 namespace lcsv
 {
 
-class DescentSolverCPU : public lcsv::SolverInterface
+class DescentSolver : public lcsv::SolverInterface
 {
 
 template<typename T>
@@ -14,8 +14,8 @@ using Buffer = luisa::compute::Buffer<T>;
 
 
 public:
-    DescentSolverCPU() : lcsv::SolverInterface() {}
-    ~DescentSolverCPU() {}
+    DescentSolver() : lcsv::SolverInterface() {}
+    ~DescentSolver() {}
 
 public:    
     void physics_step_vbd_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);

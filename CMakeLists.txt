@@ -4,17 +4,18 @@ set(CMAKE_CXX_STANDARD 20)
 
 project(LuisaComputeSolver)
 
-# set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/ext)
+set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/External)
 include(FetchContent)
 if (NOT TARGET luisa::compute)
     # download LuisaCompute from github.com/LuisaGroup/LuisaCompute.git to the build directory
 
-    FetchContent_Populate(luisa_compute
-            # GIT_REPOSITORY "https://github.com/LuisaGroup/LuisaCompute.git"
-            # GIT_TAG stable)
-            GIT_REPOSITORY "https://gitee.com/celeste-huohuo/LuisaCompute.git"
-            GIT_TAG stable)
-    set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
+    # FetchContent_Populate(luisa_compute
+    #         # GIT_REPOSITORY "https://github.com/LuisaGroup/LuisaCompute.git"
+    #         # GIT_TAG stable)
+    #         GIT_REPOSITORY "https://gitee.com/celeste-huohuo/LuisaCompute.git"
+    #         GIT_TAG stable)
+    # set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
+    set(LuisaCompute_SOURCE_DIR ${EXT_PATH}/LuisaCompute)
     message(STATUS "LuisaCompute source dir: ${LuisaCompute_SOURCE_DIR}")
 
     include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
@@ -40,40 +41,29 @@ if (NOT TARGET polyscope)
     set(POLYSCOPE_USE_EXTERNAL_GLFW ON CACHE BOOL "" FORCE)
     set(POLYSCOPE_BACKEND_OPENGL3_GLFW ON CACHE BOOL "" FORCE)
     set(POLYSCOPE_BACKEND_OPENGL_MOCK ON CACHE BOOL "" FORCE)
+    add_subdirectory(${EXT_PATH}/polyscope)
 
-# Remember to set the following variables in polyscope's CMakeLists.txt
-# if("${POLYSCOPE_BACKEND_OPENGL3_GLFW}")
-#   ## Glad
-#   add_subdirectory(glad)
-#   ## GLFW
-#   if (POLYSCOPE_USE_EXTERNAL_GLFW)
-#     find_package(glfw3 REQUIRED)
-#   else()
-#     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-#     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-#     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-#     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-#     add_subdirectory(glfw)
-#   endif()
-# endif()
-
-    FetchContent_Declare(
-            polyscope
-            GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
-            GIT_TAG master
-            # GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
-            # GIT_TAG 2cd38b7496a1e8ff79f615920de2980295bedef7
-    )
-    FetchContent_GetProperties(polyscope)
-    if(NOT polyscope_POPULATED)
-        # Fetch the content using previously declared details
-        FetchContent_Populate(polyscope)
-        message(STATUS "polyscope_SOURCE_DIR: ${polyscope_SOURCE_DIR}")
-        message(STATUS "polyscope_BINARY_DIR: ${polyscope_BINARY_DIR}")
-        add_subdirectory(${polyscope_SOURCE_DIR} ${polyscope_BINARY_DIR})
-    endif()
-    FetchContent_MakeAvailable(polyscope)
+    # FetchContent_Declare(
+    #         polyscope
+    #         GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
+    #         GIT_TAG master
+    #         # GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
+    #         # GIT_TAG 2cd38b7496a1e8ff79f615920de2980295bedef7
+    # )
+    # FetchContent_GetProperties(polyscope)
+    # if(NOT polyscope_POPULATED)
+    #     # Fetch the content using previously declared details
+    #     FetchContent_Populate(polyscope)
+    #     message(STATUS "polyscope_SOURCE_DIR: ${polyscope_SOURCE_DIR}")
+    #     message(STATUS "polyscope_BINARY_DIR: ${polyscope_BINARY_DIR}")
+    #     add_subdirectory(${polyscope_SOURCE_DIR} ${polyscope_BINARY_DIR})
+    # endif()
+    # FetchContent_MakeAvailable(polyscope)
 endif()
+
+# if (NOT TARGET amgcl)
+#     add_subdirectory(${EXT_PATH}/amgcl)
+# endif()
 
 
 
@@ -94,7 +84,8 @@ target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute)
 
 set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
 find_package(TBB REQUIRED)
-target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb)
+find_package(Eigen3 REQUIRED)
+target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen)
 
 # test
 # file(GLOB_RECURSE LUISA_SOLVER_TEST_SOURCES CONFIGURE_DEPENDS test/*.cpp)

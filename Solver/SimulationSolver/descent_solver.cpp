@@ -25,7 +25,7 @@ LUISA_STRUCT(TestTypeAAA, a, b, c) {};
 namespace lcsv {
 using lcsv::get_scene_params;
 
-void DescentSolverCPU::test_luisa()
+void DescentSolver::test_luisa()
 {
 
     using namespace luisa::compute;
@@ -57,7 +57,7 @@ void DescentSolverCPU::test_luisa()
     // luisa::log_info("print mat2 {}", vec2);
 
 }
-void DescentSolverCPU::reset_constrains(luisa::compute::Stream& stream)
+void DescentSolver::reset_constrains(luisa::compute::Stream& stream)
 {
     
 
@@ -75,7 +75,7 @@ void DescentSolverCPU::reset_constrains(luisa::compute::Stream& stream)
     // fn_reset_template(xpbd_data->sa_lambda_stretch_mass_spring);
     // fn_reset_template(xpbd_data->sa_lambda_bending);
 }
-void DescentSolverCPU::reset_collision_constrains(luisa::compute::Stream& stream)
+void DescentSolver::reset_collision_constrains(luisa::compute::Stream& stream)
 {
 
 }
@@ -83,7 +83,7 @@ void DescentSolverCPU::reset_collision_constrains(luisa::compute::Stream& stream
 
 
 
-void DescentSolverCPU::compile(luisa::compute::Device& device)
+void DescentSolver::compile(luisa::compute::Device& device)
 {
     const bool use_debug_info = false;
     using namespace luisa::compute;
@@ -402,15 +402,15 @@ void DescentSolverCPU::compile(luisa::compute::Device& device)
         }
     );
 }
-void DescentSolverCPU::collision_detection(luisa::compute::Stream& stream)
+void DescentSolver::collision_detection(luisa::compute::Stream& stream)
 {
     // TODO
 }
-void DescentSolverCPU::predict_position(luisa::compute::Stream& stream)
+void DescentSolver::predict_position(luisa::compute::Stream& stream)
 {
 
 }
-void DescentSolverCPU::update_velocity(luisa::compute::Stream& stream)
+void DescentSolver::update_velocity(luisa::compute::Stream& stream)
 {
 
 }
@@ -490,11 +490,11 @@ void compute_energy()
     // mesh_data->sa_system_energy[energy_idx++] = total_energy;
 }
 
-void DescentSolverCPU::physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void DescentSolver::physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     lcsv::SolverInterface::physics_step_prev_operation();
 }
-void DescentSolverCPU::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void DescentSolver::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     lcsv::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
@@ -549,7 +549,7 @@ void DescentSolverCPU::physics_step_vbd_GPU(luisa::compute::Device& device, luis
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }
-void DescentSolverCPU::physics_step_vbd_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void DescentSolver::physics_step_vbd_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     lcsv::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
@@ -764,7 +764,7 @@ void DescentSolverCPU::physics_step_vbd_CPU(luisa::compute::Device& device, luis
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }
-void DescentSolverCPU::solve_constraints_VBD(luisa::compute::Stream& stream)
+void DescentSolver::solve_constraints_VBD(luisa::compute::Stream& stream)
 {
     // auto& iter_position = xpbd_data->sa_x;
 

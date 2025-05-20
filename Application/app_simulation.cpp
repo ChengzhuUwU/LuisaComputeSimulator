@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
-    lcsv::DescentSolverCPU solver;
+    lcsv::DescentSolver solver;
     {
         device_parallel.create(device);
         solver.lcsv::SolverInterface::set_data_pointer(
@@ -158,7 +158,6 @@ int main(int argc, char** argv)
         polyscope::screenshot();
     }
     
-
     // Define Simulation
     {
         solver.lcsv::SolverInterface::restart_system();
@@ -170,37 +169,27 @@ int main(int argc, char** argv)
     {
         solver.physics_step_vbd_GPU(device, stream);
     };
+
+
+
+
+    uint max_frame = 20; bool is_simulate_frame = false;
+
     auto fn_single_step = [&]()
     {
-        lcsv::get_scene_params().current_frame += 1; 
         luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
 
         fn_physics_step();
 
+        lcsv::get_scene_params().current_frame += 1; 
         fn_update_rendering_vertices();
         surface_mesh->updateVertexPositions(sa_rendering_vertices);
     };
-    auto fn_step_several_step = [&](const uint frames)
-    {
-        for (uint frame = 0; frame < frames; frame++)
-        {   
-            lcsv::get_scene_params().current_frame = frame; 
-            luisa::log_info("     Sync frame {}", frame);   
-
-            fn_physics_step();
-
-            fn_update_rendering_vertices();
-            surface_mesh->updateVertexPositions(sa_rendering_vertices);
-        }
-        solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
-    };
-    const uint num_frames = 20;
-
-    
     polyscope::state::userCallback = [&]()
     {
         if (ImGui::Button("Reset", ImVec2(-1, 0))) 
         {
+            lcsv::get_scene_params().current_frame = 0;
             solver.lcsv::SolverInterface::restart_system();
             fn_update_rendering_vertices();
             surface_mesh->updateVertexPositions(sa_rendering_vertices);
@@ -234,7 +223,17 @@ int main(int argc, char** argv)
             }
             if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
             {
-                fn_step_several_step(num_frames);
+                is_simulate_frame = true;
+            }
+        }
+        
+        if (is_simulate_frame)
+        {
+            fn_single_step();
+            if (lcsv::get_scene_params().current_frame >= max_frame)
+            {
+                is_simulate_frame = false;
+                solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
             }
         }
     };

@@ -1,0 +1,15 @@
+[submodule "External/luisa_compute"]
+    path = External/luisa_compute
+    url = https://gitee.com/celeste-huohuo/LuisaCompute.git
+    branch = stable
+
+[submodule "External/polyscope"]
+	path = External/polyscope
+	url = https://gitee.com/celeste-huohuo/polyscope.git
+    branch = master
+
+[submodule "External/amgcl"]
+	path = External/amgcl
+	url = https://github.com/ddemidov/amgcl.git
+    # branch = master
+
