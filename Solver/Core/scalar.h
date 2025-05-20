@@ -2,11 +2,15 @@
 
 #include <luisa/core/mathematics.h>
 #include "Core/constant_value.h"
+#include "luisa/dsl/var.h"
+#include "luisa/dsl/builtin.h"
 
 namespace lcsv
 {
 
 
+template<typename T> inline constexpr T select(const bool condition, const T& true_return, const T& false_return) { if (condition) return true_return; else return false_return; }
+template<typename T> inline constexpr T select(const luisa::compute::Var<bool>& condition, const T& true_return, const T& false_return) { return luisa::compute::select(false_return, true_return, condition); }
 template<typename T> inline constexpr T abs_scalar(const T value) { return value > T(0) ? value : -value; }
 template<typename T> inline constexpr T lerp_scalar(const T left, const T right, const T lerp_value) { return left + lerp_value * (right - left);}
 // inline constexpr uint abs_scalar(CONST(int) value) { return value > (0) ? value : -value; }

@@ -255,7 +255,7 @@ void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
                 float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
                 
                 bool is_fixed = false;
-                is_fixed = norm_pos.z < 0.01f && (norm_pos.x > 0.99f || norm_pos.x < 0.01f ) ;
+                is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
                 mesh_data->sa_is_fixed[vid] = is_fixed;
             });
         }
@@ -883,7 +883,7 @@ int main(int argc, char** argv)
     // auto surface_mesh = polyscope::getSurfaceMesh("cloth1"); surface_mesh->setEnabled(false);
     if constexpr (use_ui) polyscope::show();
 
-    const uint num_frames = 10;
+    const uint num_frames = 20;
     
     // Synchronous Implementation
     {
@@ -894,11 +894,16 @@ int main(int argc, char** argv)
         luisa::log_info("Sync part");
     }
     {   
+        // for (uint frame = 0; frame < num_frames; frame++)
+        // {   lcsv::get_scene_params().current_frame = frame; luisa::log_info("     Sync frame {}", frame);   
+
+        //     solver.physics_step_vbd_CPU(device, stream); 
+        // }
+        // solver.lcsv::SolverInterface::restart_system();
         for (uint frame = 0; frame < num_frames; frame++)
         {   lcsv::get_scene_params().current_frame = frame; luisa::log_info("     Sync frame {}", frame);   
 
-            // solver.physics_step_vbd_GPU(device, stream);
-            solver.physics_step_vbd_CPU(device, stream);
+            solver.physics_step_vbd_GPU(device, stream);
         }
     }
     {

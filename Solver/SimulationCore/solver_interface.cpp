@@ -5,7 +5,7 @@
 namespace lcsv 
 {
 
-void SolverInterface::physics_step_prev_operation(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void SolverInterface::physics_step_prev_operation()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
     {
@@ -13,7 +13,7 @@ void SolverInterface::physics_step_prev_operation(luisa::compute::Device& device
         host_mesh_data->sa_v_frame_start[vid] = host_mesh_data->sa_v_frame_end[vid];
     });
 }
-void SolverInterface::physics_step_post_operation(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void SolverInterface::physics_step_post_operation()
 {
     
 }

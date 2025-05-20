@@ -45,8 +45,8 @@ public:
     }
 
 public:
-    void physics_step_prev_operation(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void physics_step_post_operation(luisa::compute::Device& device, luisa::compute::Stream& stream);
+    void physics_step_prev_operation();
+    void physics_step_post_operation();
     void restart_system();
     void save_current_frame_state();
     void load_saved_state();
