@@ -165,11 +165,11 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         );
     };
     static Eigen::SparseMatrix<float> cgA;
-    static Eigen::VectorXf cg_b_vec;
-    static Eigen::VectorXf cg_x_vec;
+    static Eigen::VectorXf cg_b_vec; static Eigen::VectorXf cg_x_vec;
     static Eigen::SparseMatrix<float> springA(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
     if constexpr (use_eigen) 
     {
+        Eigen::setNbThreads(12);
         if (cg_b_vec.size() == 0)
         {
             cg_b_vec.resize(mesh_data->num_verts * 3); cg_b_vec.setOnes();
@@ -408,7 +408,8 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
     auto eigen_iter_solve = [&]()
     {
         // Solve cgA * dx = cg_b_vec for dx using Conjugate Gradient
-        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver;
+        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower, Eigen::IncompleteCholesky<float>> solver; // 
+
         // solver.setMaxIterations(128);
         solver.setTolerance(1e-2f);
         solver.compute(cgA);
@@ -417,25 +418,22 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             luisa::log_error("Eigen: Decomposition failed!");
             return;
         }
-        // Eigen::VectorXf dx = solver.solveWithGuess(cg_b_vec, cg_x_vec);
-        Eigen::VectorXf dx = solver.solve(cg_b_vec); 
+        solver._solve_impl(cg_b_vec, cg_x_vec);
         if (solver.info() != Eigen::Success) 
         {
             luisa::log_error("Eigen: Solve failed in {} iterations", solver.iterations());
-            // std::cerr << solver.error() << std::endl;
-            // return;
         }
         else 
         {
-            luisa::log_info("Eigen CG: nonZero = {}, lenColumn = {}, Iterations = {}, Estimated Error = {}", 
-                cgA.nonZeros(), cg_b_vec.size(), solver.iterations(), solver.error());
+            luisa::log_info("In frame {} iter {} Eigen : nnz = {}, iterations = {}, error = {}", 
+                curr_frame, get_scene_params().current_nonlinear_iter,
+                cgA.nonZeros(), solver.iterations(), solver.error());
+            
         }
         // Update sa_x
         CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
         {
-            sa_x[vid].x += dx[3 * vid + 0];
-            sa_x[vid].y += dx[3 * vid + 1];
-            sa_x[vid].z += dx[3 * vid + 2];
+            sa_x[vid] += eigen3_to_float3(cg_x_vec.segment<3>(3 * vid));
         });
     };
     auto eigen_decompose_solve = [&]()
@@ -514,7 +512,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
     {
         predict_position(substep_dt);
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
-        {
+        {   get_scene_params().current_nonlinear_iter = iter;
             init_vert(substep_dt);
             evaluete_spring(1e4);
             linear_solver_interface();

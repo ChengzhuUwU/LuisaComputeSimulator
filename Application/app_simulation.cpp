@@ -141,11 +141,11 @@ int main(int argc, char** argv)
     };
 
 
-    uint max_frame = 1; 
+    uint max_frame = 20; 
     
   
 
-    constexpr bool use_ui = false; 
+    constexpr bool use_ui = true; 
     if constexpr (!use_ui)
     {
 
@@ -212,6 +212,8 @@ int main(int argc, char** argv)
 
         polyscope::state::userCallback = [&]()
         {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) polyscope::unshow();
+
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
@@ -262,7 +264,6 @@ int main(int argc, char** argv)
                 }
             }
         };
-
         polyscope::show();
     }
 
