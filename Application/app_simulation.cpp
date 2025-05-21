@@ -1,6 +1,7 @@
 #include <iostream>
 #include <luisa/luisa-compute.h>
 
+#include "SimulationSolver/newton_solver.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/device_parallel.h"
 #include "Utils/buffer_filler.h"
@@ -29,7 +30,7 @@ void init_simulation_params()
 
     if (lcsv::get_scene_params().use_small_timestep) { lcsv::get_scene_params().implicit_dt = 0.001f; }
     
-    lcsv::get_scene_params().num_iteration = lcsv::get_scene_params().num_substep * lcsv::get_scene_params().constraint_iter_count;
+    lcsv::get_scene_params().num_iteration = lcsv::get_scene_params().num_substep * lcsv::get_scene_params().nonlinear_iter_count;
     lcsv::get_scene_params().collision_detection_frequece = 1;    
 
     // lcsv::get_scene_params().stiffness_stretch_spring = FEM::calcSecondLame(lcsv::get_scene_params().youngs_modulus_cloth, lcsv::get_scene_params().poisson_ratio_cloth); // mu;
@@ -98,7 +99,8 @@ int main(int argc, char** argv)
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
-    lcsv::DescentSolver solver;
+    // lcsv::DescentSolver solver;
+    lcsv::NewtonSolver solver;
     {
         device_parallel.create(device);
         solver.lcsv::SolverInterface::set_data_pointer(
@@ -112,13 +114,12 @@ int main(int argc, char** argv)
         solver.compile(device);
     }
 
-    solver.test_luisa();
-
     // Some params
     {
-        lcsv::get_scene_params().use_substep = false;
-        lcsv::get_scene_params().num_substep = 10;
-        lcsv::get_scene_params().constraint_iter_count = 1; // 
+        lcsv::get_scene_params().implicit_dt = 0.05;
+        lcsv::get_scene_params().num_substep = 1;
+        lcsv::get_scene_params().nonlinear_iter_count = 5;   
+        lcsv::get_scene_params().pcg_iter_count = 50; 
         lcsv::get_scene_params().use_bending = true;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().print_xpbd_convergence = false;
@@ -126,38 +127,6 @@ int main(int argc, char** argv)
         lcsv::get_scene_params().use_vbd_solver = true;
     }
 
-    // Init GUI
-    std::vector<glm::vec3> sa_rendering_vertices(cpu_mesh_data.num_verts);
-    std::vector<std::vector<uint>> sa_rendering_faces(cpu_mesh_data.num_faces);
-    auto fn_update_rendering_vertices = [&]()
-    {
-        CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
-        {
-            auto pos = cpu_mesh_data.sa_x_frame_end[vid];
-            sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
-        });
-    };
-    CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
-    {
-        auto pos = cpu_mesh_data.sa_rest_x[vid];
-        sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
-    });
-    CpuParallel::parallel_for(0, cpu_mesh_data.num_faces, [&](const uint fid)
-    {
-        auto face = cpu_mesh_data.sa_faces[fid];
-        sa_rendering_faces[fid] = {face[0], face[1], face[2]};
-    });
-
-    constexpr bool use_ui = true; polyscope::SurfaceMesh* surface_mesh;
-    if constexpr (use_ui) 
-    {
-        polyscope::init("openGL3_glfw");
-        polyscope::registerSurfaceMesh("cloth1", sa_rendering_vertices, sa_rendering_faces);
-        surface_mesh = polyscope::getSurfaceMesh("cloth1"); // surface_mesh->setEnabled(false);
-        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-        polyscope::screenshot();
-    }
-    
     // Define Simulation
     {
         solver.lcsv::SolverInterface::restart_system();
@@ -167,77 +136,135 @@ int main(int argc, char** argv)
     }
     auto fn_physics_step = [&]()
     {
-        solver.physics_step_vbd_GPU(device, stream);
+        // solver.physics_step_vbd_GPU(device, stream);
+        solver.physics_step_newton_CPU(device, stream);
     };
 
 
+    uint max_frame = 1; 
+    
+  
 
-
-    uint max_frame = 20; bool is_simulate_frame = false;
-
-    auto fn_single_step = [&]()
+    constexpr bool use_ui = false; 
+    if constexpr (!use_ui)
     {
-        luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
 
-        fn_physics_step();
-
-        lcsv::get_scene_params().current_frame += 1; 
-        fn_update_rendering_vertices();
-        surface_mesh->updateVertexPositions(sa_rendering_vertices);
-    };
-    polyscope::state::userCallback = [&]()
-    {
-        if (ImGui::Button("Reset", ImVec2(-1, 0))) 
+        auto fn_single_step_without_ui = [&]()
         {
-            lcsv::get_scene_params().current_frame = 0;
-            solver.lcsv::SolverInterface::restart_system();
+            luisa::log_info("     Newton solver frame {}", lcsv::get_scene_params().current_frame);   
+
+            fn_physics_step();
+
+            lcsv::get_scene_params().current_frame += 1; 
+        };
+
+        // solver.lcsv::SolverInterface::restart_system();
+
+        for (uint frame = 0; frame < max_frame; frame++)
+        {
+            fn_single_step_without_ui();
+        }
+        solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
+    }
+    else
+    {
+        // Init rendering data
+        std::vector<glm::vec3> sa_rendering_vertices(cpu_mesh_data.num_verts);
+        std::vector<std::vector<uint>> sa_rendering_faces(cpu_mesh_data.num_faces);
+        auto fn_update_rendering_vertices = [&]()
+        {
+            CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
+            {
+                auto pos = cpu_mesh_data.sa_x_frame_end[vid];
+                sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
+            });
+        };
+        CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
+        {
+            auto pos = cpu_mesh_data.sa_rest_x[vid];
+            sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
+        });
+        CpuParallel::parallel_for(0, cpu_mesh_data.num_faces, [&](const uint fid)
+        {
+            auto face = cpu_mesh_data.sa_faces[fid];
+            sa_rendering_faces[fid] = {face[0], face[1], face[2]};
+        });
+
+        // Init Polyscope
+        polyscope::init("openGL3_glfw");
+        polyscope::registerSurfaceMesh("cloth1", sa_rendering_vertices, sa_rendering_faces);
+        polyscope::SurfaceMesh* surface_mesh = polyscope::getSurfaceMesh("cloth1"); // surface_mesh->setEnabled(false);
+        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+
+        // Define single step in GUI
+        auto fn_single_step_with_ui = [&]()
+        {
+            luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
+
+            fn_physics_step();
+
+            lcsv::get_scene_params().current_frame += 1; 
             fn_update_rendering_vertices();
             surface_mesh->updateVertexPositions(sa_rendering_vertices);
-        }
-
-        if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
-        {
-            ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
-            ImGui::InputScalar("Num Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().constraint_iter_count);
-            ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
-            ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
-            ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0, 100); 
-            ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
-
-            // static const char* items[] = { "A", "B", "C" };
-            // static int current_item = 0;
-            // ImGui::Combo("Combo", &current_item, items, IM_ARRAYSIZE(items));
-
-            // ImGui::InputDouble("Thickness", &thickness);
-            // ImGui::InputDouble("Poisson's Ration", &poisson);
-            // ImGui::Combo("Material Model", &matid, "NeoHookean\0StVK\0\0");
-            // ImGui::Combo("Second Fundamental Form", &sffid,
-            //             "TanTheta\0SinTheta\0Average\0\0");
-        }
-
-        if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
-        {
-            if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
-            {
-                fn_single_step();
-            }
-            if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
-            {
-                is_simulate_frame = true;
-            }
-        }
+        };
         
-        if (is_simulate_frame)
+        bool is_simulate_frame = false;
+
+        polyscope::state::userCallback = [&]()
         {
-            fn_single_step();
-            if (lcsv::get_scene_params().current_frame >= max_frame)
+            if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
-                is_simulate_frame = false;
-                solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
+                ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
+                ImGui::InputScalar("Num Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
+                ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().dt, 0.0001f, 0.033f); 
+                ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
+                ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
+                ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+                ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
+
+                // static const char* items[] = { "A", "B", "C" };
+                // static int current_item = 0;
+                // ImGui::Combo("Combo", &current_item, items, IM_ARRAYSIZE(items));
+
+                // ImGui::InputDouble("Thickness", &thickness);
+                // ImGui::InputDouble("Poisson's Ration", &poisson);
+                // ImGui::Combo("Material Model", &matid, "NeoHookean\0StVK\0\0");
+                // ImGui::Combo("Second Fundamental Form", &sffid,
+                //             "TanTheta\0SinTheta\0Average\0\0");
             }
-        }
-    };
-    if constexpr (use_ui) polyscope::show();
+
+            if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
+            {
+                if (ImGui::Button("Reset", ImVec2(-1, 0))) 
+                {
+                    lcsv::get_scene_params().current_frame = 0;
+                    solver.lcsv::SolverInterface::restart_system();
+                    fn_update_rendering_vertices();
+                    surface_mesh->updateVertexPositions(sa_rendering_vertices);
+                }
+                if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
+                {
+                    fn_single_step_with_ui();
+                }
+                if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
+                {
+                    is_simulate_frame = true;
+                }
+            }
+            
+            if (is_simulate_frame)
+            {
+                fn_single_step_with_ui();
+                if (lcsv::get_scene_params().current_frame >= max_frame)
+                {
+                    is_simulate_frame = false;
+                    solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
+                }
+            }
+        };
+
+        polyscope::show();
+    }
 
     return 0;
 }

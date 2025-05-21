@@ -62,10 +62,12 @@ struct SceneParams
     // Iteration info
     uint num_iteration = 96;   
     uint num_substep = 8;
-    uint constraint_iter_count = 8;
+    uint nonlinear_iter_count = 8;
+    uint pcg_iter_count = 50;
 
     uint current_frame = 0;
-    uint current_it = 0;
+    uint current_nonlinear_iter = 0;
+    uint current_pcg_it = 0;
     uint current_substep = 0;
 
     uint collision_detection_frequece = 1;
@@ -152,7 +154,7 @@ struct SceneParams
         dt_inv = 1.0f / dt;
         dt_2_inv = dt_inv * dt_inv;
     }
-    uint get_curr_iteration_with_substep() { return num_substep * current_substep + current_it; }
+    uint get_curr_iteration_with_substep() { return num_substep * current_substep + current_nonlinear_iter; }
     float get_substep_dt() { return implicit_dt / float(num_substep); }
     float get_stiffness_quadratic_bending() { return stiffness_quadratic_bending * stiffness_bending_ui; }
     float get_stiffness_DAB_bending() { return stiffness_DAB_bending * stiffness_bending_ui; }

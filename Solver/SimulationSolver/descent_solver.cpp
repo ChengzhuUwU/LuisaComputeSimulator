@@ -513,7 +513,7 @@ void DescentSolver::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::
            << luisa::compute::synchronize();
     
     const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
-    const uint constraint_iter_count = lcsv::get_scene_params().constraint_iter_count;
+    const uint constraint_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
 
     // energy_idx = 0;
@@ -563,7 +563,7 @@ void DescentSolver::physics_step_vbd_CPU(luisa::compute::Device& device, luisa::
     std::fill(host_mesh_data->sa_system_energy.begin(), host_mesh_data->sa_system_energy.end(), 0.0f);
     
     const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
-    const uint constraint_iter_count = lcsv::get_scene_params().constraint_iter_count;
+    const uint constraint_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
 
     auto predict_position = [&](const float substep_dt)
