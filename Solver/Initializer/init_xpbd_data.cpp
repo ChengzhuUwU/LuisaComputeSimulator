@@ -24,104 +24,13 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
     std::vector< std::vector<uint> > tmp_clusterd_constraint_stretch_mass_spring;
     std::vector< std::vector<uint> > tmp_clusterd_constraint_bending;
     {
-        auto fn_graph_coloring_sequenced_constraint = [](const uint num_elements, const std::string& constraint_name, 
-            std::vector< std::vector<uint> > & clusterd_constraint, 
-            const std::vector< std::vector<uint> > & vert_adj_elements, const auto& element_indices, const uint nv)
-        { 
-            std::vector< bool > marked_constrains(num_elements, false);
-            uint total_marked_count = 0;
-        
-        
-            const uint color_threashold = 2000;
-            std::vector<uint> rest_cluster;
-        
-            //
-            // while there exist unmarked constraints
-            //     create new set S
-            //     clear all particle marks
-            //     for all unmarked constraints C
-            //      if no adjacent particle is marked
-            //          add C to S
-            //          mark C
-            //          mark all adjacent particles
-            //
-            
-            const bool merge_small_cluster = false;
-        
-            while (true) 
-            {
-                std::vector<uint> current_cluster;
-                std::vector<bool> current_marked(marked_constrains);
-                for (uint id = 0; id < num_elements; id++) 
-                {
-                    if (current_marked[id]) 
-                    {
-                        continue;
-                    }
-                    else 
-                    {
-                        // Add To Sets
-                        marked_constrains[id] = true;
-                        current_cluster.push_back(id);
-        
-                        // Mark
-                        current_marked[id] = true;
-                        auto element = element_indices[id];
-                        for (uint j = 0; j < nv; j++) 
-                        {
-                            for (const uint& adj_eid : vert_adj_elements[element[j]]) 
-                            { 
-                                current_marked[adj_eid] = true; 
-                            }
-                        }
-                    }
-                }
-                
-                const uint cluster_size = static_cast<uint>(current_cluster.size());
-                total_marked_count += cluster_size;
-        
-                
-                if (merge_small_cluster && cluster_size < color_threashold) 
-                {
-                    rest_cluster.insert(rest_cluster.end(), current_cluster.begin(), current_cluster.end());
-                }
-                else 
-                {
-                    clusterd_constraint.push_back(current_cluster);
-                }
-                
-                if (total_marked_count == num_elements) break;
-            }
-        
-            if (merge_small_cluster && !rest_cluster.empty()) 
-            {
-                clusterd_constraint.push_back(rest_cluster);
-            }
-        
-            luisa::log_info("Cluster Count of {} = {}", constraint_name, clusterd_constraint.size());
-        };
-
-        auto fn_get_prefix = [](auto& prefix_buffer, const std::vector< std::vector<uint> >& clusterd_constraint)
-        {
-            const uint num_cluster = clusterd_constraint.size();
-            prefix_buffer.resize(num_cluster + 1);
-            uint prefix = 0;
-            for (uint cluster = 0; cluster < num_cluster; cluster++)
-            {
-                prefix_buffer[cluster] = prefix;
-                prefix += clusterd_constraint[cluster].size();
-            }
-            prefix_buffer[num_cluster] = prefix;
-        };
-
-        
-        fn_graph_coloring_sequenced_constraint(
+        fn_graph_coloring_per_constraint(
             mesh_data->num_edges, 
             "Distance  Spring Constraint", 
             tmp_clusterd_constraint_stretch_mass_spring, 
             mesh_data->vert_adj_edges, mesh_data->sa_edges, 2);
 
-        fn_graph_coloring_sequenced_constraint(
+        fn_graph_coloring_per_constraint(
             mesh_data->num_bending_edges, 
             "Bending   Angle  Constraint", 
             tmp_clusterd_constraint_bending, 
@@ -130,12 +39,94 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
         xpbd_data->num_clusters_stretch_mass_spring = tmp_clusterd_constraint_stretch_mass_spring.size();
         xpbd_data->num_clusters_bending = tmp_clusterd_constraint_bending.size();
 
-        fn_get_prefix(xpbd_data->prefix_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
-        fn_get_prefix(xpbd_data->prefix_bending, tmp_clusterd_constraint_bending);
+        fn_get_prefix(xpbd_data->sa_prefix_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
+        fn_get_prefix(xpbd_data->sa_prefix_bending, tmp_clusterd_constraint_bending);
         
-        upload_2d_csr_from(xpbd_data->clusterd_constraint_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
-        upload_2d_csr_from(xpbd_data->clusterd_constraint_bending, tmp_clusterd_constraint_bending);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_constraint_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_constraint_bending, tmp_clusterd_constraint_bending);
+    }
 
+    // Init newton coloring
+    {
+        const uint num_verts = mesh_data->num_verts;
+        const auto& vert_adj_verts = mesh_data->vert_adj_verts_with_bending;
+        std::vector<uint2> upper_matrix_elements; // 
+        upper_matrix_elements.reserve(num_verts * 10);
+        std::vector<std::vector<uint>> vert_adj_upper_verts(num_verts);
+        for (uint vid = 0; vid < num_verts; vid++)
+        {
+            for (const uint adj_vid : vert_adj_verts[vid])
+            {
+                if (vid < adj_vid)
+                {
+                    vert_adj_upper_verts[vid].push_back(adj_vid);
+                    upper_matrix_elements.emplace_back(uint2(vid, adj_vid));
+                }
+            }
+        }
+        
+        std::vector<std::vector<uint>> tmp_clusterd_hessian_set;
+        fn_graph_coloring_per_constraint(
+            mesh_data->num_bending_edges, 
+            "SpMV non-conlict set", 
+            tmp_clusterd_hessian_set, 
+            vert_adj_upper_verts, upper_matrix_elements, 2);
+        
+        upload_from(xpbd_data->sa_hessian_set, upper_matrix_elements);
+        xpbd_data->num_clusters_hessian_set = tmp_clusterd_hessian_set.size();
+        fn_get_prefix(xpbd_data->sa_prefix_hessian_set, tmp_clusterd_hessian_set);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_hessian_set, tmp_clusterd_hessian_set);
+
+        std::vector<std::vector<uint>> hessian_insert_indices(num_verts);
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            hessian_insert_indices[vid].resize(vert_adj_verts[vid].size(), -1u);
+        });
+        CpuParallel::parallel_for(0, upper_matrix_elements.size(), [&](const uint pair_idx)
+        {
+            const uint2 pair = upper_matrix_elements[pair_idx];
+            const uint left = pair[0];
+            const uint right = pair[1];
+            const auto& adj_list = vert_adj_verts[left];
+            for (uint jj = 0; jj < adj_list.size(); jj++)
+            {
+                if (adj_list[jj] == right)
+                {
+                    hessian_insert_indices[left][jj] = pair_idx;
+                    return;
+                }
+            }
+            luisa::log_error("Can not find {} in adjacent list of {}", right, left); 
+        });
+        {
+            const uint num_offdiag_upper = 1;
+            xpbd_data->sa_clusterd_hessian_slot_per_edge.resize(mesh_data->num_edges * num_offdiag_upper);
+            CpuParallel::parallel_for(0, mesh_data->num_edges, [&](const uint eid)
+            {
+                auto edge = mesh_data->sa_edges[eid];
+                uint edge_offset = 0;
+                for (uint ii = 0; ii < 2; ii++)
+                {
+                    for (uint jj = ii + 1; jj < 2; jj++)
+                    {
+                        const bool need_transpose = edge[ii] > edge[jj];
+                        const uint left  = need_transpose ? edge[jj] : edge[ii];
+                        const uint right = need_transpose ? edge[ii] : edge[jj];
+
+                        const auto& adj_list = vert_adj_verts[left];
+                        auto find = std::find(adj_list.begin(), adj_list.end(), right); 
+                        if (find == adj_list.end()) { luisa::log_error("Can not find {} in adjacent list of {}", right, left); }
+                        else 
+                        {
+                            uint offset = std::distance(adj_list.begin(), find);
+                            const uint adj_index = hessian_insert_indices[left][offset];
+                            xpbd_data->sa_clusterd_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
+                            edge_offset += 1;
+                        }
+                    }
+                }
+            });
+        }
     }
 
     // Vertex Block Descent Coloring
@@ -148,53 +139,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
         const std::vector< std::vector<uint> >& vert_adj_verts = mesh_data->vert_adj_verts_with_bending;
         std::vector<std::vector<uint>> clusterd_vertices_bending; std::vector<uint> prefix_vertices_bending;
 
-        auto fn_graph_coloring_pervertex = [&](const std::vector< std::vector<uint> >& vert_adj_, std::vector<std::vector<uint>>& clusterd_vertices, std::vector<uint>& prefix_vert)
-        {
-            std::vector<bool> marked_verts(num_verts_total, false);
-            uint total_marked_count = 0;
-
-            while (true) 
-            {
-                std::vector<uint> current_cluster;
-                std::vector<bool> current_marked(marked_verts);
-
-                for (uint vid = 0; vid < num_verts_total; vid++) 
-                {
-                    if (current_marked[vid]) 
-                    {
-                        continue;
-                    }
-                    else 
-                    {
-                        // Add To Sets
-                        marked_verts[vid] = true;
-                        current_cluster.push_back(vid);
-
-                        // Mark
-                        current_marked[vid] = true;
-                        const auto& list = vert_adj_[vid];
-                        for (const uint& adj_vid : list) 
-                        {
-                            current_marked[adj_vid] = true;
-                        }
-                    }
-                }
-                clusterd_vertices.push_back(current_cluster);
-                total_marked_count += current_cluster.size();
-
-                if (total_marked_count == num_verts_total) break;
-            }
-            
-
-            prefix_vert.resize(clusterd_vertices.size() + 1); uint curr_prefix = 0;
-            for (uint cluster = 0; cluster < clusterd_vertices.size(); cluster++)
-            {
-                prefix_vert[cluster] = curr_prefix;
-                curr_prefix += clusterd_vertices[cluster].size();
-            } prefix_vert[clusterd_vertices.size()] = curr_prefix;
-        };
-
-        fn_graph_coloring_pervertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
+        fn_graph_coloring_per_vertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
         xpbd_data->num_clusters_per_vertex_bending = clusterd_vertices_bending.size();
         upload_from(xpbd_data->prefix_per_vertex_bending, prefix_vertices_bending); 
         upload_2d_csr_from(xpbd_data->clusterd_per_vertex_bending, clusterd_vertices_bending);
@@ -272,6 +217,11 @@ void upload_xpbd_buffers(
     lcsv::XpbdData<std::vector>* input_data, 
     lcsv::XpbdData<luisa::compute::Buffer>* output_data)
 {
+    output_data->num_clusters_stretch_mass_spring = input_data->num_clusters_stretch_mass_spring;
+    output_data->num_clusters_bending = input_data->num_clusters_bending;
+    output_data->num_clusters_per_vertex_bending = input_data->num_clusters_per_vertex_bending;
+    output_data->num_clusters_hessian_set= input_data->num_clusters_hessian_set;
+
     stream
         << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
         << upload_buffer(device, output_data->sa_x, input_data->sa_x)
@@ -283,14 +233,23 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
         << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
         << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
-        << upload_buffer(device, output_data->clusterd_constraint_stretch_mass_spring, input_data->clusterd_constraint_stretch_mass_spring)
-        << upload_buffer(device, output_data->prefix_stretch_mass_spring, input_data->prefix_stretch_mass_spring)
-        << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) //
-        << upload_buffer(device, output_data->clusterd_constraint_bending, input_data->clusterd_constraint_bending)
-        << upload_buffer(device, output_data->prefix_bending, input_data->prefix_bending)
-        << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) //
+
+        << upload_buffer(device, output_data->sa_clusterd_constraint_stretch_mass_spring, input_data->sa_clusterd_constraint_stretch_mass_spring)
+        << upload_buffer(device, output_data->sa_prefix_stretch_mass_spring, input_data->sa_prefix_stretch_mass_spring)
+        << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
+
+        << upload_buffer(device, output_data->sa_clusterd_constraint_bending, input_data->sa_clusterd_constraint_bending)
+        << upload_buffer(device, output_data->sa_prefix_bending, input_data->sa_prefix_bending)
+        << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
+        
+        << upload_buffer(device, output_data->sa_prefix_hessian_set, input_data->sa_prefix_hessian_set)
+        << upload_buffer(device, output_data->sa_clusterd_hessian_set, input_data->sa_clusterd_hessian_set)
+        << upload_buffer(device, output_data->sa_hessian_set, input_data->sa_hessian_set)
+        << upload_buffer(device, output_data->sa_clusterd_hessian_slot_per_edge, input_data->sa_clusterd_hessian_slot_per_edge)
+
         << upload_buffer(device, output_data->prefix_per_vertex_bending, input_data->prefix_per_vertex_bending)
         << upload_buffer(device, output_data->clusterd_per_vertex_bending, input_data->clusterd_per_vertex_bending)
+
         << upload_buffer(device, output_data->per_vertex_bending_cluster_id, input_data->per_vertex_bending_cluster_id)
         << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
         << upload_buffer(device, output_data->sa_Hf1, input_data->sa_Hf1)

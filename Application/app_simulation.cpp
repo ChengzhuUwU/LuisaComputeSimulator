@@ -160,7 +160,7 @@ int main(int argc, char** argv)
 
         // solver.lcsv::SolverInterface::restart_system();
 
-        for (uint frame = 0; frame < max_frame; frame++)
+        // for (uint frame = 0; frame < max_frame; frame++)
         {
             fn_single_step_without_ui();
         }

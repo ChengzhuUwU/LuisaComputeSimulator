@@ -310,6 +310,7 @@ void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
         mesh_data->sa_v_frame_saved.resize(num_verts); mesh_data->sa_v_frame_saved = mesh_data->sa_rest_v;
 
         mesh_data->sa_system_energy.resize(10240);
+        mesh_data->sa_pcg_convergence.resize(10240);
     }
     
 }
@@ -345,6 +346,7 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_vert_adj_edges_csr, input_data->sa_vert_adj_edges_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr) 
         << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy) 
+        << upload_buffer(device, output_data->sa_pcg_convergence, input_data->sa_pcg_convergence) 
         << luisa::compute::synchronize();
 }
 

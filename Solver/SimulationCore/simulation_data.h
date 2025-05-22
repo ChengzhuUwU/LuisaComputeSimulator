@@ -20,6 +20,7 @@ struct XpbdData : SimulationType
     BufferType<float3> sa_v_start;
     BufferType<float3> sa_x_start; // For calculating velocity
 
+    // Merged constraints
     BufferType<uint2> sa_merged_edges; 
     BufferType<float> sa_merged_edges_rest_length;
 
@@ -27,15 +28,27 @@ struct XpbdData : SimulationType
     BufferType<float> sa_merged_bending_edges_angle;
     BufferType<float4x4> sa_merged_bending_edges_Q;
 
+    // Coloring
+    // Spring constraint
     uint num_clusters_stretch_mass_spring = 0;
-    BufferType<uint> clusterd_constraint_stretch_mass_spring; 
-    BufferType<uint> prefix_stretch_mass_spring;
+    BufferType<uint> sa_clusterd_constraint_stretch_mass_spring; 
+    BufferType<uint> sa_prefix_stretch_mass_spring;
     BufferType<float> sa_lambda_stretch_mass_spring;
 
+    // Bending constraint
     uint num_clusters_bending = 0;
-    BufferType<uint> clusterd_constraint_bending; 
-    BufferType<uint> prefix_bending; 
+    BufferType<uint> sa_clusterd_constraint_bending; 
+    BufferType<uint> sa_prefix_bending; 
     BufferType<float> sa_lambda_bending;
+
+    // Hessian non-conflict set
+    uint num_clusters_hessian_set = 0;
+    BufferType<uint2> sa_hessian_set; // Constaints the needed hessian pair 
+    BufferType<uint> sa_clusterd_hessian_set; // Non-conflict sets of hessian pair
+    BufferType<uint> sa_prefix_hessian_set; 
+    BufferType<uint> sa_clusterd_hessian_slot_per_edge; 
+    // BufferType<uint> sa_clusterd_hessian_slot_per_dehedral_angle; 
+    // BufferType<uint> sa_clusterd_hessian_slot_per_triangle; 
 
     // VBD
     uint num_clusters_per_vertex_bending = 0; 

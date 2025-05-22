@@ -44,6 +44,7 @@ struct MeshData : SimulationType
     uint num_edges;
     uint num_bending_edges;
 
+    // Input 
     BufferType<float3> sa_rest_x;
     BufferType<float3> sa_rest_v;
 
@@ -51,21 +52,26 @@ struct MeshData : SimulationType
     BufferType<uint2> sa_edges;
     BufferType<uint4> sa_bending_edges;
 
+    // Vertex attrubution
     BufferType<float> sa_vert_mass;
     BufferType<float> sa_vert_mass_inv;
     BufferType<uint> sa_is_fixed; // TODO: uchar
 
+    // Energy
     BufferType<float> sa_edges_rest_state_length;
     BufferType<float> sa_bending_edges_rest_angle;
     BufferType<float4x4> sa_bending_edges_Q;
 
+    // Adjacent
     BufferType<uint> sa_vert_adj_verts_csr; 
     BufferType<uint> sa_vert_adj_verts_with_bending_csr; 
     BufferType<uint> sa_vert_adj_faces_csr; 
     BufferType<uint> sa_vert_adj_edges_csr; 
     BufferType<uint> sa_vert_adj_bending_edges_csr; 
 
+    // Other
     BufferType<float> sa_system_energy;
+    BufferType<float> sa_pcg_convergence;
 
     // Host only
     std::vector<float3> sa_x_frame_start;
