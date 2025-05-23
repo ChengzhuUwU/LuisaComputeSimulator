@@ -119,7 +119,7 @@ int main(int argc, char** argv)
         lcsv::get_scene_params().implicit_dt = 0.05;
         lcsv::get_scene_params().num_substep = 1;
         lcsv::get_scene_params().nonlinear_iter_count = 5;   
-        lcsv::get_scene_params().pcg_iter_count = 50; 
+        lcsv::get_scene_params().pcg_iter_count = 2000; 
         lcsv::get_scene_params().use_bending = true;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().print_xpbd_convergence = false;

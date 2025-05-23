@@ -22,7 +22,7 @@ void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
     float3 scale = luisa::make_float3(1.0f);
 
 
-    SimMesh::TriangleMeshData input_mesh;
+    SimMesh::TriangleMeshData input_mesh; // TODO: Get (multiple) original mesh data from params
     bool second_read = SimMesh::read_mesh_file(model_name, input_mesh, true);
 
     std::string obj_name = model_name;
@@ -41,6 +41,8 @@ void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
 
     // Constant scalar
     {
+        // TODO: Handle multiple mesh
+        // TODO: Identity cloth, tet, rigid-body
         mesh_data->num_verts = num_verts;
         mesh_data->num_faces = num_faces;
         mesh_data->num_edges = num_edges;  

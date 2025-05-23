@@ -1,5 +1,5 @@
-[submodule "External/luisa_compute"]
-    path = External/luisa_compute
+[submodule "External/LuisaCompute"]
+    path = External/LuisaCompute
     url = https://gitee.com/celeste-huohuo/LuisaCompute.git
     branch = stable
 
