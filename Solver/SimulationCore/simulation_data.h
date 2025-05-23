@@ -30,23 +30,25 @@ struct XpbdData : SimulationType
 
     // Coloring
     // Spring constraint
-    uint num_clusters_stretch_mass_spring = 0;
-    BufferType<uint> sa_clusterd_constraint_stretch_mass_spring; 
-    BufferType<uint> sa_prefix_stretch_mass_spring;
+    uint num_clusters_springs = 0;
+    BufferType<uint> sa_clusterd_springs; 
+    BufferType<uint> sa_prefix_merged_springs;
     BufferType<float> sa_lambda_stretch_mass_spring;
 
     // Bending constraint
-    uint num_clusters_bending = 0;
-    BufferType<uint> sa_clusterd_constraint_bending; 
-    BufferType<uint> sa_prefix_bending; 
+    uint num_clusters_bending_edges = 0;
+    BufferType<uint> sa_clusterd_bending_edges; 
+    BufferType<uint> sa_prefix_merged_bending_edges; 
     BufferType<float> sa_lambda_bending;
 
     // Hessian non-conflict set
-    uint num_clusters_hessian_set = 0;
-    BufferType<uint2> sa_hessian_set; // Constaints the needed hessian pair 
-    BufferType<uint> sa_clusterd_hessian_set; // Non-conflict sets of hessian pair
-    BufferType<uint> sa_prefix_hessian_set; 
-    BufferType<uint> sa_clusterd_hessian_slot_per_edge; 
+    uint num_clusters_hessian_pairs = 0;
+    BufferType<uint2> sa_hessian_pairs; // Constaints the needed hessian pair 
+    BufferType<uint> sa_clusterd_hessian_pairs;
+    BufferType<uint> sa_hessian_slot_per_edge; 
+    BufferType<uint2> sa_merged_hessian_pairs; // TODO
+    BufferType<uint> sa_prefix_merged_hessian_pairs; // TODO
+    BufferType<uint> sa_merged_hessian_slot_per_edge; // TODO
     // BufferType<uint> sa_clusterd_hessian_slot_per_dehedral_angle; 
     // BufferType<uint> sa_clusterd_hessian_slot_per_triangle; 
 

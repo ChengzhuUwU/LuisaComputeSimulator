@@ -5,6 +5,12 @@
 namespace lcsv 
 {
 
+enum SolverType
+{
+    SolverTypeNewton,
+    SolverTypeXPBD,
+    SolverTypeVBD,
+};
 
 struct SceneParams 
 {
@@ -145,6 +151,7 @@ struct SceneParams
     // constant
     bool use_fixed_verts = false;
     bool use_attach = false;
+    SolverType solver_type = SolverTypeVBD;
 
     SceneParams(){}
     

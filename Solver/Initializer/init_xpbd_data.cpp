@@ -36,14 +36,14 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
             tmp_clusterd_constraint_bending, 
             mesh_data->vert_adj_bending_edges, mesh_data->sa_bending_edges, 4);
             
-        xpbd_data->num_clusters_stretch_mass_spring = tmp_clusterd_constraint_stretch_mass_spring.size();
-        xpbd_data->num_clusters_bending = tmp_clusterd_constraint_bending.size();
+        xpbd_data->num_clusters_springs = tmp_clusterd_constraint_stretch_mass_spring.size();
+        xpbd_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
 
-        fn_get_prefix(xpbd_data->sa_prefix_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
-        fn_get_prefix(xpbd_data->sa_prefix_bending, tmp_clusterd_constraint_bending);
+        fn_get_prefix(xpbd_data->sa_prefix_merged_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        fn_get_prefix(xpbd_data->sa_prefix_merged_bending_edges, tmp_clusterd_constraint_bending);
         
-        upload_2d_csr_from(xpbd_data->sa_clusterd_constraint_stretch_mass_spring, tmp_clusterd_constraint_stretch_mass_spring);
-        upload_2d_csr_from(xpbd_data->sa_clusterd_constraint_bending, tmp_clusterd_constraint_bending);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
     }
 
     // Init newton coloring
@@ -72,10 +72,10 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
             tmp_clusterd_hessian_set, 
             vert_adj_upper_verts, upper_matrix_elements, 2);
         
-        upload_from(xpbd_data->sa_hessian_set, upper_matrix_elements);
-        xpbd_data->num_clusters_hessian_set = tmp_clusterd_hessian_set.size();
-        fn_get_prefix(xpbd_data->sa_prefix_hessian_set, tmp_clusterd_hessian_set);
-        upload_2d_csr_from(xpbd_data->sa_clusterd_hessian_set, tmp_clusterd_hessian_set);
+        upload_from(xpbd_data->sa_hessian_pairs, upper_matrix_elements);
+        xpbd_data->num_clusters_hessian_pairs = tmp_clusterd_hessian_set.size();
+        fn_get_prefix(xpbd_data->sa_prefix_merged_hessian_pairs, tmp_clusterd_hessian_set);
+        upload_2d_csr_from(xpbd_data->sa_clusterd_hessian_pairs, tmp_clusterd_hessian_set);
 
         std::vector<std::vector<uint>> hessian_insert_indices(num_verts);
         CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
@@ -100,7 +100,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
         });
         {
             const uint num_offdiag_upper = 1;
-            xpbd_data->sa_clusterd_hessian_slot_per_edge.resize(mesh_data->num_edges * num_offdiag_upper);
+            xpbd_data->sa_hessian_slot_per_edge.resize(mesh_data->num_edges * num_offdiag_upper);
             CpuParallel::parallel_for(0, mesh_data->num_edges, [&](const uint eid)
             {
                 auto edge = mesh_data->sa_edges[eid];
@@ -120,7 +120,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
                         {
                             uint offset = std::distance(adj_list.begin(), find);
                             const uint adj_index = hessian_insert_indices[left][offset];
-                            xpbd_data->sa_clusterd_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
+                            xpbd_data->sa_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
                             edge_offset += 1;
                         }
                     }
@@ -217,10 +217,10 @@ void upload_xpbd_buffers(
     lcsv::XpbdData<std::vector>* input_data, 
     lcsv::XpbdData<luisa::compute::Buffer>* output_data)
 {
-    output_data->num_clusters_stretch_mass_spring = input_data->num_clusters_stretch_mass_spring;
-    output_data->num_clusters_bending = input_data->num_clusters_bending;
+    output_data->num_clusters_springs = input_data->num_clusters_springs;
+    output_data->num_clusters_bending_edges = input_data->num_clusters_bending_edges;
     output_data->num_clusters_per_vertex_bending = input_data->num_clusters_per_vertex_bending;
-    output_data->num_clusters_hessian_set= input_data->num_clusters_hessian_set;
+    output_data->num_clusters_hessian_pairs= input_data->num_clusters_hessian_pairs;
 
     stream
         << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
@@ -234,18 +234,18 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
         << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
 
-        << upload_buffer(device, output_data->sa_clusterd_constraint_stretch_mass_spring, input_data->sa_clusterd_constraint_stretch_mass_spring)
-        << upload_buffer(device, output_data->sa_prefix_stretch_mass_spring, input_data->sa_prefix_stretch_mass_spring)
+        << upload_buffer(device, output_data->sa_clusterd_springs, input_data->sa_clusterd_springs)
+        << upload_buffer(device, output_data->sa_prefix_merged_springs, input_data->sa_prefix_merged_springs)
         << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
 
-        << upload_buffer(device, output_data->sa_clusterd_constraint_bending, input_data->sa_clusterd_constraint_bending)
-        << upload_buffer(device, output_data->sa_prefix_bending, input_data->sa_prefix_bending)
+        << upload_buffer(device, output_data->sa_clusterd_bending_edges, input_data->sa_clusterd_bending_edges)
+        << upload_buffer(device, output_data->sa_prefix_merged_bending_edges, input_data->sa_prefix_merged_bending_edges)
         << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
         
-        << upload_buffer(device, output_data->sa_prefix_hessian_set, input_data->sa_prefix_hessian_set)
-        << upload_buffer(device, output_data->sa_clusterd_hessian_set, input_data->sa_clusterd_hessian_set)
-        << upload_buffer(device, output_data->sa_hessian_set, input_data->sa_hessian_set)
-        << upload_buffer(device, output_data->sa_clusterd_hessian_slot_per_edge, input_data->sa_clusterd_hessian_slot_per_edge)
+        << upload_buffer(device, output_data->sa_prefix_merged_hessian_pairs, input_data->sa_prefix_merged_hessian_pairs)
+        << upload_buffer(device, output_data->sa_clusterd_hessian_pairs, input_data->sa_clusterd_hessian_pairs)
+        << upload_buffer(device, output_data->sa_hessian_pairs, input_data->sa_hessian_pairs)
+        << upload_buffer(device, output_data->sa_hessian_slot_per_edge, input_data->sa_hessian_slot_per_edge)
 
         << upload_buffer(device, output_data->prefix_per_vertex_bending, input_data->prefix_per_vertex_bending)
         << upload_buffer(device, output_data->clusterd_per_vertex_bending, input_data->clusterd_per_vertex_bending)

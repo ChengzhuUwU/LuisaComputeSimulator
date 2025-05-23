@@ -119,7 +119,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         sa_cgB.resize(num_verts);
         sa_cgA_diag.resize(num_verts);
         if constexpr (use_upper_triangle)
-            sa_cgA_offdiag.resize(host_xpbd_data->sa_hessian_set.size());
+            sa_cgA_offdiag.resize(host_xpbd_data->sa_hessian_pairs.size());
         else
             sa_cgA_offdiag.resize(num_edges * 2);
 
@@ -279,37 +279,32 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
     // Evaluate Spring
     auto evaluete_spring = [&](const float stiffness_stretch)
     {
-        auto& sa_iter_position = sa_x;
-        
-        auto& culster = host_xpbd_data->sa_clusterd_constraint_stretch_mass_spring;
-        auto& sa_edges = host_mesh_data->sa_edges;
-        auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
-        
         const uint num_verts = host_mesh_data->num_verts;
         const uint num_edges = host_mesh_data->num_edges;
         
-        // auto& culster = host_xpbd_data->sa_prefix_stretch_mass_spring ;
-        // auto& sa_edges = host_xpbd_data->sa_merged_edges;
-        // auto& sa_rest_length = host_mesh_data->sa_merged_edges_rest_length;
+        // auto& culster = host_xpbd_data->sa_clusterd_springs;
+        // auto& sa_edges = host_mesh_data->sa_edges;
+        // auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
+        
+        auto& culster = host_xpbd_data->sa_prefix_merged_springs;
+        auto& sa_edges = host_xpbd_data->sa_merged_edges;
+        auto& sa_rest_length = host_xpbd_data->sa_merged_edges_rest_length;
 
-        // for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_stretch_mass_spring; cluster_idx++) 
+        for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_springs; cluster_idx++) 
         {
-            // const uint curr_prefix = culster[cluster_idx];
-            // const uint next_prefix = culster[cluster_idx + 1];
-            // const uint num_elements_clustered = next_prefix - curr_prefix;
-            // CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
+            const uint curr_prefix = culster[cluster_idx];
+            const uint next_prefix = culster[cluster_idx + 1];
+            const uint num_elements_clustered = next_prefix - curr_prefix;
 
-            CpuParallel::single_thread_for(0, mesh_data->num_edges, [&](const uint eid)
+            // CpuParallel::single_thread_for(0, mesh_data->num_edges, [&](const uint eid)
+            CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
             {
                 // const uint eid = culster[curr_prefix + index];
+                const uint eid = curr_prefix + index;
+                
                 uint2 edge = sa_edges[eid];
-                // const uint eid = curr_prefix + index;
-                // uint2 edge = sa_edges[eid];
 
-                float3 vert_pos[2] = {
-                    sa_iter_position[edge[0]],
-                    sa_iter_position[edge[1]],
-                };
+                float3 vert_pos[2] = { sa_x[edge[0]],sa_x[edge[1]] };
                 float3 force[2] = {Zero3, Zero3};
                 float3x3 He = luisa::make_float3x3(0.0f);
 
@@ -366,7 +361,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                         {
                             for (uint jj = ii + 1; jj < 2; jj++)
                             {
-                                const uint hessian_index = host_xpbd_data->sa_clusterd_hessian_slot_per_edge[eid];
+                                const uint hessian_index = host_xpbd_data->sa_hessian_slot_per_edge[eid];
                                 sa_cgA_offdiag[hessian_index] = sa_cgA_offdiag[hessian_index] - He;
                             }
                         }
@@ -446,7 +441,6 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                 float3 z = sa_cgZ[vid];
                 return luisa::make_float2(luisa::dot(r, z), luisa::dot(r, r));
             });
-            // return luisa::make_float2(std::sqrt(dot_rr_and_rz[0]), std::sqrt(dot_rr_and_rz[1]));
         };
         auto read_beta = [](const uint vid, std::vector<float>& sa_converage) -> float
         {
@@ -500,10 +494,10 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             // Off-diag: Material energy hessian
             if constexpr (use_upper_triangle)
             {
-                auto& cluster = host_xpbd_data->sa_clusterd_hessian_set;
-                auto& sa_hessian_set = host_xpbd_data->sa_hessian_set;
+                auto& cluster = host_xpbd_data->sa_clusterd_hessian_pairs;
+                auto& sa_hessian_set = host_xpbd_data->sa_hessian_pairs;
                 
-                for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_hessian_set; cluster_idx++) 
+                for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_hessian_pairs; cluster_idx++) 
                 {
                     const uint curr_prefix = cluster[cluster_idx];
                     const uint next_prefix = cluster[cluster_idx + 1];
@@ -523,53 +517,33 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             }
             else
             {
-                auto& sa_edges = host_mesh_data->sa_edges;
-                auto& sa_iter_position = sa_x;
-                auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
-                const float stiffness_stretch = 1e4;
+                // Hessian free
+                // auto& sa_edges = host_mesh_data->sa_edges;
+                // auto& cluster = host_xpbd_data->sa_clusterd_springs;
 
-                CpuParallel::single_thread_for(0, host_mesh_data->num_edges, [&](const uint eid)
-                {
-                    const uint2 edge = sa_edges[eid];
-
-                    // const float L = sa_rest_length[eid];
-                    // const float stiffness_stretch_spring = stiffness_stretch;
-                    // float3 diff = sa_iter_position[edge[1]] - sa_iter_position[edge[0]];
-                    // float l = max_scalar(length_vec(diff), Epsilon);
-                    // float3x3 xxT = outer_product(diff, diff);
-                    // float x_inv = 1.f / l;
-                    // float x_squared_inv = x_inv * x_inv;
-                    // float3x3 He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1 - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);                        
-                    // float3x3 offdiag_hessian1 = -1.0f * He;
-                    // float3x3 offdiag_hessian2 = -1.0f * He;
-
-                    float3x3 offdiag_hessian1 = sa_cgA_offdiag[2 * eid + 0];
-                    float3x3 offdiag_hessian2 = sa_cgA_offdiag[2 * eid + 1];
-                    float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
-                    float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
-                    output_ptr[edge[0]] += output_vec0;
-                    output_ptr[edge[1]] += output_vec1;
-                });
+                auto& sa_edges = host_xpbd_data->sa_merged_edges;
+                auto& cluster = host_xpbd_data->sa_prefix_merged_springs;
                 
-                // auto& cluster = host_xpbd_data->sa_clusterd_constraint_stretch_mass_spring;
+                for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_springs; cluster_idx++) 
+                {
+                    const uint curr_prefix = cluster[cluster_idx];
+                    const uint next_prefix = cluster[cluster_idx + 1];
+                    const uint num_elements_clustered = next_prefix - curr_prefix;
 
-                // for (uint cluster_idx = 0; cluster_idx < host_xpbd_data->num_clusters_stretch_mass_spring; cluster_idx++) 
-                // {
-                //     const uint curr_prefix = cluster[cluster_idx];
-                //     const uint next_prefix = cluster[cluster_idx + 1];
-                //     const uint num_elements_clustered = next_prefix - curr_prefix;
-                //     CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
-                //     {
-                //         const uint eid = cluster[curr_prefix + index];
-                //         const uint2 edge = sa_edges[eid];
-                //         float3x3 offdiag_hessian1 = sa_cgA_offdiag[2 * eid + 0];
-                //         float3x3 offdiag_hessian2 = sa_cgA_offdiag[2 * eid + 1];
-                //         float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
-                //         float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
-                //         output_ptr[edge[0]] += output_vec0;
-                //         output_ptr[edge[1]] += output_vec1;
-                //     });
-                // }
+                    CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
+                    {
+                        // const uint eid = cluster[curr_prefix + index];
+                        const uint eid = curr_prefix + index;
+                        const uint2 edge = sa_edges[eid];
+
+                        float3x3 offdiag_hessian1 = sa_cgA_offdiag[2 * eid + 0];
+                        float3x3 offdiag_hessian2 = sa_cgA_offdiag[2 * eid + 1];
+                        float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
+                        float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
+                        output_ptr[edge[0]] += output_vec0;
+                        output_ptr[edge[1]] += output_vec1;
+                    });
+                }
             }
         };
 
@@ -638,16 +612,12 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         pcg_make_preconditioner_jacobi();
 
         float normR_0 = 0.0f;
-        float delta_old = 0.0f; float delta = 0.0f;
-        // luisa::log_info("init dot_bb = {}, dot_xx = {}, dot_rr = {}, dot_pp = {}, dot_qq = {}", 
-        //     fast_dot(sa_cgB, sa_cgB), fast_dot(sa_cgX, sa_cgX), fast_dot(sa_cgR, sa_cgR), fast_dot(sa_cgP, sa_cgP), fast_dot(sa_cgQ, sa_cgQ));
 
         for (uint iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
-        // while (true)
         {
             lcsv::get_scene_params().current_pcg_it = iter;
 
-            // if(get_scene_params().print_system_energy)
+            // if (get_scene_params().print_system_energy)
             // {
             //     update_position_for_energy();
             //     compute_system_energy(it);
@@ -655,45 +625,56 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             // }
 
             pcg_apply_preconditioner_jacobi();
-            // float dot_rz = fast_dot(sa_cgR, sa_cgZ);
+            float dot_rz = fast_dot(sa_cgR, sa_cgZ);
 
-            delta_old = delta;
-            // delta = fast_dot(sa_cgR, sa_cgZ);
-            float2 dot_rr_rz = get_dot_rz_rr();
-            delta = dot_rr_rz[0];
-            float normR = std::sqrt(dot_rr_rz[1]);
-            if (iter == 0) normR_0 = normR;
-            // float dot_rr = fast_dot(sa_cgR, sa_cgR); // Optional
-            // float dot_zz = fast_dot(sa_cgZ, sa_cgZ); // Optional
-            // save_dot_rz(0, sa_convergence, dot_rz);
+            float2 dot_rr_rz = get_dot_rz_rr(); 
+            dot_rz = dot_rr_rz[0];
+            float normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+            save_dot_rz(0, sa_convergence, dot_rz);
 
-            float beta = delta_old == 0.0f ? 0.0f : delta / delta_old;
-            // const float beta = read_beta(0, sa_convergence);
+            const float beta = read_beta(0, sa_convergence);
             pcg_update_p(beta);
         
             pcg_spmv(sa_cgP, sa_cgQ);
             float dot_pq = fast_dot(sa_cgP, sa_cgQ);
-            // float dot_pp = fast_dot(sa_cgP, sa_cgP); // Optional
-            // float dot_qq = fast_dot(sa_cgQ, sa_cgQ); // Optional
-            // save_dot_pq(0, sa_convergence, dot_pq);
-            
-            // if (iter == 0) luisa::log_info("initB = {}, initR = {}, initM = {}, initZ = {}, initQ = {}",
-            //     fast_norm(sa_cgB), fast_norm(sa_cgR), sqrt(dotMM), fast_norm(sa_cgZ), fast_norm(sa_cgQ));
+            save_dot_pq(0, sa_convergence, dot_pq);
 
-            // if (sa_convergence[1] == 0.0f) break;
+            // luisa::log_info("     PCG iter {} : rTz = {}, rTr = {}, pTq = {}",  iter, dot_rz, normR, dot_pq);
             
+            if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
+            {
+                luisa::log_info("In frame {}, non-linear iter {}, PCG : iter-count = {}, relative error = {} (from {} -> {})", 
+                    curr_frame, get_scene_params().current_nonlinear_iter,
+                    iter, normR / normR_0, normR_0, normR);
+                break;
+            }
+
+            const float alpha = read_alpha(sa_convergence);
+            pcg_step(alpha);   
+        }
+
+        /*
+        for (uint iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+        {
+            lcsv::get_scene_params().current_pcg_it = iter;
+            pcg_apply_preconditioner_jacobi();
+            delta_old = delta;
+            float2 dot_rr_rz = get_dot_rz_rr(); delta = dot_rr_rz[0];
+            float normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+            float beta = delta_old == 0.0f ? 0.0f : delta / delta_old;
+            pcg_update_p(beta);
+            pcg_spmv(sa_cgP, sa_cgQ);
+            float dot_pq = fast_dot(sa_cgP, sa_cgQ);
             if (normR < 5e-3 * normR_0) 
             {
                 luisa::log_info("In frame {} iter {} PCG : iterations = {}, error = {}", 
                     curr_frame, get_scene_params().current_nonlinear_iter,
-                    iter, normR / normR_0);
-                break;
+                    iter, normR / normR_0); break;
             }
-
             const float alpha = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
-            // const float alpha = read_alpha(sa_convergence);
             pcg_step(alpha);   
         }
+        */
 
         // Update sa_x
         CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)

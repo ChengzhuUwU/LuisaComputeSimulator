@@ -4,6 +4,8 @@
 // #undef max
 // #undef min
 #include <tbb/tbb.h>
+#include <numeric>
+#include <vector>
 
 namespace CpuParallel
 {
@@ -97,7 +99,8 @@ inline T parallel_for_and_reduce(uint start_pos, uint end_pos, ParallelFunc func
     const uint blockDim = 256;
     uint start_dispatch = start_pos / blockDim;
     uint end_dispatch = (end_pos + blockDim - 1) / blockDim;
-    return tbb::parallel_reduce(tbb::blocked_range<uint>(start_dispatch, end_dispatch, 1), zero, 
+    // parallel_reduce
+    return tbb::parallel_deterministic_reduce(tbb::blocked_range<uint>(start_dispatch, end_dispatch, 1), zero, 
         [&]( tbb::blocked_range<uint> r, T result ) 
         {
             uint blockIdx = r.begin();
@@ -125,6 +128,29 @@ inline T parallel_for_and_reduce_sum(uint start_pos, uint end_pos, ParallelFunc 
         [](const T& x, const T& y) -> T{return x + y;}, // func_binary
         T()
         ); 
+}
+template<typename T, typename ParallelFunc>
+inline T single_thread_for_and_reduce_sum(uint start_pos, uint end_pos, ParallelFunc func_parallel)
+{
+    const uint blockDim = 256;
+    uint start_dispatch = start_pos / blockDim;
+    uint end_dispatch = (end_pos + blockDim - 1) / blockDim;
+    std::vector<T> thread_values(end_pos - start_pos);
+
+    tbb::parallel_for(tbb::blocked_range<uint>(start_dispatch, end_dispatch, 1), 
+        [&](tbb::blocked_range<uint> r) 
+        { 
+            uint blockIdx = r.begin();
+            uint startIdx = max_scalar(blockDim * blockIdx, start_pos);
+            uint endIdx = min_scalar(blockDim * (blockIdx + 1), end_pos);
+            for (uint index = startIdx; index < endIdx; index++) 
+            {
+                T parallel_result = func_parallel(index);
+                thread_values[index - start_pos] = parallel_result;
+            }
+        }, tbb::simple_partitioner{});
+
+    return std::reduce(thread_values.begin(), thread_values.end(), T(), [](const T& x, const T& y) -> T{return x + y;});
 }
 
 // inclusive : 包含第一个元素

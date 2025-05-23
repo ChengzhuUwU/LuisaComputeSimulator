@@ -80,6 +80,8 @@ int main(int argc, char** argv)
     luisa::compute::Device device = context.create_device(backend);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
+    lcsv::get_scene_params().solver_type = lcsv::SolverTypeNewton;
+
     // Init data
     lcsv::MeshData<std::vector> cpu_mesh_data;
     lcsv::MeshData<luisa::compute::Buffer> mesh_data;
