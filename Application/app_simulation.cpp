@@ -201,7 +201,7 @@ int main(int argc, char** argv)
         // Define single step in GUI
         auto fn_single_step_with_ui = [&]()
         {
-            luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
+            // luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
 
             fn_physics_step();
 
