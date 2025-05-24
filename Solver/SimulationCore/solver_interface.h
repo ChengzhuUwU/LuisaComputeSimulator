@@ -49,7 +49,9 @@ public:
     void physics_step_post_operation();
     void restart_system();
     void save_current_frame_state();
+    void save_current_frame_state_to_host(const uint frame, const std::string& addition_str);
     void load_saved_state();
+    void load_saved_state_from_host(const uint frame, const std::string& addition_str);
     void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
 
 protected:

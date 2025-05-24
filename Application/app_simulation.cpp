@@ -173,14 +173,6 @@ int main(int argc, char** argv)
         // Init rendering data
         std::vector<glm::vec3> sa_rendering_vertices(cpu_mesh_data.num_verts);
         std::vector<std::vector<uint>> sa_rendering_faces(cpu_mesh_data.num_faces);
-        auto fn_update_rendering_vertices = [&]()
-        {
-            CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
-            {
-                auto pos = cpu_mesh_data.sa_x_frame_end[vid];
-                sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
-            });
-        };
         CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
         {
             auto pos = cpu_mesh_data.sa_rest_x[vid];
@@ -199,6 +191,15 @@ int main(int argc, char** argv)
         polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
 
         // Define single step in GUI
+        auto fn_update_rendering_vertices = [&]()
+        {
+            CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
+            {
+                auto pos = cpu_mesh_data.sa_x_frame_end[vid];
+                sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
+            });
+            surface_mesh->updateVertexPositions(sa_rendering_vertices);
+        };
         auto fn_single_step_with_ui = [&]()
         {
             // luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
@@ -207,7 +208,6 @@ int main(int argc, char** argv)
 
             lcsv::get_scene_params().current_frame += 1; 
             fn_update_rendering_vertices();
-            surface_mesh->updateVertexPositions(sa_rendering_vertices);
         };
         
         bool is_simulate_frame = false;
@@ -244,7 +244,6 @@ int main(int argc, char** argv)
                     lcsv::get_scene_params().current_frame = 0;
                     solver.lcsv::SolverInterface::restart_system();
                     fn_update_rendering_vertices();
-                    surface_mesh->updateVertexPositions(sa_rendering_vertices);
                 }
                 if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
                 {
@@ -254,9 +253,25 @@ int main(int argc, char** argv)
                 {
                     is_simulate_frame = true;
                 }
+                
+            }
+
+            if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen)) 
+            {
                 if (ImGui::Button("Save mesh", ImVec2(-1, 0)))
                 {
                     solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
+                }
+                if (ImGui::Button("Save State", ImVec2(-1, 0)))
+                {
+                    solver.lcsv::SolverInterface::save_current_frame_state_to_host(lcsv::get_scene_params().current_frame, "");
+                }
+                static uint state_frame = 3;
+                ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
+                if (ImGui::Button("Load State", ImVec2(-1, 0)))
+                {
+                    solver.lcsv::SolverInterface::load_saved_state_from_host(state_frame, "");
+                    fn_update_rendering_vertices();
                 }
             }
             
