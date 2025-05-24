@@ -47,8 +47,7 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
 
     const std::string filename = std::format("frame_{}{}.state", frame, addition_str);
 
-    const std::string SELF_RESOURCES_PATH = "/Users/huohuo/Desktop/Project/LuisaComputeSolver/Resources";
-    std::string full_directory = std::string(SELF_RESOURCES_PATH) + std::string("/SimulationState/");
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
     
     {
         std::filesystem::path dir_path(full_directory);
@@ -111,8 +110,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 {
     const std::string filename = std::format("frame_{}{}.state", frame, addition_str);
 
-    const std::string SELF_RESOURCES_PATH = "/Users/huohuo/Desktop/Project/LuisaComputeSolver/Resources";
-    std::string full_directory = std::string(SELF_RESOURCES_PATH) + std::string("/SimulationState/");
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
     std::string full_path = full_directory + filename;
 
     std::ifstream file(full_path, std::ios::in);
@@ -176,8 +174,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
     // , lcsv::get_scene_params().current_frame
     const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
 
-    const std::string SELF_RESOURCES_PATH = "/Users/huohuo/Desktop/Project/LuisaComputeSolver/Resources";
-    std::string full_directory = std::string(SELF_RESOURCES_PATH) + std::string("/OutputMesh/");
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
     
     {
         std::filesystem::path dir_path(full_directory);

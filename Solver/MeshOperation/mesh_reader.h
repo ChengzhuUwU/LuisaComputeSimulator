@@ -357,10 +357,10 @@ inline void extract_edges_from_surface(
 }
 
 
-bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets, const bool use_default_path);
-bool read_tet_file_vtk(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets, const bool use_default_path);
-bool read_mesh_file(std::string mesh_name, TriangleMeshData& meshes, bool use_default_path);
-// bool read_tet_file_t(std::string mesh_name, TetrahedralMeshData& meshes, const bool use_default_path);
+bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
+bool read_tet_file_vtk(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
+bool read_mesh_file(std::string mesh_name, TriangleMeshData& meshes);
+// bool read_tet_file_t(std::string mesh_name, TetrahedralMeshData& meshes);
 
 bool saveToOBJ_saperately(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame);
 bool saveToOBJ_combined(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame);

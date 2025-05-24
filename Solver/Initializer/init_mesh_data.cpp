@@ -21,13 +21,18 @@ void init_mesh_data(
     const uint num_clothes = shell_list.size();
     std::vector<SimMesh::TriangleMeshData> input_meshes(num_clothes);
 
+    mesh_data->num_verts = 0;
+    mesh_data->num_faces = 0;
+    mesh_data->num_edges = 0;
+    mesh_data->num_bending_edges = 0;
+
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
     for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
     {
         const auto& shell_info = shell_list[clothIdx];
         auto& input_mesh = input_meshes[clothIdx]; // TODO: Get (multiple) original mesh data from params
-        bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh, true);
+        bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
 
         // std::string obj_name = model_name;
         // {

@@ -5,9 +5,6 @@
 namespace SimMesh
 {
 
-#define SELF_RESOURCES_PATH "/Users/huohuo/Desktop/Project/LuisaComputeSolver/Resources/InputMesh/"
-
-
 static inline Float3 makeFloat3(const float v1, const float v2, const float v3)
 {
     return Float3{v1, v2, v3};
@@ -22,16 +19,12 @@ static inline Int4 makeInt4(const uint v1, const uint v2, const uint v3, const u
 }
 
 
-bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data, bool use_default_path)
+bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data)
 {
     std::string err, warn;
 
 
-    std::string full_path;
-    if (use_default_path)
-        full_path = std::string(SELF_RESOURCES_PATH) + mesh_name;
-    else
-        full_path = mesh_name;
+    std::string full_path = mesh_name;
 
     std::string mtl_path = std::filesystem::path(full_path).replace_extension(".mtl").string();
     
@@ -212,14 +205,10 @@ bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data, bool use
 
     return true;
 }
-bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets, const bool use_default_path) 
+bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets) 
 {
     std::string err, warn;
-    std::string full_path;
-    if(use_default_path)
-        full_path = std::string(SELF_RESOURCES_PATH) + std::string("/models/vtks/") + mesh_name;
-    else
-        full_path = mesh_name;
+    std::string full_path = mesh_name;
 
     bool load = true;
     {
@@ -264,11 +253,9 @@ bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::
     }
     return true;
 }
-bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, std::vector<Int4>& tets, const bool use_default_path) 
+bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, std::vector<Int4>& tets) 
 {
-    std::string full_path = use_default_path ? 
-        std::string(SELF_RESOURCES_PATH) + "/models/vtks/" + file_name : 
-        file_name;
+    std::string full_path = file_name;
 
     std::ifstream infile(full_path);
     if (!infile.is_open()) 
@@ -354,7 +341,8 @@ bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, st
 
 bool saveToOBJ_combined(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame) {
 
-    std::string full_path = std::string(SELF_RESOURCES_PATH) + std::string("/output/") + filename + "_" + std::to_string(frame) + ".obj";
+    
+    std::string full_path = std::string(LCSV_RESOURCE_PATH) + std::string("/output/") + filename + "_" + std::to_string(frame) + ".obj";
     std::ofstream file(full_path, std::ios::out);
 
     if (file.is_open()) {

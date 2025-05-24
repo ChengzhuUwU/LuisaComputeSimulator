@@ -82,8 +82,10 @@ int main(int argc, char** argv)
 
     // Read Mesh
     std::vector<lcsv::Initializater::ShellInfo> shell_list;
+    const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
+    const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
     shell_list.push_back({
-        .model_name = "Cylinder/cylinder7K.obj",
+        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
         .fixed_point_info = {
             lcsv::Initializater::FixedPointInfo{
                 // .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
@@ -111,10 +113,10 @@ int main(int argc, char** argv)
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
-    lcsv::DescentSolver solver;
-    // lcsv::NewtonSolver solver;
+    // lcsv::DescentSolver solver;
+    lcsv::NewtonSolver solver;
     {
-        device_parallel.create(device);
+        // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
         solver.lcsv::SolverInterface::set_data_pointer(
             &cpu_mesh_data, 
             &mesh_data, 
@@ -147,8 +149,8 @@ int main(int argc, char** argv)
     }
     auto fn_physics_step = [&]()
     {
-        solver.physics_step_vbd_CPU(device, stream);
-        // solver.physics_step_newton_CPU(device, stream);
+        // solver.physics_step_vbd_CPU(device, stream);
+        solver.physics_step_newton_CPU(device, stream);
     };
 
 

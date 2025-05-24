@@ -65,27 +65,40 @@ endif()
 #     add_subdirectory(${EXT_PATH}/amgcl)
 # endif()
 
-
+# if (NOT TARGET TBB::tbb)
+#     set(TBB_TEST OFF CACHE BOOL "" FORCE)
+#     add_subdirectory(${EXT_PATH}/oneTBB)
+# endif()
 
 # lib
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
-add_library(luisa-compute-solver-lib SHARED ${LUISA_COMPUTE_SOLVER_LIB_SOURCES})
-# message("${LUISA_COMPUTE_SOLVER_LIB_SOURCES}")
-set_target_properties(luisa-compute-solver-lib PROPERTIES PUBLIC_HEADER "${LUISA_COMPUTE_SOLVER_LIB_HEADERS}")
-target_compile_definitions(luisa-compute-solver-lib PRIVATE LS_DLL_EXPORTS=1)
+add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
+# set_target_properties(luisa-compute-solver-lib PROPERTIES PUBLIC_HEADER "${LUISA_COMPUTE_SOLVER_LIB_HEADERS}")
+# target_compile_definitions(luisa-compute-solver-lib PRIVATE LS_DLL_EXPORTS=1)
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Core>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Utils>)
+# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Energy>)
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Initializer>)
+# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/LinearSolver>)
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/MeshOperation>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/PrecondConjugateGradient>)
+# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationCore>)
+# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationSolver>)
+# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Utils>)
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute)
 
+if(WIN32)
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
 set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
-find_package(TBB REQUIRED)
+endif()
+
 find_package(Eigen3 REQUIRED)
+find_package(TBB CONFIG REQUIRED)
 target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen)
+
+set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
+target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
 # test
 # file(GLOB_RECURSE LUISA_SOLVER_TEST_SOURCES CONFIGURE_DEPENDS test/*.cpp)

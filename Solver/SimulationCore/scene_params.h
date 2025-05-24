@@ -172,7 +172,7 @@ struct SceneParams
 
 void init_scene_params();
 SceneParams& get_scene_params();
-std::vector<SceneParams>& get_scene_params_array();
+// std::vector<SceneParams>& get_scene_params_array();
 
 #endif
 
