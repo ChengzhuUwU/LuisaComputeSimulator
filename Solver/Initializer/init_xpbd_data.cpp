@@ -12,13 +12,14 @@ namespace lcsv
 namespace Initializater
 {
 
-void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::vector>* xpbd_data)
+void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData<std::vector>* xpbd_data)
 {
     xpbd_data->sa_x_tilde.resize(mesh_data->num_verts); 
     xpbd_data->sa_x.resize(mesh_data->num_verts);
     xpbd_data->sa_v.resize(mesh_data->num_verts);       CpuParallel::parallel_copy(mesh_data->sa_rest_v, xpbd_data->sa_v);
-    xpbd_data->sa_v_start.resize(mesh_data->num_verts); CpuParallel::parallel_copy(mesh_data->sa_rest_v, xpbd_data->sa_v_start);
-    xpbd_data->sa_x_start.resize(mesh_data->num_verts);
+    xpbd_data->sa_v_step_start.resize(mesh_data->num_verts); CpuParallel::parallel_copy(mesh_data->sa_rest_v, xpbd_data->sa_v_step_start);
+    xpbd_data->sa_x_step_start.resize(mesh_data->num_verts);
+    xpbd_data->sa_x_iter_start.resize(mesh_data->num_verts);
 
     // Constraint Graph Coloring
     std::vector< std::vector<uint> > tmp_clusterd_constraint_stretch_mass_spring;
@@ -214,8 +215,8 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::XpbdData<std::
 void upload_xpbd_buffers(
     luisa::compute::Device& device, 
     luisa::compute::Stream& stream, 
-    lcsv::XpbdData<std::vector>* input_data, 
-    lcsv::XpbdData<luisa::compute::Buffer>* output_data)
+    lcsv::SimulationData<std::vector>* input_data, 
+    lcsv::SimulationData<luisa::compute::Buffer>* output_data)
 {
     output_data->num_clusters_springs = input_data->num_clusters_springs;
     output_data->num_clusters_bending_edges = input_data->num_clusters_bending_edges;
@@ -226,8 +227,9 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
         << upload_buffer(device, output_data->sa_x, input_data->sa_x)
         << upload_buffer(device, output_data->sa_v, input_data->sa_v)
-        << upload_buffer(device, output_data->sa_v_start, input_data->sa_v_start)
-        << upload_buffer(device, output_data->sa_x_start, input_data->sa_x_start)
+        << upload_buffer(device, output_data->sa_v_step_start, input_data->sa_v_step_start)
+        << upload_buffer(device, output_data->sa_x_step_start, input_data->sa_x_step_start)
+        << upload_buffer(device, output_data->sa_x_iter_start, input_data->sa_x_iter_start)
         << upload_buffer(device, output_data->sa_merged_edges, input_data->sa_merged_edges)
         << upload_buffer(device, output_data->sa_merged_edges_rest_length, input_data->sa_merged_edges_rest_length)
         << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)

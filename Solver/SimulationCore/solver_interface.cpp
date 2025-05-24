@@ -1,5 +1,7 @@
 #include "SimulationCore/solver_interface.h"
+#include "Core/scalar.h"
 #include "Utils/cpu_parallel.h"
+#include "SimulationCore/scene_params.h"
 #include "MeshOperation/mesh_reader.h"
 
 namespace lcsv 
@@ -68,6 +70,7 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
     std::string full_path = full_directory + filename;
     std::ofstream file(full_path, std::ios::out);
 
+    
     if (file.is_open()) 
     {
         file << "o position" << std::endl;
@@ -144,19 +147,24 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             std::istringstream iss(line.substr(1));
             float x, y, z;
             iss >> x >> y >> z;
-            if (current_section == Position && pos_vid < host_mesh_data->num_verts) 
+            if (current_section == Position) 
             {
-                host_mesh_data->sa_x_frame_saved[pos_vid] = {x, y, z};
+                if (pos_vid < host_mesh_data->num_verts) host_mesh_data->sa_x_frame_saved[pos_vid] = {x, y, z};
                 pos_vid++;
             } 
-            else if (current_section == Velocity && vel_vid < host_mesh_data->num_verts) 
+            else if (current_section == Velocity) 
             {
-                host_mesh_data->sa_v_frame_saved[vel_vid] = {x, y, z};
+                if (vel_vid < host_mesh_data->num_verts) host_mesh_data->sa_v_frame_saved[vel_vid] = {x, y, z};
                 vel_vid++;
             }
         }
     }
     file.close();
+
+    if (pos_vid != host_mesh_data->num_verts || vel_vid != host_mesh_data->num_verts)
+    {
+        luisa::log_error("numVerts read {} does NOT match numVerts of current mesh {}", pos_vid, host_mesh_data->num_verts);
+    }
 
     load_saved_state();
 
@@ -229,5 +237,56 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
     }
 }
 
+// Evaluate Energy
+double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x)
+{
+    auto compute_energy_inertia = [](
+        const uint vid, 
+        const std::vector<float3>& sa_x, 
+        const std::vector<float3>& sa_x_tilde,
+        const std::vector<float> sa_vert_mass, 
+        const float substep_dt)
+    {
+        float3 x_new = sa_x[vid];
+        float3 x_tilde = sa_x_tilde[vid];
+        float mass = sa_vert_mass[vid];
+        return length_squared_vec(x_new - x_tilde) * mass / (2 * substep_dt * substep_dt);
+    };
+    auto compute_energy_spring = [](
+        const uint eid, 
+        const std::vector<float3>& sa_x, 
+        const std::vector<uint2>& sa_edges,
+        const std::vector<float> sa_edge_rest_state_length, 
+        const float stiffness_spring)
+    {
+        const uint2 edge = sa_edges[eid];
+        const float rest_edge_length = sa_edge_rest_state_length[eid];
+        float3 diff = sa_x[edge[1]] - sa_x[edge[0]];
+        float orig_lengthsqr = length_squared_vec(diff);
+        float l = sqrt_scalar(orig_lengthsqr);
+        float l0 = rest_edge_length;
+        float C = l - l0;
+        return 0.5f * stiffness_spring * C * C;
+    };
+
+    double energy_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
+    {
+        return compute_energy_inertia(vid, 
+            curr_x, 
+            host_sim_data->sa_x_tilde, 
+            host_mesh_data->sa_vert_mass, 
+            get_scene_params().get_substep_dt());
+    });
+    double energy_spring = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_edges, [&](const uint eid)
+    {
+        return compute_energy_spring(eid, 
+            curr_x, 
+            host_mesh_data->sa_edges, 
+            host_mesh_data->sa_edges_rest_state_length, 
+            1e4);
+    });
+    // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);
+    return energy_inertia + energy_spring;
+};
 
 } // namespace lcsv

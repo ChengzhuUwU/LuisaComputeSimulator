@@ -14,125 +14,149 @@ namespace Initializater
 
 
 // template<template<typename> typename BasicBuffer>
-void init_mesh_data(lcsv::MeshData<std::vector>* mesh_data)
+void init_mesh_data(
+    const std::vector<lcsv::Initializater::ShellInfo>& shell_list, 
+    lcsv::MeshData<std::vector>* mesh_data)
 {
-    std::string model_name = "square8K.obj";
-    float3 transform = luisa::make_float3(0.0f, 0.5f, 0.0f);
-    float3 rotation = luisa::make_float3(0.0f * lcsv::Pi);
-    float3 scale = luisa::make_float3(1.0f);
+    const uint num_clothes = shell_list.size();
+    std::vector<SimMesh::TriangleMeshData> input_meshes(num_clothes);
 
-
-    SimMesh::TriangleMeshData input_mesh; // TODO: Get (multiple) original mesh data from params
-    bool second_read = SimMesh::read_mesh_file(model_name, input_mesh, true);
-
-    std::string obj_name = model_name;
+    // Constant scalar and init MeshData
+    // TODO: Identity cloth, tet, rigid-body
+    for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
     {
-        std::filesystem::path path(obj_name);
-        obj_name = path.stem().string();
+        const auto& shell_info = shell_list[clothIdx];
+        auto& input_mesh = input_meshes[clothIdx]; // TODO: Get (multiple) original mesh data from params
+        bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh, true);
+
+        // std::string obj_name = model_name;
+        // {
+        //     std::filesystem::path path(obj_name);
+        //     obj_name = path.stem().string();
+        // }
+
+        mesh_data->num_verts += input_mesh.model_positions.size();
+        mesh_data->num_faces += input_mesh.faces.size();
+        mesh_data->num_edges += input_mesh.edges.size();
+        mesh_data->num_bending_edges += input_mesh.bending_edges.size();
     }
 
-    const uint num_verts = input_mesh.model_positions.size();
-    const uint num_faces = input_mesh.faces.size();
-    const uint num_edges = input_mesh.edges.size();
-    const uint num_bending_edges = input_mesh.bending_edges.size();
+    uint num_verts = mesh_data->num_verts;
+    uint num_faces = mesh_data->num_faces;
+    uint num_edges = mesh_data->num_edges;
+    uint num_bending_edges = mesh_data->num_bending_edges;
 
     luisa::log_info("Cloth : (numVerts : {}) (numFaces : {})  (numEdges : {}) (numBendingEdges : {})", 
         num_verts, num_faces, num_edges, num_bending_edges);
-
-    // Constant scalar
-    {
-        // TODO: Handle multiple mesh
-        // TODO: Identity cloth, tet, rigid-body
-        mesh_data->num_verts = num_verts;
-        mesh_data->num_faces = num_faces;
-        mesh_data->num_edges = num_edges;  
-        mesh_data->num_bending_edges = num_bending_edges;
-    }
     
-    // Core information
+    // Read information
     {
         mesh_data->sa_rest_x.resize(num_verts);
         mesh_data->sa_faces.resize(num_faces);
         mesh_data->sa_edges.resize(num_edges);
         mesh_data->sa_bending_edges.resize(num_bending_edges);
-        
-        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+
+        mesh_data->sa_rest_v.resize(num_verts);
+        mesh_data->sa_is_fixed.resize(num_verts);
+
+        uint prefix_num_verts = 0;
+        uint prefix_num_faces = 0;
+        uint prefix_num_edges = 0;
+        uint prefix_num_bending_edges = 0;
+
+        struct AABB {
+            float3 packed_min; float3 packed_max;
+            AABB operator+(const AABB& input_aabb) const {
+                AABB tmp;
+                tmp.packed_min = lcsv::min_vec(packed_min, input_aabb.packed_min);
+                tmp.packed_max = lcsv::max_vec(packed_max, input_aabb.packed_max);
+                return tmp;
+            }
+        };
+
+        for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
         {
-            auto pos = input_mesh.model_positions[vid];
-            mesh_data->sa_rest_x[vid] = luisa::make_float3(pos[0], pos[1], pos[2]);
-        });
-        CpuParallel::parallel_for(0, mesh_data->num_faces, [&](const uint vid)
-        {
-            auto face = input_mesh.faces[vid];
-            mesh_data->sa_faces[vid] = luisa::make_uint3(face[0], face[1], face[2]);
-        });
-        CpuParallel::parallel_for(0, mesh_data->num_edges, [&](const uint vid)
-        {
-            auto edge = input_mesh.edges[vid];
-            mesh_data->sa_edges[vid] = luisa::make_uint2(edge[0], edge[1]);
-        });
-        CpuParallel::parallel_for(0, mesh_data->num_bending_edges, [&](const uint vid)
-        {
-            auto pos = input_mesh.bending_edges[vid];
-            mesh_data->sa_bending_edges[vid] = luisa::make_uint4(pos[0], pos[1], pos[2], pos[3]);
-        });
+            const auto& shell_info = shell_list[clothIdx];
+            const auto& input_mesh = input_meshes[clothIdx];
+
+            const uint curr_num_verts = input_mesh.model_positions.size();
+            const uint curr_num_faces = input_mesh.faces.size();
+            const uint curr_num_edges = input_mesh.edges.size();
+            const uint curr_num_bending_edges = input_mesh.bending_edges.size();
+
+            // Read position with affine
+            CpuParallel::parallel_for(0, curr_num_verts, [&](const uint vid)
+            {
+                std::array<float, 3> read_pos = input_mesh.model_positions[vid];
+                float3 model_position = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
+                float4x4 model_matrix = lcsv::make_model_matrix(shell_info.transform, shell_info.rotation, shell_info.scale);
+                float3 world_position = lcsv::affine_position(model_matrix, model_position);
+                mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
+                mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
+            });
+            // Read triangle face
+            CpuParallel::parallel_for(0, curr_num_faces, [&](const uint fid)
+            {
+                auto face = input_mesh.faces[fid];
+                mesh_data->sa_faces[prefix_num_faces + fid] = prefix_num_verts + luisa::make_uint3(face[0], face[1], face[2]);
+            });
+            // Read edge
+            CpuParallel::parallel_for(0, curr_num_edges, [&](const uint eid)
+            {
+                auto edge = input_mesh.edges[eid];
+                mesh_data->sa_edges[prefix_num_edges + eid] = prefix_num_verts + luisa::make_uint2(edge[0], edge[1]);
+            });
+            // Read bending edge
+            CpuParallel::parallel_for(0, curr_num_bending_edges, [&](const uint eid)
+            {
+                auto bending_edge = input_mesh.bending_edges[eid];
+                mesh_data->sa_bending_edges[prefix_num_bending_edges + eid] = prefix_num_verts + luisa::make_uint4(bending_edge[0], bending_edge[1], bending_edge[2], bending_edge[3]);
+            });
+
+            // Set fixed-points
+            {
+                AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(0, curr_num_verts, [&](const uint vid)
+                {
+                    auto pos = mesh_data->sa_rest_x[prefix_num_verts + vid];
+                    return AABB{
+                        .packed_min = pos,
+                        .packed_max = pos,
+                    };
+                });
+
+                auto pos_min = local_aabb.packed_min;
+                auto pos_max = local_aabb.packed_max;
+                auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
+
+                CpuParallel::parallel_for(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
+                {
+                    float3 orig_pos = mesh_data->sa_rest_x[vid];
+                    float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
+                    
+                    bool is_fixed = false;
+                    // is_fixed = 
+                    for (const auto& fixed_point_info : shell_info.fixed_point_info)
+                    {
+                        if (fixed_point_info.is_fixed_point_func(norm_pos))
+                        {
+                            is_fixed = true;
+                        }
+                    }
+                    // is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
+                    mesh_data->sa_is_fixed[vid] = is_fixed;
+                });
+            }
+
+            prefix_num_verts += curr_num_verts;
+            prefix_num_faces += curr_num_faces;
+            prefix_num_edges += curr_num_edges;
+            prefix_num_bending_edges += curr_num_bending_edges;
+        }
+            
     }
     
     // Init vert info
     {
-        // Set rest position & velocity
-        {
-            mesh_data->sa_rest_v.resize(num_verts); 
-            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-            {
-                float3 model_position = mesh_data->sa_rest_x[vid];
-                float4x4 model_matrix = lcsv::make_model_matrix(transform, rotation, scale);
-                float3 world_position = lcsv::affine_position(model_matrix, model_position);
-                mesh_data->sa_rest_x[vid] = world_position;
-                mesh_data->sa_rest_v[vid] = luisa::make_float3(0.0f);
-            });
-        }
-
-        // Set fixed-points
-        {
-            mesh_data->sa_is_fixed.resize(num_verts);
-
-            struct AABB
-            {
-                float3 packed_min;
-                float3 packed_max;
-                AABB operator+(const AABB& input_aabb) const{
-                    AABB tmp;
-                    tmp.packed_min = lcsv::min_vec(packed_min, input_aabb.packed_min);
-                    tmp.packed_max = lcsv::max_vec(packed_max, input_aabb.packed_max);
-                    return tmp;
-                }
-            };
-            
-            AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
-            {
-                auto pos = mesh_data->sa_rest_x[vid];
-                return AABB{
-                    .packed_min = pos,
-                    .packed_max = pos,
-                };
-            });
-
-            auto pos_min = local_aabb.packed_min;
-            auto pos_max = local_aabb.packed_max;
-            auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
-
-            CpuParallel::parallel_for(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
-            {
-                float3 orig_pos = mesh_data->sa_rest_x[vid];
-                float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
-                
-                bool is_fixed = false;
-                is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
-                mesh_data->sa_is_fixed[vid] = is_fixed;
-            });
-        }
-
         // Set vert mass
         {
             mesh_data->sa_vert_mass.resize(num_verts); 

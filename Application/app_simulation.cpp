@@ -26,12 +26,10 @@ namespace lcsv::Initializater
 
 void init_simulation_params()
 {
-    lcsv::get_scene_params().print_xpbd_convergence = false; // false true
-
-    if (lcsv::get_scene_params().use_small_timestep) { lcsv::get_scene_params().implicit_dt = 0.001f; }
+    // if (lcsv::get_scene_params().use_small_timestep) { lcsv::get_scene_params().implicit_dt = 0.001f; }
     
-    lcsv::get_scene_params().num_iteration = lcsv::get_scene_params().num_substep * lcsv::get_scene_params().nonlinear_iter_count;
-    lcsv::get_scene_params().collision_detection_frequece = 1;    
+    // lcsv::get_scene_params().num_iteration = lcsv::get_scene_params().num_substep * lcsv::get_scene_params().nonlinear_iter_count;
+    // lcsv::get_scene_params().collision_detection_frequece = 1;    
 
     // lcsv::get_scene_params().stiffness_stretch_spring = FEM::calcSecondLame(lcsv::get_scene_params().youngs_modulus_cloth, lcsv::get_scene_params().poisson_ratio_cloth); // mu;
     // lcsv::get_scene_params().stiffness_pressure = 1e6;
@@ -39,8 +37,8 @@ void init_simulation_params()
     {
         // lcsv::get_scene_params().stiffness_stretch_spring = 1e4;
         // lcsv::get_scene_params().xpbd_stiffness_collision = 1e7;
-        lcsv::get_scene_params().stiffness_quadratic_bending = 5e-3;
-        lcsv::get_scene_params().stiffness_DAB_bending = 5e-3;
+        // lcsv::get_scene_params().stiffness_quadratic_bending = 5e-3;
+        // lcsv::get_scene_params().stiffness_DAB_bending = 5e-3;
     }
 
 }
@@ -82,16 +80,28 @@ int main(int argc, char** argv)
 
     lcsv::get_scene_params().solver_type = lcsv::SolverTypeNewton;
 
+    // Read Mesh
+    std::vector<lcsv::Initializater::ShellInfo> shell_list;
+    shell_list.push_back({
+        .model_name = "Cylinder/cylinder7K.obj",
+        .fixed_point_info = {
+            lcsv::Initializater::FixedPointInfo{
+                // .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
+            }
+        }
+    });
+
     // Init data
     lcsv::MeshData<std::vector> cpu_mesh_data;
     lcsv::MeshData<luisa::compute::Buffer> mesh_data;
     {
-        lcsv::Initializater::init_mesh_data(&cpu_mesh_data);
+        lcsv::Initializater::init_mesh_data(shell_list, &cpu_mesh_data);
         lcsv::Initializater::upload_mesh_buffers(device, stream, &cpu_mesh_data, &mesh_data);
     }
 
-    lcsv::XpbdData<std::vector> cpu_xpbd_data;
-    lcsv::XpbdData<luisa::compute::Buffer> xpbd_data;
+    lcsv::SimulationData<std::vector> cpu_xpbd_data;
+    lcsv::SimulationData<luisa::compute::Buffer> xpbd_data;
     {
         lcsv::Initializater::init_xpbd_data(&cpu_mesh_data, &cpu_xpbd_data);
         lcsv::Initializater::upload_xpbd_buffers(device, stream, &cpu_xpbd_data, &xpbd_data);
@@ -101,8 +111,8 @@ int main(int argc, char** argv)
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
-    // lcsv::DescentSolver solver;
-    lcsv::NewtonSolver solver;
+    lcsv::DescentSolver solver;
+    // lcsv::NewtonSolver solver;
     {
         device_parallel.create(device);
         solver.lcsv::SolverInterface::set_data_pointer(
@@ -122,9 +132,8 @@ int main(int argc, char** argv)
         lcsv::get_scene_params().num_substep = 1;
         lcsv::get_scene_params().nonlinear_iter_count = 20;   
         lcsv::get_scene_params().pcg_iter_count = 2000; 
-        lcsv::get_scene_params().use_bending = true;
+        lcsv::get_scene_params().use_bending = false;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
-        lcsv::get_scene_params().print_xpbd_convergence = false;
         lcsv::get_scene_params().use_xpbd_solver = false;
         lcsv::get_scene_params().use_vbd_solver = true;
     }
@@ -138,8 +147,8 @@ int main(int argc, char** argv)
     }
     auto fn_physics_step = [&]()
     {
-        // solver.physics_step_vbd_GPU(device, stream);
-        solver.physics_step_newton_CPU(device, stream);
+        solver.physics_step_vbd_CPU(device, stream);
+        // solver.physics_step_newton_CPU(device, stream);
     };
 
 
@@ -220,11 +229,13 @@ int main(int argc, char** argv)
             {
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
-                ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().dt, 0.0001f, 0.033f); 
+                ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
                 ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
                 ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
                 ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
-                ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
+                // ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
+                ImGui::Checkbox("Print Energy", &lcsv::get_scene_params().print_system_energy);
+                // ImGui::Checkbox("Print PCG Convergence", &lcsv::get_scene_params().print_pcg_convergence);
 
                 // static const char* items[] = { "A", "B", "C" };
                 // static int current_item = 0;
@@ -239,6 +250,7 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
+                ImGui::Text("Frame %d", lcsv::get_scene_params().current_frame);
                 if (ImGui::Button("Reset", ImVec2(-1, 0))) 
                 {
                     lcsv::get_scene_params().current_frame = 0;
@@ -266,7 +278,7 @@ int main(int argc, char** argv)
                 {
                     solver.lcsv::SolverInterface::save_current_frame_state_to_host(lcsv::get_scene_params().current_frame, "");
                 }
-                static uint state_frame = 3;
+                static uint state_frame = 8;
                 ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
                 if (ImGui::Button("Load State", ImVec2(-1, 0)))
                 {

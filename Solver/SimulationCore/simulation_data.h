@@ -10,15 +10,16 @@ namespace lcsv
 {
 
 template<template<typename...> typename BufferType>
-struct XpbdData : SimulationType
+struct SimulationData : SimulationType
 {
     // template<typename T>
     // using BufferType = Buffer<T>;
     BufferType<float3> sa_x_tilde;
     BufferType<float3> sa_x;
     BufferType<float3> sa_v;
-    BufferType<float3> sa_v_start;
-    BufferType<float3> sa_x_start; // For calculating velocity
+    BufferType<float3> sa_v_step_start;
+    BufferType<float3> sa_x_step_start;
+    BufferType<float3> sa_x_iter_start;
 
     // Merged constraints
     BufferType<uint2> sa_merged_edges; 
