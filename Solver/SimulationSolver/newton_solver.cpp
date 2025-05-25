@@ -1,5 +1,6 @@
 #include <iostream>
 #include <Eigen/Sparse>
+#include <Eigen/Eigenvalues>
 #include "SimulationSolver/descent_solver.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Core/float_nxn.h"
@@ -73,7 +74,29 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         }
     );
 }
-void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+
+// SPD projection
+template<int N>
+Eigen::Matrix<float, N, N> spd_projection(const Eigen::Matrix<float, N, N>& orig_matrix)
+{
+    // Ensure the matrix is symmetric
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<float, N, N>> eigensolver(orig_matrix);
+    Eigen::Matrix<float, N, 1> eigenvalues = eigensolver.eigenvalues();
+    Eigen::Matrix<float, N, N> eigenvectors = eigensolver.eigenvectors();
+
+    // Set negative eigenvalues to zero (or abs, as in your python code)
+    for (int i = 0; i < N; ++i) 
+    {
+        eigenvalues[i] = std::max(0.0f, eigenvalues[i]);
+        // eigenvalues(i) = std::abs(eigenvalues(i));
+    }
+
+    // Reconstruct the matrix: V * diag(lam) * V^T
+    Eigen::Matrix<float, N, N> D = eigenvalues.asDiagonal();
+    return eigenvectors * D * eigenvectors.transpose();
+}
+
+void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     // Input
     {
@@ -211,14 +234,15 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             // If we consider gravity energy here, then we will not consider it in potential energy 
             float3 v_pred = v_prev + substep_dt * outer_acceleration;
             if (sa_is_fixed[vid] != 0) { v_pred = Zero3; };
+
+            sa_x_iter_start[vid] = x_prev;
             const float3 x_pred = x_prev + substep_dt * v_pred; 
             sa_x_tilde[vid] = x_pred;
 
             // sa_x[vid] = x_pred;
-            sa_x[vid] = x_prev; // TODO: Profiling convergence of sa_x and sa_cgX
             // sa_cgX[vid] = v_prev * substep_dt;
+            sa_x[vid] = x_prev;
             sa_cgX[vid] = luisa::make_float3(0.0f);
-            sa_x_iter_start[vid] = x_prev;
         });
     };
 
@@ -249,7 +273,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         });
     };
 
-    // Init vert
+    // Init vert with inertia
     auto evaluate_inertia = [&](const float substep_dt)
     {
         auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
@@ -275,16 +299,17 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
 
             auto is_fixed = sa_is_fixed[vid];
             float mass = sa_vert_mass[vid];
-            float3x3 mat = luisa::make_float3x3(1.0f) * mass * h_2_inv;
-            float3 outer_acceleration = gravity;
-            float3 outer_force = mass * outer_acceleration;
+            
+            float3 gradient = -mass * h_2_inv * (x_k - x_tilde) ; // !should not add gravity
+            float3x3 hessian = luisa::make_float3x3(1.0f) * mass * h_2_inv;
 
             if (is_fixed != 0)
             {
-                mat = mat + luisa::make_float3x3(1.0f) * float(1E9);
+                hessian = luisa::make_float3x3(1.0f) * float(1E9);
+                // mat = luisa::make_float3x3(1.0f);
+                gradient = luisa::make_float3(0.0f);
             };
-
-            float3 gradient = -mass * h_2_inv * (x_k - x_tilde) + outer_force;
+            
             // float3 dx_0 = substep_dt * v_0;
 
             if constexpr (use_eigen) 
@@ -297,7 +322,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                 {
                     for (int jj = 0; jj < 3; ++jj)
                     {
-                        triplets_A[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, mat[jj][ii]); // mat[i][j] is ok???
+                        triplets_A[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
                     }
                 }
                 // Assemble gradient
@@ -308,7 +333,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             {  
                 // sa_cgX[vid] = dx_0;
                 sa_cgB[vid] = gradient;
-                sa_cgA_diag[vid] = mat;
+                sa_cgA_diag[vid] = hessian;
             }
         });
         if constexpr (use_eigen) { eigen_cgA.setFromTriplets(triplets_A.begin(), triplets_A.end()); }
@@ -361,13 +386,29 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                 float C = l - l0;
 
                 float3 dir = diff / l;
-                force[0] = stiffness_stretch_spring * dir * C;
-                force[1] = -force[0];
-
                 float3x3 xxT = outer_product(diff, diff);
                 float x_inv = 1.f / l;
                 float x_squared_inv = x_inv * x_inv;
-                He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1 - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+
+                force[0] = stiffness_stretch_spring * dir * C;
+                force[1] = -force[0];
+                He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+                
+                // Stable but Responsive Cloth
+                // if (C > 0.0f)
+                // {
+                //     force[0] = stiffness_stretch_spring * C * dir;
+                //     force[1] = -force[0];
+                //     He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * (1.0f - L * x_inv) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+                // }
+                
+                // SPD Projection
+                // Eigen::Matrix<float, 6, 6> orig_hessian;
+                // orig_hessian.block<3, 3>(0, 0) = float3x3_to_eigen3x3(He);
+                // orig_hessian.block<3, 3>(3, 3) = float3x3_to_eigen3x3(He);
+                // orig_hessian.block<3, 3>(0, 3) = float3x3_to_eigen3x3(-1.0f * He);
+                // orig_hessian.block<3, 3>(3, 0) = float3x3_to_eigen3x3(-1.0f * He);
+                // Eigen::Matrix<float, 6, 6> projected_hessian = spd_projection(orig_hessian);
 
                 if constexpr (use_eigen) 
                 {
@@ -398,6 +439,8 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                     sa_cgB[edge[1]] = sa_cgB[edge[1]] + force[1];
                     sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + He;
                     sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + He;
+                    // sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 0));
+                    // sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 3));
                     
                     if constexpr (use_upper_triangle)
                     {
@@ -414,6 +457,8 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                     {
                         sa_cgA_offdiag[eid * 2 + 0] = -1.0f * He;
                         sa_cgA_offdiag[eid * 2 + 1] = -1.0f * He;
+                        // sa_cgA_offdiag[eid * 2 + 0] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 3));
+                        // sa_cgA_offdiag[eid * 2 + 1] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 0));
                     }
                     // const uint num_offdiag_upper = 1;
                     // uint edge_offset = 0;
@@ -484,7 +529,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             };
         }); 
     };
-    auto simple_pcg = [&]()
+    auto host_pcg = [&]()
     {
         auto get_dot_rz_rr = [&]() -> float2 // [0] = r^T z, [1] = r^T r
         {
@@ -602,10 +647,20 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
 
         auto pcg_make_preconditioner_jacobi = [&]()
         {
+            auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
+
             CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
             {
                 float3x3 diagA = sa_cgA_diag[vid];
                 float3x3 inv_M = luisa::inverse(diagA);
+
+                // Not available
+                // const bool is_fixed = sa_is_fixed[vid];
+                // if (is_fixed)
+                // {
+                //     inv_M = luisa::make_float3x3(0.0f);
+                // }
+
                 // float3x3 inv_M = luisa::make_float3x3(
                 //     luisa::make_float3(1.0f / diagA[0][0], 0.0f, 0.0f), 
                 //     luisa::make_float3(0.0f, 1.0f / diagA[1][1], 0.0f), 
@@ -664,8 +719,10 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         pcg_make_preconditioner_jacobi();
 
         float normR_0 = 0.0f;
+        float normR = 0.0f;
 
-        for (uint iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+        uint iter = 0;
+        for (iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
         {
             lcsv::get_scene_params().current_pcg_it = iter;
 
@@ -681,7 +738,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
 
             float2 dot_rr_rz = get_dot_rz_rr(); 
             dot_rz = dot_rr_rz[0];
-            float normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+            normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
             save_dot_rz(0, sa_convergence, dot_rz);
 
             const float beta = read_beta(0, sa_convergence);
@@ -689,20 +746,10 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         
             pcg_spmv(sa_cgP, sa_cgQ);
             float dot_pq = fast_dot(sa_cgP, sa_cgQ);
-            save_dot_pq(0, sa_convergence, dot_pq);
-
-            // luisa::log_info("     PCG iter {} : rTz = {}, rTr = {}, pTq = {}",  iter, dot_rz, normR, dot_pq);
-            
-            // 
-            // luisa::log_info("     PCG iter {} : energy = {}", iter, compute_energy(sa_x));
-
+            save_dot_pq(0, sa_convergence, dot_pq);   
 
             if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
             {
-                apply_dx(1.0f);
-                luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, error = {:6.5f}, infinity norm = {:6.5f}, energy = {:6.3f}", 
-                    get_scene_params().current_nonlinear_iter,
-                    iter, normR / normR_0, fast_infinity_norm(sa_cgX), host_compute_energy(sa_x)); // from normR_0 -> normR
                 break;
             }
 
@@ -710,6 +757,11 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             pcg_step(alpha);
         }
 
+        apply_dx(1.0f);
+        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.3f}", 
+            get_scene_params().current_nonlinear_iter,
+            iter, normR / normR_0, fast_infinity_norm(sa_cgX), host_compute_energy(sa_x)); // from normR_0 -> normR
+                
         /*
         for (uint iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
         {
@@ -802,7 +854,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
         else 
         {
             // simple_solve();
-            simple_pcg();
+            host_pcg();
         }
     };
 
@@ -847,9 +899,9 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
             { 
                 auto curr_energy = host_compute_energy(sa_x);
                 uint line_search_count = 0;
-                while (line_search_count < 12)
+                while (line_search_count < 20)
                 {
-                    if (curr_energy < step_start_energy + 0.00001) { break; }
+                    if (curr_energy < step_start_energy) { break; }
                     if (line_search_count == 0)
                     {
                         luisa::log_info("     Line search {} : alpha = 1/{}, energy = {:6.3f} Frame-start-energy = {:6.3f}", 
@@ -859,7 +911,7 @@ void NewtonSolver::physics_step_newton_CPU(luisa::compute::Device& device, luisa
                     line_search_count++;
 
                     curr_energy = host_compute_energy(sa_x);
-                    luisa::log_info("     Line search {} : alpha = 1/{}, energy = {:6.3f}", 
+                    luisa::log_info("     Line search {} : alpha = 1/{}, energy = {}", 
                         line_search_count, (1 << line_search_count), curr_energy);
                 }
             }

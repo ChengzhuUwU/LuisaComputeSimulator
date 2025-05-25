@@ -139,6 +139,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
     fn_predict_position = device.compile<1>(
         [
             sa_x = sim_data->sa_x.view(),
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
             sa_v = sim_data->sa_v.view(),
             sa_x_start = sim_data->sa_x_step_start.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view()
@@ -153,6 +154,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
         $if (sa_is_fixed->read(vid) != 0) { outer_acceleration = Zero3; v_pred = Zero3; };
         const Float3 x_pred = x_prev + substep_dt * v_pred;
         sa_x->write(vid, x_pred);
+        sa_x_tilde->write(vid, x_pred);
     }, default_option);
 
     fn_update_velocity = device.compile<1>(
@@ -194,7 +196,8 @@ void DescentSolver::compile(luisa::compute::Device& device)
         [
             sa_Hf = sim_data->sa_Hf.view(),
             sa_Hf1 = sim_data->sa_Hf1.view(),
-            sa_iter_position = sim_data->sa_x.view(),
+            sa_x = sim_data->sa_x.view(),
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
             sa_x_start = sim_data->sa_x_step_start.view(),
             sa_v = sim_data->sa_v.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view(),
@@ -206,21 +209,20 @@ void DescentSolver::compile(luisa::compute::Device& device)
             const Float h = substep_dt;
             const Float h_2_inv = 1.f / (h * h);
 
-            Float3 x_k = sa_iter_position->read(vid);
-            Float3 x_0 = sa_x_start->read(vid);
-            Float3 v_0 = sa_v->read(vid);
+            Float3 x_k = sa_x->read(vid);
+            Float3 x_tilde = sa_x_tilde->read(vid);
 
             auto is_fixed = sa_is_fixed->read(vid);
             Float mass = sa_vert_mass->read(vid);
             Float3x3 mat = make_float3x3(1.0f) * mass * h_2_inv;
 
-            Float3 outer_force = mass * gravity;
+            // Float3 outer_force = mass * gravity;
 
             $if (is_fixed != 0)
             {
                 mat = make_float3x3(1.0f) * float(1E9);
             };
-            Float3 gradient = -mass * h_2_inv * (x_k - x_0 - v_0 * h) + outer_force;
+            Float3 gradient = -mass * h_2_inv * (x_k - x_tilde) ; // + outer_force;
             
             Float4x3 Hf = makeHf1(gradient, mat); sa_Hf1->write(vid, Hf);
             writeHf(gradient, mat, sa_Hf, vid);
@@ -395,7 +397,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
                 // det
                 Float3x3 H_inv = luisa::compute::inverse(H);
                 Float3 dx = H_inv * f;
-                dx = 0.3f * dx;
+                // dx = 0.3f * dx;
                 // dx *= 0.3f;
                 sa_iter_position->write(vid, sa_iter_position->read(vid) + dx);
             };
@@ -550,12 +552,13 @@ void DescentSolver::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }
-void DescentSolver::physics_step_vbd_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     lcsv::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
+        // TODO: Move copy into SolverInterface
         host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_start[vid];
         host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_start[vid];
         host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_start[vid];

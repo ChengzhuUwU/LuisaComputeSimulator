@@ -19,7 +19,7 @@ public:
 
 public:    
     void physics_step_newton_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void physics_step_newton_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
+    void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void compile(luisa::compute::Device& device);
 
 private:

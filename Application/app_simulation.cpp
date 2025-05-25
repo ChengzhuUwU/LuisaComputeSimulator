@@ -149,8 +149,7 @@ int main(int argc, char** argv)
     }
     auto fn_physics_step = [&]()
     {
-        // solver.physics_step_vbd_CPU(device, stream);
-        solver.physics_step_newton_CPU(device, stream);
+        solver.physics_step_CPU(device, stream);
     };
 
 
@@ -230,7 +229,7 @@ int main(int argc, char** argv)
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
-                ImGui::InputScalar("Num Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
+                ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
                 ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
                 ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
                 ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);

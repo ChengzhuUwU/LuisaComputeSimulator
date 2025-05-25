@@ -263,7 +263,10 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x)
         float l = sqrt_scalar(orig_lengthsqr);
         float l0 = rest_edge_length;
         float C = l - l0;
-        return 0.5f * stiffness_spring * C * C;
+        float energy = 0.0f;
+        // if (C > 0.0f)
+            energy = 0.5f * stiffness_spring * C * C;
+        return energy;
     };
 
     double energy_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
