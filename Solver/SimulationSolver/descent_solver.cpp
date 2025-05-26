@@ -502,8 +502,8 @@ void DescentSolver::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::
     // Get frame start position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
-        host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_start[vid];
-        host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_start[vid];
+        host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
     
     // Upload to GPU
@@ -547,8 +547,8 @@ void DescentSolver::physics_step_vbd_GPU(luisa::compute::Device& device, luisa::
     // Return frame end position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
-        host_mesh_data->sa_x_frame_end[vid] = host_sim_data->sa_x[vid];
-        host_mesh_data->sa_v_frame_end[vid] = host_sim_data->sa_v[vid];
+        host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
+        host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }
@@ -559,10 +559,10 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
         // TODO: Move copy into SolverInterface
-        host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_start[vid];
-        host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_start[vid];
-        host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_start[vid];
-        host_sim_data->sa_v_step_start[vid] = host_mesh_data->sa_v_frame_start[vid];
+        host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
+        host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        host_sim_data->sa_v_step_start[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
     std::fill(host_mesh_data->sa_system_energy.begin(), host_mesh_data->sa_system_energy.end(), 0.0f);
     
@@ -775,8 +775,8 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     // Return frame end position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
-        host_mesh_data->sa_x_frame_end[vid] = host_sim_data->sa_x[vid];
-        host_mesh_data->sa_v_frame_end[vid] = host_sim_data->sa_v[vid];
+        host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
+        host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }

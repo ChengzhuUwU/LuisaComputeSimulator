@@ -74,12 +74,10 @@ struct MeshData : SimulationType
     BufferType<float> sa_pcg_convergence;
 
     // Host only
-    std::vector<float3> sa_x_frame_start;
-    std::vector<float3> sa_v_frame_start;
     std::vector<float3> sa_x_frame_saved;
     std::vector<float3> sa_v_frame_saved;
-    std::vector<float3> sa_x_frame_end;
-    std::vector<float3> sa_v_frame_end;
+    std::vector<float3> sa_x_frame_outer;
+    std::vector<float3> sa_v_frame_outer;
 
     std::vector<uint> prefix_num_verts;
     std::vector<uint> prefix_num_faces;

@@ -362,8 +362,9 @@ bool read_tet_file_vtk(std::string mesh_name, std::vector<Float3>& position, std
 bool read_mesh_file(std::string mesh_name, TriangleMeshData& meshes);
 // bool read_tet_file_t(std::string mesh_name, TetrahedralMeshData& meshes);
 
-bool saveToOBJ_saperately(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame);
-bool saveToOBJ_combined(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame);
-
-
+// template<typename Vert, typename Face>
+bool saveToOBJ_combined(
+    std::vector<std::vector<Float3>> sa_rendering_vertices, 
+    std::vector<std::vector<Int3>> sa_rendering_faces, 
+    const std::string& addition_str, const uint frame);
 };

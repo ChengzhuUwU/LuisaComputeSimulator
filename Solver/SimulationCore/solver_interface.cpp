@@ -11,8 +11,8 @@ void SolverInterface::physics_step_prev_operation()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
     {
-        host_mesh_data->sa_x_frame_start[vid] = host_mesh_data->sa_x_frame_end[vid];
-        host_mesh_data->sa_v_frame_start[vid] = host_mesh_data->sa_v_frame_end[vid];
+        // host_mesh_data->sa_x_frame_start[vid] = host_mesh_data->sa_x_frame_end[vid];
+        // host_mesh_data->sa_v_frame_start[vid] = host_mesh_data->sa_v_frame_end[vid];
     });
 }
 void SolverInterface::physics_step_post_operation()
@@ -25,20 +25,18 @@ void SolverInterface::restart_system()
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
     {
         auto rest_pos = host_mesh_data->sa_rest_x[vid];
-        host_mesh_data->sa_x_frame_start[vid] = rest_pos;
-        host_mesh_data->sa_x_frame_end[vid] = rest_pos;
+        host_mesh_data->sa_x_frame_outer[vid] = rest_pos;
 
         auto rest_vel = host_mesh_data->sa_rest_v[vid];
-        host_mesh_data->sa_v_frame_start[vid] = rest_vel;
-        host_mesh_data->sa_v_frame_end[vid] = rest_vel;
+        host_mesh_data->sa_v_frame_outer[vid] = rest_vel;
     });
 }
 void SolverInterface::save_current_frame_state()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
     {
-        host_mesh_data->sa_x_frame_saved[vid] = host_mesh_data->sa_x_frame_end[vid];
-        host_mesh_data->sa_v_frame_saved[vid] = host_mesh_data->sa_v_frame_end[vid];
+        host_mesh_data->sa_x_frame_saved[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        host_mesh_data->sa_v_frame_saved[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
 }
 void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
@@ -98,12 +96,10 @@ void SolverInterface::load_saved_state()
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
     {
         auto saved_pos = host_mesh_data->sa_x_frame_saved[vid];
-        host_mesh_data->sa_x_frame_start[vid] = saved_pos;
-        host_mesh_data->sa_x_frame_end[vid] = saved_pos;
+        host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
 
         auto saved_vel = host_mesh_data->sa_v_frame_saved[vid];
-        host_mesh_data->sa_v_frame_start[vid] = saved_vel;
-        host_mesh_data->sa_v_frame_end[vid] = saved_vel;
+        host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
     });
 }
 void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
@@ -206,19 +202,26 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
         // Cloth Part
         // if (lcsv::get_scene_params().draw_cloth)
         {
-            // for (uint clothIdx = 0; clothIdx < cloth_data.num_cloths; clothIdx++) 
-            const uint clothIdx = 0;
+            const uint num_clothes = host_mesh_data->prefix_num_verts.size() - 1;
+            for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++) 
             {
-                file << "o mesh_" << (glocal_mesh_id_prefix + clothIdx) << std::endl;
-                for (uint vid = 0; vid < host_mesh_data->num_verts; vid++) {
-                    const auto vertex = host_mesh_data->sa_x_frame_end[vid];
-                    file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
-                }
+                const uint curr_prefix_num_verts = host_mesh_data->prefix_num_verts[clothIdx];
+                const uint next_prefix_num_verts = host_mesh_data->prefix_num_verts[clothIdx + 1];
+                const uint curr_prefix_num_faces = host_mesh_data->prefix_num_faces[clothIdx];
+                const uint next_prefix_num_faces = host_mesh_data->prefix_num_faces[clothIdx + 1];
 
-                for (uint fid = 0; fid < host_mesh_data->num_faces; fid++) {
-                    const auto vid_prefix = glocal_vert_id_prefix + 1;
-                    const auto f = host_mesh_data->sa_faces[fid];
-                    file << "f " << vid_prefix + f.x << " " << vid_prefix + f.y << " " << vid_prefix + f.z << std::endl;
+                {
+                    file << "o mesh_" << (glocal_mesh_id_prefix + clothIdx) << std::endl;
+                    for (uint vid = 0; vid < next_prefix_num_verts - curr_prefix_num_verts; vid++) {
+                        const auto vertex = host_mesh_data->sa_x_frame_outer[curr_prefix_num_verts + vid];
+                        file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
+                    }
+    
+                    for (uint fid = 0; fid < next_prefix_num_faces - curr_prefix_num_faces; fid++) {
+                        const auto vid_prefix = glocal_vert_id_prefix + 1;
+                        const auto f = host_mesh_data->sa_faces[curr_prefix_num_faces + fid];
+                        file << "f " << vid_prefix + f.x << " " << vid_prefix + f.y << " " << vid_prefix + f.z << std::endl;
+                    }
                 }
             }
             glocal_vert_id_prefix += host_mesh_data->num_verts;

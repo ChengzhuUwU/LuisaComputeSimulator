@@ -346,11 +346,8 @@ void init_mesh_data(
 
     // Init vert status
     {
-        mesh_data->sa_x_frame_start.resize(num_verts); mesh_data->sa_x_frame_start = mesh_data->sa_rest_x;
-        mesh_data->sa_v_frame_start.resize(num_verts); mesh_data->sa_v_frame_start = mesh_data->sa_rest_v;
-
-        mesh_data->sa_x_frame_end.resize(num_verts); mesh_data->sa_x_frame_end = mesh_data->sa_rest_x;
-        mesh_data->sa_v_frame_end.resize(num_verts); mesh_data->sa_v_frame_end = mesh_data->sa_rest_v;
+        mesh_data->sa_x_frame_outer.resize(num_verts); mesh_data->sa_x_frame_outer = mesh_data->sa_rest_x;
+        mesh_data->sa_v_frame_outer.resize(num_verts); mesh_data->sa_v_frame_outer = mesh_data->sa_rest_v;
 
         mesh_data->sa_x_frame_saved.resize(num_verts); mesh_data->sa_x_frame_saved = mesh_data->sa_rest_x;
         mesh_data->sa_v_frame_saved.resize(num_verts); mesh_data->sa_v_frame_saved = mesh_data->sa_rest_v;

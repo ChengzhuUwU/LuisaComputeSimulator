@@ -1,7 +1,6 @@
 #include "MeshOperation/mesh_reader.h"
 #include <filesystem>
 
-
 namespace SimMesh
 {
 
@@ -339,38 +338,73 @@ bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, st
 }
 
 
-bool saveToOBJ_combined(const Float3* vertices, const Int3* faces, const uint* prefix_verts, const uint* prefix_faces, const uint num_clothes, const std::string& filename, const uint frame) {
+// template<typename Vert, typename Face>
+bool saveToOBJ_combined(
+    std::vector<std::vector<Float3>> sa_rendering_vertices, 
+    std::vector<std::vector<Int3>> sa_rendering_faces, 
+    const std::string& addition_str, const uint frame) 
+{
+    const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
+    std::string full_path = full_directory + filename;
 
-    
-    std::string full_path = std::string(LCSV_RESOURCE_PATH) + std::string("/output/") + filename + "_" + std::to_string(frame) + ".obj";
-    std::ofstream file(full_path, std::ios::out);
-
-    if (file.is_open()) {
-        file << "# File Simulated From <Heterogeneous Cloth Simulation>" << std::endl;
-        
-        for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++) {
-            file << "o cloth_" << clothIdx << std::endl;
-            file << "# " << prefix_verts[clothIdx + 1] - prefix_verts[clothIdx] << " points" << std::endl;
-            file << "# " << 3 * (prefix_faces[clothIdx + 1] - prefix_faces[clothIdx]) << " vertices" << std::endl;
-            file << "# " << (prefix_faces[clothIdx + 1] - prefix_faces[clothIdx]) << " primitives" << std::endl;
-            for (uint vid = prefix_verts[clothIdx]; vid < prefix_verts[clothIdx + 1]; vid++) {
-                const Float3 vertex = vertices[vid];
-                file << "v " << vertex[0] << " " << vertex[1] << " " << vertex[2] << std::endl;
-            }
-
-            for (uint fid = prefix_faces[clothIdx]; fid < prefix_faces[clothIdx + 1]; fid++) {
-                const Int3 f = faces[fid] ; // + makeInt3(1, 1, 1);
-                file << "f " << f[0] + 1 << " " << f[1] + 1 << " " << f[2] + 1 << std::endl;
+    // Ensure the directory exists
+    {
+        std::filesystem::path dir_path(full_directory);
+        if (!std::filesystem::exists(dir_path)) 
+        {
+            try 
+            {
+                std::filesystem::create_directories(dir_path);
+                std::cout << "Created directory: " << dir_path << std::endl;
+            } 
+            catch (const std::filesystem::filesystem_error& e) 
+            {
+                std::cerr << "Error creating directory: " << e.what() << std::endl;
+                return false;
             }
         }
+    }
+    
+    std::ofstream file(full_path, std::ios::out);
+    if (file.is_open()) 
+    {
+        file << "# Simulated by LuisaComputeSolver" << std::endl;
+        uint prefix_vid = 1;
+        for (uint meshIdx = 0; meshIdx < sa_rendering_vertices.size(); meshIdx++) 
+        {
+            const auto& curr_vertices = sa_rendering_vertices[meshIdx];
+            const auto& curr_faces = sa_rendering_faces[meshIdx];
+
+            file << "o mesh_" << meshIdx << std::endl;
+            for (uint vid = 0; vid < curr_vertices.size(); vid++) 
+            {
+                const auto vertex = curr_vertices[vid];
+                file << "v " 
+                    << vertex[0] << " " 
+                    << vertex[1] << " " 
+                    << vertex[2] << std::endl;
+            }
+
+            for (uint fid = 0; fid < curr_faces.size(); fid++) 
+            {
+                const auto f = curr_faces[fid];
+                file << "f " 
+                    << (prefix_vid + f[0]) << " " 
+                    << (prefix_vid + f[1]) << " " 
+                    << (prefix_vid + f[2]) << std::endl;
+            }
+            prefix_vid += curr_vertices.size();
+        }
+
+        
         file.close();
         std::cout << "OBJ file saved: " << full_path << std::endl;
-        std::cout << "mesh_prefix = [";
-        for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++) { std::cout << prefix_verts[clothIdx] << ", "; } 
-        std::cout << prefix_verts[num_clothes] << "]" << std::endl;
-            
+ 
         return true;
-    } else {
+    } 
+    else 
+    {
         std::cerr << "Unable to open file: " << full_path << std::endl;
         return false;
     }

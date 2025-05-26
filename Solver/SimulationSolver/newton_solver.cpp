@@ -164,10 +164,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     CpuParallel::parallel_for(0, sa_x.size(), [&](const uint vid)
     {
-        sa_x[vid] = host_mesh_data->sa_x_frame_start[vid];
-        sa_v[vid] = host_mesh_data->sa_v_frame_start[vid];
-        sa_x_step_start[vid] = host_mesh_data->sa_x_frame_start[vid];
-        sa_v_step_start[vid] = host_mesh_data->sa_v_frame_start[vid];
+        sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
+        sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        sa_v_step_start[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
 
 
@@ -925,8 +925,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         CpuParallel::parallel_for(0, sa_x.size(), [&](const uint vid)
         {
-            host_mesh_data->sa_x_frame_end[vid] = sa_x[vid];
-            host_mesh_data->sa_v_frame_end[vid] = sa_v[vid];
+            host_mesh_data->sa_x_frame_outer[vid] = sa_x[vid];
+            host_mesh_data->sa_v_frame_outer[vid] = sa_v[vid];
         });
         lcsv::SolverInterface::physics_step_post_operation(); 
     }
