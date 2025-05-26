@@ -81,6 +81,11 @@ struct MeshData : SimulationType
     std::vector<float3> sa_x_frame_end;
     std::vector<float3> sa_v_frame_end;
 
+    std::vector<uint> prefix_num_verts;
+    std::vector<uint> prefix_num_faces;
+    std::vector<uint> prefix_num_edges;
+    std::vector<uint> prefix_num_bending_edges;
+
     std::vector< std::vector<uint> > vert_adj_verts;
     std::vector< std::vector<uint> > vert_adj_verts_with_bending;
     std::vector< std::vector<uint> > vert_adj_faces;

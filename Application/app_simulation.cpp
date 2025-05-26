@@ -93,6 +93,15 @@ int main(int argc, char** argv)
             }
         }
     });
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "square8K.obj",
+        .transform = luisa::make_float3(0.0f, 1.0f, 0.0f),
+        .fixed_point_info = {
+            lcsv::Initializater::FixedPointInfo{
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
+            }
+        }
+    });
 
     // Init data
     lcsv::MeshData<std::vector> cpu_mesh_data;
@@ -160,7 +169,6 @@ int main(int argc, char** argv)
     constexpr bool use_ui = true; 
     if constexpr (!use_ui)
     {
-
         auto fn_single_step_without_ui = [&]()
         {
             luisa::log_info("     Newton solver frame {}", lcsv::get_scene_params().current_frame);   
@@ -181,39 +189,68 @@ int main(int argc, char** argv)
     else
     {
         // Init rendering data
-        std::vector<glm::vec3> sa_rendering_vertices(cpu_mesh_data.num_verts);
-        std::vector<std::vector<uint>> sa_rendering_faces(cpu_mesh_data.num_faces);
-        CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
+        std::vector<std::vector<glm::vec3>> sa_rendering_vertices(shell_list.size() + 0 + 0);
+        std::vector<std::vector<std::vector<uint>>> sa_rendering_faces(shell_list.size() + 0 + 0);
+        // std::vector<glm::vec3> sa_rendering_vertices(cpu_mesh_data.num_verts);
+        // std::vector<std::vector<uint>> sa_rendering_faces(cpu_mesh_data.num_faces);
+        for (uint i = 0; i < shell_list.size(); i++)
         {
-            auto pos = cpu_mesh_data.sa_rest_x[vid];
-            sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
-        });
-        CpuParallel::parallel_for(0, cpu_mesh_data.num_faces, [&](const uint fid)
-        {
-            auto face = cpu_mesh_data.sa_faces[fid];
-            sa_rendering_faces[fid] = {face[0], face[1], face[2]};
-        });
+            sa_rendering_vertices[i].resize(cpu_mesh_data.prefix_num_verts[i + 1] - cpu_mesh_data.prefix_num_verts[i]);
+            sa_rendering_faces[i].resize(cpu_mesh_data.prefix_num_faces[i + 1] - cpu_mesh_data.prefix_num_faces[i]);
+
+            const uint curr_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i];
+            const uint next_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i + 1];
+            const uint curr_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i];
+            const uint next_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i + 1];
+
+            CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
+            {
+                auto pos = cpu_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
+                sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
+            });
+            CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
+            {
+                auto face = cpu_mesh_data.sa_faces[curr_prefix_num_faces + fid];
+                sa_rendering_faces[i][fid] = std::vector({
+                    face[0] - curr_prefix_num_verts, 
+                    face[1] - curr_prefix_num_verts, 
+                    face[2] - curr_prefix_num_verts});
+            });
+        }
+        
 
         // Init Polyscope
         polyscope::init("openGL3_glfw");
-        polyscope::registerSurfaceMesh("cloth1", sa_rendering_vertices, sa_rendering_faces);
-        polyscope::SurfaceMesh* surface_mesh = polyscope::getSurfaceMesh("cloth1"); // surface_mesh->setEnabled(false);
+        std::vector<polyscope::SurfaceMesh*> surface_meshes;
+        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+        {
+            const std::string& curr_mesh_name = shell_list[clothIdx].model_name + std::to_string(clothIdx);
+            polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
+                curr_mesh_name, 
+                sa_rendering_vertices[clothIdx], 
+                sa_rendering_faces[clothIdx]
+            );
+            curr_mesh_ptr->setEnabled(true);
+            surface_meshes.push_back(curr_mesh_ptr);
+        }
         polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
 
         // Define single step in GUI
         auto fn_update_rendering_vertices = [&]()
         {
-            CpuParallel::parallel_for(0, cpu_mesh_data.num_verts, [&](const uint vid)
+            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
-                auto pos = cpu_mesh_data.sa_x_frame_end[vid];
-                sa_rendering_vertices[vid] = glm::vec3(pos.x, pos.y, pos.z);
-            });
-            surface_mesh->updateVertexPositions(sa_rendering_vertices);
+                CpuParallel::parallel_for(0, cpu_mesh_data.prefix_num_verts[clothIdx + 1] - cpu_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
+                {
+                    auto pos = cpu_mesh_data.sa_x_frame_end[vid + cpu_mesh_data.prefix_num_verts[clothIdx]];
+                    sa_rendering_vertices[clothIdx][vid] = glm::vec3(pos.x, pos.y, pos.z);
+                });
+                surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
+            }
         };
         auto fn_single_step_with_ui = [&]()
         {
             // luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
-
             fn_physics_step();
 
             lcsv::get_scene_params().current_frame += 1; 

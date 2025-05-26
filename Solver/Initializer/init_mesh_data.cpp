@@ -15,10 +15,10 @@ namespace Initializater
 
 // template<template<typename> typename BasicBuffer>
 void init_mesh_data(
-    const std::vector<lcsv::Initializater::ShellInfo>& shell_list, 
+    const std::vector<lcsv::Initializater::ShellInfo>& shell_infos, 
     lcsv::MeshData<std::vector>* mesh_data)
 {
-    const uint num_clothes = shell_list.size();
+    const uint num_clothes = shell_infos.size();
     std::vector<SimMesh::TriangleMeshData> input_meshes(num_clothes);
 
     mesh_data->num_verts = 0;
@@ -26,11 +26,16 @@ void init_mesh_data(
     mesh_data->num_edges = 0;
     mesh_data->num_bending_edges = 0;
 
+    mesh_data->prefix_num_verts.resize(num_clothes, 0);
+    mesh_data->prefix_num_faces.resize(num_clothes, 0);
+    mesh_data->prefix_num_edges.resize(num_clothes, 0);
+    mesh_data->prefix_num_bending_edges.resize(num_clothes, 0);
+
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
     for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
     {
-        const auto& shell_info = shell_list[clothIdx];
+        const auto& shell_info = shell_infos[clothIdx];
         auto& input_mesh = input_meshes[clothIdx]; // TODO: Get (multiple) original mesh data from params
         bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
 
@@ -40,11 +45,21 @@ void init_mesh_data(
         //     obj_name = path.stem().string();
         // }
 
+        mesh_data->prefix_num_verts[clothIdx] = mesh_data->num_verts;
+        mesh_data->prefix_num_faces[clothIdx] = mesh_data->num_faces;
+        mesh_data->prefix_num_edges[clothIdx] = mesh_data->num_edges;
+        mesh_data->prefix_num_bending_edges[clothIdx] = mesh_data->num_bending_edges;
+
         mesh_data->num_verts += input_mesh.model_positions.size();
         mesh_data->num_faces += input_mesh.faces.size();
         mesh_data->num_edges += input_mesh.edges.size();
         mesh_data->num_bending_edges += input_mesh.bending_edges.size();
     }
+
+    mesh_data->prefix_num_verts[num_clothes] = mesh_data->num_verts;
+    mesh_data->prefix_num_faces[num_clothes] = mesh_data->num_faces;
+    mesh_data->prefix_num_edges[num_clothes] = mesh_data->num_edges;
+    mesh_data->prefix_num_bending_edges[num_clothes] = mesh_data->num_bending_edges;
 
     uint num_verts = mesh_data->num_verts;
     uint num_faces = mesh_data->num_faces;
@@ -81,7 +96,7 @@ void init_mesh_data(
 
         for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
         {
-            const auto& shell_info = shell_list[clothIdx];
+            const auto& shell_info = shell_infos[clothIdx];
             const auto& input_mesh = input_meshes[clothIdx];
 
             const uint curr_num_verts = input_mesh.model_positions.size();
