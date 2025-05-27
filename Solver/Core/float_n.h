@@ -134,30 +134,6 @@ struct struct_member_tuple<luisa::XMatrix<4, 3>> {
 
 } // namespace luisa::compute
 
-namespace luisa::compute 
-{
-
-    [[nodiscard]] inline Float4x3 make_float4x3(const Float3& c0, const Float3& c1, const Float3& c2, const Float3& c3) noexcept 
-    {
-        Float4x3 mat;
-        mat.cols[0] = c0;
-        mat.cols[1] = c1;
-        mat.cols[2] = c2;
-        mat.cols[3] = c3;
-        return mat;
-    }
-    // inline Float4x3 operator+(const Float4x3& lhs, const Float4x3& rhs) 
-    // {
-    //     return make_float4x3(
-    //         lhs.cols[0] + rhs.cols[0], 
-    //         lhs.cols[1] + rhs.cols[1], 
-    //         lhs.cols[2] + rhs.cols[2], 
-    //         lhs.cols[3] + rhs.cols[3]);
-    // }
-
-}
-
-
 
 namespace lcsv
 {
@@ -166,6 +142,9 @@ using float2 = luisa::float2;
 using float3 = luisa::float3;
 using float4 = luisa::float4;
 using uint = unsigned int; // luisa::uint;
+using int2 = luisa::int2;
+using int3 = luisa::int3;
+using int4 = luisa::int4;
 using uint2 = luisa::uint2;
 using uint3 = luisa::uint3;
 using uint4 = luisa::uint4;
@@ -178,53 +157,125 @@ using float2x3 = luisa::float2x3;
 using float4x3 = luisa::float4x3;
 // using ElementOffset = luisa::ubyte4;
 
+template<typename T>
+using Var = luisa::compute::Var<T>;
 
-#define Float3_zero make<Float3>(0)
-#define Float3_one  make<Float3>(1)
-#define FLOAT3_MAX  make<Float3>(Float_max)
-#define FLOAT3_EPSILON make<Float3>(EPSILON)
+#define Float3_zero makeFloat3(0)
+#define Float3_one  makeFloat3(1)
+#define FLOAT3_MAX  makeFloat3(Float_max)
+#define FLOAT3_EPSILON makeFloat3(EPSILON)
 
-#define Color_Rre    luisa::make_float4(0.9f, 0.1f, 0.1f, 1.f)
-#define Color_Green  luisa::make_float4(0.1f, 0.9f, 0.1f, 1.f)
-#define Color_Blue   luisa::make_float4(0.1f, 0.1f, 0.9f, 1.f)
-#define Color_Yellow luisa::make_float4(0.9f, 0.9f, 0.1f, 1.f)
-#define Color_Orange luisa::make_float4(0.9f, 0.5f, 0.1f, 1.f)
-#define Color_Purple luisa::make_float4(0.5f, 0.1f, 0.9f, 1.f)
-#define Color_Cyan   luisa::make_float4(0.1f, 0.9f, 0.9f, 1.f)
-#define Zero2        luisa::make_float2(0.f, 0.f)
-#define Zero3        luisa::make_float3(0.f, 0.f, 0.f)
-#define Zero4        luisa::make_float4(0.f, 0.f, 0.f, 0.f)
+#define Color_Rre    makeFloat4(0.9f, 0.1f, 0.1f, 1.f)
+#define Color_Green  makeFloat4(0.1f, 0.9f, 0.1f, 1.f)
+#define Color_Blue   makeFloat4(0.1f, 0.1f, 0.9f, 1.f)
+#define Color_Yellow makeFloat4(0.9f, 0.9f, 0.1f, 1.f)
+#define Color_Orange makeFloat4(0.9f, 0.5f, 0.1f, 1.f)
+#define Color_Purple makeFloat4(0.5f, 0.1f, 0.9f, 1.f)
+#define Color_Cyan   makeFloat4(0.1f, 0.9f, 0.9f, 1.f)
+#define Zero2        makeFloat2(0.f, 0.f)
+#define Zero3        makeFloat3(0.f, 0.f, 0.f)
+#define Zero4        makeFloat4(0.f, 0.f, 0.f, 0.f)
+
+
+constexpr inline float2 makeFloat2(const float x = 0.0f) { return luisa::make_float2(x, x); }
+constexpr inline float2 makeFloat2(const float x, const float y) { return luisa::make_float2(x, y); }
+constexpr inline float3 makeFloat3(const float x = 0.0f) { return luisa::make_float3(x, x, x); }
+constexpr inline float3 makeFloat3(const float x, const float y, const float z)  { return luisa::make_float3(x, y, z); }
+constexpr inline float4 makeFloat4(const float x = 0.0f)  { return luisa::make_float4(x, x, x, x); }
+constexpr inline float4 makeFloat4(const float x, const float y, const float z, const float w)  { return luisa::make_float4(x, y, z, w); }
+
+inline Var<float2> makeFloat2(const Var<float> x = 0.0f) { return luisa::compute::make_float2(x, x); }
+inline Var<float2> makeFloat2(const Var<float> x, const Var<float> y) { return luisa::compute::make_float2(x, y); }
+inline Var<float3> makeFloat3(const Var<float> x = 0.0f) { return luisa::compute::make_float3(x, x, x); }
+inline Var<float3> makeFloat3(const Var<float> x, const Var<float> y, const Var<float> z)  { return luisa::compute::make_float3(x, y, z); }
+inline Var<float4> makeFloat4(const Var<float> x = 0.0f)  { return luisa::compute::make_float4(x, x, x, x); }
+inline Var<float4> makeFloat4(const Var<float> x, const Var<float> y, const Var<float> z, const Var<float> w)  { return luisa::compute::make_float4(x, y, z, w); }
+
+
+constexpr inline int2 makeInt2(const int x = 0) { return luisa::make_int2(x, x); }
+constexpr inline int2 makeInt2(const int x, const int y) { return luisa::make_int2(x, y); }
+constexpr inline int3 makeInt3(const int x = 0) { return luisa::make_int3(x, x, x); }
+constexpr inline int3 makeInt3(const int x, const int y, const int z)  { return luisa::make_int3(x, y, z); }
+constexpr inline int4 makeInt4(const int x = 0)  { return luisa::make_int4(x, x, x, x); }
+constexpr inline int4 makeInt4(const int x, const int y, const int z, const int w)  { return luisa::make_int4(x, y, z, w); }
+
+inline Var<int2> makeInt2(const Var<int> x = 0) { return luisa::compute::make_int2(x, x); }
+inline Var<int2> makeInt2(const Var<int> x, const Var<int> y) { return luisa::compute::make_int2(x, y); }
+inline Var<int3> makeInt3(const Var<int> x = 0) { return luisa::compute::make_int3(x, x, x); }
+inline Var<int3> makeInt3(const Var<int> x, const Var<int> y, const Var<int> z)  { return luisa::compute::make_int3(x, y, z); }
+inline Var<int4> makeInt4(const Var<int> x = 0)  { return luisa::compute::make_int4(x, x, x, x); }
+inline Var<int4> makeInt4(const Var<int> x, const Var<int> y, const Var<int> z, const Var<int> w)  { return luisa::compute::make_int4(x, y, z, w); }
+
+
+constexpr inline uint2 makeUint2(const uint x = 0) { return luisa::make_uint2(x, x); }
+constexpr inline uint2 makeUint2(const uint x, const int y) { return luisa::make_uint2(x, y); }
+constexpr inline uint3 makeUint3(const uint x = 0) { return luisa::make_uint3(x, x, x); }
+constexpr inline uint3 makeUint3(const uint x, const int y, const int z)  { return luisa::make_uint3(x, y, z); }
+constexpr inline uint4 makeUint4(const uint x = 0)  { return luisa::make_uint4(x, x, x, x); }
+constexpr inline uint4 makeUint4(const uint x, const int y, const int z, const int w)  { return luisa::make_uint4(x, y, z, w); }
+
+inline Var<uint2> makeUint2(const Var<uint> x = 0) { return luisa::compute::make_uint2(x, x); }
+inline Var<uint2> makeUint2(const Var<uint> x, const Var<uint> y) { return luisa::compute::make_uint2(x, y); }
+inline Var<uint3> makeUint3(const Var<uint> x = 0) { return luisa::compute::make_uint3(x, x, x); }
+inline Var<uint3> makeUint3(const Var<uint> x, const Var<uint> y, const Var<uint> z)  { return luisa::compute::make_uint3(x, y, z); }
+inline Var<uint4> makeUint4(const Var<uint> x = 0)  { return luisa::compute::make_uint4(x, x, x, x); }
+inline Var<uint4> makeUint4(const Var<uint> x, const Var<uint> y, const Var<uint> z, const Var<uint> w)  { return luisa::compute::make_uint4(x, y, z, w); }
+
+namespace Meta
+{
+
+template <typename T> struct get_vec_length;
+template <typename T, uint N> struct get_vec_length<luisa::Vector<T, N>> 
+{
+    static constexpr uint value = N;
+};
+template <typename T, uint N> struct get_vec_length<Var<luisa::compute::Vector<T, N>>> 
+{
+    static constexpr uint value = N;
+};
+
+template <typename T> struct get_matrix_length;
+template <uint N> struct get_matrix_length<luisa::Matrix<N>> 
+{
+    static constexpr uint value = N;
+};
+
+
+
+};
 
 
 template<typename Vec> inline Vec normalize_vec(const Vec& vec) {return luisa::normalize(vec);}
-template<typename Vec> inline auto length_vec(const Vec& vec) { return luisa::length(vec); }
-template<typename Vec> inline Vec reverse_vec(const Vec& vec) { return 1.f / vec;}
+template<typename Vec> inline float length_vec(const Vec& vec) { return luisa::length(vec); }
 template<typename Vec> inline Vec abs_vec(const Vec& vec) { return luisa::abs(vec); }
-
 template<typename Vec> inline Vec cross_vec(const Vec& vec1, const Vec& vec2)   { return luisa::cross(vec1, vec2);   }
-template<typename Vec> inline auto dot_vec(const Vec& vec1, const Vec& vec2)    { return luisa::dot(vec1, vec2);     }
+template<typename Vec> inline float dot_vec(const Vec& vec1, const Vec& vec2)    { return luisa::dot(vec1, vec2);     }
 template<typename Vec> inline Vec max_vec(const Vec& vec1, const Vec& vec2) { return luisa::max(vec1, vec2); }
 template<typename Vec> inline Vec min_vec(const Vec& vec1, const Vec& vec2) { return luisa::min(vec1, vec2); }
 
+template<typename Vec> inline Var<Vec> normalize_vec(const Var<Vec>& vec) {return luisa::compute::normalize(vec);}
+template<typename Vec> inline Var<float> length_vec(const Var<Vec>& vec) { return luisa::compute::length(vec); }
+template<typename Vec> inline Var<Vec> abs_vec(const Var<Vec>& vec) { return luisa::compute::abs(vec); }
+template<typename Vec> inline Var<Vec> cross_vec(const Var<Vec>& vec1, const Var<Vec>& vec2)   { return luisa::compute::cross(vec1, vec2);   }
+template<typename Vec> inline Var<float> dot_vec(const Var<Vec>& vec1, const Var<Vec>& vec2)    { return luisa::compute::dot(vec1, vec2);     }
+template<typename Vec> inline Var<Vec> max_vec(const Var<Vec>& vec1, const Var<Vec>& vec2) { return luisa::compute::max(vec1, vec2); }
+template<typename Vec> inline Var<Vec> min_vec(const Var<Vec>& vec1, const Var<Vec>& vec2) { return luisa::compute::min(vec1, vec2); }
+
+template<typename Vec> inline Vec reverse_vec(const Vec& vec) { return 1.f / vec;}
 template<typename Vec> inline auto safe_length_vec(const Vec& vec) { return length_vec(vec) + lcsv::Epsilon; }
 
-// template<typename Vec, uint N = Meta::get_vec_length<Vec>()> 
-// inline float sum_vec(const Vec& vec) { 
-//     float value = vec[0];
-//     for(uint i = 1; i < N; i++){ value += vec[i];} 
-//     return value;
-// }
+
 
 template<typename Vec, uint N> inline auto min_component_vec(const Vec& vec) 
 { 
     auto min_value = vec[0];
-    for (uint i = 1; i < N; i++){ min_value = min_scalar(min_value, vec[i]);} 
+    for (uint i = 1; i < N; i++) { min_value = min_scalar(min_value, vec[i]);} 
     return min_value;
 }
 template<typename Vec, uint N> inline auto max_component_vec(const Vec& vec) 
 { 
     auto max_value = vec[0];
-    for (uint i = 1; i < N; i++){ max_value = max_scalar(max_value, vec[i]); } 
+    for (uint i = 1; i < N; i++) { max_value = max_scalar(max_value, vec[i]); } 
     return max_value;
 }
 
@@ -276,7 +327,8 @@ inline bool is_nan_vec(const luisa::Vector<T, N>& vec)
 
 
 template<typename T, size_t N> 
-inline float sum_vec(luisa::Vector<T, N> vec) { 
+inline float sum_vec(luisa::Vector<T, N> vec) 
+{ 
     float value = vec[0];
     for (uint i = 1; i < N; i++){ value += vec[i];} 
     return value;
