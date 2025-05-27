@@ -19,7 +19,8 @@ struct FixedPointInfo
     bool use_rotate = false;
     float3 rotCenter;
     float3 rotAxis;
-    float3 rotDeg;
+    float rotAngVelDeg;
+    std::vector<uint> fixed_point_verts; 
 };
 struct ShellInfo
 {
@@ -31,7 +32,7 @@ struct ShellInfo
 };
 
 void init_mesh_data(
-    const std::vector<lcsv::Initializater::ShellInfo>& shell_list, 
+    std::vector<lcsv::Initializater::ShellInfo>& shell_list, 
     lcsv::MeshData<std::vector>* mesh_data);
 void upload_mesh_buffers(
     luisa::compute::Device& device, 

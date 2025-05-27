@@ -17,6 +17,7 @@
 
 #include <polyscope/polyscope.h>
 #include <polyscope/surface_mesh.h>
+#include <Eigen/Dense>
 
 template<typename T>
 using Buffer = luisa::compute::Buffer<T>;
@@ -75,7 +76,10 @@ int main(int argc, char** argv)
     std::string    backend          = "cuda";
 #endif
     const std::string binary_path(argv[0]);
-    luisa::compute::Context context{ argv[0] };
+    luisa::compute::Context context{ binary_path };
+    luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
+    if (device_names.empty()) { LUISA_WARNING("No haredware device found."); exit(1); }
+    for (size_t i = 0; i < device_names.size(); ++i) { luisa::log_info("Device {}: {}", i, device_names[i]); }
     luisa::compute::Device device = context.create_device(backend);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
@@ -89,17 +93,18 @@ int main(int argc, char** argv)
         .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
         .fixed_point_info = {
             lcsv::Initializater::FixedPointInfo{
-                // .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
-            }
-        }
-    });
-    shell_list.push_back({
-        .model_name = obj_mesh_path + "square8K.obj",
-        .transform = luisa::make_float3(0.0f, 1.0f, 0.0f),
-        .fixed_point_info = {
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
+                .use_rotate = true,
+                .rotCenter = luisa::make_float3(0.005, 0, 0),
+                .rotAxis = luisa::make_float3(1, 0, 0),
+                .rotAngVelDeg = -72, 
+            },
             lcsv::Initializater::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f || norm_pos.x < 0.001f ); }
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
+                .use_rotate = true,
+                .rotCenter = luisa::make_float3(-0.005, 0, 0),
+                .rotAxis = luisa::make_float3(1, 0, 0),
+                .rotAngVelDeg = 72, 
             }
         }
     });
@@ -156,9 +161,58 @@ int main(int argc, char** argv)
         luisa::log_info("");
         luisa::log_info("");
     }
+
+    auto fn_fixed_point_animation = [&](const uint curr_frame)
+    {
+        // Animation for fixed points
+        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+        {
+            const auto& fixed_point_info = shell_list[clothIdx].fixed_point_info;
+            if (fixed_point_info.empty()) continue;
+            
+            for (const auto& fixed_point : fixed_point_info)
+            {
+                if (fixed_point.use_rotate)
+                {
+                    const std::vector<uint>& fixed_point_verts = fixed_point.fixed_point_verts;
+                    CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
+                    {
+                        const uint vid = fixed_point_verts[index];
+                        auto& pos = cpu_mesh_data.sa_x_frame_outer[vid];
+                        {
+                            // Rotate
+                            const float h = lcsv::get_scene_params().implicit_dt;
+                            const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(M_PI) * h;
+                            const Eigen::Vector3d rotAxis(
+                                fixed_point.rotAxis[0],
+                                fixed_point.rotAxis[1],
+                                fixed_point.rotAxis[2]);
+                            const Eigen::Vector3d rotCenter(
+                                fixed_point.rotCenter[0],
+                                fixed_point.rotCenter[1],
+                                fixed_point.rotCenter[2]);
+                            const Eigen::Matrix3d rotMtr = Eigen::AngleAxisd(rotAngRad, rotAxis.normalized()).toRotationMatrix();
+                            Eigen::Vector3d relative_vec(
+                                pos[0] - rotCenter[0],
+                                pos[1] - rotCenter[1],
+                                pos[2] - rotCenter[2]);
+                            Eigen::Vector3d rotx = rotMtr * relative_vec;
+                            pos[0] = rotx[0] + rotCenter[0];
+                            pos[1] = rotx[1] + rotCenter[1];
+                            pos[2] = rotx[2] + rotCenter[2];
+                        }
+                    });
+                }
+            }
+        }
+    };
     auto fn_physics_step = [&]()
     {
+        fn_fixed_point_animation(lcsv::get_scene_params().current_frame);
+
         solver.physics_step_CPU(device, stream);
+
+        lcsv::get_scene_params().current_frame += 1; 
     };
 
 
@@ -167,29 +221,43 @@ int main(int argc, char** argv)
     // Init rendering data
     std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(shell_list.size() + 0 + 0);
     std::vector<std::vector<std::array<uint, 3>>> sa_rendering_faces(shell_list.size() + 0 + 0);
-    for (uint i = 0; i < shell_list.size(); i++)
     {
-        sa_rendering_vertices[i].resize(cpu_mesh_data.prefix_num_verts[i + 1] - cpu_mesh_data.prefix_num_verts[i]);
-        sa_rendering_faces[i].resize(cpu_mesh_data.prefix_num_faces[i + 1] - cpu_mesh_data.prefix_num_faces[i]);
-        const uint curr_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i];
-        const uint next_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i + 1];
-        const uint curr_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i];
-        const uint next_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i + 1];
-        CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
+        for (uint i = 0; i < shell_list.size(); i++)
         {
-            auto pos = cpu_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
-            // sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
-            sa_rendering_vertices[i][vid] = {pos.x, pos.y, pos.z};
-        });
-        CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
-        {
-            auto face = cpu_mesh_data.sa_faces[curr_prefix_num_faces + fid];
-            sa_rendering_faces[i][fid] = {
-                face[0] - curr_prefix_num_verts, 
-                face[1] - curr_prefix_num_verts, 
-                face[2] - curr_prefix_num_verts};
-        });
+            sa_rendering_vertices[i].resize(cpu_mesh_data.prefix_num_verts[i + 1] - cpu_mesh_data.prefix_num_verts[i]);
+            sa_rendering_faces[i].resize(cpu_mesh_data.prefix_num_faces[i + 1] - cpu_mesh_data.prefix_num_faces[i]);
+            const uint curr_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i];
+            const uint next_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i + 1];
+            const uint curr_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i];
+            const uint next_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i + 1];
+            CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
+            {
+                auto pos = cpu_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
+                // sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
+                sa_rendering_vertices[i][vid] = {pos.x, pos.y, pos.z};
+            });
+            CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
+            {
+                auto face = cpu_mesh_data.sa_faces[curr_prefix_num_faces + fid];
+                sa_rendering_faces[i][fid] = {
+                    face[0] - curr_prefix_num_verts, 
+                    face[1] - curr_prefix_num_verts, 
+                    face[2] - curr_prefix_num_verts};
+            });
+        }
     }
+    auto fn_update_rendering_vertices = [&]()
+    {
+        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+        {
+            CpuParallel::parallel_for(0, cpu_mesh_data.prefix_num_verts[clothIdx + 1] - cpu_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
+            {
+                auto pos = cpu_mesh_data.sa_x_frame_outer[vid + cpu_mesh_data.prefix_num_verts[clothIdx]];
+                sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
+            });
+        }
+    };
+
     SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
 
     constexpr bool use_ui = true; 
@@ -200,20 +268,6 @@ int main(int argc, char** argv)
             luisa::log_info("     Newton solver frame {}", lcsv::get_scene_params().current_frame);   
 
             fn_physics_step();
-
-            lcsv::get_scene_params().current_frame += 1; 
-        };
-
-        auto fn_update_rendering_vertices = [&]()
-        {
-            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
-            {
-                CpuParallel::parallel_for(0, cpu_mesh_data.prefix_num_verts[clothIdx + 1] - cpu_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
-                {
-                    auto pos = cpu_mesh_data.sa_x_frame_outer[vid + cpu_mesh_data.prefix_num_verts[clothIdx]];
-                    sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
-                });
-            }
         };
 
         // solver.lcsv::SolverInterface::restart_system();
@@ -244,17 +298,10 @@ int main(int argc, char** argv)
         }
         polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
 
-        // Define single step in GUI
-        auto fn_update_rendering_vertices = [&]()
+        auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
-                CpuParallel::parallel_for(0, cpu_mesh_data.prefix_num_verts[clothIdx + 1] - cpu_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
-                {
-                    auto pos = cpu_mesh_data.sa_x_frame_outer[vid + cpu_mesh_data.prefix_num_verts[clothIdx]];
-                    // sa_rendering_vertices[clothIdx][vid] = glm::vec3(pos.x, pos.y, pos.z);
-                    sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
-                });
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
             }
         };
@@ -263,8 +310,8 @@ int main(int argc, char** argv)
             // luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
             fn_physics_step();
 
-            lcsv::get_scene_params().current_frame += 1; 
             fn_update_rendering_vertices();
+            fn_update_GUI_vertices();
         };
         
         bool is_simulate_frame = false;
@@ -275,6 +322,7 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
+                ImGui::InputScalar("Max Frame", ImGuiDataType_U32, &max_frame);
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
                 ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
@@ -288,12 +336,6 @@ int main(int argc, char** argv)
                 // static const char* items[] = { "A", "B", "C" };
                 // static int current_item = 0;
                 // ImGui::Combo("Combo", &current_item, items, IM_ARRAYSIZE(items));
-
-                // ImGui::InputDouble("Thickness", &thickness);
-                // ImGui::InputDouble("Poisson's Ration", &poisson);
-                // ImGui::Combo("Material Model", &matid, "NeoHookean\0StVK\0\0");
-                // ImGui::Combo("Second Fundamental Form", &sffid,
-                //             "TanTheta\0SinTheta\0Average\0\0");
             }
 
             if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
@@ -304,6 +346,7 @@ int main(int argc, char** argv)
                     lcsv::get_scene_params().current_frame = 0;
                     solver.lcsv::SolverInterface::restart_system();
                     fn_update_rendering_vertices();
+                    fn_update_GUI_vertices();
                 }
                 if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
                 {
@@ -313,7 +356,6 @@ int main(int argc, char** argv)
                 {
                     is_simulate_frame = true;
                 }
-                
             }
 
             if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen)) 
@@ -331,7 +373,9 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Load State", ImVec2(-1, 0)))
                 {
                     solver.lcsv::SolverInterface::load_saved_state_from_host(state_frame, "");
+                    lcsv::get_scene_params().current_frame = state_frame;;
                     fn_update_rendering_vertices();
+                    fn_update_GUI_vertices();
                 }
             }
             

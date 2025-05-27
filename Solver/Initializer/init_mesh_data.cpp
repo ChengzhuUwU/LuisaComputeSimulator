@@ -15,7 +15,7 @@ namespace Initializater
 
 // template<template<typename> typename BasicBuffer>
 void init_mesh_data(
-    const std::vector<lcsv::Initializater::ShellInfo>& shell_infos, 
+    std::vector<lcsv::Initializater::ShellInfo>& shell_infos, 
     lcsv::MeshData<std::vector>* mesh_data)
 {
     const uint num_clothes = shell_infos.size();
@@ -96,7 +96,7 @@ void init_mesh_data(
 
         for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
         {
-            const auto& shell_info = shell_infos[clothIdx];
+            auto& shell_info = shell_infos[clothIdx];
             const auto& input_mesh = input_meshes[clothIdx];
 
             const uint curr_num_verts = input_mesh.model_positions.size();
@@ -148,18 +148,19 @@ void init_mesh_data(
                 auto pos_max = local_aabb.packed_max;
                 auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
 
-                CpuParallel::parallel_for(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
+                CpuParallel::single_thread_for(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
                 {
                     float3 orig_pos = mesh_data->sa_rest_x[vid];
                     float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
                     
                     bool is_fixed = false;
-                    // is_fixed = 
-                    for (const auto& fixed_point_info : shell_info.fixed_point_info)
+                    for (auto& fixed_point_info : shell_info.fixed_point_info)
                     {
                         if (fixed_point_info.is_fixed_point_func(norm_pos))
                         {
                             is_fixed = true;
+                            fixed_point_info.fixed_point_verts.push_back(vid);
+                            break;
                         }
                     }
                     // is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
