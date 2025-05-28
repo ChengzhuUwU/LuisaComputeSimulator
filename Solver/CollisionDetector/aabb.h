@@ -53,19 +53,25 @@ inline AabbType add_thickness(const AabbType& aabb, const Float thickness)
 template<typename AabbType>
 inline AabbType add_aabb(const AabbType& aabb1, const AabbType& aabb2) 
 {
-    return {
+    return makeFloat2x3(
         min_vec(get_aabb_min(aabb1), get_aabb_min(aabb2)),
         max_vec(get_aabb_max(aabb1), get_aabb_max(aabb2))
-    };
+    );
+}
+
+inline void reduce_aabb(Var<float2x3> & aabb1, const Var<float2x3> & aabb2) 
+{
+    aabb1.cols[0] = min_vec(get_aabb_min(aabb1), get_aabb_min(aabb2));
+    aabb1.cols[1] = max_vec(get_aabb_max(aabb1), get_aabb_max(aabb2));
 }
 
 template<typename AabbType, typename Float3>
-inline bool is_overlap_pos(const AabbType& aabb, const Float3& pos) 
+inline auto is_overlap_pos(const AabbType& aabb, const Float3& pos) 
 {
     const auto& mn = get_aabb_min(aabb);
     const auto& mx = get_aabb_max(aabb);
-    return (pos.x >= mn.x && pos.y >= mn.y && pos.z >= mn.z) &&
-           (pos.x <= mx.x && pos.y <= mx.y && pos.z <= mx.z);
+    return (pos.x >= mn.x & pos.y >= mn.y & pos.z >= mn.z) &
+           (pos.x <= mx.x & pos.y <= mx.y & pos.z <= mx.z);
 }
 
 

@@ -1,5 +1,6 @@
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/aabb.h"
+#include "Utils/reduce_helper.h"
 
 namespace lcsv
 {
@@ -20,6 +21,7 @@ void LBVH::init(luisa::compute::Device& device, luisa::compute::Stream& stream,
     lbvh_data->num_leaves = num_leaves;
     lbvh_data->num_inner_nodes = num_inner_nodes;
     lbvh_data->num_nodes = num_nodes;
+
     lbvh_data->tree_type = tree_type;
     lbvh_data->update_type = update_type;
 
@@ -175,43 +177,344 @@ void LBVH::compile(luisa::compute::Device& device)
 {
     using namespace luisa::compute;
 
-    auto reduce_vert_tree_global_aabb = device.compile<1>([
+    const uint num_leaves = lbvh_data->num_leaves;
+    const uint num_inner_nodes = lbvh_data->num_inner_nodes;
+    const uint num_nodes = lbvh_data->num_nodes;
+
+    // Reduce AABB and get leaf center
+    auto reduce_aabb_1_pass_template = [
         sa_block_aabb = lbvh_data->sa_block_aabb.view(),
-        sa_leaf_center = lbvh_data->sa_leaf_center.view(),
-        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
-        sa_is_healthy = lbvh_data->sa_is_healthy.view()
+        sa_leaf_center = lbvh_data->sa_leaf_center.view()
+    ](
+        const Float3& center,
+        const Float2x3& aabb
+    )
+    {
+        luisa::compute::set_block_size(256);
+        const Uint vid = luisa::compute::dispatch_id().x;
+
+        auto reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
+
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
+            sa_block_aabb->write(blockIdx, aabb);
+        };
+    };
+
+    auto reduce_aabb_2_pass_template = [
+        sa_block_aabb = lbvh_data->sa_block_aabb.view()
+    ]()
+    {
+        luisa::compute::set_block_size(256);
+        const Uint vid = luisa::compute::dispatch_id().x;
+
+        auto aabb = sa_block_aabb->read(vid);
+        auto reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
+
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
+            sa_block_aabb->write(blockIdx, aabb);
+        };
+    };
+
+    auto reduce_vert_tree_global_aabb = device.compile<1>([
+        &reduce_aabb_1_pass_template
     ]
     (
         const Var<luisa::compute::BufferView<float3>> input_position
     )
     {
-        luisa::compute::set_block_size(256);
-        
         const Uint vid = luisa::compute::dispatch_id().x;
-        Float2x3 default_aabb = makeFloat2x3(
-            makeFloat3(Var<float>( 1000.0f)), 
-            makeFloat3(Var<float>(-1000.0f))
-        );
-        
         Float3 vert_pos = input_position->read(vid);
-        sa_leaf_center->write(vid, vert_pos);
-        
-        auto aabb = AABB::make_aabb(vert_pos);
-        
+        Float2x3 aabb = AABB::make_aabb(vert_pos);
 
-        const Uint threadIdx = vid % 256;
-        const Uint warpIdx = vid / 256;
-        
-        reduce_aabb(aabb, threadIdx, warpIdx, 256);
-
-        sa_block_aabb->write(warpIdx, aabb);;
+        reduce_aabb_1_pass_template(vert_pos, aabb);
     });
 
-    auto sa_block_aabb = lbvh_data->sa_block_aabb.view();
-    auto sa_leaf_center = lbvh_data->sa_leaf_center.view();
-    auto sa_node_aabb = lbvh_data->sa_node_aabb.view();
-    auto sa_is_healthy = lbvh_data->sa_is_healthy.view();
+    auto reduce_face_tree_global_aabb = device.compile<1>([
+        &reduce_aabb_1_pass_template
+    ]
+    (
+        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Var<luisa::compute::BufferView<uint3>> input_face
+    )
+    {
+        luisa::compute::set_block_size(256);
+        
+        const Uint fid = luisa::compute::dispatch_id().x;
+        const UInt3 face = input_face.read(fid);
+        Float3 face_pos[3] = {
+            input_position->read(face[0]),
+            input_position->read(face[1]),
+            input_position->read(face[2])
+        };
 
+        Float3 face_center = 0.333333f * (face_pos[0] + face_pos[1] + face_pos[2]);
+        Float2x3 aabb = AABB::make_aabb(
+            face_pos[0],
+            face_pos[1],
+            face_pos[2]
+        );
+        reduce_aabb_1_pass_template(face_center, aabb);
+    });
+
+    auto reset_tree = device.compile<1>([
+        sa_is_healthy = lbvh_data->sa_is_healthy.view(),
+        sa_parrent = lbvh_data->sa_parrent.view(),
+        sa_escape_index = lbvh_data->sa_escape_index.view()
+    ]()
+    {
+        const Uint vid = luisa::compute::dispatch_id().x;
+        $if (vid == 0)
+        {
+            sa_is_healthy->write(0, 1u);
+            sa_parrent->write(0, -1u);
+        };
+        sa_escape_index->write(vid, -1u);
+    });
+
+    auto compute_mortons = device.compile<1>([
+        sa_is_healthy = lbvh_data->sa_is_healthy.view(),
+        sa_parrent = lbvh_data->sa_parrent.view(),
+        sa_escape_index = lbvh_data->sa_escape_index.view(),
+        sa_block_aabb = lbvh_data->sa_block_aabb.view(),
+        sa_leaf_center = lbvh_data->sa_leaf_center.view(),
+        sa_morton = lbvh_data->sa_morton.view(),
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+        &reduce_aabb_1_pass_template
+    ]
+    ()
+    {
+        const Uint lid = luisa::compute::dispatch_id().x;
+
+        Float3 min_pos = AABB::get_aabb_min(sa_block_aabb->read(0));
+        Float3 max_pos = AABB::get_aabb_max(sa_block_aabb->read(0));
+        Float3 inv_dim = 1.0f / max_vec(max_pos - min_pos, makeFloat3Var(1e-6));
+        Float3 norm_position = (sa_leaf_center->read(lid) - min_pos) * inv_dim;
+        sa_leaf_center->write(lid, norm_position);
+        auto mc64 = make_morton64(norm_position, lid);
+        sa_morton->write(lid, mc64);
+        sa_sorted_get_original->write(lid, lid);
+    });
+
+    // Apply Sorted
+    auto apply_sorted = device.compile<1>([
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+        sa_morton = lbvh_data->sa_morton.view(),
+        sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
+        sa_children = lbvh_data->sa_children.view(),
+        num_inner_nodes
+    ]() {
+        const Uint lid = dispatch_id().x;
+        const Uint orig_vid = sa_sorted_get_original->read(lid);
+        sa_morton_sorted->write(lid, sa_morton->read(orig_vid));
+        sa_children->write(num_inner_nodes + lid, make_uint2(orig_vid, orig_vid));
+    });
+    
+    auto build_inner_nodes = device.compile<1>([
+        sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
+        sa_children = lbvh_data->sa_children.view(),
+        sa_parrent = lbvh_data->sa_parrent.view(),
+        sa_is_healthy = lbvh_data->sa_is_healthy.view(),
+        num_inner_nodes = Var<int>(num_inner_nodes),
+        num_leaves = Var<int>(num_leaves)
+    ]() {
+        const Uint nid = dispatch_id().x;
+        Uint2 ranges = makeUint2(0, num_inner_nodes);
+        $if (nid != 0) {
+            ranges = determineRange(nid, sa_morton_sorted, num_leaves);
+        };
+        Int i = ranges[0];
+        Int j = ranges[1];
+        Int split = findSplit(ranges, sa_morton_sorted);
+
+        Int child_left = select(min_scalar(i, j) == split, (num_inner_nodes + split), split);
+        Int child_right = select(max_scalar(i, j) == split + 1, (num_inner_nodes + split + 1), (split + 1));
+
+        $if (child_right >= Int(num_inner_nodes)) 
+        {
+            Int tmp = child_left;
+            child_left = child_right;
+            child_right = tmp;
+        };
+        sa_parrent->write(child_left, nid);
+        sa_parrent->write(child_right, nid);
+        sa_children->write(nid, makeUint2(child_left, child_right));
+    });
+
+    // 3. Check Construction
+    auto check_construction = device.compile<1>([
+        sa_children = lbvh_data->sa_children.view(),
+        sa_parrent = lbvh_data->sa_parrent.view(),
+        sa_is_healthy = lbvh_data->sa_is_healthy.view()
+    ]() {
+        const Uint nid = dispatch_id().x;
+        Uint2 child = sa_children->read(nid);
+        Uint parrent_of_left = sa_parrent->read(child[0]);
+        Uint parrent_of_right = sa_parrent->read(child[1]);
+        $if (parrent_of_left != Uint(nid) | parrent_of_right != Uint(nid)) 
+        {
+            sa_is_healthy->write(0, 0u);
+        };
+    });
+
+
+    auto set_escape_index = device.compile<1>([
+        sa_children = lbvh_data->sa_children.view(),
+        sa_escape_index = lbvh_data->sa_escape_index.view()
+    ]() {
+        const Uint nid = dispatch_id().x;
+        Uint2 child = sa_children->read(nid);
+        Uint escape_index = child[1];
+        sa_escape_index->write(child[0], escape_index);
+        Uint2 child2 = sa_children->read(child[0]);
+        $while (child2[0] != child2[1]) 
+        {
+            sa_escape_index->write(child2[1], escape_index);
+            child2 = sa_children->read(child2[1]);
+        };
+    });
+
+    auto set_left_and_escape = device.compile<1>([
+        sa_children = lbvh_data->sa_children.view(),
+        sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
+        sa_escape_index = lbvh_data->sa_escape_index.view()
+    ]() {
+        const Uint nid = dispatch_id().x;
+        Uint2 child = sa_children->read(nid);
+        Uint leftIdx = select(child[0] == child[1], make_leaf(child[0]), Uint(child[0]));
+        Uint escapeIdx = sa_escape_index->read(nid);
+        sa_left_and_escape->write(nid, make_uint2(leftIdx, escapeIdx));
+    });
+
+    auto update_vert_tree_leave_aabb = device.compile<1>([
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        num_inner_nodes
+    ](
+        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Float thickness
+    ) {
+        const Uint lid = dispatch_id().x;
+        Uint vid = sa_sorted_get_original->read(lid);
+        Float2x3 aabb = AABB::make_aabb(input_position->read(vid));
+        aabb = AABB::add_thickness(aabb, thickness);
+        sa_node_aabb->write(num_inner_nodes + lid, aabb);
+    });
+
+    auto update_face_tree_leave_aabb = device.compile<1>([
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        num_inner_nodes
+    ](
+        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Var<luisa::compute::BufferView<uint3>> input_face,
+        const Float thickness
+    ) {
+        const Uint lid = dispatch_id().x;
+        Uint fid = sa_sorted_get_original->read(lid);
+        UInt3 face = input_face->read(fid);
+        Float3 face_pos[3] = {
+            input_position->read(face[0]),
+            input_position->read(face[1]),
+            input_position->read(face[2])
+        };
+        Float2x3 aabb = AABB::make_aabb(face_pos[0], face_pos[1], face_pos[2]);
+        aabb = AABB::add_thickness(aabb, thickness);
+        sa_node_aabb->write(num_inner_nodes + lid, aabb);
+    });
+
+    auto clear_apply_flag = device.compile<1>([
+        sa_apply_flag = lbvh_data->sa_apply_flag.view()
+    ]() {
+        const Uint nid = dispatch_id().x;
+        sa_apply_flag->write(nid, 0u);
+    });
+
+    auto buffer = device.create_buffer<bool>(1);
+    auto read_bool = device.compile<1>([
+        buffer = buffer.view()
+    ](){
+        buffer->write(0, false);
+    });
+
+    auto refit_kernel = device.compile<1>([
+        sa_apply_flag = lbvh_data->sa_apply_flag.view(),
+        sa_parrent = lbvh_data->sa_parrent.view(),
+        sa_children = lbvh_data->sa_children.view(),
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        sa_is_healthy = lbvh_data->sa_is_healthy.view(),
+        num_inner_nodes
+    ]() {
+        const Uint lid = dispatch_id().x;
+        Uint current = lid + num_inner_nodes;
+        Uint parrent = sa_parrent->read(current);
+        Uint loop = 0;
+        $while (parrent != -1) {
+            loop += 1;
+            $if (loop > 10000) {
+                sa_is_healthy->write(0, 0u);
+                $break;
+            };
+            Uint orig_flag = sa_apply_flag->atomic(parrent).fetch_add(1u);
+            $if (orig_flag == 0) {
+                $break;
+            } 
+            $elif (orig_flag == 1) {
+                sa_apply_flag->atomic(parrent).fetch_add(1u);
+                Uint2 child_of_parrent = sa_children->read(parrent);
+                Float2x3 aabb_left = sa_node_aabb->read(child_of_parrent[0]);
+                Float2x3 aabb_right = sa_node_aabb->read(child_of_parrent[1]);
+                sa_node_aabb->write(parrent, AABB::add_aabb(aabb_left, aabb_right));
+                current = parrent;
+                parrent = sa_parrent->read(current);
+            } 
+            $else {
+                sa_is_healthy->write(0, 0u);
+                $break;
+            };
+        };
+    });
+
+    auto query_kernel = device.compile<1>([
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
+        num_leaves = Uint(num_leaves)
+    ](
+        Var<BufferView<float3>> input_position,
+        Var<BufferView<uint>> broad_phase_list,
+        Var<BufferView<uint>> broadphase_count,
+        const Float thickness
+    ) {
+        const Uint vid = dispatch_id().x;
+        Float3 pos = input_position->read(vid);
+        Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
+        Uint current = num_leaves;
+        Uint loop = 0;
+        $while (true) {
+            loop += 1;
+            $if (loop > 10000) { $break; };
+            Float2x3 aabb = sa_node_aabb->read(current);
+            Uint2 leftAndEscape = sa_left_and_escape->read(current);
+            Uint left = leftAndEscape[0];
+            Uint escape = leftAndEscape[1];
+            $if (AABB::is_overlap_pos(aabb, pos)) {
+                $if (is_leaf(left) == 1) {
+                    Uint adj_vid = extract_leaf(left);
+                    Uint idx = broadphase_count->atomic(0).fetch_add(1u);
+                    broad_phase_list->write(idx * 2 + 0, vid);
+                    broad_phase_list->write(idx * 2 + 1, adj_vid);
+                } $else {
+                    current = Uint(left);
+                    $continue;
+                };
+            };
+            current = (escape);
+            $if (current == -1) { $break; };
+        };
+    });
 }
 void LBVH::construct_tree(Stream& stream)
 {

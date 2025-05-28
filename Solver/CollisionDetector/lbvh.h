@@ -57,10 +57,13 @@ inline auto make_morton32(const luisa::float3& pos)
     return (xx << 2) | (yy << 1) | zz;
 }
 
-template<typename Float3, typename Uint>
-inline auto make_morton64(const Float3& pos, const Uint index) 
+inline Morton64 make_morton64(const luisa::compute::Float3& pos, const luisa::compute::Uint index) 
 {
-    return make_morton32(pos) | (static_cast<morton64>(index) << 32);
+    return (static_cast<Morton64>(make_morton32(pos)) << 32) | (static_cast<Morton64>(index) & static_cast<Morton64>(0xFFFFFFFF));
+}
+inline morton64 make_morton64(const luisa::float3& pos, const uint index) 
+{
+    return (static_cast<morton64>(make_morton32(pos)) << 32) | (static_cast<morton64>(index) & static_cast<morton64>(0xFFFFFFFF));
 }
 
 using AabbData = float2x3;

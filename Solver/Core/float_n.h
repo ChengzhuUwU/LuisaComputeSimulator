@@ -186,6 +186,7 @@ constexpr inline float4 makeFloat4(const float x, const float y, const float z, 
 
 inline Var<float2> makeFloat2(const Var<float> x = 0.0f) { return luisa::compute::make_float2(x, x); }
 inline Var<float2> makeFloat2(const Var<float> x, const Var<float> y) { return luisa::compute::make_float2(x, y); }
+inline Var<float3> makeFloat3Var(const Var<float> x = 0.0f) { return luisa::compute::make_float3(x, x, x); }
 inline Var<float3> makeFloat3(const Var<float> x = 0.0f) { return luisa::compute::make_float3(x, x, x); }
 inline Var<float3> makeFloat3(const Var<float> x, const Var<float> y, const Var<float> z)  { return luisa::compute::make_float3(x, y, z); }
 inline Var<float4> makeFloat4(const Var<float> x = 0.0f)  { return luisa::compute::make_float4(x, x, x, x); }
