@@ -2,6 +2,7 @@
 
 #include <luisa/luisa-compute.h>
 #include <string>
+#include "CollisionDetector/lbvh.h"
 #include "Core/xbasic_types.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
@@ -28,8 +29,11 @@ public:
         MeshData<luisa::compute::Buffer>* mesh_ptr, 
         SimulationData<std::vector>* host_xpbd_ptr, 
         SimulationData<luisa::compute::Buffer>* xpbd_ptr, 
-        lcsv::BufferFiller* buffer_filler_ptr, 
-        lcsv::DeviceParallel* device_parallel_ptr)
+        CollisionDataCCD<luisa::compute::Buffer>* ccd_ptr, 
+        LBVH* lbvh_ptr,
+        BufferFiller* buffer_filler_ptr, 
+        DeviceParallel* device_parallel_ptr
+    )
     {
         // Host data pointer
         host_mesh_data = host_mesh_ptr;
@@ -38,8 +42,10 @@ public:
         // Device data pointer
         mesh_data = mesh_ptr;
         sim_data = xpbd_ptr;
+        ccd_data = ccd_ptr;
 
         // Tool class pointer
+        mp_lbvh = lbvh_ptr;
         mp_device_parallel = device_parallel_ptr;
         mp_buffer_filler = buffer_filler_ptr;
     }
@@ -61,9 +67,12 @@ protected:
     
     MeshData<luisa::compute::Buffer>* mesh_data;
     SimulationData<luisa::compute::Buffer>* sim_data;
+    CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
 
-    lcsv::BufferFiller*   mp_buffer_filler;
-    lcsv::DeviceParallel* mp_device_parallel;
+    BufferFiller*   mp_buffer_filler;
+    DeviceParallel* mp_device_parallel;
+    LBVH* mp_lbvh;
+    // lcsv::LBVH* collision_detector_narrow_phase;
 };
 
 

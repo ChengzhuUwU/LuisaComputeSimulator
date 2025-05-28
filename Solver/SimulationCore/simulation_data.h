@@ -63,6 +63,43 @@ struct SimulationData : SimulationType
     BufferType<float4x3> sa_Hf1; 
 };
 
+enum CollisionListType
+{
+    CollisionListTypeVV,
+    CollisionListTypeVF,
+    CollisionListTypeEE,
+    CollisionListTypeEF,
+};
+
+template<template<typename...> typename BufferType>
+struct CollisionDataCCD : SimulationType
+{
+    BufferType<uint> broad_phase_collision_count; 
+    BufferType<uint> narrow_phase_collision_count; 
+
+    BufferType<uint> broad_phase_list_vf;
+    BufferType<uint> broad_phase_list_ee;
+
+    BufferType<uint2> narrow_phase_indices_vv; // 0
+    BufferType<uint3> narrow_phase_indices_ve; // 1
+    BufferType<uint4> narrow_phase_indices_vf; // 2
+    BufferType<uint4> narrow_phase_indices_ee; // 3
+    // BufferType<uint> narrow_phase_indices_ef; 
+
+    BufferType<uint> per_vert_num_broad_phase_vf; 
+    BufferType<uint> per_vert_num_broad_phase_ee; 
+    BufferType<uint> per_vert_num_narrow_phase_vv; 
+    BufferType<uint> per_vert_num_narrow_phase_ve; 
+    BufferType<uint> per_vert_num_narrow_phase_vf; 
+    BufferType<uint> per_vert_num_narrow_phase_ee; 
+    BufferType<uint> per_vert_prefix_narrow_phase_vv; 
+    BufferType<uint> per_vert_prefix_narrow_phase_ve; 
+    BufferType<uint> per_vert_prefix_narrow_phase_vf; 
+    BufferType<uint> per_vert_prefix_narrow_phase_ee; 
+    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase; 
+    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase; 
+};
+
 
 }
 

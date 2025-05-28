@@ -2,6 +2,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "CollisionDetector/lbvh.h"
+#include "Initializer/init_collision_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Utils/cpu_parallel.h"
@@ -127,18 +128,21 @@ int main(int argc, char** argv)
     }
 
     lcsv::LbvhData<luisa::compute::Buffer> lbvh_data_cloth_vert;
-    lcsv::LBVH lbvh_cloth_vert;
+    lcsv::LBVH lbvh;
     {
-        // lbvh_data_cloth_vert.allocate(device, cpu_mesh_data.num_verts, lcsv::LBVHTreeTypeVert, lcsv::LBVHUpdateTypeCloth);
-        // lbvh_cloth_vert.set_lbvh_data(&lbvh_data_cloth_vert);
-        lbvh_cloth_vert.unit_test(device, stream);
+        lbvh_data_cloth_vert.allocate(device, cpu_mesh_data.num_verts, lcsv::LBVHTreeTypeVert, lcsv::LBVHUpdateTypeCloth);
+        lbvh.set_lbvh_data(&lbvh_data_cloth_vert);
+        // lbvh_cloth_vert.unit_test(device, stream);
     }
-
-    return 0;
+    
+    lcsv::CollisionDataCCD<luisa::compute::Buffer> collision_data;
+    lcsv::Initializater::resize_collision_data(device, &cpu_mesh_data, &collision_data);
 
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
+
+    
     // lcsv::DescentSolver solver;
     lcsv::NewtonSolver solver;
     {
@@ -148,6 +152,8 @@ int main(int argc, char** argv)
             &mesh_data, 
             &cpu_xpbd_data, 
             &xpbd_data, 
+            &collision_data,
+            &lbvh,
             &buffer_filler, 
             &device_parallel
         );

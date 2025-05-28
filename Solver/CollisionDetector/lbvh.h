@@ -2,7 +2,6 @@
 
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_type.h"
-#include "Utils/device_parallel.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
@@ -112,14 +111,8 @@ public:
     void refit(Stream& stream);
     void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position);
     void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
-    void broad_phase_query(Stream& stream, const Buffer<float3>& input_position, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness);
+    void broad_phase_query_vert(Stream& stream, const Buffer<float3>& sa_x_begin, const Buffer<float3>& sa_x_end, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness);
     
-    // void construct_tree();
-    // void refit();
-    // void update_vert_tree_leave_aabb(const Buffer<float3>& input_position);
-    // void update_face_tree_leave_aabb(const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
-    // void broad_phase_query(const Buffer<float3>& input_position, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness);
-
 private:
     // void reduce_vert_tree_global_aabb();
     // void reduce_face_tree_global_aabb();
@@ -130,12 +123,14 @@ private:
 
 private:
 
+    // Compute Morton
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>> fn_reduce_vert_tree_global_aabb;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>> fn_reduce_face_tree_global_aabb;
-    
     luisa::compute::Shader<1> fn_reduce_aabb_2_pass_template;
     luisa::compute::Shader<1> fn_reset_tree;
     luisa::compute::Shader<1> fn_compute_mortons;
+
+    // Construct
     luisa::compute::Shader<1> fn_apply_sorted;
     luisa::compute::Shader<1> fn_build_inner_nodes ;
     luisa::compute::Shader<1> fn_check_construction ;
@@ -147,9 +142,12 @@ private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
     luisa::compute::Shader<1> fn_clear_apply_flag ;
     luisa::compute::Shader<1> fn_refit_kernel;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>,
+
+    // Query
+    luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_collision_count;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>,
                        luisa::compute::BufferView<uint>,
-                       luisa::compute::BufferView<uint>, float> fn_query_kernel;
+                       luisa::compute::BufferView<uint>, float> fn_query_vert;
 
 
 };

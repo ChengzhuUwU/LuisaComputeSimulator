@@ -253,6 +253,8 @@ template<typename Vec> inline Vec cross_vec(const Vec& vec1, const Vec& vec2)   
 template<typename Vec> inline float dot_vec(const Vec& vec1, const Vec& vec2)    { return luisa::dot(vec1, vec2);     }
 template<typename Vec> inline Vec max_vec(const Vec& vec1, const Vec& vec2) { return luisa::max(vec1, vec2); }
 template<typename Vec> inline Vec min_vec(const Vec& vec1, const Vec& vec2) { return luisa::min(vec1, vec2); }
+template<typename Vec> inline auto all_vec(const Vec& vec) { return luisa::all(vec); }
+template<typename Vec> inline auto any_vec(const Vec& vec) { return luisa::any(vec); }
 
 template<typename Vec> inline Var<Vec> normalize_vec(const Var<Vec>& vec) {return luisa::compute::normalize(vec);}
 template<typename Vec> inline Var<float> length_vec(const Var<Vec>& vec) { return luisa::compute::length(vec); }
@@ -261,6 +263,8 @@ template<typename Vec> inline Var<Vec> cross_vec(const Var<Vec>& vec1, const Var
 template<typename Vec> inline Var<float> dot_vec(const Var<Vec>& vec1, const Var<Vec>& vec2)    { return luisa::compute::dot(vec1, vec2);     }
 template<typename Vec> inline Var<Vec> max_vec(const Var<Vec>& vec1, const Var<Vec>& vec2) { return luisa::compute::max(vec1, vec2); }
 template<typename Vec> inline Var<Vec> min_vec(const Var<Vec>& vec1, const Var<Vec>& vec2) { return luisa::compute::min(vec1, vec2); }
+template<typename Vec> inline auto all_vec(const Var<Vec>& vec) { return luisa::compute::all(vec); }
+template<typename Vec> inline auto any_vec(const Var<Vec>& vec) { return luisa::compute::any(vec); }
 
 template<typename Vec> inline Vec reverse_vec(const Vec& vec) { return 1.f / vec;}
 template<typename Vec> inline auto safe_length_vec(const Vec& vec) { return length_vec(vec) + lcsv::Epsilon; }

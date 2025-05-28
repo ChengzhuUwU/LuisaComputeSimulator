@@ -70,9 +70,16 @@ inline auto is_overlap_pos(const AabbType& aabb, const Float3& pos)
 {
     const auto& mn = get_aabb_min(aabb);
     const auto& mx = get_aabb_max(aabb);
-    return (pos.x >= mn.x & pos.y >= mn.y & pos.z >= mn.z) &
-           (pos.x <= mx.x & pos.y <= mx.y & pos.z <= mx.z);
+    return all_vec(pos >= mn) &
+           all_vec(pos <= mx);
 }
+
+template<typename AabbType>
+inline auto is_overlap_aabb(const AabbType& left, const AabbType& right) 
+{
+    return all_vec(get_aabb_min(left) < get_aabb_max(right)) & all_vec(get_aabb_max(left) > get_aabb_min(right));
+}
+
 
 
 } // namespace AABB

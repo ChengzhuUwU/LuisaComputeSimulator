@@ -365,7 +365,7 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_parrent->write(child_right, nid);
         sa_children->write(nid, makeUint2(child_left, child_right));
     });
-    return;
+
     fn_check_construction = device.compile<1>([
         sa_children = lbvh_data->sa_children.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
@@ -493,19 +493,17 @@ void LBVH::compile(luisa::compute::Device& device)
     });
 
     // Query
-    fn_query_kernel = device.compile<1>([
+    auto query_template = [
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
-        num_leaves = Uint(num_leaves)
+        num_leaves
     ](
-        Var<BufferView<float3>> input_position,
-        Var<BufferView<uint>> broad_phase_list,
-        Var<BufferView<uint>> broadphase_count,
-        const Float thickness
-    ) {
+        const Float2x3& input_aabb,
+        Var<BufferView<uint>>& broadphase_count,
+        Var<BufferView<uint>>& broad_phase_list
+    )
+    {
         const Uint vid = dispatch_id().x;
-        Float3 pos = input_position->read(vid);
-        Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
         Uint current = num_leaves;
         Uint loop = 0;
         $while (true) {
@@ -515,20 +513,45 @@ void LBVH::compile(luisa::compute::Device& device)
             Uint2 leftAndEscape = sa_left_and_escape->read(current);
             Uint left = leftAndEscape[0];
             Uint escape = leftAndEscape[1];
-            $if (AABB::is_overlap_pos(aabb, pos)) {
+            $if (AABB::is_overlap_aabb(aabb, input_aabb)) {
                 $if (is_leaf(left) == 1) {
                     Uint adj_vid = extract_leaf(left);
                     Uint idx = broadphase_count->atomic(0).fetch_add(1u);
                     broad_phase_list->write(idx * 2 + 0, vid);
                     broad_phase_list->write(idx * 2 + 1, adj_vid);
                 } $else {
-                    current = Uint(left);
+                    current = left;
                     $continue;
                 };
             };
             current = (escape);
             $if (current == -1) { $break; };
         };
+    };
+
+    fn_reset_collision_count = device.compile<1>([](
+        Var<BufferView<uint>> broadphase_count
+    ){
+        const Uint vid = dispatch_id().x;
+        broadphase_count.write(vid, 0u);
+    });
+
+    fn_query_vert = device.compile<1>([
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
+        num_leaves, &query_template
+    ](
+        Var<BufferView<float3>> sa_x_begin,
+        Var<BufferView<float3>> sa_x_end,
+        Var<BufferView<uint>> broad_phase_list,
+        Var<BufferView<uint>> broadphase_count,
+        const Float thickness
+    ) {
+        const Uint vid = dispatch_id().x;
+        // Float3 pos = sa_x_begin->read(vid);
+        // Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
+        Float2x3 vert_aabb = AABB::make_aabb(sa_x_end.read(vid), sa_x_end.read(vid));
+        query_template(vert_aabb, broadphase_count, broad_phase_list);
     });
 
     // auto buffer = device.create_buffer<bool>(1);
@@ -653,7 +676,6 @@ void LBVH::construct_tree(Stream& stream)
         host_sorted_get_original.resize(num_leaves);
     }
 
-
     stream 
         << fn_reset_tree().dispatch(num_nodes) 
         << fn_compute_mortons().dispatch(num_leaves) 
@@ -698,9 +720,17 @@ void LBVH::refit(Stream& stream)
 }
 
 
-void LBVH::broad_phase_query(Stream& stream, const Buffer<float3>& input_position, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness)
+void LBVH::broad_phase_query_vert(
+    Stream& stream, 
+    const Buffer<float3>& sa_x_begin, 
+    const Buffer<float3>& sa_x_end, 
+    Buffer<uint>& broad_phase_list, 
+    Buffer<uint>& broadphase_count, 
+    const float thickness)
 {
-
+    stream
+        << fn_reset_collision_count(broadphase_count).dispatch(8)
+        << fn_query_vert(sa_x_begin, sa_x_end, broad_phase_list, broadphase_count, thickness).dispatch(sa_x_begin.size());
 }
 
 

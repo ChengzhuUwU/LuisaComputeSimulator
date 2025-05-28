@@ -71,7 +71,7 @@ inline Var<T> block_reduce(const luisa::compute::UInt vid, const Var<T>& thread_
 }
 
 template<typename T>
-inline luisa::compute::Shader<1, luisa::compute::BufferView<T>> fill_shader(luisa::compute::Device& device, const T& value)
+inline luisa::compute::Shader<1, luisa::compute::BufferView<T>> generate_fill_shader(luisa::compute::Device& device, const T& value)
 {
     return device.compile<1>([value](
         Var<luisa::compute::BufferView<T>>& buffer
