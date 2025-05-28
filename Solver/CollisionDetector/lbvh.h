@@ -15,55 +15,10 @@ using morton64 = uint64_t;
 using Morton32 = luisa::compute::Var<morton32>;
 using Morton64 = luisa::compute::Var<morton64>;
 
-template<typename UintType>
-static inline UintType expand_bits(UintType bits)
+template<typename T>
+static inline void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
 {
-    bits = (bits | (bits << 16)) & 0x030000FF;
-    bits = (bits | (bits << 8))  & 0x0300F00F;
-    bits = (bits | (bits << 4))  & 0x030C30C3;
-    return (bits | (bits << 2))  & 0x09249249;
-}
-
-inline auto make_morton32(const luisa::compute::Float3& pos) 
-{
-    using namespace luisa::compute;
-    const Uint precision = 10;
-    const Float min_value = Float(0.0f);
-    const Float max_value = Float((1 << precision) - 1);
-    const Float range = Float(1 << precision);
-
-    Float x = clamp_scalar(pos[0] * max_value, min_value, max_value);
-    Float y = clamp_scalar(pos[1] * max_value, min_value, max_value);
-    Float z = clamp_scalar(pos[2] * max_value, min_value, max_value);
-
-    Uint xx = expand_bits(static_cast<Uint>(x));
-    Uint yy = expand_bits(static_cast<Uint>(y));
-    Uint zz = expand_bits(static_cast<Uint>(z));
-
-    return (xx << 2) | (yy << 1) | zz;
-}
-inline auto make_morton32(const luisa::float3& pos) 
-{
-    const uint precision = 10;
-
-    float x = clamp_scalar(pos[0] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
-    float y = clamp_scalar(pos[1] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
-    float z = clamp_scalar(pos[2] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
-
-    uint xx = expand_bits(static_cast<uint>(x));
-    uint yy = expand_bits(static_cast<uint>(y));
-    uint zz = expand_bits(static_cast<uint>(z));
-
-    return (xx << 2) | (yy << 1) | zz;
-}
-
-inline Morton64 make_morton64(const luisa::compute::Float3& pos, const luisa::compute::Uint index) 
-{
-    return (static_cast<Morton64>(make_morton32(pos)) << 32) | (static_cast<Morton64>(index) & static_cast<Morton64>(0xFFFFFFFF));
-}
-inline morton64 make_morton64(const luisa::float3& pos, const uint index) 
-{
-    return (static_cast<morton64>(make_morton32(pos)) << 32) | (static_cast<morton64>(index) & static_cast<morton64>(0xFFFFFFFF));
+    buffer = device.create_buffer<T>(size);
 }
 
 using AabbData = float2x3;
@@ -100,6 +55,38 @@ struct LbvhData
 
     LBVHTreeType tree_type;
     LBVHUpdateType update_type;
+
+    void allocate(
+        luisa::compute::Device& device, 
+        const uint input_num, 
+        const LBVHTreeType input_tree_type,
+        const LBVHUpdateType input_update_type
+    )
+    {
+        const uint num_leaves = input_num;
+        const uint num_inner_nodes = num_leaves - 1;
+        const uint num_nodes = num_leaves + num_inner_nodes;
+
+        this->num_leaves = num_leaves;
+        this->num_inner_nodes = num_inner_nodes;
+        this->num_nodes = num_nodes;
+
+        this->tree_type = input_tree_type;
+        this->update_type = input_update_type;
+
+        resize_buffer(device, this->sa_leaf_center, num_leaves);
+        resize_buffer(device, this->sa_block_aabb, get_dispatch_block(num_leaves, 256));
+        resize_buffer(device, this->sa_morton, num_leaves);
+        resize_buffer(device, this->sa_morton_sorted, num_leaves);
+        resize_buffer(device, this->sa_sorted_get_original, num_leaves);
+        resize_buffer(device, this->sa_parrent, num_nodes);
+        resize_buffer(device, this->sa_children, num_nodes);
+        resize_buffer(device, this->sa_escape_index, num_nodes);
+        resize_buffer(device, this->sa_left_and_escape, num_nodes);
+        resize_buffer(device, this->sa_node_aabb, num_nodes);
+        resize_buffer(device, this->sa_apply_flag, num_nodes);
+        resize_buffer(device, this->sa_is_healthy, 1);
+    }
 };
 
 class LBVH
@@ -110,12 +97,17 @@ class LBVH
     using Device = luisa::compute::Device;
     
 public:
-    LBVH() = default;
-    void init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
-         const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type);
+    // void init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
+    //      const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type);
+    void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
+    void set_lbvh_data(LbvhData<luisa::compute::Buffer>* input_ptr) { lbvh_data = input_ptr; }
+
+private:
     void compile(luisa::compute::Device& device);
 
 public:
+    void reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_position);
+    void reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
     void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position);
@@ -135,7 +127,30 @@ private:
 
 private:
     LbvhData<luisa::compute::Buffer>* lbvh_data;
-    DeviceParallel* device_parallel;
+
+private:
+
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>> fn_reduce_vert_tree_global_aabb;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>> fn_reduce_face_tree_global_aabb;
+    
+    luisa::compute::Shader<1> fn_reduce_aabb_2_pass_template;
+    luisa::compute::Shader<1> fn_reset_tree;
+    luisa::compute::Shader<1> fn_compute_mortons;
+    luisa::compute::Shader<1> fn_apply_sorted;
+    luisa::compute::Shader<1> fn_build_inner_nodes ;
+    luisa::compute::Shader<1> fn_check_construction ;
+    luisa::compute::Shader<1> fn_set_escape_index;
+    luisa::compute::Shader<1> fn_set_left_and_escape;
+
+    // Refit
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, float> fn_update_vert_tree_leave_aabb;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
+    luisa::compute::Shader<1> fn_clear_apply_flag ;
+    luisa::compute::Shader<1> fn_refit_kernel;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>,
+                       luisa::compute::BufferView<uint>,
+                       luisa::compute::BufferView<uint>, float> fn_query_kernel;
+
 
 };
     

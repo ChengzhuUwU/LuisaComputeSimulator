@@ -1,6 +1,7 @@
 #include <iostream>
 #include <luisa/luisa-compute.h>
 
+#include "CollisionDetector/lbvh.h"
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Utils/cpu_parallel.h"
@@ -124,6 +125,16 @@ int main(int argc, char** argv)
         lcsv::Initializater::upload_xpbd_buffers(device, stream, &cpu_xpbd_data, &xpbd_data);
         lcsv::Initializater::init_simulation_params();
     }
+
+    lcsv::LbvhData<luisa::compute::Buffer> lbvh_data_cloth_vert;
+    lcsv::LBVH lbvh_cloth_vert;
+    {
+        // lbvh_data_cloth_vert.allocate(device, cpu_mesh_data.num_verts, lcsv::LBVHTreeTypeVert, lcsv::LBVHUpdateTypeCloth);
+        // lbvh_cloth_vert.set_lbvh_data(&lbvh_data_cloth_vert);
+        lbvh_cloth_vert.unit_test(device, stream);
+    }
+
+    return 0;
 
     // Init solver class
     lcsv::BufferFiller   buffer_filler;

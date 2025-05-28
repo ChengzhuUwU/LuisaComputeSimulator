@@ -1,44 +1,67 @@
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/aabb.h"
+#include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
 namespace lcsv
 {
 
-template<typename T>
-void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
+// void LBVH::init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
+//         const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type)
+// {
+//     lbvh_data->allocate(device, input_num, tree_type, update_type);
+// }
+
+template<typename UintType>
+static inline UintType expand_bits(UintType bits)
 {
-    buffer = device.create_buffer<T>(size);
+    bits = (bits | (bits << 16)) & static_cast<UintType>(0x030000FF);
+    bits = (bits | (bits << 8))  & static_cast<UintType>(0x0300F00F);
+    bits = (bits | (bits << 4))  & static_cast<UintType>(0x030C30C3);
+    return (bits | (bits << 2))  & static_cast<UintType>(0x09249249);
 }
 
-void LBVH::init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
-        const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type)
+static inline Var<uint> make_morton32(const luisa::compute::Float3& pos) 
 {
-    const uint num_leaves = input_num;
-    const uint num_inner_nodes = num_leaves - 1;
-    const uint num_nodes = num_leaves + num_inner_nodes;
+    using namespace luisa::compute;
+    const Uint precision = 10;
+    const Float min_value = 0.0f;
+    const Float max_value = (1 << precision) - 1;
+    const Float range = 1 << precision;
 
-    lbvh_data->num_leaves = num_leaves;
-    lbvh_data->num_inner_nodes = num_inner_nodes;
-    lbvh_data->num_nodes = num_nodes;
+    Float x = clamp_scalar(pos[0] * range, min_value, max_value);
+    Float y = clamp_scalar(pos[1] * range, min_value, max_value);
+    Float z = clamp_scalar(pos[2] * range, min_value, max_value);
 
-    lbvh_data->tree_type = tree_type;
-    lbvh_data->update_type = update_type;
+    Uint xx = expand_bits(static_cast<Uint>(x));
+    Uint yy = expand_bits(static_cast<Uint>(y));
+    Uint zz = expand_bits(static_cast<Uint>(z));
 
-    resize_buffer(device, lbvh_data->sa_leaf_center, num_leaves);
-    resize_buffer(device, lbvh_data->sa_block_aabb, get_dispatch_block(num_leaves, 256));
-    resize_buffer(device, lbvh_data->sa_morton, num_leaves);
-    resize_buffer(device, lbvh_data->sa_morton_sorted, num_leaves);
-    resize_buffer(device, lbvh_data->sa_sorted_get_original, num_leaves);
-    resize_buffer(device, lbvh_data->sa_parrent, num_nodes);
-    resize_buffer(device, lbvh_data->sa_children, num_nodes);
-    resize_buffer(device, lbvh_data->sa_escape_index, num_nodes);
-    resize_buffer(device, lbvh_data->sa_left_and_escape, num_nodes);
-    resize_buffer(device, lbvh_data->sa_node_aabb, num_nodes);
-    resize_buffer(device, lbvh_data->sa_apply_flag, num_nodes);
-    resize_buffer(device, lbvh_data->sa_is_healthy, 1);
+    return (xx << 2) | (yy << 1) | zz;
+}
+static inline uint make_morton32(const luisa::float3& pos) 
+{
+    const uint precision = 10;
+
+    float x = clamp_scalar(pos[0] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
+    float y = clamp_scalar(pos[1] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
+    float z = clamp_scalar(pos[2] * (1 << precision), static_cast<float>(0.0f), (1 << precision) - 1.0f);
+
+    uint xx = expand_bits(static_cast<uint>(x));
+    uint yy = expand_bits(static_cast<uint>(y));
+    uint zz = expand_bits(static_cast<uint>(z));
+
+    return (xx << 2) | (yy << 1) | zz;
 }
 
+static inline Morton64 make_morton64(const luisa::compute::Float3& pos, const luisa::compute::Uint index) 
+{
+    return (static_cast<Morton64>(make_morton32(pos)) << 32) | (static_cast<Morton64>(index) & static_cast<Morton64>(0xFFFFFFFF));
+}
+static inline morton64 make_morton64(const luisa::float3& pos, const uint index) 
+{
+    return (static_cast<morton64>(make_morton32(pos)) << 32) | (static_cast<morton64>(index) & static_cast<morton64>(0xFFFFFFFF));
+}
 
 // Existing functions
 template<typename UintType> UintType make_leaf(const UintType mask)     { return (mask) | static_cast<UintType>(1 << 31); }
@@ -48,13 +71,7 @@ template<typename UintType> UintType extract_leaf(const UintType mask)  { return
 
 int clz_ulong(morton64 x) 
 {
-    int count = 0;
-    while (x != 0) 
-    {
-        count += 1;
-        x >>= 1;
-    }
-    return int(64 - count);
+    return __builtin_clzll(x);
 }
 Var<int> clz_ulong(Var<morton64> x) 
 {
@@ -74,7 +91,7 @@ auto find_common_prefix(const MortonType& left, const MortonType& right)
 }
 
 inline Var<morton64> get_morton(const luisa::compute::BufferView<morton64>& buffer, const Var<uint> index){ return buffer->read(index); }
-inline Var<morton64> get_morton(const luisa::compute::BufferView<morton64>& buffer, const Var<int> index){ return buffer->read(index); }
+inline Var<morton64> get_morton(const luisa::compute::BufferView<morton64>& buffer, const Var<int> index) { return buffer->read(index); }
 inline morton64 get_morton(const std::vector<morton64>& buffer, const int index){ return buffer[index]; }
 
 
@@ -85,7 +102,7 @@ IntType cp_i_j(const MortonType& mi, IntType j, const BufferType& sa_morton_sort
     return select(isValid, find_common_prefix(mi, get_morton(sa_morton_sorted, j)), static_cast<IntType>(-1));
 }
 
-auto determineRange(const Var<uint> index, const luisa::compute::BufferView<morton64>& sa_morton_sorted, const Var<uint> num_leaves) 
+Var<int2> determineRange(const Var<uint> index, const luisa::compute::BufferView<morton64>& sa_morton_sorted, const Var<uint> num_leaves) 
 {
     using IndexType = Var<int>;
     IndexType i = index;
@@ -93,7 +110,7 @@ auto determineRange(const Var<uint> index, const luisa::compute::BufferView<mort
     auto cp_left  = find_common_prefix(mi, get_morton(sa_morton_sorted, i - 1));
     auto cp_right = find_common_prefix(mi, get_morton(sa_morton_sorted, i + 1));
 
-    IndexType d = select(cp_left < cp_right, Var<int>(1), Var<int>(-1));
+    IndexType d = select(cp_left < cp_right, IndexType(1), IndexType(-1));
     IndexType cp_min = min_scalar(cp_left, cp_right);
 
     IndexType lmax = 2;
@@ -101,6 +118,14 @@ auto determineRange(const Var<uint> index, const luisa::compute::BufferView<mort
     {
         lmax <<= 1;
     };
+
+    // for index 1 : d = -1 , cp_left = 11, cp_right =  8, cp_min =  8 , lmax = 2
+    // for index 2 : d = -1 , cp_left =  8, cp_right =  5, cp_min =  5 , lmax = 4
+    // for index 3 : d =  1 , cp_left =  5, cp_right =  8, cp_min =  5 , lmax = 2
+    // for index 4 : d = -1 , cp_left =  8, cp_right =  2, cp_min =  2 , lmax = 8
+    // for index 5 : d =  1 , cp_left =  2, cp_right = 11, cp_min =  2 , lmax = 4
+    // for index 6 : d = -1 , cp_left = 11, cp_right =  8, cp_min =  8 , lmax = 2
+    // luisa::compute::device_log("for index {} : d = {} , cp_left = {}, cp_right = {}, cp_min = {} , lmax = {}", index, d, cp_left, cp_right, cp_min, lmax);
 
     IndexType l = 0;
     IndexType t = lmax >> 1;
@@ -151,28 +176,6 @@ Var<int> findSplit(const Var<int2>& ranges, const luisa::compute::BufferView<mor
     return split;
 }
 
-#define reduce_with_cache(thread_value, tid, wid, dim, type, set_op, reduce_op, get_op)  \
-        luisa::compute::Shared<type> cache_aabb(dim);                                   \
-        set_op(cache_aabb[tid], thread_value)                                           \
-            luisa::compute::sync_block();                   \
-            luisa::compute::Uint s = dim >> 1;              \
-			$while(true) {	                \
-                $if (s == 0) { $break; };   \
-				$if(tid < s) {                                              \
-                    reduce_op(cache_aabb[tid], cache_aabb[tid + s]);        \
-                };                                                          \
-				luisa::compute::sync_block();                               \
-                s >>= 1;                                                    \
-			};                                                              \
-            $if (wid == 0) {                                                \
-                get_op(thread_value, cache_aabb[0]);                        \
-            };
-
-#define set_op_aabb(a, b)    a.cols[0] = b.cols[0]; a.cols[1] = b.cols[1];
-#define get_op_aabb(a, b)    a.cols[0] = b.cols[0]; a.cols[1] = b.cols[1];
-#define reduce_op_aabb(a, b) a.cols[0] = min_vec(a.cols[0], b.cols[0]); a.cols[1] = max_vec(a.cols[1], b.cols[1]);
-#define reduce_aabb(aabb, tid, wid, dim) reduce_with_cache(aabb, tid, wid, dim, float2x3, set_op_aabb, reduce_op_aabb, get_op_aabb)   
-
 void LBVH::compile(luisa::compute::Device& device)
 {
     using namespace luisa::compute;
@@ -181,7 +184,7 @@ void LBVH::compile(luisa::compute::Device& device)
     const uint num_inner_nodes = lbvh_data->num_inner_nodes;
     const uint num_nodes = lbvh_data->num_nodes;
 
-    // Reduce AABB and get leaf center
+    // Construct
     auto reduce_aabb_1_pass_template = [
         sa_block_aabb = lbvh_data->sa_block_aabb.view(),
         sa_leaf_center = lbvh_data->sa_leaf_center.view()
@@ -202,7 +205,7 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     };
 
-    auto reduce_aabb_2_pass_template = [
+    fn_reduce_aabb_2_pass_template = device.compile<1>([
         sa_block_aabb = lbvh_data->sa_block_aabb.view()
     ]()
     {
@@ -217,9 +220,9 @@ void LBVH::compile(luisa::compute::Device& device)
             const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
             sa_block_aabb->write(blockIdx, aabb);
         };
-    };
+    });
 
-    auto reduce_vert_tree_global_aabb = device.compile<1>([
+    fn_reduce_vert_tree_global_aabb = device.compile<1>([
         &reduce_aabb_1_pass_template
     ]
     (
@@ -233,7 +236,7 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(vert_pos, aabb);
     });
 
-    auto reduce_face_tree_global_aabb = device.compile<1>([
+    fn_reduce_face_tree_global_aabb = device.compile<1>([
         &reduce_aabb_1_pass_template
     ]
     (
@@ -260,7 +263,7 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(face_center, aabb);
     });
 
-    auto reset_tree = device.compile<1>([
+    fn_reset_tree = device.compile<1>([
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_escape_index = lbvh_data->sa_escape_index.view()
@@ -274,18 +277,13 @@ void LBVH::compile(luisa::compute::Device& device)
         };
         sa_escape_index->write(vid, -1u);
     });
-
-    auto compute_mortons = device.compile<1>([
-        sa_is_healthy = lbvh_data->sa_is_healthy.view(),
-        sa_parrent = lbvh_data->sa_parrent.view(),
-        sa_escape_index = lbvh_data->sa_escape_index.view(),
+    
+    fn_compute_mortons = device.compile<1>([
         sa_block_aabb = lbvh_data->sa_block_aabb.view(),
         sa_leaf_center = lbvh_data->sa_leaf_center.view(),
         sa_morton = lbvh_data->sa_morton.view(),
-        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
-        &reduce_aabb_1_pass_template
-    ]
-    ()
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view()
+    ]()
     {
         const Uint lid = luisa::compute::dispatch_id().x;
 
@@ -299,8 +297,7 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_sorted_get_original->write(lid, lid);
     });
 
-    // Apply Sorted
-    auto apply_sorted = device.compile<1>([
+    fn_apply_sorted = device.compile<1>([
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_morton = lbvh_data->sa_morton.view(),
         sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
@@ -312,40 +309,64 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_morton_sorted->write(lid, sa_morton->read(orig_vid));
         sa_children->write(num_inner_nodes + lid, make_uint2(orig_vid, orig_vid));
     });
-    
-    auto build_inner_nodes = device.compile<1>([
+
+    fn_build_inner_nodes = device.compile<1>([
         sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
         sa_children = lbvh_data->sa_children.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
-        num_inner_nodes = Var<int>(num_inner_nodes),
-        num_leaves = Var<int>(num_leaves)
+        num_inner_nodes
     ]() {
         const Uint nid = dispatch_id().x;
+
+        Int num_inners = num_inner_nodes;
+        Int num_leaves = num_inner_nodes + 1;
+
         Uint2 ranges = makeUint2(0, num_inner_nodes);
-        $if (nid != 0) {
+        $if (nid != 0) 
+        {
             ranges = determineRange(nid, sa_morton_sorted, num_leaves);
         };
+
+        // $if (unit_test)
+        {
+            // Should be [0 -> 7, 1 -> 0, 2 -> 0, 3 -> 4, 4 -> 0, 5 -> 7, 6 -> 5]
+            // device_log("range {} = {} -> {}", nid, ranges[0], ranges[1]);
+        };
+
         Int i = ranges[0];
         Int j = ranges[1];
-        Int split = findSplit(ranges, sa_morton_sorted);
+        Int split = findSplit(ranges, sa_morton_sorted); // 
 
-        Int child_left = select(min_scalar(i, j) == split, (num_inner_nodes + split), split);
-        Int child_right = select(max_scalar(i, j) == split + 1, (num_inner_nodes + split + 1), (split + 1));
+        // $if (unit_test)
+        {
+            // Should be [4, 0, 1, 3, 2, 6, 5,]
+            // device_log("split {} = {}", nid, split);
+        };
 
-        $if (child_right >= Int(num_inner_nodes)) 
+        Int child_left = select(min_scalar(i, j) == split, (num_inners + split), split);
+        Int child_right = select(max_scalar(i, j) == split + 1, (num_inners + split + 1), (split + 1));
+
+        $if (child_right >= num_inners) 
         {
             Int tmp = child_left;
             child_left = child_right;
             child_right = tmp;
         };
-        sa_parrent->write(child_left, nid);
+
+        // $if (unit_test)
+        {
+            // Should be [[4, 5] [8, 7] [9, 1] [11, 10] [2, 3] [14, 6] [13, 12] [0, 0] [0, 0] [0, 0] [0, 0] [0, 0] [0, 0] [0, 0] [0, 0]]
+            // device_log("children {} = {}", nid, makeUint2(child_left, child_right));
+        };
+
+        // Should be [0, 2, 4, 4, 0, 0, 5, 1, 1, 2, 3, 3, 6, 6, 5, ]
+        sa_parrent->write(child_left, nid); // 
         sa_parrent->write(child_right, nid);
         sa_children->write(nid, makeUint2(child_left, child_right));
     });
-
-    // 3. Check Construction
-    auto check_construction = device.compile<1>([
+    return;
+    fn_check_construction = device.compile<1>([
         sa_children = lbvh_data->sa_children.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_is_healthy = lbvh_data->sa_is_healthy.view()
@@ -360,8 +381,7 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     });
 
-
-    auto set_escape_index = device.compile<1>([
+    fn_set_escape_index = device.compile<1>([
         sa_children = lbvh_data->sa_children.view(),
         sa_escape_index = lbvh_data->sa_escape_index.view()
     ]() {
@@ -377,7 +397,7 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     });
 
-    auto set_left_and_escape = device.compile<1>([
+    fn_set_left_and_escape = device.compile<1>([
         sa_children = lbvh_data->sa_children.view(),
         sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
         sa_escape_index = lbvh_data->sa_escape_index.view()
@@ -389,7 +409,8 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_left_and_escape->write(nid, make_uint2(leftIdx, escapeIdx));
     });
 
-    auto update_vert_tree_leave_aabb = device.compile<1>([
+    // Refit
+    fn_update_vert_tree_leave_aabb = device.compile<1>([
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
@@ -404,7 +425,7 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
 
-    auto update_face_tree_leave_aabb = device.compile<1>([
+    fn_update_face_tree_leave_aabb = device.compile<1>([
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
@@ -426,21 +447,14 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
 
-    auto clear_apply_flag = device.compile<1>([
+    fn_clear_apply_flag = device.compile<1>([
         sa_apply_flag = lbvh_data->sa_apply_flag.view()
     ]() {
         const Uint nid = dispatch_id().x;
         sa_apply_flag->write(nid, 0u);
     });
 
-    auto buffer = device.create_buffer<bool>(1);
-    auto read_bool = device.compile<1>([
-        buffer = buffer.view()
-    ](){
-        buffer->write(0, false);
-    });
-
-    auto refit_kernel = device.compile<1>([
+    fn_refit_kernel = device.compile<1>([
         sa_apply_flag = lbvh_data->sa_apply_flag.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_children = lbvh_data->sa_children.view(),
@@ -478,7 +492,8 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     });
 
-    auto query_kernel = device.compile<1>([
+    // Query
+    fn_query_kernel = device.compile<1>([
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         sa_left_and_escape = lbvh_data->sa_left_and_escape.view(),
         num_leaves = Uint(num_leaves)
@@ -515,23 +530,174 @@ void LBVH::compile(luisa::compute::Device& device)
             $if (current == -1) { $break; };
         };
     });
+
+    // auto buffer = device.create_buffer<bool>(1);
+    // auto read_bool = device.compile<1>([
+    //     buffer = buffer.view()
+    // ](){
+    //     buffer->write(0, false);
+    // });
+}
+
+template <typename T>
+static inline bool is_the_same(luisa::compute::Stream& stream, luisa::compute::Buffer<T>& buffer, std::vector<T>& vector)
+{
+    std::vector<T> buffer_result(buffer.size());
+    stream << buffer.copy_to(buffer_result) << luisa::compute::synchronize();
+    for (uint i = 0; i < buffer.size(); i++)
+    {
+        if (buffer_result[i] != vector[i])
+        {
+            luisa::log_info("Not equal at {} : get {} desire {}", i, buffer_result[i], vector[i]);
+            return false;
+        }
+    }
+    return true;
+} 
+
+void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream)
+{
+    using namespace luisa::compute;
+
+    LbvhData<luisa::compute::Buffer> tmp_lbvh_data;
+    tmp_lbvh_data.allocate(device, 8, LBVHTreeTypeVert, LBVHUpdateTypeCloth);
+    set_lbvh_data(&tmp_lbvh_data);
+    compile(device);
+
+    const uint num_leaves = lbvh_data->num_leaves;
+    const uint num_inner_nodes = lbvh_data->num_inner_nodes;
+    const uint num_nodes = lbvh_data->num_nodes;
+    
+    const std::vector<morton64> answer_morton32 = {
+        0, 2064888,
+        16519104, 117698623,
+        132152839, 939524096,
+        941588984, 956043200,
+    };
+    const std::vector<morton64> answer_morton64 = {
+        0, 8868626429902849,
+        70949011439222786, 505511736569233411,
+        567592121578553348, 4035225266123964421,
+        4044093892553867270, 4106174277563187207
+    };
+
+    auto init_test = device.compile<1>([
+        sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
+        sa_children = lbvh_data->sa_children.view()
+    ]()
+    {
+        const Uint lid = dispatch_x();
+        Float pos = Float(lid) / 10.0f;
+        auto mc32 = make_morton32(makeFloat3(pos));
+        auto mc64 = make_morton64(makeFloat3(pos), lid);
+        // auto mc64 = (static_cast<Morton64>(mc32) << 32) | (static_cast<Morton64>(lid) & static_cast<Morton64>(0xFFFFFFFF));
+        sa_morton_sorted->write(lid, mc64);
+        sa_children->write(7 + lid, makeUint2(lid));
+        {
+            device_log("lid {} morton32 = {}, morton64 = {}", lid, mc32, mc64);
+        }
+    });
+
+    stream 
+        << init_test().dispatch(8)
+        << synchronize();
+
+    // construct_tree(stream);
+    std::vector<uint> host_parrent(15);
+    std::vector<uint2> host_children(15);
+
+    stream 
+        << fn_build_inner_nodes().dispatch(num_inner_nodes)
+        << lbvh_data->sa_parrent.copy_to(host_parrent.data())
+        << lbvh_data->sa_children.copy_to(host_children.data())
+        << synchronize();
+
+    for (uint i = 0; i < host_parrent.size(); i++)
+    {
+        auto parrent = host_parrent[i];
+        luisa::log_info("parrent of {} = {}", i, parrent);
+    }
+    for (uint i = 0; i < host_children.size(); i++)
+    {
+        auto parrent = host_children[i];
+        luisa::log_info("children of {} = {}", i, parrent);
+    }
+}
+
+// Construct
+
+void LBVH::reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_position)
+{
+    stream 
+        << fn_reduce_vert_tree_global_aabb(input_position).dispatch(input_position.size())
+        << fn_reduce_aabb_2_pass_template().dispatch(get_dispatch_block(input_position.size(), 256));
+}
+void LBVH::reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
+{
+    stream 
+        << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_position.size())
+        << fn_reduce_aabb_2_pass_template().dispatch(get_dispatch_block(input_position.size(), 256));
 }
 void LBVH::construct_tree(Stream& stream)
 {
+    const uint num_leaves = lbvh_data->num_leaves;
+    const uint num_inner_nodes = lbvh_data->num_inner_nodes;
+    const uint num_nodes = lbvh_data->num_nodes;
 
-}
-void LBVH::refit(Stream& stream)
-{
 
+    static std::vector<morton64> host_morton64;
+    static std::vector<uint> host_sorted_get_original;
+    if (host_morton64.empty())
+    {
+        host_morton64.resize(num_leaves);
+        host_sorted_get_original.resize(num_leaves);
+    }
+
+
+    stream 
+        << fn_reset_tree().dispatch(num_nodes) 
+        << fn_compute_mortons().dispatch(num_leaves) 
+        << lbvh_data->sa_morton.copy_to(host_morton64.data())
+        << lbvh_data->sa_sorted_get_original.copy_to(host_sorted_get_original.data())
+        << luisa::compute::synchronize();
+
+    CpuParallel::parallel_sort(host_sorted_get_original.data(), host_sorted_get_original.data() + num_leaves, [&](const uint idx1, const uint idx2) -> bool 
+    {
+        return host_morton64[idx1] < host_morton64[idx2];
+    });
+
+    stream 
+        << lbvh_data->sa_morton.copy_from(host_morton64.data())
+        << lbvh_data->sa_sorted_get_original.copy_from(host_sorted_get_original.data())
+        << fn_apply_sorted().dispatch(num_leaves)
+        << fn_build_inner_nodes().dispatch(num_inner_nodes)
+
+        << fn_check_construction().dispatch(num_inner_nodes)
+        << fn_set_escape_index().dispatch(num_inner_nodes)
+        << fn_set_left_and_escape().dispatch(num_nodes)
+        ;
 }
+
+// Refit 
+
 void LBVH::update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position)
 {
-
+    stream 
+        << fn_update_vert_tree_leave_aabb(input_position, 0.01f).dispatch(input_position.size());
 }
 void LBVH::update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
 {
-
+    stream 
+        << fn_update_face_tree_leave_aabb(input_position, input_faces, 0.01f).dispatch(input_position.size());
 }
+void LBVH::refit(Stream& stream)
+{
+    stream 
+        << fn_clear_apply_flag().dispatch(lbvh_data->sa_apply_flag.size())
+        << fn_refit_kernel().dispatch(lbvh_data->num_leaves);
+}
+
+
 void LBVH::broad_phase_query(Stream& stream, const Buffer<float3>& input_position, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness)
 {
 
