@@ -92,7 +92,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
 
     auto makeHf1 = [](const Float3& force, const Float3x3& hessian) 
     {
-        return make_float4x3(force, hessian[0], hessian[1], hessian[2]);
+        return makeFloat4x3(force, hessian[0], hessian[1], hessian[2]);
     };
     auto extractHf1 = [&](Float3& force, Float3x3& hessian, BufferView<float4x3> sa_Hf, const Uint vid)
     {

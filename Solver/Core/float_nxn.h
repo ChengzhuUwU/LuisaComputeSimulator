@@ -120,15 +120,20 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
     luisa::compute::make_float4(0.0f, 0.0f, 0.0f, diag[3])
 ); }
 
-
+// 2x3
+// 2x4
+// 3x2
+// 3x4
+// 4x2
+// 4x3
 
 // float2x3
 [[nodiscard]] inline float2x3 makeFloat2x3(const float3& column0, const float3& column1) noexcept 
 { 
-    return luisa::float2x3{
-        column0, 
-        column1
-    }; 
+    float2x3 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    return mat;
 }
 [[nodiscard]] inline Var<float2x3> makeFloat2x3(const Var<float3>& column0, const Var<float3>& column1) noexcept 
 { 
@@ -138,17 +143,106 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
     return mat;
 }
 
-// float4x3
-[[nodiscard]] inline float4x3 makeFloat2x3(const float3& column0, const float3& column1, const float3& column2, const float3& column3) noexcept 
+// float2x3
+[[nodiscard]] inline float2x4 makeFloat2x4(const float4& column0, const float4& column1) noexcept 
 { 
-    return luisa::float4x3{
-        column0, 
-        column1,
-        column2,
-        column3,
-    }; 
+    float2x4 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    return mat;
 }
-[[nodiscard]] inline Var<float4x3> make_float4x3(const Var<float3>& column0, const Var<float3>& column1, const Var<float3>& column2, const Var<float3>& column3) noexcept 
+[[nodiscard]] inline Var<float2x4> makeFloat2x4(const Var<float4>& column0, const Var<float4>& column1) noexcept 
+{ 
+    Var<float2x4> mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    return mat;
+}
+
+// float3x2
+[[nodiscard]] inline float3x2 makeFloat3x2(const float2& column0, const float2& column1, const float2& column2) noexcept 
+{ 
+    float3x2 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    return mat;
+}
+[[nodiscard]] inline Var<float3x2> makeFloat3x2(const Var<float2>& column0, const Var<float2>& column1, const Var<float2>& column2) noexcept 
+{
+    Var<float3x2> mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    return mat;
+}
+
+
+[[nodiscard]] inline Var<float2x3> transpose_3x2(const Var<float3x2>& mat) noexcept 
+{
+    return makeFloat2x3(
+        makeFloat3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
+        makeFloat3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
+    );
+}
+[[nodiscard]] inline Var<float3x2> transpose_2x3(const Var<float2x3>& mat) noexcept 
+{
+    return makeFloat3x2(
+        makeFloat2(mat.cols[0][0], mat.cols[1][0]),
+        makeFloat2(mat.cols[0][1], mat.cols[1][1]),
+        makeFloat2(mat.cols[0][2], mat.cols[1][2])
+    );
+}
+
+// float3x4
+[[nodiscard]] inline float3x4 makeFloat3x4(const float4& column0, const float4& column1, const float4& column2) noexcept 
+{ 
+    float3x4 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    return mat;
+}
+[[nodiscard]] inline Var<float3x4> makeFloat3x4(const Var<float4>& column0, const Var<float4>& column1, const Var<float4>& column2) noexcept 
+{
+    Var<float3x4> mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    return mat;
+}
+
+// float4x2
+[[nodiscard]] inline float4x2 makeFloat4x2(const float2& column0, const float2& column1, const float2& column2, const float2& column3) noexcept 
+{ 
+    float4x2 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    mat.cols[3] = column3;
+    return mat;
+}
+[[nodiscard]] inline Var<float4x2> makeFloat4x2(const Var<float2>& column0, const Var<float2>& column1, const Var<float2>& column2, const Var<float2>& column3) noexcept 
+{
+    Var<float4x2> mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    mat.cols[3] = column3;
+    return mat;
+}
+
+// float4x3
+[[nodiscard]] inline float4x3 makeFloat4x3(const float3& column0, const float3& column1, const float3& column2, const float3& column3) noexcept 
+{ 
+    float4x3 mat;
+    mat.cols[0] = column0;
+    mat.cols[1] = column1;
+    mat.cols[2] = column2;
+    mat.cols[3] = column3;
+    return mat;
+}
+[[nodiscard]] inline Var<float4x3> makeFloat4x3(const Var<float3>& column0, const Var<float3>& column1, const Var<float3>& column2, const Var<float3>& column3) noexcept 
 {
     Var<float4x3> mat;
     mat.cols[0] = column0;
@@ -157,6 +251,119 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
     mat.cols[3] = column3;
     return mat;
 }
+[[nodiscard]] inline Var<float4x3> add(const Var<float4x3>& left, const Var<float4x3>& right) noexcept 
+{
+    Var<float4x3> output;
+    output.cols[0] = left.cols[0] + right.cols[0];
+    output.cols[1] = left.cols[1] + right.cols[1];
+    output.cols[2] = left.cols[2] + right.cols[2];
+    output.cols[3] = left.cols[3] + right.cols[3];
+    return output;
+}
+
+// When N != L
+template<size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
+[[nodiscard]] Var<XMatrix<L, N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
+{
+    Var<XMatrix<L, N>> output;
+    for (uint j = 0; j < N; ++j) { // output column
+        for (uint i = 0; i < L; ++i) { // output row
+            output.cols[j][i] = 0.0f;
+            for (uint k = 0; k < M; ++k) {
+                output.cols[j][i] += right.cols[i][k] * left.cols[j][k];
+            }
+        }
+    }
+    return output;
+}
+
+// When N == L
+template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
+[[nodiscard]] Var<luisa::Matrix<N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
+{
+    Var<luisa::Matrix<N>> output;
+    for (uint j = 0; j < N; ++j) {
+        for (uint i = 0; i < N; ++i) {
+            output[j][i] = 0.0f;
+            for (uint k = 0; k < M; ++k) {
+                output[j][i] += right.cols[i][k] * left.cols[j][k];
+            }
+        }
+    }
+    return output;
+}
+
+template Var<luisa::Matrix<3>> mult(const Var<XMatrix<2, 3>>&, const Var<XMatrix<3, 2>>&);
+template Var<luisa::Matrix<2>> mult(const Var<XMatrix<3, 2>>&, const Var<XMatrix<2, 3>>&);
+
+template<size_t M, size_t N>
+[[nodiscard]] Var<luisa::Vector<float, N>> mult(const Var<XMatrix<M, N>>& left, const Var<luisa::Vector<float, M>>& right) 
+{
+    Var<luisa::Vector<float, N>> output;
+    for (uint j = 0; j < N; ++j) {
+        output[j] = 0.0f;
+        for (uint i = 0; i < M; ++i) {
+            output[j] += left.cols[j][i] * right[i];
+        }
+    }
+    return output;
+}
+
+template<size_t M, size_t N>
+[[nodiscard]] auto mult(const Var<XMatrix<M, N>>& left, const Var<float>& alpha) 
+{
+    Var<XMatrix<M, N>> output;
+    for (uint j = 0; j < M; ++j) { // output column
+        output.cols[j] = alpha * left.cols[j];
+    }
+    return output;
+}
+
+template<size_t M, size_t N>
+[[nodiscard]] auto mult(const Var<float>& alpha, const Var<XMatrix<M, N>>& left) 
+{
+    Var<XMatrix<M, N>> output;
+    for (uint j = 0; j < M; ++j) { // output column
+        output.cols[j] = alpha * left.cols[j];
+    }
+    return output;
+}
+
+// auto mult(const Var<XMatrix<2, 3>>& left, const Var<XMatrix<3, 2>>& right);
+// auto mult(const Var<XMatrix<3, 2>>& left, const Var<XMatrix<2, 3>>& right);
+
+// [[nodiscard]] inline Var<float2x2> mult(const Var<float3x2>& left, const Var<float2x3>& right) noexcept 
+// {
+//     Var<float2x2> output;
+//     for (int i = 0; i < 2; ++i) { // row
+//         for (int j = 0; j < 2; ++j) { // col
+//             output[j][i] = left.cols[0][i] * right.cols[j][0]
+//                          + left.cols[1][i] * right.cols[j][1]
+//                          + left.cols[2][i] * right.cols[j][2];
+//         }
+//     }
+//     return output;
+// }
+// [[nodiscard]] inline Var<float2> mult(const Var<float3x2>& left, const Var<float3>& right) noexcept 
+// {
+//     Var<float2> output;
+//     for (int i = 0; i < 2; ++i) { // row
+//         output[i] = left.cols[0][i] * right[0]
+//                   + left.cols[1][i] * right[1]
+//                   + left.cols[2][i] * right[2];
+//     }
+//     return output;
+// }
+// [[nodiscard]] inline Var<float4x3> mult(const Var<float4x3>& mat, const Var<float> alpha) noexcept 
+// {
+//     Var<float4x3> output;
+//     output.cols[0] *= alpha;
+//     output.cols[1] *= alpha;
+//     output.cols[2] *= alpha;
+//     output.cols[3] *= alpha;
+//     return mat;
+// }
+
 
 template<typename Mat> inline float determinant_mat(const Mat& mat) { return luisa::determinant(mat); }
 template<typename Mat> inline Var<float> determinant_mat(const Var<Mat>& mat) { return luisa::compute::determinant(mat); }

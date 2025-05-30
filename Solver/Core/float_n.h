@@ -12,14 +12,10 @@
 
 namespace luisa 
 {
-    using float4x3 = XMatrix<4, 3>;
-    using float2x3 = XMatrix<2, 3>;
-    using float3x4 = XMatrix<3, 4>;
+    
 };
 
-LUISA_STRUCT(luisa::float2x3, cols) {};
-LUISA_STRUCT(luisa::float4x3, cols) {};
-LUISA_STRUCT(luisa::float3x4, cols) {};
+
 
 namespace luisa::compute 
 {
@@ -27,9 +23,12 @@ using Uint = luisa::compute::Var<uint>;
 using Uint2 = luisa::compute::Var<uint2>;
 using Uint3 = luisa::compute::Var<uint3>;
 using Uint4 = luisa::compute::Var<uint4>;
-using Float2x3 = luisa::compute::Var<luisa::float2x3>;
-using Float4x3 = luisa::compute::Var<luisa::float4x3>;
-using Float3x4 = luisa::compute::Var<luisa::float3x4>;
+using Float2x3 = luisa::compute::Var<lcsv::float2x3>;
+using Float2x4 = luisa::compute::Var<lcsv::float2x4>;
+using Float3x2 = luisa::compute::Var<lcsv::float3x2>;
+using Float3x4 = luisa::compute::Var<lcsv::float3x4>;
+using Float4x2 = luisa::compute::Var<lcsv::float4x2>;
+using Float4x3 = luisa::compute::Var<lcsv::float4x3>;
 
 /*
 
@@ -153,8 +152,62 @@ using uchar4 = luisa::ubyte4;
 using float2x2 = luisa::float2x2;
 using float3x3 = luisa::float3x3;
 using float4x4 = luisa::float4x4;
-using float2x3 = luisa::float2x3;
-using float4x3 = luisa::float4x3;
+
+// using float2x3 = luisa::float2x3;
+// using float2x4 = luisa::float2x4;
+// using float3x2 = luisa::float3x2;
+// using float3x4 = luisa::float3x4;
+// using float4x2 = luisa::float4x2;
+// using float4x3 = luisa::float4x3;
+
+using Int = luisa::compute::Int;
+using Int2 = luisa::compute::Int2;
+using Int3 = luisa::compute::Int3;
+using Int4 = luisa::compute::Int4;
+using UInt = luisa::compute::UInt;
+using UInt2 = luisa::compute::UInt2;
+using UInt3 = luisa::compute::UInt3;
+using UInt4 = luisa::compute::UInt4;
+using Float = luisa::compute::Float;
+using Float2 = luisa::compute::Float2;
+using Float3 = luisa::compute::Float3;
+using Float4 = luisa::compute::Float4;
+using Bool = luisa::compute::Bool;
+using Bool2 = luisa::compute::Bool2;
+using Bool3 = luisa::compute::Bool3;
+using Bool4 = luisa::compute::Bool4;
+using Float2x2 = luisa::compute::Float2x2;
+using Float3x3 = luisa::compute::Float3x3;
+using Float4x4 = luisa::compute::Float4x4;
+using Short = luisa::compute::Short;
+using Short2 = luisa::compute::Short2;
+using Short3 = luisa::compute::Short3;
+using Short4 = luisa::compute::Short4;
+using UShort = luisa::compute::UShort;
+using UShort2 = luisa::compute::UShort2;
+using UShort3 = luisa::compute::UShort3;
+using UShort4 = luisa::compute::UShort4;
+using SLong = luisa::compute::SLong;
+using SLong2 = luisa::compute::SLong2;
+using SLong3 = luisa::compute::SLong3;
+using SLong4 = luisa::compute::SLong4;
+using ULong = luisa::compute::ULong;
+using ULong2 = luisa::compute::ULong2;
+using ULong3 = luisa::compute::ULong3;
+using ULong4 = luisa::compute::ULong4;
+using Half = luisa::compute::Half;
+using Half2 = luisa::compute::Half2;
+using Half3 = luisa::compute::Half3;
+using Half4 = luisa::compute::Half4;
+
+using Float2x3 = luisa::compute::Var<float2x3>;
+using Float2x4 = luisa::compute::Var<float2x4>;
+using Float3x2 = luisa::compute::Var<float3x2>;
+using Float3x4 = luisa::compute::Var<float3x4>;
+using Float4x2 = luisa::compute::Var<float4x2>;
+using Float4x3 = luisa::compute::Var<float4x3>;
+
+
 // using ElementOffset = luisa::ubyte4;
 
 template<typename T>
