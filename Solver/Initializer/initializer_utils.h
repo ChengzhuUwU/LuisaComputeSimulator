@@ -199,6 +199,16 @@ static inline auto resize_buffer(luisa::compute::Device& device, luisa::compute:
 {
     dest = device.create_buffer<T>(src.size());
 };
+template<typename T>
+static inline auto resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& dest, const uint size)
+{
+    dest = device.create_buffer<T>(size);
+};
+template<typename T>
+static inline auto resize_buffer(std::vector<T>& dest, const uint size)
+{
+    dest.resize(size);
+};
 
 
 } // namespace Initializater

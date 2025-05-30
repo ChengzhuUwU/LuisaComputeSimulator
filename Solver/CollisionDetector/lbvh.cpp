@@ -102,6 +102,13 @@ IntType cp_i_j(const MortonType& mi, IntType j, const BufferType& sa_morton_sort
     return select(isValid, find_common_prefix(mi, get_morton(sa_morton_sorted, j)), static_cast<IntType>(-1));
 }
 
+// template<template<typename> typename T, typename BufferType>
+// T<int> cp_i_j(const T<morton64>& mi, T<int> j, const BufferType& sa_morton_sorted, const T<uint> num_leaves) 
+// {
+//     auto isValid = (j >= 0 & j < num_leaves);
+//     return select(isValid, find_common_prefix(mi, get_morton(sa_morton_sorted, j)), T<int>(-1));
+// }
+
 Var<int2> determineRange(const Var<uint> index, const luisa::compute::BufferView<morton64>& sa_morton_sorted, const Var<uint> num_leaves) 
 {
     using IndexType = Var<int>;

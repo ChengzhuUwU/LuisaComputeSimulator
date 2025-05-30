@@ -124,6 +124,7 @@ int main(int argc, char** argv)
     {
         lcsv::Initializater::init_xpbd_data(&cpu_mesh_data, &cpu_xpbd_data);
         lcsv::Initializater::upload_xpbd_buffers(device, stream, &cpu_xpbd_data, &xpbd_data);
+        lcsv::Initializater::resize_pcg_data(device, stream, &cpu_mesh_data, &cpu_xpbd_data, &xpbd_data);
         lcsv::Initializater::init_simulation_params();
     }
 
@@ -227,7 +228,8 @@ int main(int argc, char** argv)
     {
         fn_fixed_point_animation(lcsv::get_scene_params().current_frame);
 
-        solver.physics_step_CPU(device, stream);
+        // solver.physics_step_CPU(device, stream);
+        solver.physics_step_GPU(device, stream);
 
         lcsv::get_scene_params().current_frame += 1; 
     };
@@ -342,6 +344,7 @@ int main(int argc, char** argv)
                 ImGui::InputScalar("Max Frame", ImGuiDataType_U32, &max_frame);
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
+                ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().pcg_iter_count);
                 ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
                 ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
                 ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);

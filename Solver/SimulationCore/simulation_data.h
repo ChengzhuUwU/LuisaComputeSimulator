@@ -61,6 +61,20 @@ struct SimulationData : SimulationType
     
     BufferType<float> sa_Hf; 
     BufferType<float4x3> sa_Hf1; 
+
+    // PCG
+    BufferType<float3> sa_cgX;
+    BufferType<float3> sa_cgB;
+    BufferType<float3x3> sa_cgA_diag;
+    BufferType<float3x3> sa_cgA_offdiag; // Row-major for simplier SpMV
+ 
+    BufferType<float3x3> sa_cgMinv;
+    BufferType<float3> sa_cgP;
+    BufferType<float3> sa_cgQ;
+    BufferType<float3> sa_cgR;
+    BufferType<float3> sa_cgZ;
+    BufferType<float> sa_block_result;
+    BufferType<float> sa_convergence;
 };
 
 enum CollisionListType

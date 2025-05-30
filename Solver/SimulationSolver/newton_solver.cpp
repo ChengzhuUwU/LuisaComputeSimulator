@@ -8,10 +8,32 @@
 #include "Core/xbasic_types.h"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
+#include "Utils/reduce_helper.h"
+#include "luisa/backends/ext/pinned_memory_ext.hpp"
 #include <luisa/dsl/sugar.h>
 
 namespace lcsv 
 {
+
+template<typename T>
+void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
+{
+    buffer->write(dest, buffer->read(dest) + value);
+}
+template<typename T>
+void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest, const Var<T>& value)
+{
+    buffer->write(dest, buffer->read(dest) + value);
+}
+// Reduce
+void reduce_Float(Var<float> & left, const Var<float> & right) 
+{
+    left += right;
+};
+void reduce_Float2(Var<float2> & left, const Var<float2> & right) 
+{
+    left += right;
+};
 
 void NewtonSolver::compile(luisa::compute::Device& device)
 {
@@ -20,57 +42,535 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
 
-    auto fn_init_force = device.compile<1>(
+    auto& sa_x_tilde = sim_data->sa_x_tilde;
+    auto& sa_x = sim_data->sa_x;
+    auto& sa_v = sim_data->sa_v;
+    auto& sa_x_step_start = sim_data->sa_x_step_start;
+    auto& sa_x_iter_start = sim_data->sa_x_iter_start;
+    auto& sa_v_step_start = sim_data->sa_v_step_start;
+    
+    auto& sa_cgX = sim_data->sa_cgX;
+    auto& sa_cgB = sim_data->sa_cgB;
+    auto& sa_cgA_diag = sim_data->sa_cgA_diag;
+    auto& sa_cgA_offdiag = sim_data->sa_cgA_offdiag;
+    
+    auto& sa_cgMinv = sim_data->sa_cgMinv;
+    auto& sa_cgP = sim_data->sa_cgP;
+    auto& sa_cgQ = sim_data->sa_cgQ;
+    auto& sa_cgR = sim_data->sa_cgR;
+    auto& sa_cgZ = sim_data->sa_cgZ;
+
+    fn_reset_vector = device.compile<1>([](Var<BufferView<float3>> buffer, Float3 target)
+    {
+        const UInt vid = dispatch_id().x;
+        buffer->write(vid, target);
+    });
+
+    fn_reset_offdiag = device.compile<1>(
+        [
+            sa_cgA_offdiag = sa_cgA_offdiag.view()
+        ](){
+            sa_cgA_offdiag->write(dispatch_id().x, makeFloat3x3(Float(0.0f)));
+        });
+
+    fn_predict_position = device.compile<1>(
         [
             sa_x = sim_data->sa_x.view(),
+            sa_x_step_start = sim_data->sa_x_step_start.view(), 
+            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
             sa_v = sim_data->sa_v.view(),
-            sa_x_start = sim_data->sa_x_step_start.view(),
+            sa_cgX = sim_data->sa_cgX.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view()
         ](const Float substep_dt)
     {
         const UInt vid = dispatch_id().x;
-        const Float3 gravity(0, -9.8f, 0);
-        Float3 x_prev = sa_x_start->read(vid);
+        const Float3 gravity = make_float3(0.0f, -9.8f, 0.0f);
+        Float3 x_prev = sa_x_step_start->read(vid);
         Float3 v_prev = sa_v->read(vid);
         Float3 outer_acceleration = gravity;
         Float3 v_pred = v_prev + substep_dt * outer_acceleration;
-        $if (sa_is_fixed->read(vid) != 0) { outer_acceleration = Zero3; v_pred = Zero3; };
-        const Float3 x_pred = x_prev + substep_dt * v_pred;
-        sa_x->write(vid, x_pred);
+        $if (sa_is_fixed->read(vid) != 0) { v_pred = make_float3(0.0f); };
+
+        sa_x_iter_start->write(vid, x_prev);
+        Float3 x_pred = x_prev + substep_dt * v_pred;
+        sa_x_tilde->write(vid, x_pred);
+        sa_x->write(vid, x_prev);
+        sa_cgX->write(vid, make_float3(0.0f));
     }, default_option);
 
-    auto fn_init_hessian = device.compile<1>(
+    fn_update_velocity = device.compile<1>(
         [
             sa_x = sim_data->sa_x.view(),
             sa_v = sim_data->sa_v.view(),
-            sa_iter_start_position = sim_data->sa_x_step_start.view(),
-            sa_iter_position = sim_data->sa_x.view(),
-            sa_velocity_start = sim_data->sa_v_step_start.view(),
-            sa_vert_velocity = sim_data->sa_v.view(),
-            sa_x_start = sim_data->sa_x_step_start.view()
+            sa_x_step_start = sim_data->sa_x_step_start.view(),
+            sa_v_step_start = sim_data->sa_v_step_start.view()
         ](const Float substep_dt, const Bool fix_scene, const Float damping)
+    {
+        const UInt vid = dispatch_id().x;
+        Float3 x_step_begin = sa_x_step_start->read(vid);
+        Float3 x_step_end = sa_x->read(vid);
+
+        Float3 dx = x_step_end - x_step_begin;
+        Float3 vel = dx / substep_dt;
+
+        $if (fix_scene) {
+            dx = make_float3(0.0f);
+            vel = make_float3(0.0f);
+            sa_x->write(vid, x_step_begin);
+            return;
+        };
+
+        vel *= exp(-damping * substep_dt);
+        
+        sa_v->write(vid, vel);
+        sa_v_step_start->write(vid, vel);
+        sa_x_step_start->write(vid, x_step_end);
+    }, default_option);
+
+    fn_evaluate_inertia = device.compile<1>(
+        [
+            sa_x = sim_data->sa_x.view(),
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
+            sa_cgB = sim_data->sa_cgB.view(),
+            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+            sa_is_fixed = mesh_data->sa_is_fixed.view(),
+            sa_vert_mass = mesh_data->sa_vert_mass.view()
+        ](const Float substep_dt)
+    {
+        const UInt vid = dispatch_id().x;
+        const Float h = substep_dt;
+        const Float h_2_inv = 1.0f / (h * h);
+
+        Float3 x_k = sa_x->read(vid);
+        Float3 x_tilde = sa_x_tilde->read(vid);
+        Int is_fixed = sa_is_fixed->read(vid);
+        Float mass = sa_vert_mass->read(vid);
+
+        Float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
+        Float3x3 hessian = make_float3x3(1.0f) * mass * h_2_inv;
+
+        $if (is_fixed != 0) {
+            hessian = make_float3x3(1.0f) * 1e9f;
+            gradient = make_float3(0.0f);
+        };
+
+        sa_cgB->write(vid, gradient); 
+        sa_cgA_diag->write(vid, hessian);
+    }, default_option);
+
+    fn_evaluate_spring = device.compile<1>(
+        [
+            sa_x = sim_data->sa_x.view(),
+            sa_cgB = sim_data->sa_cgB.view(),
+            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+            sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
+            culster = sim_data->sa_prefix_merged_springs.view(),
+            sa_edges = sim_data->sa_merged_edges.view(),
+            sa_rest_length = sim_data->sa_merged_edges_rest_length.view()
+        ](const Float stiffness_stretch, const Uint cluster_idx)
+    {
+        const Uint curr_prefix = culster->read(cluster_idx);
+        const UInt eid = curr_prefix + dispatch_id().x;
+
+        // const UInt eid = dispatch_id().x;
+        UInt2 edge = sa_edges->read(eid);
+
+        Float3 vert_pos[2] = { sa_x->read(edge.x), sa_x->read(edge.y) };
+        Float3 force[2] = {make_float3(0.0f), make_float3(0.0f)};
+        Float3x3 He = make_float3x3(0.0f);
+
+        const Float L = sa_rest_length->read(eid);
+        const Float stiffness_spring = stiffness_stretch;
+
+        Float3 diff = vert_pos[1] - vert_pos[0];
+        Float l = max(length(diff), 1e-7f);
+        Float l0 = L;
+        Float C = l - l0;
+
+        Float3 dir = diff / l;
+        Float3x3 xxT = outer_product(diff, diff);
+        Float x_inv = 1.f / l;
+        Float x_squared_inv = x_inv * x_inv;
+
+        force[0] = stiffness_spring * dir * C;
+        force[1] = -force[0];
+        He = stiffness_spring * x_squared_inv * xxT + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
+
+        buffer_add(sa_cgB, edge.x, force[0]);
+        buffer_add(sa_cgB, edge.y, force[1]);
+        buffer_add(sa_cgA_diag, edge.x, He);
+        buffer_add(sa_cgA_diag, edge.y, He);
+        buffer_add(sa_cgA_offdiag, eid * 2 + 0, -1.0f * He);
+        buffer_add(sa_cgA_offdiag, eid * 2 + 1, -1.0f * He);
+    }, default_option);
+
+
+    // Line search
+    auto fn_reduce_and_add_energy = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            sa_convergence = sim_data->sa_convergence.view()
+        ]()
+        {
+            const Uint index = dispatch_id().x;
+            Float energy = sa_block_result->read(index);
+            energy = ParallelIntrinsic::block_reduce(index, energy, reduce_Float);
+
+            $if (index == 0)
+            {
+                buffer_add(sa_convergence, 7, energy);
+            };
+        }
+    );
+
+    fn_calc_energy_inertia = device.compile<1>(
+        [
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
+            sa_vert_mass = mesh_data->sa_vert_mass.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ](
+            Var<BufferView<float3>> sa_x, 
+            Float substep_dt
+        )
+    {
+        const Uint vid = dispatch_id().x;
+
+        Float3 x_new = sa_x->read(vid);
+        Float3 x_tilde = sa_x_tilde->read(vid);
+        Float mass = sa_vert_mass->read(vid);
+        Float energy = length_squared_vec(x_new - x_tilde) * mass / (2.0f * substep_dt * substep_dt);
+        
+        energy = ParallelIntrinsic::block_reduce(vid, energy, reduce_Float);
+        $if(vid % 256 == 0)
+        {
+            sa_block_result->write(vid / 256, energy);
+        };
+    }, default_option);
+
+    fn_calc_energy_spring = device.compile<1>(
+        [
+            sa_edges = mesh_data->sa_edges.view(),
+            sa_edge_rest_state_length = mesh_data->sa_edges_rest_state_length.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ](
+            Var<BufferView<float3>> sa_x,
+            Float stiffness_spring
+        )
+    {
+        const Uint eid = dispatch_id().x;
+
+        const Uint2 edge = sa_edges->read(eid);
+        const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
+        Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
+        Float orig_lengthsqr = length_squared_vec(diff);
+        Float l = sqrt_scalar(orig_lengthsqr);
+        Float l0 = rest_edge_length;
+        Float C = l - l0;
+        Float energy = 0.0f;
+        // if (C > 0.0f)
+            energy = 0.5f * stiffness_spring * C * C;
+
+        energy = ParallelIntrinsic::block_reduce(eid, energy, reduce_Float);
+        $if(eid % 256 == 0)
+        {
+            sa_block_result->write(eid / 256, energy);
+        };
+
+    }, default_option);
+
+    // 0 : old_dot_rr
+    // 1 : new_dot_rz
+    // 2 : beta
+    // 3 : alpha
+    // 4 : new_dot_rr
+    // 
+    // 6 : init energy
+    // 7 : new energy
+
+    auto fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr) 
+    { 
+        Uint iteration_idx = as<Uint>(sa_convergence->read(8));
+        sa_convergence->write(4, dot_rr);
+        sa_convergence->write(10 + iteration_idx, dot_rr);
+        sa_convergence->write(8, as<Float>(iteration_idx + 1));
+    };
+    auto fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(1);
+    };
+    auto fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz) 
+    { 
+        sa_convergence->write(1, dot_rz);
+    };
+
+    auto fn_save_alpha = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq) 
+    { 
+        Float delta = fn_read_rz();
+        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq); // alpha = delta / dot(p, q)
+        sa_convergence->write(2, alpha);
+    };
+    auto fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(2);
+    };
+    
+    auto fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_rz_old, const Float dot_rz) 
+    { 
+        // Float delta_old = fn_read_rz();
+        Float delta_old = dot_rz_old;
+        Float beta = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
+        sa_convergence->write(3, beta);
+    };
+    auto fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(3);
+    };
+
+    fn_apply_dx = device.compile<1>(
+        [
+            sa_x = sim_data->sa_x.view(),
+            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+            sa_cgX = sim_data->sa_cgX.view()
+        ](const Float alpha) 
+    {
+        const UInt vid = dispatch_id().x;
+        sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
+    }, default_option);
+
+    // PCG kernels
+    fn_pcg_init = device.compile<1>(
+        [
+            sa_cgB = sim_data->sa_cgB.view(),
+            sa_cgQ = sim_data->sa_cgQ.view(),
+            sa_cgR = sim_data->sa_cgR.view(),
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        Float3 b = sa_cgB->read(vid);
+        Float3 q = sa_cgQ->read(vid);
+        Float3 r = b - q;
+        sa_cgR->write(vid, r);
+        sa_cgP->write(vid, make_float3(0.0f));
+        sa_cgQ->write(vid, make_float3(0.0f));
+
+        Float dot_rr = dot_vec(r, r);
+        dot_rr = ParallelIntrinsic::block_reduce(vid, dot_rr, reduce_Float);
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / 256;
+            sa_block_result->write(blockIdx, dot_rr);
+        };
+    }, default_option);
+
+    fn_save_dot_rr_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            sa_convergence = sim_data->sa_convergence.view()
+        ]()
         {
             const UInt vid = dispatch_id().x;
 
-            Float3 x_k_init = sa_iter_start_position->read(vid);
-            Float3 x_k = sa_iter_position->read(vid);
+            Float dot_rr = sa_convergence->read(vid + 0);
+            dot_rr = ParallelIntrinsic::block_reduce(vid, dot_rr, reduce_Float);
 
-            Float3 dx = x_k - x_k_init;
-            Float3 vel = dx / substep_dt;
-
-            $if (fix_scene) 
+            $if (vid == 0)
             {
-                dx = Zero3;
-                vel = Zero3;
-                sa_iter_position->write(vid, sa_x_start->read(vid));
-                return;
+                sa_convergence->write(0, dot_rr); // rTr_0
+                sa_convergence->write(1, 0.0f); // rTz
+                sa_convergence->write(2, 0.0f); // alpha
+                sa_convergence->write(3, 0.0f); // beta
+
+                sa_convergence->write(8, as<Float>(Uint(0))); // iteration count
+                sa_convergence->write(9, dot_rr);
             };
+        }
+    );
 
-            vel *= exp(-damping * substep_dt);
+    // PCG SPMV diagonal kernel
+    fn_pcg_spmv_diag = device.compile<1>(
+        [
+        sa_cgA_diag = sim_data->sa_cgA_diag.view()
+        ](
+            Var<luisa::compute::BufferView<float3>> sa_input_vec, 
+            Var<luisa::compute::BufferView<float3>> sa_output_vec
+        )
+    {
+        const UInt vid = dispatch_id().x;
+        Float3x3 A_diag = sa_cgA_diag->read(vid);
+        Float3 input = sa_input_vec->read(vid);
+        Float3 diag_output = A_diag * input;
+        sa_output_vec->write(vid, diag_output);
+    }, default_option);
 
-            sa_vert_velocity->write(vid, vel);
-            sa_velocity_start->write(vid, vel);
-            sa_iter_start_position->write(vid, x_k);
+    fn_pcg_spmv_offdiag = device.compile<1>(
+        [
+        sa_edges = sim_data->sa_merged_edges.view(),
+        sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
+        culster = sim_data->sa_prefix_merged_springs.view()
+        ](
+            Var<luisa::compute::BufferView<float3>> sa_input_vec, 
+            Var<luisa::compute::BufferView<float3>> sa_output_vec,
+            const Uint cluster_idx
+        )
+    {
+        const Uint curr_prefix = culster->read(cluster_idx);
+        const UInt eid = curr_prefix + dispatch_id().x;
+
+        // const UInt eid = dispatch_id().x;
+        UInt2 edge = sa_edges->read(eid);
+        Float3x3 offdiag_hessian1 = sa_cgA_offdiag->read(2 * eid + 0);
+        Float3x3 offdiag_hessian2 = sa_cgA_offdiag->read(2 * eid + 1);
+
+        Float3 input1 = sa_input_vec->read(edge.y);
+        Float3 input2 = sa_input_vec->read(edge.x);
+        
+        Float3 output1 = offdiag_hessian1 * input1;
+        Float3 output2 = offdiag_hessian2 * input2;
+
+        buffer_add(sa_output_vec, edge.x, output1);
+        buffer_add(sa_output_vec, edge.y, output2);
+    }, default_option);
+
+    fn_dot_pq = device.compile<1>(
+        [
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_cgQ = sim_data->sa_cgQ.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float3 p = sa_cgP->read(vid);
+            Float3 q = sa_cgQ->read(vid);
+            Float dot_pq = dot_vec(p, q);
+            
+            dot_pq = ParallelIntrinsic::block_reduce(vid, dot_pq, reduce_Float);
+
+            $if (vid % 256 == 0)
+            {
+                sa_block_result->write(vid / 256, dot_pq);
+            };
+        }
+    );
+
+    // Write 2 <- alpha
+    fn_dot_pq_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            &fn_save_alpha
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_pq = sa_block_result->read(vid);
+            
+            dot_pq = ParallelIntrinsic::block_reduce(vid, dot_pq, reduce_Float);
+
+            $if (vid == 0) { fn_save_alpha(dot_pq); };
+        }
+    );
+
+
+
+    fn_pcg_update_p = device.compile<1>(
+        [
+        sa_cgP = sim_data->sa_cgP.view(),
+        sa_cgZ = sim_data->sa_cgZ.view(),
+        sa_convergence = sim_data->sa_convergence.view(),
+        &fn_read_beta
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        const Float beta = fn_read_beta();
+        const Float3 p = sa_cgP->read(vid);
+        sa_cgP->write(vid, sa_cgZ->read(vid) + beta * p);
+    }, default_option);
+
+    fn_pcg_step = device.compile<1>(
+        [
+        sa_cgX = sim_data->sa_cgX.view(),
+        sa_cgR = sim_data->sa_cgR.view(),
+        sa_cgP = sim_data->sa_cgP.view(),
+        sa_cgQ = sim_data->sa_cgQ.view(),
+        &fn_read_alpha
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        const Float alpha = fn_read_alpha();
+        sa_cgX->write(vid, sa_cgX->read(vid) + alpha * sa_cgP->read(vid));
+        sa_cgR->write(vid, sa_cgR->read(vid) - alpha * sa_cgQ->read(vid));
+    }, default_option);
+
+
+
+    // Preconditioner
+    fn_pcg_make_preconditioner = device.compile<1>(
+        [
+        sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+        sa_cgMinv = sim_data->sa_cgMinv.view(),
+        sa_is_fixed = mesh_data->sa_is_fixed.view()
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        Float3x3 diagA = sa_cgA_diag->read(vid);
+        Float3x3 inv_M = inverse(diagA);
+        sa_cgMinv->write(vid, inv_M);
+    }, default_option);
+    fn_pcg_apply_preconditioner = device.compile<1>(
+        [
+        sa_cgR = sim_data->sa_cgR.view(),
+        sa_cgZ = sim_data->sa_cgZ.view(),
+        sa_cgMinv = sim_data->sa_cgMinv.view(),
+        sa_block_result = sim_data->sa_block_result.view()
+        ]() 
+    {
+        const UInt vid = dispatch_id().x;
+        const Float3 r = sa_cgR->read(vid);
+        const Float3x3 inv_M = sa_cgMinv->read(vid);
+        Float3 z = inv_M * r;
+        sa_cgZ->write(vid, z);
+
+        Float dot_rz = dot_vec(r, z);
+        Float dot_rr = dot_vec(r, r);
+        Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+        dot_rr_rz = ParallelIntrinsic::block_reduce(vid, dot_rr_rz, reduce_Float2);
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / 256;
+            sa_block_result->write(2 * blockIdx + 0, dot_rr_rz[0]);
+            sa_block_result->write(2 * blockIdx + 1, dot_rr_rz[1]);
+        };
+    }, default_option);
+
+    // Write 1 <- dot_rz (replace)
+    // Write 3 <- beta
+    fn_dot_rz_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            &fn_update_dot_rz, &fn_save_dot_rr, &fn_save_beta, &fn_read_rz
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_rr = sa_block_result->read(2 * vid + 0);
+            Float dot_rz = sa_block_result->read(2 * vid + 1);
+            Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+
+            dot_rr_rz = ParallelIntrinsic::block_reduce(vid, dot_rr_rz, reduce_Float2);
+
+            $if (vid == 0)
+            {
+                dot_rr = dot_rr_rz[0];
+                dot_rz = dot_rr_rz[1];
+
+                const Float dot_rz_old = fn_read_rz();
+                fn_save_beta(dot_rz_old, dot_rz);
+                fn_update_dot_rz(dot_rz);
+                fn_save_dot_rr(dot_rr);
+            };
         }
     );
 }
@@ -146,13 +646,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sa_cgA_offdiag.resize(host_sim_data->sa_hessian_pairs.size());
         else
             sa_cgA_offdiag.resize(num_edges * 2);
-
-        // sa_x_tilde.resize(num_verts);
-        // sa_x.resize(num_verts);
-        // sa_v.resize(num_verts);
-        // sa_v_start.resize(num_verts);
-        // sa_x_step_start.resize(num_verts);
-        // sa_x_iter_start.resize(num_verts);
 
         sa_cgMinv.resize(num_verts);
         sa_cgP.resize(num_verts);
@@ -734,10 +1227,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // }
 
             pcg_apply_preconditioner_jacobi();
-            float dot_rz = fast_dot(sa_cgR, sa_cgZ);
 
             float2 dot_rr_rz = get_dot_rz_rr(); 
-            dot_rz = dot_rr_rz[0];
+            float dot_rz = dot_rr_rz[0];
             normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
             save_dot_rz(0, sa_convergence, dot_rz);
 
@@ -931,9 +1423,255 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         lcsv::SolverInterface::physics_step_post_operation(); 
     }
 }
-void NewtonSolver::physics_step_newton_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+{
+    lcsv::SolverInterface::physics_step_prev_operation(); 
+    // Get frame start position and velocity
+    CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
+    {
+        host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
+        host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
+    });
+    
+    // Upload to GPU
+    stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
+           << sim_data->sa_v.copy_from(host_sim_data->sa_v.data())
+           << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x.data())
+           << sim_data->sa_v_step_start.copy_from(host_sim_data->sa_v.data())
+           << mp_buffer_filler->fill(device, mesh_data->sa_system_energy, 0.0f)
+           << luisa::compute::synchronize();
+    
+    // const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
+    const uint num_substep = lcsv::get_scene_params().num_substep;
+    const uint nonlinear_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
+    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
+
+    auto& host_x_step_start = host_sim_data->sa_x_step_start;
+    auto& host_x_iter_start = host_sim_data->sa_x_iter_start;
+    auto& host_cgX = host_sim_data->sa_cgX;
+    auto& host_x = host_sim_data->sa_x;
+
+    auto host_apply_dx = [&](const float alpha)
+    {
+        // Update sa_x
+        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+        {
+            host_x[vid] = host_x_iter_start[vid] + alpha * host_cgX[vid];
+        });
+    };
+    auto host_dot = [](const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) -> float
+    {
+        return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
+        {
+            return luisa::dot(left_ptr[vid], right_ptr[vid]);
+        });
+    };
+    auto host_norm = [](const std::vector<float3>& ptr) -> float
+    {
+        float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
+        {
+            return luisa::dot(ptr[vid], ptr[vid]);
+        });
+        return sqrt(tmp);
+    };
+    auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
+    {
+        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
+        {
+            return luisa::length(ptr[vid]);
+        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+    };
+
+    const bool use_ipc = true;
+    const uint num_verts = host_mesh_data->num_verts;
+    const uint num_edges = host_mesh_data->num_edges;
+    const uint num_faces = host_mesh_data->num_faces;
+    const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
+
+    
+
+    auto device_pcg = [&]()
+    {
+        auto pcg_spmv = [&](const luisa::compute::BufferView<float3> input_ptr, luisa::compute::BufferView<float3> output_ptr) -> void
+        {   
+            stream 
+                << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(num_verts);
+
+            auto& culster = host_sim_data->sa_prefix_merged_springs;
+            for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+            {
+                const uint curr_prefix = culster[cluster_idx];
+                const uint next_prefix = culster[cluster_idx + 1];
+                const uint num_elements_clustered = next_prefix - curr_prefix;
+                stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr, cluster_idx).dispatch(num_elements_clustered);
+            }
+        };
+
+        stream 
+            << mp_buffer_filler->fill(device, sim_data->sa_convergence, 0.0f);
+
+        // pcg_spmv(sim_data->sa_cgX, sim_data->sa_cgQ);
+
+        stream 
+            << sim_data->sa_cgR.copy_from(sim_data->sa_cgB)
+            << fn_pcg_init().dispatch(num_verts)
+            << fn_pcg_make_preconditioner().dispatch(num_verts);
+
+        float normR_0 = 0.0f;
+        float normR = 0.0f;
+
+        uint iter = 0;
+        for (iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+        {
+            lcsv::get_scene_params().current_pcg_it = iter;
+
+            stream 
+                << fn_pcg_apply_preconditioner().dispatch(num_verts)
+                << fn_dot_rz_second_pass().dispatch(num_blocks_verts)
+                << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+                << luisa::compute::synchronize();
+
+            // 0 : old_dot_rr
+            // 1 : new_dot_rz
+            // 2 : beta
+            // 3 : alpha
+            // 4 : new_dot_rr
+            // 
+            // 6 : init energy
+            // 7 : new energy
+
+            if (iter == 0) normR_0 = normR;
+            if (normR < 5e-3 * normR_0) 
+            {
+                break;
+            }
+
+            stream 
+                << fn_pcg_update_p().dispatch(num_verts);
+
+            pcg_spmv(sim_data->sa_cgP, sim_data->sa_cgQ);
+            stream 
+                << fn_dot_pq_second_pass().dispatch(num_blocks_verts)
+                << fn_pcg_step().dispatch(num_verts);
+        }
+
+        stream 
+            << sim_data->sa_cgX.copy_to(host_cgX.data())
+            << luisa::compute::synchronize();
+
+        host_apply_dx(1.0f);
+        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.3f}", 
+            get_scene_params().current_nonlinear_iter,
+            iter, normR / normR_0, host_infinity_norm(host_cgX), host_compute_energy(host_x)); // from normR_0 -> normR
+    };
+
+    for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
+    {
+        stream 
+            << fn_predict_position(substep_dt).dispatch(num_verts)
+            << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
+            << luisa::compute::synchronize();
+        
+        const auto step_start_energy = host_compute_energy(host_x_step_start);
+
+        luisa::log_info("In frame {} : Frame init energy = {}", get_scene_params().current_frame, step_start_energy);
+
+        for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
+        {   get_scene_params().current_nonlinear_iter = iter;
+            
+            stream 
+                << fn_reset_vector(sim_data->sa_cgX, makeFloat3(0.0f)).dispatch(num_verts)
+                << fn_reset_offdiag().dispatch(sim_data->sa_cgA_offdiag.size())
+                << fn_evaluate_inertia(substep_dt).dispatch(num_verts);
+
+            {
+                auto& culster = host_sim_data->sa_prefix_merged_springs;
+                for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+                {
+                    const uint curr_prefix = culster[cluster_idx];
+                    const uint next_prefix = culster[cluster_idx + 1];
+                    const uint num_elements_clustered = next_prefix - curr_prefix;
+                    stream << fn_evaluate_spring(1e4, cluster_idx).dispatch(num_elements_clustered);
+                }
+            }
+
+            stream << 
+                sim_data->sa_x_iter_start.copy_to(host_x_iter_start.data());
+                
+            device_pcg();
+            
+            if constexpr (use_ipc)
+            {
+                float max_move = 1e-2;
+                float curr_max_step = host_infinity_norm(host_cgX); 
+                if (curr_max_step < max_move * substep_dt) 
+                {
+                    luisa::log_info("  Non-linear iteration break for small searching direction {} < {}", curr_max_step, max_move * substep_dt);
+                    break;
+                }
+            }
+
+            // Do line search on host
+            float alpha = 1.0f;
+            host_apply_dx(alpha);
+            if constexpr (use_ipc)
+            { 
+                auto curr_energy = host_compute_energy(host_x);
+                uint line_search_count = 0;
+                while (line_search_count < 20)
+                {
+                    if (curr_energy < step_start_energy) { break; }
+                    if (line_search_count == 0)
+                    {
+                        luisa::log_info("     Line search {} : alpha = 1/{}, energy = {:6.3f} Frame-start-energy = {:6.3f}", 
+                            line_search_count, (1 << line_search_count), curr_energy, step_start_energy);
+                    }
+                    alpha /= 2; host_apply_dx(alpha);
+                    line_search_count++;
+
+                    curr_energy = host_compute_energy(host_x);
+                    luisa::log_info("     Line search {} : alpha = 1/{}, energy = {}", 
+                        line_search_count, (1 << line_search_count), curr_energy);
+                }
+            }
+
+            CpuParallel::parallel_copy(host_x, host_x_iter_start);
+
+            stream
+                << sim_data->sa_x.copy_from(host_x.data())
+                << sim_data->sa_x_iter_start.copy_from(host_x_iter_start.data());
+        }
+
+        stream
+            << fn_update_velocity(substep_dt, false, lcsv::get_scene_params().damping_cloth).dispatch(num_verts)
+            // << luisa::compute::synchronize();
+            ;
+    }
+
+    stream << luisa::compute::synchronize();
+    
+    // Copy to host
+    {
+        stream  << sim_data->sa_x.copy_to(host_sim_data->sa_x.data())
+                << sim_data->sa_v.copy_to(host_sim_data->sa_v.data())
+                << luisa::compute::synchronize();
+    }
+    
+    // Return frame end position and velocity
+    CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
+    {
+        host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
+        host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
+    });
+    lcsv::SolverInterface::physics_step_post_operation(); 
+}
+
+float NewtonSolver::device_compute_energy(luisa::compute::Stream& stream, const luisa::compute::BufferView<float3>& curr_x)
 {
     
-}
+    // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);
+    // return energy_inertia + energy_spring;
+    return 0.0f;
+};
 
 } // namespace lcsv

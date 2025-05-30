@@ -6,10 +6,7 @@
 #include "Initializer/initializer_utils.h"
 
 
-namespace lcsv 
-{
-
-namespace Initializater
+namespace lcsv::Initializater
 {
 
 void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData<std::vector>* xpbd_data)
@@ -258,7 +255,44 @@ void upload_xpbd_buffers(
         << luisa::compute::synchronize();
 }
 
-}
+void resize_pcg_data(
+    luisa::compute::Device& device, 
+    luisa::compute::Stream& stream, 
+    lcsv::MeshData<std::vector>* mesh_data, 
+    lcsv::SimulationData<std::vector>* host_data, 
+    lcsv::SimulationData<luisa::compute::Buffer>* device_data
+)
+{
+    const uint num_verts = mesh_data->num_verts;
+    const uint num_edges = mesh_data->num_edges;
+    const uint num_faces = mesh_data->num_faces;
+
+    
+    resize_buffer(host_data->sa_cgX, num_verts);
+    resize_buffer(host_data->sa_cgB, num_verts);
+    resize_buffer(host_data->sa_cgA_diag, num_verts);
+    resize_buffer(host_data->sa_cgA_offdiag, num_edges * 2);
+    resize_buffer(host_data->sa_cgMinv, num_verts);
+    resize_buffer(host_data->sa_cgP, num_verts);
+    resize_buffer(host_data->sa_cgQ, num_verts);
+    resize_buffer(host_data->sa_cgR, num_verts);
+    resize_buffer(host_data->sa_cgZ, num_verts);
+    resize_buffer(host_data->sa_block_result, num_verts);
+    resize_buffer(host_data->sa_convergence, 10240);
+
+    resize_buffer(device, device_data->sa_cgX, num_verts);
+    resize_buffer(device, device_data->sa_cgB, num_verts);
+    resize_buffer(device, device_data->sa_cgA_diag, num_verts);
+    resize_buffer(device, device_data->sa_cgA_offdiag, num_edges * 2);
+    resize_buffer(device, device_data->sa_cgMinv, num_verts);
+    resize_buffer(device, device_data->sa_cgP, num_verts);
+    resize_buffer(device, device_data->sa_cgQ, num_verts);
+    resize_buffer(device, device_data->sa_cgR, num_verts);
+    resize_buffer(device, device_data->sa_cgZ, num_verts);
+    resize_buffer(device, device_data->sa_block_result, num_verts);
+    resize_buffer(device, device_data->sa_convergence, 10240);
 
 
-}
+} 
+
+} // namespace lcsv::Initializater
