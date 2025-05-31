@@ -70,14 +70,16 @@ inline Var<T> block_reduce(const luisa::compute::UInt& vid, const Var<T>& thread
 }
 
 
-template<typename T> inline void warp_reduce_op_sum(Var<T> & lane_value) { lane_value = luisa::compute::warp_active_sum(lane_value); };
+template<typename T> inline Var<T> warp_reduce_op_sum(Var<T> & lane_value) { return luisa::compute::warp_active_sum(lane_value); };
+template<typename T> inline Var<T> warp_reduce_op_min(Var<T> & lane_value) { return luisa::compute::warp_active_min(lane_value); };
+template<typename T> inline Var<T> warp_reduce_op_max(Var<T> & lane_value) { return luisa::compute::warp_active_max(lane_value); };
 
 
 constexpr uint warp_dim = 32;
 constexpr uint warp_num = 32;
 
 template<typename T, typename ReduceOp>
-inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_unary = warp_reduce_op_sum<T>)
+inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary = warp_reduce_op_sum<T>)
 {
     using Uint = luisa::compute::UInt;
     luisa::compute::set_block_size(reduce_block_dim);
@@ -87,7 +89,7 @@ inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<
     const luisa::compute::UInt laneIdx = threadIdx % warp_dim;
     
     Var<T> block_value = thread_value;
-    warp_reduce_op_unary(block_value);
+    block_value = warp_reduce_op_binary(block_value);
 
     luisa::compute::Shared<T> cache(warp_num);
     $if (warpIdx == 0) { cache[threadIdx] = T(0); };
@@ -100,8 +102,8 @@ inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<
     luisa::compute::sync_block();
     $if (warpIdx == 0)
     {
-        warp_reduce_op_unary(cache[threadIdx]);
-        block_value = cache[0];
+        block_value = warp_reduce_op_binary(cache[threadIdx]);
+        // block_value = cache[0];
     };
     return block_value;
 }

@@ -25,27 +25,32 @@ public:
 
 
     void set_data_pointer(
-        MeshData<std::vector>* host_mesh_ptr, 
-        MeshData<luisa::compute::Buffer>* mesh_ptr, 
-        SimulationData<std::vector>* host_xpbd_ptr, 
-        SimulationData<luisa::compute::Buffer>* xpbd_ptr, 
-        CollisionDataCCD<luisa::compute::Buffer>* ccd_ptr, 
-        LBVH* lbvh_ptr,
+        MeshData<std::vector>*                      host_mesh_ptr, 
+        MeshData<luisa::compute::Buffer>*           mesh_ptr, 
+        SimulationData<std::vector>*                host_xpbd_ptr, 
+        SimulationData<luisa::compute::Buffer>*     xpbd_ptr, 
+        CollisionDataCCD<std::vector>*              host_ccd_ptr, 
+        CollisionDataCCD<luisa::compute::Buffer>*   ccd_ptr, 
+
+        LBVH* lbvh_face_ptr,
+        LBVH* lbvh_edge_ptr,
         BufferFiller* buffer_filler_ptr, 
         DeviceParallel* device_parallel_ptr
     )
     {
-        // Host data pointer
+        // Data pointer
         host_mesh_data = host_mesh_ptr;
         host_sim_data = host_xpbd_ptr;
 
-        // Device data pointer
         mesh_data = mesh_ptr;
         sim_data = xpbd_ptr;
+
+        host_ccd_data = host_ccd_ptr;
         ccd_data = ccd_ptr;
 
         // Tool class pointer
-        mp_lbvh = lbvh_ptr;
+        mp_lbvh_face = lbvh_face_ptr;
+        mp_lbvh_edge = lbvh_edge_ptr;
         mp_device_parallel = device_parallel_ptr;
         mp_buffer_filler = buffer_filler_ptr;
     }
@@ -62,16 +67,19 @@ public:
     double host_compute_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde);
 
 protected:
-    MeshData<std::vector>* host_mesh_data;
-    SimulationData<std::vector>* host_sim_data;
-    
-    MeshData<luisa::compute::Buffer>* mesh_data;
-    SimulationData<luisa::compute::Buffer>* sim_data;
-    CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
+    MeshData<std::vector>*                      host_mesh_data;
+    MeshData<luisa::compute::Buffer>*           mesh_data;
+
+    SimulationData<std::vector>*                host_sim_data;
+    SimulationData<luisa::compute::Buffer>*     sim_data;
+
+    CollisionDataCCD<std::vector>*              host_ccd_data;
+    CollisionDataCCD<luisa::compute::Buffer>*   ccd_data;
 
     BufferFiller*   mp_buffer_filler;
     DeviceParallel* mp_device_parallel;
-    LBVH* mp_lbvh;
+    LBVH* mp_lbvh_face;
+    LBVH* mp_lbvh_edge;
     // lcsv::LBVH* collision_detector_narrow_phase;
 };
 

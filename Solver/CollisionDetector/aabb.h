@@ -23,20 +23,40 @@ inline auto make_aabb()
         makeFloat3(1000.0f)
     ); 
 }
+
+template<typename Vec3> inline auto make_aabb_from_min_max(const Vec3& min_vec, const Vec3& max_vec)  
+{ 
+    return makeFloat2x3(
+        min_vec, 
+        max_vec); 
+}
+
 template<typename Vec3> inline auto make_aabb(const Vec3& p1)  
 { 
-    return makeFloat2x3(p1, p1); 
+    return makeFloat2x3(
+        p1, 
+        p1); 
 }
 template<typename Vec3> inline auto make_aabb(const Vec3& p1, const Vec3& p2)  
 { 
-    return makeFloat2x3(min_vec(p1, p2), max_vec(p1, p2)); 
+    return makeFloat2x3(
+        min_vec(p1, p2), 
+        max_vec(p1, p2)); 
 }
 template<typename Vec3>
 inline auto make_aabb(const Vec3& p1, const Vec3& p2, const Vec3& p3) 
 {
-    return make_aabb(
+    return makeFloat2x3(
         min_vec(p1, min_vec(p2, p3)),
         max_vec(p1, max_vec(p2, p3))
+    );
+}
+template<typename Vec3>
+inline auto make_aabb(const Vec3& p1, const Vec3& p2, const Vec3& p3, const Vec3& p4) 
+{
+    return makeFloat2x3(
+        min_vec(min_vec(p1, p2), min_vec(p3, p4)),
+        max_vec(max_vec(p1, p2), max_vec(p3, p4))
     );
 }
 

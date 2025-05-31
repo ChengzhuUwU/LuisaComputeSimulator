@@ -733,8 +733,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sa_x[vid] = sa_x_iter_start[vid] + alpha * sa_cgX[vid];
         });
     };
-
-    // Predict Position
     auto predict_position = [&](const float substep_dt)
     {
         auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
@@ -759,8 +757,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sa_cgX[vid] = luisa::make_float3(0.0f);
         });
     };
-
-    // Update Velocity
     auto update_velocity = [&](const float substep_dt, const bool fix_scene, const float damping)
     {
         CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](const uint vid)
@@ -786,8 +782,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sa_x_step_start[vid] = x_step_end;
         });
     };
-
-    // Init vert with inertia
     auto evaluate_inertia = [&](const float substep_dt)
     {
         auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
@@ -852,14 +846,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         });
         if constexpr (use_eigen) { eigen_cgA.setFromTriplets(triplets_A.begin(), triplets_A.end()); }
     };
-    
-    // Init energy
     auto reset_energy = [&]()
     {
         CpuParallel::parallel_set(sa_cgA_offdiag, luisa::make_float3x3(0.0f));
     };
-
-    // Evaluate Spring
     auto evaluete_spring = [&](const float stiffness_stretch)
     {
         const uint num_verts = host_mesh_data->num_verts;
@@ -1000,6 +990,24 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }
     };
 
+    auto ccd_line_search = [&]() -> float
+    {
+        stream 
+            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
+            << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
+            << luisa::compute::synchronize();
+
+        if (lcsv::get_scene_params().current_nonlinear_iter == 0)
+        {
+            mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
+            mp_lbvh_face->construct_tree(stream);
+        }
+        mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_face->refit(stream);
+
+        // mp_lbvh->broad_phase_query_vert(stream, sim_data->sa_x_iter_start, sim_data->sa_x, ccd_data->broad_phase_list_vf, ccd_data->broad_phase_collision_count, 1e-2);
+        return 1.0f;
+    };
     
 
     // Solve
@@ -1406,14 +1414,16 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 if (curr_max_step < max_move * substep_dt) 
                 {
                     luisa::log_info("  Non-linear iteration break for small searching direction {} < {}", curr_max_step, max_move * substep_dt);
-                    break;
+                    break; // Without applying this dx
                 }
             }
 
             float alpha = 1.0f;
-            apply_dx(alpha);
+            apply_dx(alpha);            
             if constexpr (use_ipc)
             { 
+                alpha = ccd_line_search();
+
                 auto curr_energy = host_compute_energy(sa_x, sa_x_tilde);
                 uint line_search_count = 0;
                 while (line_search_count < 20)

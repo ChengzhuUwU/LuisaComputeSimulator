@@ -3,6 +3,7 @@
 
 #include "CollisionDetector/lbvh.h"
 #include "Initializer/init_collision_data.h"
+#include "MeshOperation/default_mesh.h"
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Utils/cpu_parallel.h"
@@ -16,6 +17,7 @@
 
 #include "Initializer/init_mesh_data.h"
 #include "Initializer/init_xpbd_data.h"
+#include "polyscope/volume_grid.h"
 
 #include <polyscope/polyscope.h>
 #include <polyscope/surface_mesh.h>
@@ -92,69 +94,92 @@ int main(int argc, char** argv)
     const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
     const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
     shell_list.push_back({
-        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        .model_name = obj_mesh_path + "square8K.obj",
         .fixed_point_info = {
             lcsv::Initializater::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = -72, 
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
             },
-            lcsv::Initializater::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(-0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = 72, 
-            }
         }
     });
+    // shell_list.push_back({
+    //     .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+    //     .fixed_point_info = {
+    //         lcsv::Initializater::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
+    //             .use_rotate = true,
+    //             .rotCenter = luisa::make_float3(0.005, 0, 0),
+    //             .rotAxis = luisa::make_float3(1, 0, 0),
+    //             .rotAngVelDeg = -72, 
+    //         },
+    //         lcsv::Initializater::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
+    //             .use_rotate = true,
+    //             .rotCenter = luisa::make_float3(-0.005, 0, 0),
+    //             .rotAxis = luisa::make_float3(1, 0, 0),
+    //             .rotAngVelDeg = 72, 
+    //         }
+    //     }
+    // });
 
     // Init data
-    lcsv::MeshData<std::vector> cpu_mesh_data;
-    lcsv::MeshData<luisa::compute::Buffer> mesh_data;
+    lcsv::MeshData<std::vector>             host_mesh_data;
+    lcsv::MeshData<luisa::compute::Buffer>  mesh_data;
     {
-        lcsv::Initializater::init_mesh_data(shell_list, &cpu_mesh_data);
-        lcsv::Initializater::upload_mesh_buffers(device, stream, &cpu_mesh_data, &mesh_data);
+        lcsv::Initializater::init_mesh_data(shell_list, &host_mesh_data);
+        lcsv::Initializater::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
-    lcsv::SimulationData<std::vector> cpu_xpbd_data;
-    lcsv::SimulationData<luisa::compute::Buffer> xpbd_data;
+    lcsv::SimulationData<std::vector>               host_xpbd_data;
+    lcsv::SimulationData<luisa::compute::Buffer>    xpbd_data;
     {
-        lcsv::Initializater::init_xpbd_data(&cpu_mesh_data, &cpu_xpbd_data);
-        lcsv::Initializater::upload_xpbd_buffers(device, stream, &cpu_xpbd_data, &xpbd_data);
-        lcsv::Initializater::resize_pcg_data(device, stream, &cpu_mesh_data, &cpu_xpbd_data, &xpbd_data);
+        lcsv::Initializater::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
+        lcsv::Initializater::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
+        lcsv::Initializater::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
         lcsv::Initializater::init_simulation_params();
     }
 
-    lcsv::LbvhData<luisa::compute::Buffer> lbvh_data_cloth_vert;
-    lcsv::LBVH lbvh;
+    lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
+    lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
+    
     {
-        lbvh_data_cloth_vert.allocate(device, cpu_mesh_data.num_verts, lcsv::LBVHTreeTypeVert, lcsv::LBVHUpdateTypeCloth);
-        lbvh.set_lbvh_data(&lbvh_data_cloth_vert);
+        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcsv::LBVHTreeTypeEdge, lcsv::LBVHUpdateTypeCloth);
+        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcsv::LBVHTreeTypeFace, lcsv::LBVHUpdateTypeCloth);
         // lbvh_cloth_vert.unit_test(device, stream);
     }
     
-    lcsv::CollisionDataCCD<luisa::compute::Buffer> collision_data;
-    lcsv::Initializater::resize_collision_data(device, &cpu_mesh_data, &collision_data);
+    lcsv::CollisionDataCCD<std::vector>             host_collision_data;
+    lcsv::CollisionDataCCD<luisa::compute::Buffer>  collision_data;
+    {
+        lcsv::Initializater::resize_collision_data(device, &host_mesh_data, &host_collision_data);
+        lcsv::Initializater::resize_collision_data(device, &host_mesh_data, &collision_data);
+    }
 
     // Init solver class
     lcsv::BufferFiller   buffer_filler;
     lcsv::DeviceParallel device_parallel;
 
+    lcsv::LBVH           lbvh_face;
+    lcsv::LBVH           lbvh_edge;
+    {
+        lbvh_face.set_lbvh_data(&lbvh_data_face);
+        lbvh_edge.set_lbvh_data(&lbvh_data_edge);
+        lbvh_face.compile(device);
+        lbvh_edge.compile(device);
+    }
     
-    // lcsv::DescentSolver solver;
-    lcsv::NewtonSolver solver;
+    // lcsv::DescentSolver  solver;
+    lcsv::NewtonSolver      solver;
     {
         // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
         solver.lcsv::SolverInterface::set_data_pointer(
-            &cpu_mesh_data, 
+            &host_mesh_data, 
             &mesh_data, 
-            &cpu_xpbd_data, 
+            &host_xpbd_data, 
             &xpbd_data, 
+            &host_collision_data,
             &collision_data,
-            &lbvh,
+            &lbvh_face,
+            &lbvh_edge,
             &buffer_filler, 
             &device_parallel
         );
@@ -165,13 +190,13 @@ int main(int argc, char** argv)
     {
         lcsv::get_scene_params().implicit_dt = 0.05;
         lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().nonlinear_iter_count = 20;   
-        lcsv::get_scene_params().pcg_iter_count = 1000; 
+        lcsv::get_scene_params().nonlinear_iter_count = 1; // 50
+        lcsv::get_scene_params().pcg_iter_count = 200; // 2000
         lcsv::get_scene_params().use_bending = false;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().use_xpbd_solver = false;
         lcsv::get_scene_params().use_vbd_solver = true;
-        lcsv::get_scene_params().use_gpu = true;
+        lcsv::get_scene_params().use_gpu = false; // true
     }
 
     // Define Simulation
@@ -199,7 +224,7 @@ int main(int argc, char** argv)
                         CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
                         {
                             const uint vid = fixed_point_verts[index];
-                            auto& pos = cpu_mesh_data.sa_x_frame_outer[vid];
+                            auto& pos = host_mesh_data.sa_x_frame_outer[vid];
                             {
                                 // Rotate
                                 const float h = lcsv::get_scene_params().implicit_dt;
@@ -239,50 +264,67 @@ int main(int argc, char** argv)
 
 
     uint max_frame = 20; 
+    constexpr bool draw_bounding_box = true;
+    constexpr bool use_ui = true; 
     
     // Init rendering data
     std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(shell_list.size() + 0 + 0);
     std::vector<std::vector<std::array<uint, 3>>> sa_rendering_faces(shell_list.size() + 0 + 0);
+    std::vector<std::array<float, 3>> sa_global_aabb_vertices(SimMesh::BoundingBox::get_num_vertices(), std::array<float, 3>({0.0f, 0.0f, 0.0f}));
+    std::vector<std::array<uint, 3>> sa_global_aabb_faces = SimMesh::BoundingBox::get_box_faces();
     {
         for (uint i = 0; i < shell_list.size(); i++)
         {
-            sa_rendering_vertices[i].resize(cpu_mesh_data.prefix_num_verts[i + 1] - cpu_mesh_data.prefix_num_verts[i]);
-            sa_rendering_faces[i].resize(cpu_mesh_data.prefix_num_faces[i + 1] - cpu_mesh_data.prefix_num_faces[i]);
-            const uint curr_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i];
-            const uint next_prefix_num_verts = cpu_mesh_data.prefix_num_verts[i + 1];
-            const uint curr_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i];
-            const uint next_prefix_num_faces = cpu_mesh_data.prefix_num_faces[i + 1];
+            sa_rendering_vertices[i].resize(host_mesh_data.prefix_num_verts[i + 1] - host_mesh_data.prefix_num_verts[i]);
+            sa_rendering_faces[i].resize(host_mesh_data.prefix_num_faces[i + 1] - host_mesh_data.prefix_num_faces[i]);
+            const uint curr_prefix_num_verts = host_mesh_data.prefix_num_verts[i];
+            const uint next_prefix_num_verts = host_mesh_data.prefix_num_verts[i + 1];
+            const uint curr_prefix_num_faces = host_mesh_data.prefix_num_faces[i];
+            const uint next_prefix_num_faces = host_mesh_data.prefix_num_faces[i + 1];
             CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
             {
-                auto pos = cpu_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
+                auto pos = host_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
                 // sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
                 sa_rendering_vertices[i][vid] = {pos.x, pos.y, pos.z};
             });
             CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
             {
-                auto face = cpu_mesh_data.sa_faces[curr_prefix_num_faces + fid];
+                auto face = host_mesh_data.sa_faces[curr_prefix_num_faces + fid];
                 sa_rendering_faces[i][fid] = {
                     face[0] - curr_prefix_num_verts, 
                     face[1] - curr_prefix_num_verts, 
                     face[2] - curr_prefix_num_verts};
             });
         }
+
+        std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
+        min_pos = { -0.01f, -0.01f, -0.01f };
+        max_pos = {  0.01f,  0.01f,  0.01f };
+        SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
     }
     auto fn_update_rendering_vertices = [&]()
     {
         for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
         {
-            CpuParallel::parallel_for(0, cpu_mesh_data.prefix_num_verts[clothIdx + 1] - cpu_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
+            CpuParallel::parallel_for(0, host_mesh_data.prefix_num_verts[clothIdx + 1] - host_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
             {
-                auto pos = cpu_mesh_data.sa_x_frame_outer[vid + cpu_mesh_data.prefix_num_verts[clothIdx]];
+                auto pos = host_mesh_data.sa_x_frame_outer[vid + host_mesh_data.prefix_num_verts[clothIdx]];
                 sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
             });
+        }
+        if constexpr (draw_bounding_box)
+        {
+            lcsv::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
+            // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
+            stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
+            min_pos = { global_aabb[0][0], global_aabb[0][1], global_aabb[0][2] };
+            max_pos = { global_aabb[1][0], global_aabb[1][1], global_aabb[1][2] };
+            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
 
     SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
 
-    constexpr bool use_ui = true; 
     if constexpr (!use_ui)
     {
         auto fn_single_step_without_ui = [&]()
@@ -307,6 +349,8 @@ int main(int argc, char** argv)
         // Init Polyscope
         polyscope::init("openGL3_glfw");
         std::vector<polyscope::SurfaceMesh*> surface_meshes;
+        std::vector<polyscope::SurfaceMesh*> bounding_boxes;
+        
         for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
         {
             const std::string& curr_mesh_name = shell_list[clothIdx].model_name + std::to_string(clothIdx);
@@ -318,14 +362,22 @@ int main(int argc, char** argv)
             curr_mesh_ptr->setEnabled(true);
             surface_meshes.push_back(curr_mesh_ptr);
         }
-        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+        
+        if constexpr (draw_bounding_box)
+        {
+            polyscope::SurfaceMesh* bounding_box_ptr = polyscope::registerSurfaceMesh("Global Bounding Box", sa_global_aabb_vertices, sa_global_aabb_faces);
+            bounding_boxes.push_back(bounding_box_ptr);
+        }
 
+        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+        
         auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
             }
+            if constexpr (draw_bounding_box) bounding_boxes.back()->updateVertexPositions(sa_global_aabb_vertices);
         };
         auto fn_single_step_with_ui = [&]()
         {

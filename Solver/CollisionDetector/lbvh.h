@@ -13,6 +13,7 @@ using morton32 = unsigned int;
 using morton64 = uint64_t;
 using Morton32 = luisa::compute::Var<morton32>;
 using Morton64 = luisa::compute::Var<morton64>;
+using aabbData = float2x3;
 
 template<typename T>
 static inline void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
@@ -20,7 +21,7 @@ static inline void resize_buffer(luisa::compute::Device& device, luisa::compute:
     buffer = device.create_buffer<T>(size);
 }
 
-using AabbData = float2x3;
+
 enum LBVHTreeType{
     LBVHTreeTypeVert,
     LBVHTreeTypeFace,
@@ -35,7 +36,7 @@ template<template<typename...> typename BufferType>
 struct LbvhData 
 {
     BufferType<float3> sa_leaf_center;
-    BufferType<AabbData> sa_block_aabb;
+    BufferType<aabbData> sa_block_aabb;
     BufferType<morton64> sa_morton;
     BufferType<morton64> sa_morton_sorted;
     BufferType<uint> sa_sorted_get_original;
@@ -43,10 +44,10 @@ struct LbvhData
     BufferType<uint2> sa_children;
     BufferType<uint> sa_escape_index;
     BufferType<uint2> sa_left_and_escape;
-    BufferType<AabbData> sa_node_aabb;
+    BufferType<aabbData> sa_node_aabb;
     BufferType<uint> sa_is_healthy; 
     BufferType<uint> sa_apply_flag;
-    BufferType<AabbData> sa_node_aabb_model_position;
+    // BufferType<AabbData> sa_node_aabb_model_position;
 
     uint num_leaves;
     uint num_nodes;
@@ -99,18 +100,18 @@ public:
     // void init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
     //      const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type);
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void set_lbvh_data(LbvhData<luisa::compute::Buffer>* input_ptr) { lbvh_data = input_ptr; }
-
-private:
     void compile(luisa::compute::Device& device);
+    void set_lbvh_data(LbvhData<luisa::compute::Buffer>* input_ptr) { lbvh_data = input_ptr; }
 
 public:
     void reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_position);
+    void reduce_edge_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint2>& input_edges);
     void reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
-    void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position);
-    void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
+    void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position);
+    void update_edge_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint2>& input_edges);
+    void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint3>& input_faces);
     void broad_phase_query_vert(Stream& stream, const Buffer<float3>& sa_x_begin, const Buffer<float3>& sa_x_end, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness);
     
 private:
@@ -118,15 +119,16 @@ private:
     // void reduce_face_tree_global_aabb();
     // LbvhData<luisa::compute::Buffer>& get_lbvh_data() { return lbvh_data; }
 
-private:
+public:
     LbvhData<luisa::compute::Buffer>* lbvh_data;
 
 private:
 
     // Compute Morton
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>> fn_reduce_vert_tree_global_aabb;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>> fn_reduce_edge_tree_global_aabb;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>> fn_reduce_face_tree_global_aabb;
-    luisa::compute::Shader<1> fn_reduce_aabb_2_pass_template;
+    luisa::compute::Shader<1> fn_reduce_aabb_2_pass;
     luisa::compute::Shader<1> fn_reset_tree;
     luisa::compute::Shader<1> fn_compute_mortons;
 
@@ -138,8 +140,9 @@ private:
     luisa::compute::Shader<1> fn_set_left_and_escape;
 
     // Refit
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, float> fn_update_vert_tree_leave_aabb;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float> fn_update_vert_tree_leave_aabb;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>, float>  fn_update_edge_tree_leave_aabb ;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
     luisa::compute::Shader<1> fn_clear_apply_flag ;
     luisa::compute::Shader<1> fn_refit_kernel;
 

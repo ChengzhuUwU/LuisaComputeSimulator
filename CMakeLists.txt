@@ -61,6 +61,19 @@ if (NOT TARGET polyscope)
     # FetchContent_MakeAvailable(polyscope)
 endif()
 
+# if (NOT TARGET ipc::toolkit)
+#     set(IPC_TOOLKIT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_CUDA OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_RATIONAL_INTERSECTION OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_ROBIN_MAP OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_ABSEIL OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_FILIB OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_SIMD OFF CACHE BOOL "" FORCE)
+#     set(IPC_TOOLKIT_WITH_CODE_COVERAGE OFF CACHE BOOL "" FORCE)
+#     add_subdirectory(${EXT_PATH}/ipc-toolkit)
+# endif()
+
 # if (NOT TARGET amgcl)
 #     add_subdirectory(${EXT_PATH}/amgcl)
 # endif()
@@ -85,7 +98,7 @@ target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${C
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationCore>)
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationSolver>)
 # target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Utils>)
-target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute)
+target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
 if(WIN32)
 set(CMAKE_BUILD_TYPE Release)

@@ -203,16 +203,20 @@ void LBVH::compile(luisa::compute::Device& device)
         luisa::compute::set_block_size(256);
         const Uint vid = luisa::compute::dispatch_id().x;
 
-        auto reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
+        Var<float3>  min_vec = AABB::get_aabb_min(aabb);
+        Var<float3>  max_vec = AABB::get_aabb_max(aabb);
+        min_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, min_vec, ParallelIntrinsic::warp_reduce_op_min<float3>);
+        max_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, max_vec, ParallelIntrinsic::warp_reduce_op_max<float3>);
+        auto reduced_aabb = AABB::make_aabb(min_vec, max_vec);
 
         $if (vid % 256 == 0)
         {
             const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
-            sa_block_aabb->write(blockIdx, aabb);
+            sa_block_aabb->write(blockIdx, reduced_aabb);
         };
     };
 
-    fn_reduce_aabb_2_pass_template = device.compile<1>([
+    fn_reduce_aabb_2_pass = device.compile<1>([
         sa_block_aabb = lbvh_data->sa_block_aabb.view()
     ]()
     {
@@ -220,15 +224,22 @@ void LBVH::compile(luisa::compute::Device& device)
         const Uint vid = luisa::compute::dispatch_id().x;
 
         auto aabb = sa_block_aabb->read(vid);
-        auto reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
+
+        // Float2x3 reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
+
+        Float3 min_vec = AABB::get_aabb_min(aabb);
+        Float3 max_vec = AABB::get_aabb_max(aabb);
+        min_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, min_vec, ParallelIntrinsic::warp_reduce_op_min<float3>);
+        max_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, max_vec, ParallelIntrinsic::warp_reduce_op_max<float3>);
+        Float2x3 reduced_aabb = AABB::make_aabb(min_vec, max_vec);
 
         $if (vid % 256 == 0)
         {
-            const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
-            sa_block_aabb->write(blockIdx, aabb);
+            const Uint blockIdx = vid / 256;
+            sa_block_aabb->write(blockIdx, reduced_aabb);
         };
     });
-
+    
     fn_reduce_vert_tree_global_aabb = device.compile<1>([
         &reduce_aabb_1_pass_template
     ]
@@ -243,6 +254,31 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(vert_pos, aabb);
     });
 
+    fn_reduce_edge_tree_global_aabb = device.compile<1>([
+        &reduce_aabb_1_pass_template
+    ]
+    (
+        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Var<luisa::compute::BufferView<uint2>> input_edge
+    )
+    {
+        luisa::compute::set_block_size(256);
+        
+        const Uint fid = luisa::compute::dispatch_id().x;
+        const UInt2 edge = input_edge.read(fid);
+        Float3 positions[2] = {
+            input_position->read(edge[0]),
+            input_position->read(edge[1])
+        };
+
+        Float3 center = 0.5f * (positions[0] + positions[1]);
+        Float2x3 aabb = AABB::make_aabb(
+            positions[0],
+            positions[1]
+        );
+        reduce_aabb_1_pass_template(center, aabb);
+    });
+
     fn_reduce_face_tree_global_aabb = device.compile<1>([
         &reduce_aabb_1_pass_template
     ]
@@ -255,20 +291,21 @@ void LBVH::compile(luisa::compute::Device& device)
         
         const Uint fid = luisa::compute::dispatch_id().x;
         const UInt3 face = input_face.read(fid);
-        Float3 face_pos[3] = {
+        Float3 positions[3] = {
             input_position->read(face[0]),
             input_position->read(face[1]),
             input_position->read(face[2])
         };
 
-        Float3 face_center = 0.333333f * (face_pos[0] + face_pos[1] + face_pos[2]);
+        Float3 center = 0.333333f * (positions[0] + positions[1] + positions[2]);
         Float2x3 aabb = AABB::make_aabb(
-            face_pos[0],
-            face_pos[1],
-            face_pos[2]
+            positions[0],
+            positions[1],
+            positions[2]
         );
-        reduce_aabb_1_pass_template(face_center, aabb);
+        reduce_aabb_1_pass_template(center, aabb);
     });
+
 
     fn_reset_tree = device.compile<1>([
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
@@ -416,43 +453,81 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_left_and_escape->write(nid, make_uint2(leftIdx, escapeIdx));
     });
 
+
     // Refit
     fn_update_vert_tree_leave_aabb = device.compile<1>([
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
     ](
-        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Var<luisa::compute::BufferView<float3>> sa_x_start,
+        const Var<luisa::compute::BufferView<float3>> sa_x_end,
         const Float thickness
     ) {
         const Uint lid = dispatch_id().x;
         Uint vid = sa_sorted_get_original->read(lid);
-        Float2x3 aabb = AABB::make_aabb(input_position->read(vid));
+        Float2x3 aabb = AABB::make_aabb(sa_x_start->read(vid), sa_x_end->read(vid));
         aabb = AABB::add_thickness(aabb, thickness);
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
 
+    fn_update_edge_tree_leave_aabb = device.compile<1>([
+        sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+        sa_node_aabb = lbvh_data->sa_node_aabb.view(),
+        num_inner_nodes
+    ](
+        const Var<luisa::compute::BufferView<float3>> sa_x_start,
+        const Var<luisa::compute::BufferView<float3>> sa_x_end,
+        const Var<luisa::compute::BufferView<uint2>> input_edge,
+        const Float thickness
+    ) {
+        const Uint lid = dispatch_id().x;
+        Uint fid = sa_sorted_get_original->read(lid);
+        UInt2 edge = input_edge->read(fid);
+        Float3 start_positions[2] = {
+            sa_x_start->read(edge[0]),
+            sa_x_start->read(edge[1])
+        };
+        Float3 end_positions[2] = {
+            sa_x_end->read(edge[0]),
+            sa_x_end->read(edge[1])
+        };
+        Float2x3 aabb = AABB::make_aabb(start_positions[0], start_positions[1], end_positions[0], end_positions[1]);
+        aabb = AABB::add_thickness(aabb, thickness);
+        sa_node_aabb->write(num_inner_nodes + lid, aabb);
+    });
+    
     fn_update_face_tree_leave_aabb = device.compile<1>([
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
     ](
-        const Var<luisa::compute::BufferView<float3>> input_position,
+        const Var<luisa::compute::BufferView<float3>> sa_x_start,
+        const Var<luisa::compute::BufferView<float3>> sa_x_end,
         const Var<luisa::compute::BufferView<uint3>> input_face,
         const Float thickness
     ) {
         const Uint lid = dispatch_id().x;
         Uint fid = sa_sorted_get_original->read(lid);
         UInt3 face = input_face->read(fid);
-        Float3 face_pos[3] = {
-            input_position->read(face[0]),
-            input_position->read(face[1]),
-            input_position->read(face[2])
+        Float3 start_positions[3] = {
+            sa_x_start->read(face[0]),
+            sa_x_start->read(face[1]),
+            sa_x_start->read(face[2])
         };
-        Float2x3 aabb = AABB::make_aabb(face_pos[0], face_pos[1], face_pos[2]);
+        Float3 end_positions[3] = {
+            sa_x_end->read(face[0]),
+            sa_x_end->read(face[1]),
+            sa_x_end->read(face[2])
+        };
+        Float2x3 start_aabb = AABB::make_aabb(start_positions[0], start_positions[1], start_positions[2]);
+        Float2x3 end_aabb = AABB::make_aabb(end_positions[0], end_positions[1], end_positions[2]);
+        Float2x3 aabb = AABB::add_aabb(start_aabb, end_aabb);
         aabb = AABB::add_thickness(aabb, thickness);
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
+
+
 
     fn_clear_apply_flag = device.compile<1>([
         sa_apply_flag = lbvh_data->sa_apply_flag.view()
@@ -658,15 +733,24 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
 
 void LBVH::reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_position)
 {
+    if (input_position.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
     stream 
         << fn_reduce_vert_tree_global_aabb(input_position).dispatch(input_position.size())
-        << fn_reduce_aabb_2_pass_template().dispatch(get_dispatch_block(input_position.size(), 256));
+        << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_position.size(), 256));
+}
+void LBVH::reduce_edge_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint2>& input_edges)
+{
+    if (input_edges.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
+    stream 
+        << fn_reduce_edge_tree_global_aabb(input_position, input_edges).dispatch(input_edges.size())
+        << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_edges.size(), 256));
 }
 void LBVH::reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
 {
+    if (input_faces.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
     stream 
-        << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_position.size())
-        << fn_reduce_aabb_2_pass_template().dispatch(get_dispatch_block(input_position.size(), 256));
+        << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_faces.size())
+        << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_faces.size(), 256));
 }
 void LBVH::construct_tree(Stream& stream)
 {
@@ -709,15 +793,25 @@ void LBVH::construct_tree(Stream& stream)
 
 // Refit 
 
-void LBVH::update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position)
+void LBVH::update_vert_tree_leave_aabb(Stream& stream, 
+    const Buffer<float3>& start_position, 
+    const Buffer<float3>& end_position)
 {
-    stream 
-        << fn_update_vert_tree_leave_aabb(input_position, 0.01f).dispatch(input_position.size());
+    stream << fn_update_vert_tree_leave_aabb(start_position, end_position, 0.01f).dispatch(start_position.size());
 }
-void LBVH::update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
+void LBVH::update_edge_tree_leave_aabb(Stream& stream, 
+    const Buffer<float3>& start_position, 
+    const Buffer<float3>& end_position, 
+    const Buffer<uint2>& input_edges)
 {
-    stream 
-        << fn_update_face_tree_leave_aabb(input_position, input_faces, 0.01f).dispatch(input_position.size());
+    stream << fn_update_edge_tree_leave_aabb(start_position, end_position, input_edges, 0.01f).dispatch(start_position.size());
+}
+void LBVH::update_face_tree_leave_aabb(Stream& stream, 
+    const Buffer<float3>& start_position, 
+    const Buffer<float3>& end_position, 
+    const Buffer<uint3>& input_faces)
+{
+    stream << fn_update_face_tree_leave_aabb(start_position, end_position, input_faces, 0.01f).dispatch(start_position.size());
 }
 void LBVH::refit(Stream& stream)
 {
