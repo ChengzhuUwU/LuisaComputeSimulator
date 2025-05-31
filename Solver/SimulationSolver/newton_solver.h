@@ -50,18 +50,18 @@ private:
     luisa::compute::Shader<1, float> fn_apply_dx;
 
     luisa::compute::Shader<1> fn_pcg_init;
+    luisa::compute::Shader<1> fn_pcg_init_second_pass;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag ;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, uint> fn_pcg_spmv_offdiag;
     luisa::compute::Shader<1> fn_dot_pq;
+    luisa::compute::Shader<1> fn_dot_pq_second_pass;
     luisa::compute::Shader<1> fn_pcg_update_p;
     luisa::compute::Shader<1> fn_pcg_step;
-    
-    luisa::compute::Shader<1> fn_save_dot_rr_second_pass;
-    luisa::compute::Shader<1> fn_dot_pq_second_pass;
-    luisa::compute::Shader<1> fn_dot_rz_second_pass;
-    
+
     luisa::compute::Shader<1> fn_pcg_make_preconditioner;
     luisa::compute::Shader<1> fn_pcg_apply_preconditioner;
+    luisa::compute::Shader<1> fn_pcg_apply_preconditioner_second_pass;
+    
 
     
 };

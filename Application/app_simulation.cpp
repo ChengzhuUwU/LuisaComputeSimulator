@@ -166,11 +166,12 @@ int main(int argc, char** argv)
         lcsv::get_scene_params().implicit_dt = 0.05;
         lcsv::get_scene_params().num_substep = 1;
         lcsv::get_scene_params().nonlinear_iter_count = 20;   
-        lcsv::get_scene_params().pcg_iter_count = 2000; 
+        lcsv::get_scene_params().pcg_iter_count = 1000; 
         lcsv::get_scene_params().use_bending = false;
         lcsv::get_scene_params().use_quadratic_bending_model = true;
         lcsv::get_scene_params().use_xpbd_solver = false;
         lcsv::get_scene_params().use_vbd_solver = true;
+        lcsv::get_scene_params().use_gpu = true;
     }
 
     // Define Simulation
@@ -180,56 +181,58 @@ int main(int argc, char** argv)
         luisa::log_info("");
     }
 
-    auto fn_fixed_point_animation = [&](const uint curr_frame)
-    {
-        // Animation for fixed points
-        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
-        {
-            const auto& fixed_point_info = shell_list[clothIdx].fixed_point_info;
-            if (fixed_point_info.empty()) continue;
-            
-            for (const auto& fixed_point : fixed_point_info)
-            {
-                if (fixed_point.use_rotate)
-                {
-                    const std::vector<uint>& fixed_point_verts = fixed_point.fixed_point_verts;
-                    CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
-                    {
-                        const uint vid = fixed_point_verts[index];
-                        auto& pos = cpu_mesh_data.sa_x_frame_outer[vid];
-                        {
-                            // Rotate
-                            const float h = lcsv::get_scene_params().implicit_dt;
-                            const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(M_PI) * h;
-                            const Eigen::Vector3d rotAxis(
-                                fixed_point.rotAxis[0],
-                                fixed_point.rotAxis[1],
-                                fixed_point.rotAxis[2]);
-                            const Eigen::Vector3d rotCenter(
-                                fixed_point.rotCenter[0],
-                                fixed_point.rotCenter[1],
-                                fixed_point.rotCenter[2]);
-                            const Eigen::Matrix3d rotMtr = Eigen::AngleAxisd(rotAngRad, rotAxis.normalized()).toRotationMatrix();
-                            Eigen::Vector3d relative_vec(
-                                pos[0] - rotCenter[0],
-                                pos[1] - rotCenter[1],
-                                pos[2] - rotCenter[2]);
-                            Eigen::Vector3d rotx = rotMtr * relative_vec;
-                            pos[0] = rotx[0] + rotCenter[0];
-                            pos[1] = rotx[1] + rotCenter[1];
-                            pos[2] = rotx[2] + rotCenter[2];
-                        }
-                    });
-                }
-            }
-        }
-    };
     auto fn_physics_step = [&]()
     {
+        auto fn_fixed_point_animation = [&](const uint curr_frame)
+        {
+            // Animation for fixed points
+            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+            {
+                const auto& fixed_point_info = shell_list[clothIdx].fixed_point_info;
+                if (fixed_point_info.empty()) continue;
+                
+                for (const auto& fixed_point : fixed_point_info)
+                {
+                    if (fixed_point.use_rotate)
+                    {
+                        const std::vector<uint>& fixed_point_verts = fixed_point.fixed_point_verts;
+                        CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
+                        {
+                            const uint vid = fixed_point_verts[index];
+                            auto& pos = cpu_mesh_data.sa_x_frame_outer[vid];
+                            {
+                                // Rotate
+                                const float h = lcsv::get_scene_params().implicit_dt;
+                                const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(M_PI) * h;
+                                const Eigen::Vector3d rotAxis(
+                                    fixed_point.rotAxis[0],
+                                    fixed_point.rotAxis[1],
+                                    fixed_point.rotAxis[2]);
+                                const Eigen::Vector3d rotCenter(
+                                    fixed_point.rotCenter[0],
+                                    fixed_point.rotCenter[1],
+                                    fixed_point.rotCenter[2]);
+                                const Eigen::Matrix3d rotMtr = Eigen::AngleAxisd(rotAngRad, rotAxis.normalized()).toRotationMatrix();
+                                Eigen::Vector3d relative_vec(
+                                    pos[0] - rotCenter[0],
+                                    pos[1] - rotCenter[1],
+                                    pos[2] - rotCenter[2]);
+                                Eigen::Vector3d rotx = rotMtr * relative_vec;
+                                pos[0] = rotx[0] + rotCenter[0];
+                                pos[1] = rotx[1] + rotCenter[1];
+                                pos[2] = rotx[2] + rotCenter[2];
+                            }
+                        });
+                    }
+                }
+            }
+        };
         fn_fixed_point_animation(lcsv::get_scene_params().current_frame);
 
-        // solver.physics_step_CPU(device, stream);
-        solver.physics_step_GPU(device, stream);
+        if (lcsv::get_scene_params().use_gpu)
+            solver.physics_step_GPU(device, stream);
+        else
+            solver.physics_step_CPU(device, stream);
 
         lcsv::get_scene_params().current_frame += 1; 
     };
@@ -351,6 +354,7 @@ int main(int argc, char** argv)
                 ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
                 // ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
                 ImGui::Checkbox("Print Energy", &lcsv::get_scene_params().print_system_energy);
+                ImGui::Checkbox("Use GPU Solver", &lcsv::get_scene_params().use_gpu);
                 // ImGui::Checkbox("Print PCG Convergence", &lcsv::get_scene_params().print_pcg_convergence);
 
                 // static const char* items[] = { "A", "B", "C" };

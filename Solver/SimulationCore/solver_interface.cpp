@@ -9,11 +9,7 @@ namespace lcsv
 
 void SolverInterface::physics_step_prev_operation()
 {
-    CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](uint vid)
-    {
-        // host_mesh_data->sa_x_frame_start[vid] = host_mesh_data->sa_x_frame_end[vid];
-        // host_mesh_data->sa_v_frame_start[vid] = host_mesh_data->sa_v_frame_end[vid];
-    });
+
 }
 void SolverInterface::physics_step_post_operation()
 {
@@ -238,7 +234,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 }
 
 // Evaluate Energy
-double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x)
+double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde)
 {
     auto compute_energy_inertia = [](
         const uint vid, 
@@ -276,7 +272,7 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x)
     {
         return compute_energy_inertia(vid, 
             curr_x, 
-            host_sim_data->sa_x_tilde, 
+            curr_x_tilde, 
             host_mesh_data->sa_vert_mass, 
             get_scene_params().get_substep_dt());
     });

@@ -18,7 +18,7 @@ public:
     ~DescentSolver() {}
 
 public:    
-    void physics_step_vbd_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
+    void physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream);
     // void compute_energy(const Buffer<float3>& curr_cloth_position);

@@ -59,7 +59,7 @@ public:
     void load_saved_state();
     void load_saved_state_from_host(const uint frame, const std::string& addition_str);
     void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
-    double host_compute_energy(const std::vector<float3>& curr_x);
+    double host_compute_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde);
 
 protected:
     MeshData<std::vector>* host_mesh_data;

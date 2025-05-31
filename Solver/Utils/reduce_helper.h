@@ -38,14 +38,13 @@ inline void default_reduce_op_unary(Var<T>& left, const Var<T>& right)
     left = left + right;
 }
 
+// !Warning: Cache-based reduce relies on num-threads dispatched is devidable to 256
 template<typename T, typename ReduceOp>
-inline Var<T> block_reduce(const luisa::compute::UInt vid, const Var<T>& thread_value, const ReduceOp reduce_op_unary = default_reduce_op_unary<T>)
+inline Var<T> block_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp reduce_op_unary = default_reduce_op_unary<T>)
 {
     using Uint = luisa::compute::UInt;
     luisa::compute::set_block_size(reduce_block_dim);
-    // const luisa::compute::UInt vid = luisa::compute::dispatch_id().x;
     const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
-    const luisa::compute::UInt warpIdx = vid / reduce_block_dim;
     
     luisa::compute::Shared<T> cache(reduce_block_dim);
     cache[threadIdx] = thread_value;
@@ -53,18 +52,55 @@ inline Var<T> block_reduce(const luisa::compute::UInt vid, const Var<T>& thread_
     luisa::compute::sync_block();
 
     luisa::compute::UInt s = reduce_block_dim >> 1;
-    $while (true) 
+    $while (true)
     {
-        $if (threadIdx < s) 
+        $if (threadIdx < s)
         {                                             
             reduce_op_unary(cache[threadIdx], cache[threadIdx + s]);       
-        };                                                         
-        luisa::compute::sync_block();                              
+        };
+        luisa::compute::sync_block();
         s >>= 1;
-        $if (s == 0) { $break; };                                               
+        $if (s == 0) { $break; };
     };
     $if (threadIdx == 0)
     {
+        block_value = cache[0];
+    };
+    return block_value;
+}
+
+
+template<typename T> inline void warp_reduce_op_sum(Var<T> & lane_value) { lane_value = luisa::compute::warp_active_sum(lane_value); };
+
+
+constexpr uint warp_dim = 32;
+constexpr uint warp_num = 32;
+
+template<typename T, typename ReduceOp>
+inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_unary = warp_reduce_op_sum<T>)
+{
+    using Uint = luisa::compute::UInt;
+    luisa::compute::set_block_size(reduce_block_dim);
+
+    const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+    const luisa::compute::UInt warpIdx = threadIdx / warp_dim;
+    const luisa::compute::UInt laneIdx = threadIdx % warp_dim;
+    
+    Var<T> block_value = thread_value;
+    warp_reduce_op_unary(block_value);
+
+    luisa::compute::Shared<T> cache(warp_num);
+    $if (warpIdx == 0) { cache[threadIdx] = T(0); };
+    luisa::compute::sync_block();
+
+    $if (laneIdx == 0)
+    {
+        cache[warpIdx] = block_value;
+    };
+    luisa::compute::sync_block();
+    $if (warpIdx == 0)
+    {
+        warp_reduce_op_unary(cache[threadIdx]);
         block_value = cache[0];
     };
     return block_value;
