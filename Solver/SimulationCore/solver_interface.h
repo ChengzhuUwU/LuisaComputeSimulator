@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 #include <string>
 #include "CollisionDetector/lbvh.h"
+#include "CollisionDetector/narrow_phase.h"
 #include "Core/xbasic_types.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
@@ -35,7 +36,8 @@ public:
         LBVH* lbvh_face_ptr,
         LBVH* lbvh_edge_ptr,
         BufferFiller* buffer_filler_ptr, 
-        DeviceParallel* device_parallel_ptr
+        DeviceParallel* device_parallel_ptr,
+        NarrowPhasesDetector* narrowphase_detector_ptr
     )
     {
         // Data pointer
@@ -53,6 +55,7 @@ public:
         mp_lbvh_edge = lbvh_edge_ptr;
         mp_device_parallel = device_parallel_ptr;
         mp_buffer_filler = buffer_filler_ptr;
+        mp_narrowphase_detector = narrowphase_detector_ptr;
     }
 
 public:
@@ -80,6 +83,7 @@ protected:
     DeviceParallel* mp_device_parallel;
     LBVH* mp_lbvh_face;
     LBVH* mp_lbvh_edge;
+    NarrowPhasesDetector* mp_narrowphase_detector;
     // lcsv::LBVH* collision_detector_narrow_phase;
 };
 

@@ -16,11 +16,12 @@ inline void resize_collision_data(
     const uint num_verts = mesh_data->num_verts;
     const uint num_edges = mesh_data->num_edges;
     
-    const uint per_element_count_BP = 64;
-    const uint per_element_count_NP = 32;
+    const uint per_element_count_BP = 128;
+    const uint per_element_count_NP = 64;
     
     lcsv::Initializater::resize_buffer(device, collision_data->broad_phase_collision_count, 4); 
     lcsv::Initializater::resize_buffer(device, collision_data->narrow_phase_collision_count, 4); 
+    lcsv::Initializater::resize_buffer(device, collision_data->toi_per_vert, num_verts); 
     lcsv::Initializater::resize_buffer(device, collision_data->broad_phase_list_vf, per_element_count_BP * num_verts); 
     lcsv::Initializater::resize_buffer(device, collision_data->broad_phase_list_ee, per_element_count_BP * num_edges); 
     lcsv::Initializater::resize_buffer(device, collision_data->narrow_phase_indices_vv, per_element_count_NP * num_verts); 

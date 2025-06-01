@@ -589,7 +589,7 @@ void LBVH::compile(luisa::compute::Device& device)
         const Float2x3& input_aabb,
         Var<BufferView<uint>>& broadphase_count,
         Var<BufferView<uint>>& broad_phase_list, 
-        const Bool drop_smaller_index
+        auto is_valid_function
     )
     {
         const Uint vid = dispatch_id().x;
@@ -605,8 +605,8 @@ void LBVH::compile(luisa::compute::Device& device)
             $if (AABB::is_overlap_aabb(aabb, input_aabb)) {
                 $if (is_leaf(left) == 1) {
                     Uint adj_vid = extract_leaf(left);
-                    $if (!drop_smaller_index | (vid < adj_vid)) {
-                        Uint idx = broadphase_count->atomic(1).fetch_add(1u);
+                    $if (is_valid_function(adj_vid)) {
+                        Uint idx = broadphase_count->atomic(0).fetch_add(1u);
                         broad_phase_list->write(idx * 2 + 0, vid);
                         broad_phase_list->write(idx * 2 + 1, adj_vid);
                     };
@@ -646,7 +646,8 @@ void LBVH::compile(luisa::compute::Device& device)
             sa_x_end.read(vid)
         );
         vert_aabb = AABB::add_thickness(vert_aabb, thickness);
-        query_template(vert_aabb, broadphase_count, broad_phase_list, false);
+        query_template(vert_aabb, broadphase_count, broad_phase_list, 
+            [&](const Uint adj_fid) { return Var<bool>(true); } );
     });
 
     fn_query_from_edges = device.compile<1>([
@@ -670,7 +671,8 @@ void LBVH::compile(luisa::compute::Device& device)
             sa_x_end.read(edge[1])
         );
         vert_aabb = AABB::add_thickness(vert_aabb, thickness);
-        query_template(vert_aabb, broadphase_count, broad_phase_list, true);
+        query_template(vert_aabb, broadphase_count, broad_phase_list, 
+            [&](const Uint adj_eid) { return Var<bool>(eid < adj_eid); } );
     });
 
     // auto buffer = device.create_buffer<bool>(1);
@@ -920,14 +922,14 @@ void LBVH::refit(Stream& stream)
 
 void LBVH::broad_phase_query_from_verts(
     Stream& stream, 
-    const Buffer<float3>& sa_x_begin, 
-    const Buffer<float3>& sa_x_end, 
-    Buffer<uint>& broadphase_count, 
-    Buffer<uint>& broad_phase_list, 
+    const BufferView<float3> sa_x_begin, 
+    const BufferView<float3> sa_x_end, 
+    BufferView<uint> broadphase_count, 
+    BufferView<uint> broad_phase_list, 
     const float thickness)
 {
     stream
-        << fn_reset_collision_count(broadphase_count).dispatch(8)
+        << fn_reset_collision_count(broadphase_count).dispatch(1)
         << fn_query_from_verts(
             sa_x_begin, 
             sa_x_end, 
@@ -937,15 +939,15 @@ void LBVH::broad_phase_query_from_verts(
 }
 void LBVH::broad_phase_query_from_edges(
     Stream& stream, 
-    const Buffer<float3>& sa_x_begin, 
-    const Buffer<float3>& sa_x_end, 
-    const Buffer<uint2>& sa_edges, 
-    Buffer<uint>& broadphase_count, 
-    Buffer<uint>& broad_phase_list, 
+    const BufferView<float3> sa_x_begin, 
+    const BufferView<float3> sa_x_end, 
+    const BufferView<uint2> sa_edges, 
+    BufferView<uint> broadphase_count, 
+    BufferView<uint> broad_phase_list, 
     const float thickness)
 {
     stream
-        << fn_reset_collision_count(broadphase_count).dispatch(8)
+        << fn_reset_collision_count(broadphase_count).dispatch(1)
         << fn_query_from_edges(
             sa_x_begin, 
             sa_x_end, 

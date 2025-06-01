@@ -88,11 +88,12 @@ enum CollisionListType
 template<template<typename...> typename BufferType>
 struct CollisionDataCCD : SimulationType
 {
-    BufferType<uint> broad_phase_collision_count; 
-    BufferType<uint> narrow_phase_collision_count; 
+    BufferType<uint> broad_phase_collision_count; // 0: VF, 1: EE
+    BufferType<uint> narrow_phase_collision_count; // 0: VV, 1: VE, 2: VF, 3: EE
 
     BufferType<uint> broad_phase_list_vf;
     BufferType<uint> broad_phase_list_ee;
+    BufferType<float> toi_per_vert;
 
     BufferType<uint2> narrow_phase_indices_vv; // 0
     BufferType<uint3> narrow_phase_indices_ve; // 1

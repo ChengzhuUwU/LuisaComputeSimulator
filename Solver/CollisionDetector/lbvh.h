@@ -110,8 +110,9 @@ struct LbvhData
 
 class LBVH
 {
-    template<typename T>
-    using Buffer = luisa::compute::Buffer<T>;
+    
+    template<typename T> using Buffer = luisa::compute::Buffer<T>;
+    template<typename T> using BufferView = luisa::compute::BufferView<T>;
     using Stream = luisa::compute::Stream;
     using Device = luisa::compute::Device;
     
@@ -131,18 +132,19 @@ public:
     void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position);
     void update_edge_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint2>& input_edges);
     void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint3>& input_faces);
+    
     void broad_phase_query_from_verts(Stream& stream, 
-        const Buffer<float3>& sa_x_begin, 
-        const Buffer<float3>& sa_x_end, 
-        Buffer<uint>& broadphase_count, 
-        Buffer<uint>& broad_phase_list, 
+        const BufferView<float3> sa_x_begin, 
+        const BufferView<float3> sa_x_end, 
+        BufferView<uint> broadphase_count, 
+        BufferView<uint> broad_phase_list, 
         const float thickness);
     void broad_phase_query_from_edges(Stream& stream, 
-        const Buffer<float3>& sa_x_begin, 
-        const Buffer<float3>& sa_x_end, 
-        const Buffer<uint2>& sa_edges, 
-        Buffer<uint>& broadphase_count, 
-        Buffer<uint>& broad_phase_list, 
+        const BufferView<float3> sa_x_begin, 
+        const BufferView<float3> sa_x_end, 
+        const BufferView<uint2> sa_edges, 
+        BufferView<uint> broadphase_count, 
+        BufferView<uint> broad_phase_list, 
         const float thickness);
     
 private:
@@ -178,13 +180,19 @@ private:
     luisa::compute::Shader<1> fn_refit_tree_aabb; // Invalid!!!!
 
     // Query
-    luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_collision_count;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>,
-                       luisa::compute::BufferView<uint>,
-                       luisa::compute::BufferView<uint>, float> fn_query_from_verts;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>,
-                       luisa::compute::BufferView<uint>,
-                       luisa::compute::BufferView<uint>, float> fn_query_from_edges;
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<uint>> fn_reset_collision_count;
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint>,
+        luisa::compute::BufferView<uint>, float> fn_query_from_verts;
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<uint2>,
+        luisa::compute::BufferView<uint>,
+        luisa::compute::BufferView<uint>, float> fn_query_from_edges;
 
 
 };

@@ -2,6 +2,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "CollisionDetector/lbvh.h"
+#include "CollisionDetector/narrow_phase.h"
 #include "Initializer/init_collision_data.h"
 #include "MeshOperation/default_mesh.h"
 #include "MeshOperation/mesh_reader.h"
@@ -94,7 +95,8 @@ int main(int argc, char** argv)
     const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
     const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
     shell_list.push_back({
-        .model_name = obj_mesh_path + "square8K.obj",
+        // .model_name = obj_mesh_path + "square8K.obj",
+        .model_name = obj_mesh_path + "square21.obj",
         .fixed_point_list = {
             lcsv::Initializater::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
@@ -102,7 +104,8 @@ int main(int argc, char** argv)
         }
     });
     shell_list.push_back({
-        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        .model_name = obj_mesh_path + "square21.obj",
         .transform = luisa::make_float3(0, -0.3, 0),
         .fixed_point_list = {
             lcsv::Initializater::FixedPointInfo{
@@ -149,7 +152,6 @@ int main(int argc, char** argv)
 
     lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
     lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
-    
     {
         lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcsv::LBVHTreeTypeFace, lcsv::LBVHUpdateTypeCloth);
         lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcsv::LBVHTreeTypeEdge, lcsv::LBVHUpdateTypeCloth);
@@ -175,6 +177,12 @@ int main(int argc, char** argv)
         lbvh_face.compile(device);
         lbvh_edge.compile(device);
     }
+
+    lcsv::NarrowPhasesDetector narrow_phase_detector;
+    {
+        narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
+        narrow_phase_detector.compile(device);
+    }
     
     // lcsv::DescentSolver  solver;
     lcsv::NewtonSolver      solver;
@@ -190,7 +198,8 @@ int main(int argc, char** argv)
             &lbvh_face,
             &lbvh_edge,
             &buffer_filler, 
-            &device_parallel
+            &device_parallel,
+            &narrow_phase_detector
         );
         solver.compile(device);
     }
