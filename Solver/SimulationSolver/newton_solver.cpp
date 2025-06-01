@@ -999,15 +999,27 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         if (lcsv::get_scene_params().current_nonlinear_iter == 0)
         {
-            mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
-            mp_lbvh_face->construct_tree(stream);
+            mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
+            mp_lbvh_edge->construct_tree(stream);
         }
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_face->refit(stream);
-
-        stream << luisa::compute::synchronize();
-
-        // mp_lbvh->broad_phase_query_vert(stream, sim_data->sa_x_iter_start, sim_data->sa_x, ccd_data->broad_phase_list_vf, ccd_data->broad_phase_collision_count, 1e-2);
+        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_edge->refit(stream);
+        mp_lbvh_edge->broad_phase_query_from_edges(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges, ccd_data->broad_phase_collision_count, ccd_data->broad_phase_list_vf, 1e-2);
+        
+        // if (lcsv::get_scene_params().current_nonlinear_iter == 0)
+        // {
+        //     mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
+        //     mp_lbvh_face->construct_tree(stream);
+        // }
+        // mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
+        // mp_lbvh_face->refit(stream);
+        // mp_lbvh_face->broad_phase_query_from_verts(stream, sim_data->sa_x_iter_start, sim_data->sa_x, ccd_data->broad_phase_collision_count, ccd_data->broad_phase_list_vf, 1e-2);
+        
+        luisa::log_info("");
+        stream 
+            << ccd_data->broad_phase_collision_count.copy_to(host_ccd_data->broad_phase_collision_count.data())
+            << luisa::compute::synchronize();
+        luisa::log_info("num collision = {}", host_ccd_data->broad_phase_collision_count[1]);
         return 1.0f;
     };
     
@@ -1035,8 +1047,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             return luisa::length(ptr[vid]);
         }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
     };
-    auto simple_solve = [&]()
+    auto simple_solve = [&]() 
     {
+        // Actually is Jacobi Preconditioned Gradient-Descent (Without weighting)
         CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
         {
             float3x3 hessian = sa_cgA_diag[vid];

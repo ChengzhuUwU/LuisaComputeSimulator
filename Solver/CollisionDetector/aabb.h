@@ -19,8 +19,8 @@ inline Var<float3> get_aabb_max(const Var<float2x3>& aabb) { return aabb.cols[1]
 inline auto make_aabb()  
 { 
     return makeFloat2x3(
-        makeFloat3(1000.0f), 
-        makeFloat3(1000.0f)
+        makeFloat3( 1000.0f), 
+        makeFloat3(-1000.0f)
     ); 
 }
 

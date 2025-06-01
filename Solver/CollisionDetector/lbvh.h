@@ -74,13 +74,16 @@ struct LbvhData
         const uint num_leaves = input_num;
         const uint num_inner_nodes = num_leaves - 1;
         const uint num_nodes = num_leaves + num_inner_nodes;
-
+        
         this->num_leaves = num_leaves;
         this->num_inner_nodes = num_inner_nodes;
         this->num_nodes = num_nodes;
-
+        
         this->tree_type = input_tree_type;
         this->update_type = input_update_type;
+
+        luisa::log_info("Allocate for {}-LBVH data : num_leaves = {}", 
+            input_tree_type == LBVHTreeTypeVert ? "Vert" : input_tree_type == LBVHTreeTypeFace ? "Face" : "Edge", num_leaves);
 
         resize_buffer(device, this->sa_leaf_center, num_leaves);
         resize_buffer(device, this->sa_block_aabb, get_dispatch_block(num_leaves, 256));
@@ -128,7 +131,19 @@ public:
     void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position);
     void update_edge_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint2>& input_edges);
     void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint3>& input_faces);
-    void broad_phase_query_vert(Stream& stream, const Buffer<float3>& sa_x_begin, const Buffer<float3>& sa_x_end, Buffer<uint>& broad_phase_list, Buffer<uint>& broadphase_count, const float thickness);
+    void broad_phase_query_from_verts(Stream& stream, 
+        const Buffer<float3>& sa_x_begin, 
+        const Buffer<float3>& sa_x_end, 
+        Buffer<uint>& broadphase_count, 
+        Buffer<uint>& broad_phase_list, 
+        const float thickness);
+    void broad_phase_query_from_edges(Stream& stream, 
+        const Buffer<float3>& sa_x_begin, 
+        const Buffer<float3>& sa_x_end, 
+        const Buffer<uint2>& sa_edges, 
+        Buffer<uint>& broadphase_count, 
+        Buffer<uint>& broad_phase_list, 
+        const float thickness);
     
 private:
     // void reduce_vert_tree_global_aabb();
@@ -160,13 +175,16 @@ private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>, float>  fn_update_edge_tree_leave_aabb ;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
     luisa::compute::Shader<1> fn_clear_apply_flag ;
-    luisa::compute::Shader<1> fn_refit_kernel; // Invalid!!!!
+    luisa::compute::Shader<1> fn_refit_tree_aabb; // Invalid!!!!
 
     // Query
     luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_collision_count;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>,
                        luisa::compute::BufferView<uint>,
-                       luisa::compute::BufferView<uint>, float> fn_query_vert;
+                       luisa::compute::BufferView<uint>, float> fn_query_from_verts;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>,
+                       luisa::compute::BufferView<uint>,
+                       luisa::compute::BufferView<uint>, float> fn_query_from_edges;
 
 
 };

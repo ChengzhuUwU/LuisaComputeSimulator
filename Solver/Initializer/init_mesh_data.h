@@ -28,7 +28,7 @@ struct ShellInfo
     float3 transform = luisa::make_float3(0.0f, 0.0f, 0.0f);
     float3 rotation = luisa::make_float3(0.0f * lcsv::Pi);
     float3 scale = luisa::make_float3(1.0f);
-    std::vector<FixedPointInfo> fixed_point_info;
+    std::vector<FixedPointInfo> fixed_point_list;
 };
 
 void init_mesh_data(

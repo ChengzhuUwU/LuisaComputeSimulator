@@ -96,20 +96,20 @@ void init_mesh_data(
 
         for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
         {
-            auto& shell_info = shell_infos[clothIdx];
-            const auto& input_mesh = input_meshes[clothIdx];
+            auto& curr_shell_info = shell_infos[clothIdx];
+            const auto& curr_input_mesh = input_meshes[clothIdx];
 
-            const uint curr_num_verts = input_mesh.model_positions.size();
-            const uint curr_num_faces = input_mesh.faces.size();
-            const uint curr_num_edges = input_mesh.edges.size();
-            const uint curr_num_bending_edges = input_mesh.bending_edges.size();
+            const uint curr_num_verts = curr_input_mesh.model_positions.size();
+            const uint curr_num_faces = curr_input_mesh.faces.size();
+            const uint curr_num_edges = curr_input_mesh.edges.size();
+            const uint curr_num_bending_edges = curr_input_mesh.bending_edges.size();
 
             // Read position with affine
             CpuParallel::parallel_for(0, curr_num_verts, [&](const uint vid)
             {
-                std::array<float, 3> read_pos = input_mesh.model_positions[vid];
+                std::array<float, 3> read_pos = curr_input_mesh.model_positions[vid];
                 float3 model_position = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
-                float4x4 model_matrix = lcsv::make_model_matrix(shell_info.transform, shell_info.rotation, shell_info.scale);
+                float4x4 model_matrix = lcsv::make_model_matrix(curr_shell_info.transform, curr_shell_info.rotation, curr_shell_info.scale);
                 float3 world_position = lcsv::affine_position(model_matrix, model_position);
                 mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
                 mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
@@ -117,19 +117,19 @@ void init_mesh_data(
             // Read triangle face
             CpuParallel::parallel_for(0, curr_num_faces, [&](const uint fid)
             {
-                auto face = input_mesh.faces[fid];
+                auto face = curr_input_mesh.faces[fid];
                 mesh_data->sa_faces[prefix_num_faces + fid] = prefix_num_verts + luisa::make_uint3(face[0], face[1], face[2]);
             });
             // Read edge
             CpuParallel::parallel_for(0, curr_num_edges, [&](const uint eid)
             {
-                auto edge = input_mesh.edges[eid];
+                auto edge = curr_input_mesh.edges[eid];
                 mesh_data->sa_edges[prefix_num_edges + eid] = prefix_num_verts + luisa::make_uint2(edge[0], edge[1]);
             });
             // Read bending edge
             CpuParallel::parallel_for(0, curr_num_bending_edges, [&](const uint eid)
             {
-                auto bending_edge = input_mesh.bending_edges[eid];
+                auto bending_edge = curr_input_mesh.bending_edges[eid];
                 mesh_data->sa_bending_edges[prefix_num_bending_edges + eid] = prefix_num_verts + luisa::make_uint4(bending_edge[0], bending_edge[1], bending_edge[2], bending_edge[3]);
             });
 
@@ -148,23 +148,24 @@ void init_mesh_data(
                 auto pos_max = local_aabb.packed_max;
                 auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
 
-                CpuParallel::single_thread_for(0, mesh_data->sa_rest_x.size(), [&](const uint vid)
+                CpuParallel::single_thread_for(0, curr_num_verts, [&](const uint local_vid)
                 {
-                    float3 orig_pos = mesh_data->sa_rest_x[vid];
+                    const uint global_vid = prefix_num_verts + local_vid;
+                    float3 orig_pos = mesh_data->sa_rest_x[global_vid];
                     float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
                     
                     bool is_fixed = false;
-                    for (auto& fixed_point_info : shell_info.fixed_point_info)
+                    for (auto& fixed_point_info : curr_shell_info.fixed_point_list)
                     {
                         if (fixed_point_info.is_fixed_point_func(norm_pos))
                         {
                             is_fixed = true;
-                            fixed_point_info.fixed_point_verts.push_back(vid);
+                            fixed_point_info.fixed_point_verts.push_back(global_vid);
                             break;
                         }
                     }
                     // is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
-                    mesh_data->sa_is_fixed[vid] = is_fixed;
+                    mesh_data->sa_is_fixed[global_vid] = is_fixed;
                 });
             }
 

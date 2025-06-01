@@ -95,9 +95,18 @@ int main(int argc, char** argv)
     const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
     shell_list.push_back({
         .model_name = obj_mesh_path + "square8K.obj",
-        .fixed_point_info = {
+        .fixed_point_list = {
             lcsv::Initializater::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
+            },
+        }
+    });
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        .transform = luisa::make_float3(0, -0.3, 0),
+        .fixed_point_list = {
+            lcsv::Initializater::FixedPointInfo{
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
             },
         }
     });
@@ -142,8 +151,8 @@ int main(int argc, char** argv)
     lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
     
     {
-        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcsv::LBVHTreeTypeEdge, lcsv::LBVHUpdateTypeCloth);
-        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcsv::LBVHTreeTypeFace, lcsv::LBVHUpdateTypeCloth);
+        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcsv::LBVHTreeTypeFace, lcsv::LBVHUpdateTypeCloth);
+        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcsv::LBVHTreeTypeEdge, lcsv::LBVHUpdateTypeCloth);
         // lbvh_cloth_vert.unit_test(device, stream);
     }
     
@@ -213,7 +222,7 @@ int main(int argc, char** argv)
             // Animation for fixed points
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
-                const auto& fixed_point_info = shell_list[clothIdx].fixed_point_info;
+                const auto& fixed_point_info = shell_list[clothIdx].fixed_point_list;
                 if (fixed_point_info.empty()) continue;
                 
                 for (const auto& fixed_point : fixed_point_info)
@@ -272,35 +281,38 @@ int main(int argc, char** argv)
     std::vector<std::vector<std::array<uint, 3>>> sa_rendering_faces(shell_list.size() + 0 + 0);
     std::vector<std::array<float, 3>> sa_global_aabb_vertices(SimMesh::BoundingBox::get_num_vertices(), std::array<float, 3>({0.0f, 0.0f, 0.0f}));
     std::vector<std::array<uint, 3>> sa_global_aabb_faces = SimMesh::BoundingBox::get_box_faces();
+    std::vector<std::vector<std::array<float, 3>>> face_color(shell_list.size());
     {
-        for (uint i = 0; i < shell_list.size(); i++)
+        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
         {
-            sa_rendering_vertices[i].resize(host_mesh_data.prefix_num_verts[i + 1] - host_mesh_data.prefix_num_verts[i]);
-            sa_rendering_faces[i].resize(host_mesh_data.prefix_num_faces[i + 1] - host_mesh_data.prefix_num_faces[i]);
-            const uint curr_prefix_num_verts = host_mesh_data.prefix_num_verts[i];
-            const uint next_prefix_num_verts = host_mesh_data.prefix_num_verts[i + 1];
-            const uint curr_prefix_num_faces = host_mesh_data.prefix_num_faces[i];
-            const uint next_prefix_num_faces = host_mesh_data.prefix_num_faces[i + 1];
+            sa_rendering_vertices[meshIdx].resize(host_mesh_data.prefix_num_verts[meshIdx + 1] - host_mesh_data.prefix_num_verts[meshIdx]);
+            sa_rendering_faces[meshIdx].resize(host_mesh_data.prefix_num_faces[meshIdx + 1] - host_mesh_data.prefix_num_faces[meshIdx]);
+            const uint curr_prefix_num_verts = host_mesh_data.prefix_num_verts[meshIdx];
+            const uint next_prefix_num_verts = host_mesh_data.prefix_num_verts[meshIdx + 1];
+            const uint curr_prefix_num_faces = host_mesh_data.prefix_num_faces[meshIdx];
+            const uint next_prefix_num_faces = host_mesh_data.prefix_num_faces[meshIdx + 1];
             CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
             {
                 auto pos = host_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
                 // sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
-                sa_rendering_vertices[i][vid] = {pos.x, pos.y, pos.z};
+                sa_rendering_vertices[meshIdx][vid] = {pos.x, pos.y, pos.z};
             });
             CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
             {
                 auto face = host_mesh_data.sa_faces[curr_prefix_num_faces + fid];
-                sa_rendering_faces[i][fid] = {
+                sa_rendering_faces[meshIdx][fid] = {
                     face[0] - curr_prefix_num_verts, 
                     face[1] - curr_prefix_num_verts, 
                     face[2] - curr_prefix_num_verts};
             });
+            face_color[meshIdx].resize(host_mesh_data.prefix_num_faces[meshIdx + 1] - host_mesh_data.prefix_num_faces[meshIdx], {0.7, 0.2, 0.3});
         }
 
-        std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
-        min_pos = { -0.01f, -0.01f, -0.01f };
-        max_pos = {  0.01f,  0.01f,  0.01f };
-        SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
+        if constexpr (draw_bounding_box)
+        {
+            std::array<float, 3> min_pos = { -0.01f, -0.01f, -0.01f };; std::array<float, 3> max_pos = {  0.01f,  0.01f,  0.01f };
+            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
+        }
     }
     auto fn_update_rendering_vertices = [&]()
     {
@@ -317,14 +329,14 @@ int main(int argc, char** argv)
             lcsv::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
             // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
             // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            global_aabb = lbvh_data_face.host_node_aabb[0];
+            global_aabb = lbvh_data_edge.host_node_aabb[0];
             min_pos = { global_aabb[0][0], global_aabb[0][1], global_aabb[0][2] };
             max_pos = { global_aabb[1][0], global_aabb[1][1], global_aabb[1][2] };
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
 
-    SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
+    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
 
     if constexpr (!use_ui)
     {
@@ -352,31 +364,38 @@ int main(int argc, char** argv)
         std::vector<polyscope::SurfaceMesh*> surface_meshes;
         std::vector<polyscope::SurfaceMesh*> bounding_boxes;
         
-        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+        
+        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
         {
-            const std::string& curr_mesh_name = shell_list[clothIdx].model_name + std::to_string(clothIdx);
+            const std::string& curr_mesh_name = shell_list[meshIdx].model_name + std::to_string(meshIdx);
             polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
                 curr_mesh_name, 
-                sa_rendering_vertices[clothIdx], 
-                sa_rendering_faces[clothIdx]
+                sa_rendering_vertices[meshIdx], 
+                sa_rendering_faces[meshIdx]
             );
             curr_mesh_ptr->setEnabled(true);
+            curr_mesh_ptr->addFaceColorQuantity("Collision Count", face_color[meshIdx]);
             surface_meshes.push_back(curr_mesh_ptr);
         }
         
         if constexpr (draw_bounding_box)
         {
             polyscope::SurfaceMesh* bounding_box_ptr = polyscope::registerSurfaceMesh("Global Bounding Box", sa_global_aabb_vertices, sa_global_aabb_faces);
+            bounding_box_ptr->setTransparency(0.25f);
             bounding_boxes.push_back(bounding_box_ptr);
         }
 
         polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+        
         
         auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
+                
+                
+                // surface_meshes[clothIdx]->getFloatingQuantity("Collision Count");
             }
             if constexpr (draw_bounding_box) bounding_boxes.back()->updateVertexPositions(sa_global_aabb_vertices);
         };
