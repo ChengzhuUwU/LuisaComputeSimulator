@@ -548,7 +548,11 @@ void LBVH::compile(luisa::compute::Device& device)
         Uint current = lid + num_inner_nodes;
         Uint parrent = sa_parrent->read(current);
         Uint loop = 0;
+        
         $while (parrent != -1) {
+            luisa::compute::sync_block();
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+
             loop += 1;
             $if (loop > 10000) {
                 sa_is_healthy->write(0, 0u);
@@ -571,6 +575,8 @@ void LBVH::compile(luisa::compute::Device& device)
                 sa_is_healthy->write(0, 0u);
                 $break;
             };
+            luisa::compute::sync_block();
+            std::atomic_thread_fence(std::memory_order_seq_cst);
         };
     });
 
@@ -758,14 +764,8 @@ void LBVH::construct_tree(Stream& stream)
     const uint num_inner_nodes = lbvh_data->num_inner_nodes;
     const uint num_nodes = lbvh_data->num_nodes;
 
-
-    static std::vector<morton64> host_morton64;
-    static std::vector<uint> host_sorted_get_original;
-    if (host_morton64.empty())
-    {
-        host_morton64.resize(num_leaves);
-        host_sorted_get_original.resize(num_leaves);
-    }
+    auto& host_morton64 = lbvh_data->host_morton64;
+    auto& host_sorted_get_original = lbvh_data->host_sorted_get_original;
 
     stream 
         << fn_reset_tree().dispatch(num_nodes) 
@@ -815,9 +815,76 @@ void LBVH::update_face_tree_leave_aabb(Stream& stream,
 }
 void LBVH::refit(Stream& stream)
 {
+    
+    
     stream 
         << fn_clear_apply_flag().dispatch(lbvh_data->sa_apply_flag.size())
-        << fn_refit_kernel().dispatch(lbvh_data->num_leaves);
+        // << fn_refit_kernel().dispatch(lbvh_data->num_leaves) // Need thread fence!!!
+        << lbvh_data->sa_parrent.copy_to(lbvh_data->host_parrent.data())
+        << lbvh_data->sa_children.copy_to(lbvh_data->host_children.data())
+        << lbvh_data->sa_node_aabb.view(lbvh_data->num_inner_nodes, lbvh_data->num_leaves).copy_to(lbvh_data->host_node_aabb.data() + lbvh_data->num_inner_nodes)
+        << lbvh_data->sa_is_healthy.copy_to(lbvh_data->host_is_healthy.data())
+        << luisa::compute::synchronize();
+        ;
+    // return;
+
+    std::vector<uint>& sa_apply_flag = lbvh_data->host_apply_flag;
+    std::vector<uint>& sa_parrent = lbvh_data->host_parrent;
+    std::vector<uint2>& sa_children = lbvh_data->host_children;
+    std::vector<aabbData>& sa_node_aabb = lbvh_data->host_node_aabb;
+    std::vector<uint>& sa_is_healthy = lbvh_data->host_is_healthy;
+
+    CpuParallel::parallel_set(sa_apply_flag, 0u);
+
+    CpuParallel::parallel_for(0, lbvh_data->num_leaves, [&](const uint lid)
+    {
+        if (!sa_is_healthy[0]) return;
+
+        uint current = lid + lbvh_data->num_inner_nodes;
+        uint parrent = sa_parrent[current];
+
+        std::atomic<uint>* atomic_apply_flag = (std::atomic<uint>*)(sa_apply_flag.data());
+
+        uint loop = 0;
+        while (parrent != -1u) 
+        { 
+            if (loop++ > 10000)
+            {
+                sa_is_healthy[0] = false;
+                break;
+            }
+            // THREAD_FENCE;
+
+            uint orig_flag = 0;
+            
+            orig_flag = std::atomic_fetch_add(&atomic_apply_flag[parrent], 1u); // (, 0u, current); // Or AtomicAdd
+
+            if (orig_flag == 0u) {
+                return;
+            }
+            else if (orig_flag != -1u) {
+
+                uint2 child_of_parrent = sa_children[parrent];
+                auto aabb_left =  sa_node_aabb[child_of_parrent.x];
+                auto aabb_right = sa_node_aabb[child_of_parrent.y];
+                sa_node_aabb[parrent] = AABB::add_aabb(aabb_left, aabb_right);
+
+                current = parrent;
+                parrent = sa_parrent[current];      
+    
+            }
+            else {
+                sa_is_healthy[0] = false;
+                break;
+            }
+        }
+    }) ;
+
+    stream 
+        << lbvh_data->sa_node_aabb.view(0, lbvh_data->num_inner_nodes).copy_from(sa_node_aabb.data())
+        << lbvh_data->sa_is_healthy.copy_from(sa_is_healthy.data())
+        // << luisa::compute::synchronize();
+        ;
 }
 
 

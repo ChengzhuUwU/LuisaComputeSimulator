@@ -316,7 +316,8 @@ int main(int argc, char** argv)
         {
             lcsv::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
             // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
+            // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
+            global_aabb = lbvh_data_face.host_node_aabb[0];
             min_pos = { global_aabb[0][0], global_aabb[0][1], global_aabb[0][2] };
             max_pos = { global_aabb[1][0], global_aabb[1][1], global_aabb[1][2] };
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);

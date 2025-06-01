@@ -1005,6 +1005,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_face->refit(stream);
 
+        stream << luisa::compute::synchronize();
+
         // mp_lbvh->broad_phase_query_vert(stream, sim_data->sa_x_iter_start, sim_data->sa_x, ccd_data->broad_phase_list_vf, ccd_data->broad_phase_collision_count, 1e-2);
         return 1.0f;
     };

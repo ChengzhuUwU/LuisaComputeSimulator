@@ -49,6 +49,14 @@ struct LbvhData
     BufferType<uint> sa_apply_flag;
     // BufferType<AabbData> sa_node_aabb_model_position;
 
+    std::vector<morton64> host_morton64;
+    std::vector<uint> host_sorted_get_original;
+    std::vector<uint> host_parrent;
+    std::vector<uint2> host_children;
+    std::vector<aabbData> host_node_aabb;
+    std::vector<uint> host_apply_flag;
+    std::vector<uint> host_is_healthy;
+
     uint num_leaves;
     uint num_nodes;
     uint num_inner_nodes;
@@ -86,6 +94,14 @@ struct LbvhData
         resize_buffer(device, this->sa_node_aabb, num_nodes);
         resize_buffer(device, this->sa_apply_flag, num_nodes);
         resize_buffer(device, this->sa_is_healthy, 1);
+
+        this->host_morton64.resize(num_leaves);
+        this->host_sorted_get_original.resize(num_leaves);
+        this->host_parrent.resize(num_nodes);
+        this->host_children.resize(num_nodes);
+        this->host_node_aabb.resize(num_nodes);
+        this->host_apply_flag.resize(num_nodes);
+        this->host_is_healthy.resize(1);
     }
 };
 
@@ -144,7 +160,7 @@ private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>, float>  fn_update_edge_tree_leave_aabb ;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float>  fn_update_face_tree_leave_aabb ;
     luisa::compute::Shader<1> fn_clear_apply_flag ;
-    luisa::compute::Shader<1> fn_refit_kernel;
+    luisa::compute::Shader<1> fn_refit_kernel; // Invalid!!!!
 
     // Query
     luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_collision_count;
