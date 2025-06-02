@@ -161,7 +161,21 @@ namespace host_accd {
 
 using namespace host_distance;
 
+// Name: ACCD Reduction Factor
+// Recommended Range: 1e-2 to 0.5
+// Description:
+// ACCD needs some small number to determine that the gap distance is close enough to the surface.
+// This factor is multiplied to the initial gap to set this threshold.
 constexpr float ccd_reduction = 0.01f;
+
+// Name: Extended Line Search Maximum Time
+// Recommended Range: 1.25 to 1.75
+// Description:
+// Continuous Collision Detection (CCD) is used to determine the time of impact (TOI),
+// but if we advance the time to the actual TOI, contact gaps can be nearly zero.
+// Such a small gap can cause the solver to diverge, so we extend the time to the TOI by this
+// factor, and the actual TOI is recaled by dividing by this factor.
+// For example, if the actual TOI is 1.0 and this value is 1.25, the actual TOI is 1.0/1.25.
 constexpr float line_search_max_t = 1.25f;
 
 template <class T> inline void centerize(SMat<T, 3, 4> &x) {

@@ -1024,13 +1024,43 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_ee_count_offset(), 1), 
             ccd_data->broad_phase_list_ee, 1e-3);
         
-        // mp_narrowphase_detector->narrow_phase_query_from_vf_pair(stream, 
+        mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
+            host_ccd_data->toi_per_vert, 
+            host_sim_data->sa_x_iter_start, 
+            host_sim_data->sa_x_iter_start, 
+            host_sim_data->sa_x, 
+            host_sim_data->sa_x, 
+            host_mesh_data->sa_faces, 
+            1e-3);
+
+        mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
+            host_ccd_data->toi_per_vert, 
+            host_sim_data->sa_x_iter_start, 
+            host_sim_data->sa_x_iter_start, 
+            host_sim_data->sa_x, 
+            host_sim_data->sa_x, 
+            host_mesh_data->sa_edges, 
+            host_mesh_data->sa_edges, 
+            1e-3);
+        
+        // mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
         //     ccd_data->toi_per_vert, 
         //     sim_data->sa_x_iter_start, 
         //     sim_data->sa_x_iter_start, 
         //     sim_data->sa_x, 
         //     sim_data->sa_x, 
-        //     mesh_data->sa_faces, 1e-3);
+        //     mesh_data->sa_faces, 
+        //     1e-3);
+
+        // mp_narrowphase_detector->narrow_phase_ccd_query_from_ee_pair(stream, 
+        //     ccd_data->toi_per_vert, 
+        //     sim_data->sa_x_iter_start, 
+        //     sim_data->sa_x_iter_start, 
+        //     sim_data->sa_x, 
+        //     sim_data->sa_x, 
+        //     mesh_data->sa_edges, 
+        //     mesh_data->sa_edges, 
+        //     1e-3);
 
         luisa::log_info("");
         stream 
@@ -1042,7 +1072,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             host_ccd_data->broad_phase_collision_count[0], 
             host_ccd_data->broad_phase_collision_count[1],
             toi);
-        return 1.0f;
+        return 0.9f * toi;
     };
     
 
@@ -1460,6 +1490,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             if constexpr (use_ipc)
             { 
                 alpha = ccd_line_search();
+                apply_dx(alpha);   
 
                 auto curr_energy = host_compute_energy(sa_x, sa_x_tilde);
                 uint line_search_count = 0;

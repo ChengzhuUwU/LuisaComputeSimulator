@@ -99,14 +99,14 @@ int main(int argc, char** argv)
         .model_name = obj_mesh_path + "square2.obj",
         .fixed_point_list = {
             lcsv::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f && norm_pos.x > 0.999f; },
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
             },
         }
     });
     shell_list.push_back({
         // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
         .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0, -0.3, 0),
+        .transform = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcsv::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },

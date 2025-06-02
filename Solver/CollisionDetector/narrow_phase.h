@@ -32,8 +32,8 @@ public:
     }
 
 public:
-    void narrow_phase_query_from_vf_pair(Stream& stream, 
-        const Buffer<float>& sa_toi,
+    void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
+        Buffer<float>& sa_toi,
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
@@ -41,14 +41,33 @@ public:
         const Buffer<uint3>& sa_faces_right,
         const float thickness);
 
-    void narrow_phase_query_from_ee_pair(Stream& stream, 
-        const Buffer<float>& sa_toi,
+    void narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
+        Buffer<float>& sa_toi,
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
         const Buffer<float3>& sa_x_end_right,
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
+        const float thickness);
+
+    void host_narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
+        std::vector<float>& sa_toi,
+        const std::vector<float3>& sa_x_begin_left, 
+        const std::vector<float3>& sa_x_begin_right, 
+        const std::vector<float3>& sa_x_end_left,
+        const std::vector<float3>& sa_x_end_right,
+        const std::vector<uint3>& sa_faces_right,
+        const float thickness);
+
+    void host_narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
+        std::vector<float>& sa_toi,
+        const std::vector<float3>& sa_x_begin_left, 
+        const std::vector<float3>& sa_x_begin_right, 
+        const std::vector<float3>& sa_x_end_left,
+        const std::vector<float3>& sa_x_end_right,
+        const std::vector<uint2>& sa_edges_left,
+        const std::vector<uint2>& sa_edges_right,
         const float thickness);
 
 public:
