@@ -189,6 +189,7 @@ template <class T> inline void centerize(SMat<T, 3, 4> &x) {
     }
 }
 
+constexpr bool print_ccd_iter_count = true;
 template <typename F>
 inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
                             F square_dist_func, float offset) {
@@ -198,7 +199,9 @@ inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
     float target = eps + offset;
     float eps_sqr = eps * eps;
     float inv_u_max = 1.0f / u_max;
+    uint iter_count = 0;
     while (true) {
+        if constexpr (print_ccd_iter_count) iter_count += 1;
         float d2 = square_dist_func(x0 + toi * dx);
         float d_minus_target = (d2 - target * target) / (sqrtf(d2) + target);
         if ((max_t - toi) * u_max < d_minus_target - eps) {
@@ -218,6 +221,7 @@ inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
             break;
         }
     }
+    if constexpr (print_ccd_iter_count) if (iter_count != 1) luisa::log_info("CCD iter for {}", iter_count);
     assert(toi > 0.0f);
     return toi;
 }

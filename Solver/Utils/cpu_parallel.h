@@ -153,6 +153,30 @@ inline T single_thread_for_and_reduce_sum(uint start_pos, uint end_pos, Parallel
     return std::reduce(thread_values.begin(), thread_values.end(), T(), [](const T& x, const T& y) -> T{return x + y;});
 }
 
+template<typename T, typename ParallelFunc, typename ReduceFuncBinary>
+inline T single_thread_for_and_reduce(uint start_pos, uint end_pos, ParallelFunc func_parallel, ReduceFuncBinary func_binary, const T zero)
+{
+    const uint blockDim = 256;
+    uint start_dispatch = start_pos / blockDim;
+    uint end_dispatch = (end_pos + blockDim - 1) / blockDim;
+    std::vector<T> thread_values(end_pos - start_pos);
+
+    tbb::parallel_for(tbb::blocked_range<uint>(start_dispatch, end_dispatch, 1), 
+        [&](tbb::blocked_range<uint> r) 
+        { 
+            uint blockIdx = r.begin();
+            uint startIdx = max_scalar(blockDim * blockIdx, start_pos);
+            uint endIdx = min_scalar(blockDim * (blockIdx + 1), end_pos);
+            for (uint index = startIdx; index < endIdx; index++) 
+            {
+                T parallel_result = func_parallel(index);
+                thread_values[index - start_pos] = parallel_result;
+            }
+        }, tbb::simple_partitioner{});
+
+    return std::reduce(thread_values.begin(), thread_values.end(), zero, func_binary);
+}
+
 // inclusive : 包含第一个元素
 template<typename T, typename ParallelFunc, typename OutputFunc>
 inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc func_parallel, OutputFunc func_output, const T& zero)

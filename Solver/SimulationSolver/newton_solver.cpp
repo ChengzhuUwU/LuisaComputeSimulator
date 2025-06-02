@@ -1062,7 +1062,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     mesh_data->sa_edges, 
         //     1e-3);
 
-        luisa::log_info("");
         stream 
             << ccd_data->broad_phase_collision_count.copy_to(host_ccd_data->broad_phase_collision_count.data())
             // << ccd_data->toi_per_vert.copy_to(host_ccd_data->toi_per_vert.data())
@@ -1072,7 +1071,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             host_ccd_data->broad_phase_collision_count[0], 
             host_ccd_data->broad_phase_collision_count[1],
             toi);
-        return 0.9f * toi;
+        return toi; // 0.9f * toi
     };
     
 

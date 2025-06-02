@@ -473,7 +473,7 @@ int main(int argc, char** argv)
                 {
                     solver.lcsv::SolverInterface::save_current_frame_state_to_host(lcsv::get_scene_params().current_frame, "");
                 }
-                static uint state_frame = 8;
+                static uint state_frame = 11;
                 ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
                 if (ImGui::Button("Load State", ImVec2(-1, 0)))
                 {
