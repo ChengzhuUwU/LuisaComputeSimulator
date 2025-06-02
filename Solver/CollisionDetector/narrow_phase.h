@@ -33,7 +33,6 @@ public:
 
 public:
     void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
-        Buffer<float>& sa_toi,
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
@@ -42,7 +41,6 @@ public:
         const float thickness);
 
     void narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
-        Buffer<float>& sa_toi,
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
@@ -52,7 +50,6 @@ public:
         const float thickness);
 
     void host_narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
-        std::vector<float>& sa_toi,
         const std::vector<float3>& sa_x_begin_left, 
         const std::vector<float3>& sa_x_begin_right, 
         const std::vector<float3>& sa_x_end_left,
@@ -61,7 +58,6 @@ public:
         const float thickness);
 
     void host_narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
-        std::vector<float>& sa_toi,
         const std::vector<float3>& sa_x_begin_left, 
         const std::vector<float3>& sa_x_begin_right, 
         const std::vector<float3>& sa_x_end_left,
@@ -70,12 +66,31 @@ public:
         const std::vector<uint2>& sa_edges_right,
         const float thickness);
 
+
 public:
     CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
     CollisionDataCCD<std::vector>* host_ccd_data;
 
 private:
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint3>, float> fn_narrow_phase_vf_ccd_query;
 
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint2>,
+        luisa::compute::BufferView<uint2>, float> fn_narrow_phase_ee_ccd_query ;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float>> fn_reset_toi;
 };
 
 

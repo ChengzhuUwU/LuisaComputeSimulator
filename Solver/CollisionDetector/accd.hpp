@@ -24,8 +24,8 @@ using Vec4f = luisa::compute::Float4;
 
 
 inline void centerize(Mat3x4f &x) {
-    Vec3f mov = makeFloat3(0.0f);
-    Var<float> scale(0.25f);
+    Vec3f mov = makeFloat3Var(0.0f);
+    Var<float> scale = 0.25f;
     for (int k = 0; k < 4; k++) {
         mov += scale * x.cols[k];
     }
@@ -36,6 +36,7 @@ inline void centerize(Mat3x4f &x) {
 
 constexpr float ccd_reduction = 0.01f;
 constexpr float line_search_max_t = 1.25f;
+constexpr bool print_ccd_iter_count = false;
 
 template <typename F>
 inline Var<float> ccd_helper(
@@ -51,10 +52,10 @@ inline Var<float> ccd_helper(
     Var<float> target = eps + offset;
     Var<float> eps_sqr = eps * eps;
     Var<float> inv_u_max = 1.0f / u_max;
-    Var<uint> iter = 0;
-    // $while (true) {
-    $while (iter < 10000) {
-        iter += 1;
+    Var<uint> iter_count = 0;
+    $while (true) {
+    // $while (iter_count < 10000) {
+        if constexpr (print_ccd_iter_count) iter_count += 1;
         Var<float> d2 = square_dist_func(add(x0, mult(toi, dx)));
         Var<float> d_minus_target = (d2 - target * target) / (sqrt_scalar(d2) + target);
         $if ((max_t - toi) * u_max < d_minus_target - eps) {
@@ -74,6 +75,7 @@ inline Var<float> ccd_helper(
             $break;
         };
     };
+    if constexpr (print_ccd_iter_count) $if (iter_count != 1) { luisa::compute::device_log("CCD iter for {}, toi = {}", iter_count, toi); };
     assert(toi > 0.0f);
     return toi;
 }
@@ -84,8 +86,7 @@ struct EdgeEdgeSquaredDist {
         const Vec3f &p1 = x.cols[1];
         const Vec3f &q0 = x.cols[2];
         const Vec3f &q1 = x.cols[3];
-        return distance::edge_edge_distance_squared_unclassified(p0, p1, q0,
-                                                                 q1);
+        return distance::edge_edge_distance_squared_unclassified(p0, p1, q0, q1);
     }
 };
 
@@ -95,8 +96,7 @@ struct PointTriangleSquaredDist {
         const Vec3f &t0 = x.cols[1];
         const Vec3f &t1 = x.cols[2];
         const Vec3f &t2 = x.cols[3];
-        return distance::point_triangle_distance_squared_unclassified(p, t0, t1,
-                                                                      t2);
+        return distance::point_triangle_distance_squared_unclassified(p, t0, t1, t2);
     }
 };
 
@@ -115,7 +115,7 @@ inline Var<float> point_triangle_ccd(const Vec3f &p0,  const Vec3f &p1,
                                const Vec3f &t00, const Vec3f &t01,
                                const Vec3f &t02, const Vec3f &t10,
                                const Vec3f &t11, const Vec3f &t12,
-                               float offset) {
+                               Float offset) {
     Vec3f dp = p1 - p0;
     Vec3f dt0 = t10 - t00;
     Vec3f dt1 = t11 - t01;
@@ -137,7 +137,7 @@ inline Var<float> edge_edge_ccd(const Vec3f &ea00, const Vec3f &ea01,
                                const Vec3f &eb00, const Vec3f &eb01,
                                const Vec3f &ea10, const Vec3f &ea11,
                                const Vec3f &eb10, const Vec3f &eb11,
-                               float offset) {
+                               Float offset) {
     Vec3f dea0 = ea10 - ea00;
     Vec3f dea1 = ea11 - ea01;
     Vec3f deb0 = eb10 - eb00;
@@ -189,7 +189,7 @@ template <class T> inline void centerize(SMat<T, 3, 4> &x) {
     }
 }
 
-constexpr bool print_ccd_iter_count = true;
+constexpr bool print_ccd_iter_count = false;
 template <typename F>
 inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
                             F square_dist_func, float offset) {
@@ -221,7 +221,7 @@ inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
             break;
         }
     }
-    if constexpr (print_ccd_iter_count) if (iter_count != 1) luisa::log_info("CCD iter for {}", iter_count);
+    if constexpr (print_ccd_iter_count) if (iter_count != 1) luisa::log_info("CCD iter for {}, toi = {}", iter_count, toi);
     assert(toi > 0.0f);
     return toi;
 }

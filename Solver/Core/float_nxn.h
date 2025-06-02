@@ -178,6 +178,21 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
 }
 
 
+[[nodiscard]] inline float2x3 transpose_3x2(const float3x2& mat) noexcept 
+{
+    return makeFloat2x3(
+        makeFloat3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
+        makeFloat3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
+    );
+}
+[[nodiscard]] inline float3x2 transpose_2x3(const float2x3& mat) noexcept 
+{
+    return makeFloat3x2(
+        makeFloat2(mat.cols[0][0], mat.cols[1][0]),
+        makeFloat2(mat.cols[0][1], mat.cols[1][1]),
+        makeFloat2(mat.cols[0][2], mat.cols[1][2])
+    );
+}
 [[nodiscard]] inline Var<float2x3> transpose_3x2(const Var<float3x2>& mat) noexcept 
 {
     return makeFloat2x3(
@@ -261,22 +276,57 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
     return output;
 }
 
+
+
 // When N != L
 template<size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
-[[nodiscard]] Var<XMatrix<L, N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
+[[nodiscard]] XMatrix<L, N> mult(const XMatrix<M, N>& left, const XMatrix<L, M>& right) 
 {
-    Var<XMatrix<L, N>> output;
-    for (uint j = 0; j < N; ++j) { // output column
-        for (uint i = 0; i < L; ++i) { // output row
+    XMatrix<L, N> output;
+    for (uint j = 0; j < L; ++j) { // output column
+        for (uint i = 0; i < N; ++i) { // output row
             output.cols[j][i] = 0.0f;
             for (uint k = 0; k < M; ++k) {
-                output.cols[j][i] += right.cols[i][k] * left.cols[j][k];
+                output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
             }
         }
     }
     return output;
 }
+// When N == L
+template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
+[[nodiscard]] luisa::Matrix<N> mult(const XMatrix<M, N>& left, const XMatrix<L, M>& right) 
+{
+    luisa::Matrix<N> output;
+    for (uint j = 0; j < N; ++j) {
+        for (uint i = 0; i < N; ++i) {
+            output[j][i] = 0.0f;
+            for (uint k = 0; k < M; ++k) {
+                output[j][i] += left.cols[k][i] * right.cols[j][k];
+            }
+        }
+    }
+    return output;
+}
+template luisa::Matrix<3> mult(const XMatrix<2, 3>&, const XMatrix<3, 2>&);
+template luisa::Matrix<2> mult(const XMatrix<3, 2>&, const XMatrix<2, 3>&);
 
+
+// When N != L
+template<size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
+[[nodiscard]] Var<XMatrix<L, N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
+{
+    Var<XMatrix<L, N>> output;
+    for (uint j = 0; j < L; ++j) { // output column
+        for (uint i = 0; i < N; ++i) { // output row
+            output.cols[j][i] = 0.0f;
+            for (uint k = 0; k < M; ++k) {
+                output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
+            }
+        }
+    }
+    return output;
+}
 // When N == L
 template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
 [[nodiscard]] Var<luisa::Matrix<N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
@@ -286,29 +336,39 @@ template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
         for (uint i = 0; i < N; ++i) {
             output[j][i] = 0.0f;
             for (uint k = 0; k < M; ++k) {
-                output[j][i] += right.cols[i][k] * left.cols[j][k];
+                output[j][i] += left.cols[k][i] * right.cols[j][k];
             }
         }
     }
     return output;
 }
-
 template Var<luisa::Matrix<3>> mult(const Var<XMatrix<2, 3>>&, const Var<XMatrix<3, 2>>&);
 template Var<luisa::Matrix<2>> mult(const Var<XMatrix<3, 2>>&, const Var<XMatrix<2, 3>>&);
 
 template<size_t M, size_t N>
-[[nodiscard]] Var<luisa::Vector<float, N>> mult(const Var<XMatrix<M, N>>& left, const Var<luisa::Vector<float, M>>& right) 
+[[nodiscard]] luisa::Vector<float, N> mult(const XMatrix<M, N>& left, const luisa::Vector<float, M>& right) 
 {
-    Var<luisa::Vector<float, N>> output;
-    for (uint j = 0; j < N; ++j) {
-        output[j] = 0.0f;
-        for (uint i = 0; i < M; ++i) {
-            output[j] += left.cols[j][i] * right[i];
+    luisa::Vector<float, N> output;
+    for (uint i = 0; i < N; ++i) {
+        output[i] = 0.0f;
+        for (uint j = 0; j < M; ++j) {
+            output[i] += left.cols[j][i] * right[j];
         }
     }
     return output;
 }
-
+template<size_t M, size_t N>
+[[nodiscard]] Var<luisa::Vector<float, N>> mult(const Var<XMatrix<M, N>>& left, const Var<luisa::Vector<float, M>>& right) 
+{
+    Var<luisa::Vector<float, N>> output;
+    for (uint i = 0; i < N; ++i) {
+        output[i] = 0.0f;
+        for (uint j = 0; j < M; ++j) {
+            output[i] += left.cols[j][i] * right[j];
+        }
+    }
+    return output;
+}
 template<size_t M, size_t N>
 [[nodiscard]] auto mult(const Var<XMatrix<M, N>>& left, const Var<float>& alpha) 
 {
@@ -318,7 +378,6 @@ template<size_t M, size_t N>
     }
     return output;
 }
-
 template<size_t M, size_t N>
 [[nodiscard]] auto mult(const Var<float>& alpha, const Var<XMatrix<M, N>>& left) 
 {

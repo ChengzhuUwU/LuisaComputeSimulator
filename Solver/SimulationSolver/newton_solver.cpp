@@ -1025,7 +1025,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             ccd_data->broad_phase_list_ee, 1e-3);
         
         // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
-        //     host_ccd_data->toi_per_vert, 
         //     host_sim_data->sa_x_iter_start, 
         //     host_sim_data->sa_x_iter_start, 
         //     host_sim_data->sa_x, 
@@ -1034,7 +1033,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     1e-3);
 
         // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
-        //     host_ccd_data->toi_per_vert, 
         //     host_sim_data->sa_x_iter_start, 
         //     host_sim_data->sa_x_iter_start, 
         //     host_sim_data->sa_x, 
@@ -1043,32 +1041,26 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     host_mesh_data->sa_edges, 
         //     1e-3);
         
-        // mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
-        //     ccd_data->toi_per_vert, 
-        //     sim_data->sa_x_iter_start, 
-        //     sim_data->sa_x_iter_start, 
-        //     sim_data->sa_x, 
-        //     sim_data->sa_x, 
-        //     mesh_data->sa_faces, 
-        //     1e-3);
+        mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
+            sim_data->sa_x_iter_start, 
+            sim_data->sa_x_iter_start, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_faces, 
+            1e-3);
 
-        // mp_narrowphase_detector->narrow_phase_ccd_query_from_ee_pair(stream, 
-        //     ccd_data->toi_per_vert, 
-        //     sim_data->sa_x_iter_start, 
-        //     sim_data->sa_x_iter_start, 
-        //     sim_data->sa_x, 
-        //     sim_data->sa_x, 
-        //     mesh_data->sa_edges, 
-        //     mesh_data->sa_edges, 
-        //     1e-3);
-
-        stream 
-            << ccd_data->broad_phase_collision_count.copy_to(host_ccd_data->broad_phase_collision_count.data())
-            // << ccd_data->toi_per_vert.copy_to(host_ccd_data->toi_per_vert.data())
-            << luisa::compute::synchronize();
+        mp_narrowphase_detector->narrow_phase_ccd_query_from_ee_pair(stream, 
+            sim_data->sa_x_iter_start, 
+            sim_data->sa_x_iter_start, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_edges, 
+            mesh_data->sa_edges, 
+            1e-3);
+        
         float toi = host_ccd_data->toi_per_vert[0];
-        // return toi; // 0.9f * toi
-        return 1.0f;
+        return toi; // 0.9f * toi
+        // return 1.0f;
     };
     
 
@@ -1472,8 +1464,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             apply_dx(alpha);            
             if constexpr (use_ipc)
             { 
-                // alpha = ccd_line_search();
-                // apply_dx(alpha);   
+                alpha = ccd_line_search();
+                apply_dx(alpha);   
 
                 auto curr_energy = host_compute_energy(sa_x, sa_x_tilde);
                 uint line_search_count = 0;
@@ -1482,14 +1474,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     if (curr_energy < prev_state_energy) { break; }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f} , prev state energy {:8.6f}", 
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f}", 
                             line_search_count, alpha, curr_energy, prev_state_energy);
                     }
                     alpha /= 2; apply_dx(alpha);
                     line_search_count++;
 
                     curr_energy = host_compute_energy(sa_x, sa_x_tilde);
-                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f}", 
+                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                 }
 
@@ -1620,18 +1612,18 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             << fn_pcg_init_second_pass().dispatch(num_blocks_verts)
             << fn_pcg_make_preconditioner().dispatch(num_verts)
             
-            << sim_data->sa_convergence.copy_to(host_sim_data->sa_convergence.data())
-            << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
-            << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
-            << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
-            << luisa::compute::synchronize();
+            // << sim_data->sa_convergence.copy_to(host_sim_data->sa_convergence.data())
+            // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
+            // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
+            // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
+            // << luisa::compute::synchronize();
             ;
         
-        luisa::log_info("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
-            host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
-            host_norm(host_sim_data->sa_cgB),
-            host_norm(host_sim_data->sa_cgP)
-        );
+        // luisa::log_info("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
+        //     host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
+        //     host_norm(host_sim_data->sa_cgB),
+        //     host_norm(host_sim_data->sa_cgP)
+        // );
 
         float normR_0 = 0.0f;
         float normR = 0.0f; float beta = 0.0f; float alpha = 0.0f;
@@ -1734,7 +1726,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 
             device_pcg();
 
-            // Do line search on host
+            // Do line search on the host
             float alpha = 1.0f;
             host_apply_dx(alpha);
 
@@ -1750,14 +1742,14 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     if (curr_energy < prev_state_energy) { break; }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f} , prev state energy {:8.6f}", 
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f}", 
                             line_search_count, alpha, curr_energy, prev_state_energy);
                     }
                     alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
                     curr_energy = host_compute_energy(host_x, host_x_tilde);
-                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f}", 
+                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                 }
                 prev_state_energy = curr_energy;

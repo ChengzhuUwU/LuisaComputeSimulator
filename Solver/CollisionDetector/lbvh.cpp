@@ -202,16 +202,17 @@ void LBVH::compile(luisa::compute::Device& device)
     {
         luisa::compute::set_block_size(256);
         const Uint vid = luisa::compute::dispatch_id().x;
+        sa_leaf_center->write(vid, center);
 
-        Var<float3>  min_vec = AABB::get_aabb_min(aabb);
-        Var<float3>  max_vec = AABB::get_aabb_max(aabb);
-        min_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, min_vec, ParallelIntrinsic::warp_reduce_op_min<float3>);
-        max_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, max_vec, ParallelIntrinsic::warp_reduce_op_max<float3>);
-        auto reduced_aabb = AABB::make_aabb(min_vec, max_vec);
+        Var<float3> min_pos = AABB::get_aabb_min(aabb);
+        Var<float3> max_pos = AABB::get_aabb_max(aabb);
+        min_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+        max_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+        auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
 
         $if (vid % 256 == 0)
         {
-            const Uint blockIdx = vid / ParallelIntrinsic::reduce_block_dim;
+            const Uint blockIdx = vid / 256;
             sa_block_aabb->write(blockIdx, reduced_aabb);
         };
     };
@@ -227,11 +228,11 @@ void LBVH::compile(luisa::compute::Device& device)
 
         // Float2x3 reduced_aabb = ParallelIntrinsic::block_reduce(vid, aabb, AABB::reduce_aabb);
 
-        Float3 min_vec = AABB::get_aabb_min(aabb);
-        Float3 max_vec = AABB::get_aabb_max(aabb);
-        min_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, min_vec, ParallelIntrinsic::warp_reduce_op_min<float3>);
-        max_vec = ParallelIntrinsic::block_intrinsic_reduce(vid, max_vec, ParallelIntrinsic::warp_reduce_op_max<float3>);
-        Float2x3 reduced_aabb = AABB::make_aabb(min_vec, max_vec);
+        Var<float3>  min_pos = AABB::get_aabb_min(aabb);
+        Var<float3>  max_pos = AABB::get_aabb_max(aabb);
+        min_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+        max_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+        auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
 
         $if (vid % 256 == 0)
         {

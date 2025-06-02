@@ -94,44 +94,45 @@ int main(int argc, char** argv)
     std::vector<lcsv::Initializer::ShellInfo> shell_list;
     const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
     const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
-    // shell_list.push_back({
-    //     // .model_name = obj_mesh_path + "square8K.obj",
-    //     .model_name = obj_mesh_path + "square2.obj",
-    //     .fixed_point_list = {
-    //         lcsv::Initializer::FixedPointInfo{
-    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
-    //         },
-    //     }
-    // });
-    // shell_list.push_back({
-    //     // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-    //     .model_name = obj_mesh_path + "square2.obj",
-    //     .transform = luisa::make_float3(0.1, -0.3, 0),
-    //     .fixed_point_list = {
-    //         lcsv::Initializer::FixedPointInfo{
-    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-    //         },
-    //     }
-    // });
     shell_list.push_back({
-        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        // .model_name = obj_mesh_path + "square8K.obj",
+        .model_name = obj_mesh_path + "square2.obj",
         .fixed_point_list = {
             lcsv::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = -72, 
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
             },
-            lcsv::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(-0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = 72, 
-            }
         }
     });
+    shell_list.push_back({
+        // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+        .model_name = obj_mesh_path + "square2.obj",
+        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .fixed_point_list = {
+            lcsv::Initializer::FixedPointInfo{
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
+            },
+        }
+    });
+
+    // shell_list.push_back({
+    //     .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
+    //     .fixed_point_list = {
+    //         lcsv::Initializer::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
+    //             .use_rotate = true,
+    //             .rotCenter = luisa::make_float3(0.005, 0, 0),
+    //             .rotAxis = luisa::make_float3(1, 0, 0),
+    //             .rotAngVelDeg = -72, 
+    //         },
+    //         lcsv::Initializer::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
+    //             .use_rotate = true,
+    //             .rotCenter = luisa::make_float3(-0.005, 0, 0),
+    //             .rotAxis = luisa::make_float3(1, 0, 0),
+    //             .rotAngVelDeg = 72, 
+    //         }
+    //     }
+    // });
 
     // Init data
     lcsv::MeshData<std::vector>             host_mesh_data;
@@ -181,6 +182,7 @@ int main(int argc, char** argv)
     lcsv::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
+        narrow_phase_detector.unit_test(device, stream);
         narrow_phase_detector.compile(device);
     }
     

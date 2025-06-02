@@ -193,7 +193,7 @@ struct CollisionDataCCD : SimulationType
             sizeof(uint) * this->per_vert_prefix_narrow_phase_vf.size() * 4 +
             sizeof(uint) * this->per_vert_prefix_narrow_phase_ee.size() * 4;
         luisa::log_info("Allocated collision buffer size {} MB", bytes / (1024 * 1024));
-        if (float(bytes) / (1024 * 1024) < 1.0f) luisa::log_info("Allocated collision buffer size {} GB", bytes / (1024 * 1024 * 1024));
+        if (float(bytes) / (1024 * 1024 * 1024) > 1.0f) luisa::log_info("Allocated collision buffer size {} GB", bytes / (1024 * 1024 * 1024));
     }
 };
 
