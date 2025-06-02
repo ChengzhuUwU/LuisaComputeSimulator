@@ -1007,7 +1007,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         mp_lbvh_face->broad_phase_query_from_verts(stream, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
-            ccd_data->broad_phase_collision_count.view(0, 1), 
+            ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_vf_count_offset(), 1), 
             ccd_data->broad_phase_list_vf, 1e-3);
 
         if (lcsv::get_scene_params().current_nonlinear_iter == 0)
@@ -1021,16 +1021,16 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
             mesh_data->sa_edges, 
-            ccd_data->broad_phase_collision_count.view(1, 1), 
-            ccd_data->broad_phase_list_vf, 1e-3);
+            ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_ee_count_offset(), 1), 
+            ccd_data->broad_phase_list_ee, 1e-3);
         
-        mp_narrowphase_detector->narrow_phase_query_from_vf_pair(stream, 
-            ccd_data->toi_per_vert, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_faces, 1e-3);
+        // mp_narrowphase_detector->narrow_phase_query_from_vf_pair(stream, 
+        //     ccd_data->toi_per_vert, 
+        //     sim_data->sa_x_iter_start, 
+        //     sim_data->sa_x_iter_start, 
+        //     sim_data->sa_x, 
+        //     sim_data->sa_x, 
+        //     mesh_data->sa_faces, 1e-3);
 
         luisa::log_info("");
         stream 

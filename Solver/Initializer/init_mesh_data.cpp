@@ -8,14 +8,14 @@
 namespace lcsv 
 {
 
-namespace Initializater
+namespace Initializer
 {
 
 
 
 // template<template<typename> typename BasicBuffer>
 void init_mesh_data(
-    std::vector<lcsv::Initializater::ShellInfo>& shell_infos, 
+    std::vector<lcsv::Initializer::ShellInfo>& shell_infos, 
     lcsv::MeshData<std::vector>* mesh_data)
 {
     const uint num_clothes = shell_infos.size();
@@ -395,7 +395,7 @@ void upload_mesh_buffers(
         << luisa::compute::synchronize();
 }
 
-} // namespace Initializater
+} // namespace Initializer
 
 
 } // namespace lcsv 

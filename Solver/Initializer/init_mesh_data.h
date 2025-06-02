@@ -5,7 +5,7 @@
 namespace lcsv 
 {
 
-namespace Initializater
+namespace Initializer
 {
 
 using IsFixedPointFunc = std::function<bool(const float3&)>;
@@ -32,7 +32,7 @@ struct ShellInfo
 };
 
 void init_mesh_data(
-    std::vector<lcsv::Initializater::ShellInfo>& shell_list, 
+    std::vector<lcsv::Initializer::ShellInfo>& shell_list, 
     lcsv::MeshData<std::vector>* mesh_data);
 void upload_mesh_buffers(
     luisa::compute::Device& device, 

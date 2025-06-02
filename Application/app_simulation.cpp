@@ -27,7 +27,7 @@
 template<typename T>
 using Buffer = luisa::compute::Buffer<T>;
 
-namespace lcsv::Initializater
+namespace lcsv::Initializer
 {
 
 
@@ -91,24 +91,24 @@ int main(int argc, char** argv)
     lcsv::get_scene_params().solver_type = lcsv::SolverTypeNewton;
 
     // Read Mesh
-    std::vector<lcsv::Initializater::ShellInfo> shell_list;
+    std::vector<lcsv::Initializer::ShellInfo> shell_list;
     const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
     const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
     shell_list.push_back({
         // .model_name = obj_mesh_path + "square8K.obj",
-        .model_name = obj_mesh_path + "square21.obj",
+        .model_name = obj_mesh_path + "square2.obj",
         .fixed_point_list = {
-            lcsv::Initializater::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f; },
+            lcsv::Initializer::FixedPointInfo{
+                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001f && norm_pos.x > 0.999f; },
             },
         }
     });
     shell_list.push_back({
         // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .model_name = obj_mesh_path + "square21.obj",
+        .model_name = obj_mesh_path + "square2.obj",
         .transform = luisa::make_float3(0, -0.3, 0),
         .fixed_point_list = {
-            lcsv::Initializater::FixedPointInfo{
+            lcsv::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
             },
         }
@@ -116,14 +116,14 @@ int main(int argc, char** argv)
     // shell_list.push_back({
     //     .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
     //     .fixed_point_info = {
-    //         lcsv::Initializater::FixedPointInfo{
+    //         lcsv::Initializer::FixedPointInfo{
     //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
     //             .use_rotate = true,
     //             .rotCenter = luisa::make_float3(0.005, 0, 0),
     //             .rotAxis = luisa::make_float3(1, 0, 0),
     //             .rotAngVelDeg = -72, 
     //         },
-    //         lcsv::Initializater::FixedPointInfo{
+    //         lcsv::Initializer::FixedPointInfo{
     //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
     //             .use_rotate = true,
     //             .rotCenter = luisa::make_float3(-0.005, 0, 0),
@@ -137,17 +137,17 @@ int main(int argc, char** argv)
     lcsv::MeshData<std::vector>             host_mesh_data;
     lcsv::MeshData<luisa::compute::Buffer>  mesh_data;
     {
-        lcsv::Initializater::init_mesh_data(shell_list, &host_mesh_data);
-        lcsv::Initializater::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
+        lcsv::Initializer::init_mesh_data(shell_list, &host_mesh_data);
+        lcsv::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
     lcsv::SimulationData<std::vector>               host_xpbd_data;
     lcsv::SimulationData<luisa::compute::Buffer>    xpbd_data;
     {
-        lcsv::Initializater::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
-        lcsv::Initializater::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
-        lcsv::Initializater::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
-        lcsv::Initializater::init_simulation_params();
+        lcsv::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
+        lcsv::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
+        lcsv::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
+        lcsv::Initializer::init_simulation_params();
     }
 
     lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
@@ -161,8 +161,8 @@ int main(int argc, char** argv)
     lcsv::CollisionDataCCD<std::vector>             host_collision_data;
     lcsv::CollisionDataCCD<luisa::compute::Buffer>  collision_data;
     {
-        lcsv::Initializater::resize_collision_data(device, &host_mesh_data, &host_collision_data);
-        lcsv::Initializater::resize_collision_data(device, &host_mesh_data, &collision_data);
+        host_collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
+        collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
     }
 
     // Init solver class
@@ -338,7 +338,7 @@ int main(int argc, char** argv)
             lcsv::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
             // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
             // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            global_aabb = lbvh_data_edge.host_node_aabb[0];
+            global_aabb = lbvh_data_face.host_node_aabb[0];
             min_pos = { global_aabb[0][0], global_aabb[0][1], global_aabb[0][2] };
             max_pos = { global_aabb[1][0], global_aabb[1][1], global_aabb[1][2] };
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);

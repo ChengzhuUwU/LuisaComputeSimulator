@@ -1,5 +1,5 @@
 #include "CollisionDetector/narrow_phase.h"
-#include "CollisionDetector/accd.h"
+#include "CollisionDetector/accd.hpp"
 #include "Utils/cpu_parallel.h"
 #include <Eigen/Dense>
 

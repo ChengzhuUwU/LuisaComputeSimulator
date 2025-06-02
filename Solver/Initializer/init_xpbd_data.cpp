@@ -6,7 +6,7 @@
 #include "Initializer/initializer_utils.h"
 
 
-namespace lcsv::Initializater
+namespace lcsv::Initializer
 {
 
 void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData<std::vector>* xpbd_data)
@@ -295,4 +295,4 @@ void resize_pcg_data(
 
 } 
 
-} // namespace lcsv::Initializater
+} // namespace lcsv::Initializer

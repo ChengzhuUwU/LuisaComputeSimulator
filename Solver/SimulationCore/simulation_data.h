@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SimulationCore/simulation_type.h"
+#include "Utils/buffer_allocator.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
@@ -103,6 +104,7 @@ struct CollisionDataCCD : SimulationType
 
     BufferType<uint> per_vert_num_broad_phase_vf; 
     BufferType<uint> per_vert_num_broad_phase_ee; 
+
     BufferType<uint> per_vert_num_narrow_phase_vv; 
     BufferType<uint> per_vert_num_narrow_phase_ve; 
     BufferType<uint> per_vert_num_narrow_phase_vf; 
@@ -113,8 +115,93 @@ struct CollisionDataCCD : SimulationType
     BufferType<uint> per_vert_prefix_narrow_phase_ee; 
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase; 
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase; 
+
+    constexpr uint get_broadphase_vf_count_offset() { return 0; }
+    constexpr uint get_broadphase_ee_count_offset() { return 1; }
+    constexpr uint get_narrowphase_vv_count_offset() { return 0; }
+    constexpr uint get_narrowphase_ve_count_offset() { return 1; }
+    constexpr uint get_narrowphase_vf_count_offset() { return 2; }
+    constexpr uint get_narrowphase_ee_count_offset() { return 3; }
+
+    // template<template<typename...> typename BufferType>
+    inline void resize_collision_data(
+            luisa::compute::Device& device, 
+            const uint num_verts, const uint num_faces, const uint num_edges)
+    {
+        // const uint num_verts = mesh_data->num_verts;
+        // const uint num_edges = mesh_data->num_edges;
+        
+        const uint per_element_count_BP = 128;
+        const uint per_element_count_NP = 64;
+        
+        lcsv::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4); 
+        lcsv::Initializer::resize_buffer(device, this->toi_per_vert, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_vv, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_ve, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_vf, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_ee, per_element_count_NP * num_edges); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ve, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vf, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ee, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts); 
+        this->collision_indirect_cmd_buffer_broad_phase = device.create_indirect_dispatch_buffer(2); 
+        this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4); 
+
+        // BufferType<uint> broad_phase_collision_count; 
+        // BufferType<uint> narrow_phase_collision_count; 
+        // BufferType<uint> broad_phase_list_vf;
+        // BufferType<uint> broad_phase_list_ee;
+        // BufferType<uint2> narrow_phase_indices_vv; // 0
+        // BufferType<uint3> narrow_phase_indices_ve; // 1
+        // BufferType<uint4> narrow_phase_indices_vf; // 2
+        // BufferType<uint4> narrow_phase_indices_ee; // 3
+        // BufferType<uint> per_vert_num_broad_phase_vf; 
+        // BufferType<uint> per_vert_num_broad_phase_ee; 
+        // BufferType<uint> per_vert_num_narrow_phase_vv; 
+        // BufferType<uint> per_vert_num_narrow_phase_ve; 
+        // BufferType<uint> per_vert_num_narrow_phase_vf; 
+        // BufferType<uint> per_vert_num_narrow_phase_ee; 
+        // BufferType<uint> per_vert_prefix_narrow_phase_vv; 
+        // BufferType<uint> per_vert_prefix_narrow_phase_ve; 
+        // BufferType<uint> per_vert_prefix_narrow_phase_vf; 
+        // BufferType<uint> per_vert_prefix_narrow_phase_ee; 
+
+        const uint bytes = 
+            sizeof(uint) *  this->broad_phase_list_vf.size() * 4 +
+            sizeof(uint) *  this->broad_phase_list_ee.size() * 4 +
+            sizeof(uint2) * this->narrow_phase_indices_vv.size() * 4 +
+            sizeof(uint3) * this->narrow_phase_indices_ve.size() * 4 +
+            sizeof(uint4) * this->narrow_phase_indices_vf.size() * 4 +
+            sizeof(uint4) * this->narrow_phase_indices_ee.size() * 4 +
+            sizeof(uint) * this->per_vert_num_broad_phase_vf.size() * 4 +
+            sizeof(uint) * this->per_vert_num_broad_phase_ee.size() * 4 +
+            sizeof(uint) * this->per_vert_num_narrow_phase_vv.size() * 4 +
+            sizeof(uint) * this->per_vert_num_narrow_phase_ve.size() * 4 +
+            sizeof(uint) * this->per_vert_num_narrow_phase_vf.size() * 4 +
+            sizeof(uint) * this->per_vert_num_narrow_phase_ee.size() * 4 +
+            sizeof(uint) * this->per_vert_prefix_narrow_phase_vv.size() * 4 +
+            sizeof(uint) * this->per_vert_prefix_narrow_phase_ve.size() * 4 +
+            sizeof(uint) * this->per_vert_prefix_narrow_phase_vf.size() * 4 +
+            sizeof(uint) * this->per_vert_prefix_narrow_phase_ee.size() * 4;
+        luisa::log_info("Allocated collision buffer size {} MB", bytes / (1024 * 1024));
+        if (float(bytes) / (1024 * 1024) < 1.0f) luisa::log_info("Allocated collision buffer size {} GB", bytes / (1024 * 1024 * 1024));
+    }
 };
 
+// template<>
+// struct CollisionDataCCD<luisa::compute::Buffer>
+// {
+//     void print() {}
+// };
 
 }
 

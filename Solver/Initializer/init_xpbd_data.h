@@ -4,7 +4,7 @@
 #include "SimulationCore/simulation_data.h"
 
 
-namespace lcsv::Initializater
+namespace lcsv::Initializer
 {
 
 
@@ -23,4 +23,4 @@ void resize_pcg_data(
     lcsv::SimulationData<luisa::compute::Buffer>* device_data
 );
 
-} // namespace lcsv::Initializater
+} // namespace lcsv::Initializer

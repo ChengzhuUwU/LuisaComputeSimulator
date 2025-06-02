@@ -2,6 +2,7 @@
 
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_type.h"
+#include "Utils/buffer_allocator.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
@@ -15,11 +16,11 @@ using Morton32 = luisa::compute::Var<morton32>;
 using Morton64 = luisa::compute::Var<morton64>;
 using aabbData = float2x3;
 
-template<typename T>
-static inline void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
-{
-    buffer = device.create_buffer<T>(size);
-}
+// template<typename T>
+// static inline void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
+// {
+//     buffer = device.create_buffer<T>(size);
+// }
 
 
 enum LBVHTreeType{
@@ -32,6 +33,7 @@ enum LBVHUpdateType{
     LBVHUpdateTypeObstacle
 };
 
+// Highly specified, so can used as black-box
 template<template<typename...> typename BufferType>
 struct LbvhData 
 {
@@ -85,6 +87,8 @@ struct LbvhData
         luisa::log_info("Allocate for {}-LBVH data : num_leaves = {}", 
             input_tree_type == LBVHTreeTypeVert ? "Vert" : input_tree_type == LBVHTreeTypeFace ? "Face" : "Edge", num_leaves);
 
+        using Initializer::resize_buffer;
+
         resize_buffer(device, this->sa_leaf_center, num_leaves);
         resize_buffer(device, this->sa_block_aabb, get_dispatch_block(num_leaves, 256));
         resize_buffer(device, this->sa_morton, num_leaves);
@@ -110,7 +114,6 @@ struct LbvhData
 
 class LBVH
 {
-    
     template<typename T> using Buffer = luisa::compute::Buffer<T>;
     template<typename T> using BufferView = luisa::compute::BufferView<T>;
     using Stream = luisa::compute::Stream;
