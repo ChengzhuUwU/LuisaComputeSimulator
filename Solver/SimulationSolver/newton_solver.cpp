@@ -1024,24 +1024,24 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_ee_count_offset(), 1), 
             ccd_data->broad_phase_list_ee, 1e-3);
         
-        mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
-            host_ccd_data->toi_per_vert, 
-            host_sim_data->sa_x_iter_start, 
-            host_sim_data->sa_x_iter_start, 
-            host_sim_data->sa_x, 
-            host_sim_data->sa_x, 
-            host_mesh_data->sa_faces, 
-            1e-3);
+        // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
+        //     host_ccd_data->toi_per_vert, 
+        //     host_sim_data->sa_x_iter_start, 
+        //     host_sim_data->sa_x_iter_start, 
+        //     host_sim_data->sa_x, 
+        //     host_sim_data->sa_x, 
+        //     host_mesh_data->sa_faces, 
+        //     1e-3);
 
-        mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
-            host_ccd_data->toi_per_vert, 
-            host_sim_data->sa_x_iter_start, 
-            host_sim_data->sa_x_iter_start, 
-            host_sim_data->sa_x, 
-            host_sim_data->sa_x, 
-            host_mesh_data->sa_edges, 
-            host_mesh_data->sa_edges, 
-            1e-3);
+        // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
+        //     host_ccd_data->toi_per_vert, 
+        //     host_sim_data->sa_x_iter_start, 
+        //     host_sim_data->sa_x_iter_start, 
+        //     host_sim_data->sa_x, 
+        //     host_sim_data->sa_x, 
+        //     host_mesh_data->sa_edges, 
+        //     host_mesh_data->sa_edges, 
+        //     1e-3);
         
         // mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
         //     ccd_data->toi_per_vert, 
@@ -1067,11 +1067,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // << ccd_data->toi_per_vert.copy_to(host_ccd_data->toi_per_vert.data())
             << luisa::compute::synchronize();
         float toi = host_ccd_data->toi_per_vert[0];
-        luisa::log_info("BroadPhase : VF = {}, EE = {}, toi = {}", 
-            host_ccd_data->broad_phase_collision_count[0], 
-            host_ccd_data->broad_phase_collision_count[1],
-            toi);
-        return toi; // 0.9f * toi
+        // return toi; // 0.9f * toi
+        return 1.0f;
     };
     
 
@@ -1349,7 +1346,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }
 
         apply_dx(1.0f);
-        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.3f}", 
+        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:8.6f}", 
             get_scene_params().current_nonlinear_iter,
             iter, normR / normR_0, fast_infinity_norm(sa_cgX), host_compute_energy(sa_x, sa_x_tilde)); // from normR_0 -> normR
                 
@@ -1424,11 +1421,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         else
         {
             float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
-            luisa::log_info("  In non-linear iter {}, Eigen-Decompose: ", 
-                    get_scene_params().current_nonlinear_iter);
-            // luisa::log_info("  In non-linear iter {}, Eigen-Decompose : relative error = {}", 
-            //         get_scene_params().current_nonlinear_iter,
-            //         error);
+            luisa::log_info("  In non-linear iter {}, Eigen-Decompose : relative error = {}", 
+                    get_scene_params().current_nonlinear_iter,
+                    error);
         }
     };
     auto linear_solver_interface = [&]()
@@ -1457,9 +1452,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         predict_position(substep_dt);
         
-        const auto step_start_energy = host_compute_energy(sa_x_step_start, sa_x_tilde);
+        auto prev_state_energy = host_compute_energy(sa_x_step_start, sa_x_tilde);
 
-        luisa::log_info("In frame {} : Frame init energy = {}", get_scene_params().current_frame, step_start_energy);
+        luisa::log_info("In frame {} : ", get_scene_params().current_frame);
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -1472,45 +1467,47 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 evaluete_spring(1e4);
             }
             linear_solver_interface();
-            
-            if constexpr (use_ipc)
-            {
-                float max_move = 1e-2;
-                float curr_max_step = fast_infinity_norm(sa_cgX); 
-                if (curr_max_step < max_move * substep_dt) 
-                {
-                    luisa::log_info("  Non-linear iteration break for small searching direction {} < {}", curr_max_step, max_move * substep_dt);
-                    break; // Without applying this dx
-                }
-            }
 
             float alpha = 1.0f;
             apply_dx(alpha);            
             if constexpr (use_ipc)
             { 
-                alpha = ccd_line_search();
-                apply_dx(alpha);   
+                // alpha = ccd_line_search();
+                // apply_dx(alpha);   
 
                 auto curr_energy = host_compute_energy(sa_x, sa_x_tilde);
                 uint line_search_count = 0;
                 while (line_search_count < 20)
                 {
-                    if (curr_energy < step_start_energy) { break; }
+                    if (curr_energy < prev_state_energy) { break; }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = 1/{}, energy = {:6.3f} Frame-start-energy = {:6.3f}", 
-                            line_search_count, (1 << line_search_count), curr_energy, step_start_energy);
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f} , prev state energy {:8.6f}", 
+                            line_search_count, alpha, curr_energy, prev_state_energy);
                     }
                     alpha /= 2; apply_dx(alpha);
                     line_search_count++;
 
                     curr_energy = host_compute_energy(sa_x, sa_x_tilde);
-                    luisa::log_info("     Line search {} : alpha = 1/{}, energy = {}", 
-                        line_search_count, (1 << line_search_count), curr_energy);
+                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f}", 
+                        line_search_count, alpha, curr_energy);
+                }
+
+                prev_state_energy = curr_energy; // E_prev = E
+            }
+
+            // Non-linear iteration break condition
+            {
+                float max_move = 1e-2;
+                float curr_max_step = fast_infinity_norm(sa_cgX); 
+                if (curr_max_step < max_move * substep_dt) 
+                {
+                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    break;
                 }
             }
 
-            CpuParallel::parallel_copy(sa_x, sa_x_iter_start);
+            CpuParallel::parallel_copy(sa_x, sa_x_iter_start); // x_prev = x
         }
         update_velocity(substep_dt, false, lcsv::get_scene_params().damping_cloth);
     }
@@ -1617,10 +1614,24 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         // pcg_spmv(sim_data->sa_cgX, sim_data->sa_cgQ);
 
         stream 
-            << sim_data->sa_cgR.copy_from(sim_data->sa_cgB) // Cause cgX is set to zero...
+            // << sim_data->sa_cgR.copy_from(sim_data->sa_cgB) // Cause cgX is set to zero...
+            << mp_buffer_filler->fill(device, sim_data->sa_cgQ, makeFloat3(0.0f))
             << fn_pcg_init().dispatch(num_verts)
             << fn_pcg_init_second_pass().dispatch(num_blocks_verts)
-            << fn_pcg_make_preconditioner().dispatch(num_verts);
+            << fn_pcg_make_preconditioner().dispatch(num_verts)
+            
+            << sim_data->sa_convergence.copy_to(host_sim_data->sa_convergence.data())
+            << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
+            << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
+            << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
+            << luisa::compute::synchronize();
+            ;
+        
+        luisa::log_info("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
+            host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
+            host_norm(host_sim_data->sa_cgB),
+            host_norm(host_sim_data->sa_cgP)
+        );
 
         float normR_0 = 0.0f;
         float normR = 0.0f; float beta = 0.0f; float alpha = 0.0f;
@@ -1658,18 +1669,24 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             stream 
                 << fn_dot_pq().dispatch(num_verts)
                 << fn_dot_pq_second_pass().dispatch(num_blocks_verts) // Compute alpha
+
+                // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
                 // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
                 // << sim_data->sa_cgQ.copy_to(host_sim_data->sa_cgQ.data())
                 // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
                 // << sim_data->sa_cgZ.copy_to(host_sim_data->sa_cgZ.data())
                 // << sim_data->sa_convergence.view(2, 1).copy_to(&alpha)
                 // << sim_data->sa_convergence.view(3, 1).copy_to(&beta)
+
                 << fn_pcg_step().dispatch(num_verts)
+
                 // << luisa::compute::synchronize()
                 ;
 
-            // luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
-            //         iter, normR, beta, alpha,
+            // luisa::log_info("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
+            //         iter, 
+            //         host_dot(host_sim_data->sa_cgB, host_sim_data->sa_cgB),
+            //         normR, beta, alpha,
             //         host_dot(host_sim_data->sa_cgP, host_sim_data->sa_cgQ),
             //         host_dot(host_sim_data->sa_cgR, host_sim_data->sa_cgZ) );
         }
@@ -1679,7 +1696,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             << luisa::compute::synchronize();
 
         host_apply_dx(1.0f);
-        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.3f}", 
+        luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:8.6f}", 
             get_scene_params().current_nonlinear_iter,
             iter, normR / normR_0, host_infinity_norm(host_cgX), host_compute_energy(host_x, host_x_tilde)); // from normR_0 -> normR
     };
@@ -1692,13 +1709,14 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
             << luisa::compute::synchronize();
         
-        const auto step_start_energy = host_compute_energy(host_x_step_start, host_x_tilde);
-        luisa::log_info("In frame {} : Frame init energy = {}", get_scene_params().current_frame, step_start_energy);
+        auto prev_state_energy = host_compute_energy(host_x_step_start, host_x_tilde);
+        luisa::log_info("In frame {} : ", get_scene_params().current_frame);
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
             
             stream 
+                << sim_data->sa_x_iter_start.copy_to(host_x_iter_start.data())
                 << fn_reset_vector(sim_data->sa_cgX, makeFloat3(0.0f)).dispatch(num_verts)
                 << fn_reset_offdiag().dispatch(sim_data->sa_cgA_offdiag.size())
                 << fn_evaluate_inertia(substep_dt).dispatch(num_verts);
@@ -1713,44 +1731,46 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_evaluate_spring(1e4, curr_prefix).dispatch(num_elements_clustered);
                 }
             }
-
-            stream << 
-                sim_data->sa_x_iter_start.copy_to(host_x_iter_start.data());
                 
             device_pcg();
-            
-            if constexpr (use_ipc)
-            {
-                float max_move = 1e-2;
-                float curr_max_step = host_infinity_norm(host_cgX); 
-                if (curr_max_step < max_move * substep_dt) 
-                {
-                    luisa::log_info("  Non-linear iteration break for small searching direction {} < {}", curr_max_step, max_move * substep_dt);
-                    break;
-                }
-            }
 
             // Do line search on host
             float alpha = 1.0f;
             host_apply_dx(alpha);
+
             if constexpr (use_ipc)
             { 
+                // alpha = ccd_line_search();
+                // apply_dx(alpha);   
+
                 auto curr_energy = host_compute_energy(host_x, host_x_tilde);
                 uint line_search_count = 0;
                 while (line_search_count < 20)
                 {
-                    if (curr_energy < step_start_energy) { break; }
+                    if (curr_energy < prev_state_energy) { break; }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = 1/{}, energy = {:6.3f} Frame-start-energy = {:6.3f}", 
-                            line_search_count, (1 << line_search_count), curr_energy, step_start_energy);
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f} , prev state energy {:8.6f}", 
+                            line_search_count, alpha, curr_energy, prev_state_energy);
                     }
                     alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
                     curr_energy = host_compute_energy(host_x, host_x_tilde);
-                    luisa::log_info("     Line search {} : alpha = 1/{}, energy = {}", 
-                        line_search_count, (1 << line_search_count), curr_energy);
+                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:8.6f}", 
+                        line_search_count, alpha, curr_energy);
+                }
+                prev_state_energy = curr_energy;
+            }
+
+            // Non-linear iteration break condition
+            {
+                float max_move = 1e-2;
+                float curr_max_step = host_infinity_norm(host_cgX); 
+                if (curr_max_step < max_move * substep_dt) 
+                {
+                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    break;
                 }
             }
 

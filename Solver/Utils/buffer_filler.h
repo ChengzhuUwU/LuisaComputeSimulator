@@ -9,6 +9,7 @@
 // #include "lcgs/config.h"
 #include "Utils/grid_stride_loop.h"
 #include "Utils/runtime.h"
+#include "Core/xbasic_types.h"
 
 namespace lcsv
 {
@@ -31,6 +32,9 @@ class __attribute__((visibility("default"))) BufferFiller
     using uint2       = luisa::uint2;
     using uint3       = luisa::uint3;
     using uint4       = luisa::uint4;
+    using float3x3      = luisa::float3x3;
+    using float3x4      = lcsv::float3x4;
+    using float4x3      = lcsv::float4x3;
 
 public:
     uint block_size = 256u;
@@ -68,6 +72,9 @@ protected:\
     filler_shader(uint2);
     filler_shader(uint3);
     filler_shader(uint4);
+    filler_shader(float3x3);
+    filler_shader(float3x4);
+    filler_shader(float4x3);
 }; // namespace inno
 
 } // namespace lcsv
