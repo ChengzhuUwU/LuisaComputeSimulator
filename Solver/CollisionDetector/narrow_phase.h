@@ -65,7 +65,11 @@ public:
         const std::vector<uint2>& sa_edges_left,
         const std::vector<uint2>& sa_edges_right,
         const float thickness);
-
+    
+    void reset_toi(Stream& stream);
+    void host_reset_toi(Stream& stream);
+    void download_collision_count(Stream& stream);
+    float get_global_toi(Stream& stream);
 
 public:
     CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
