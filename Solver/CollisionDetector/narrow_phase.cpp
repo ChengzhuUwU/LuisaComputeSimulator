@@ -164,8 +164,8 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     
         stream << fn_test_ccd_ee(1e-3).dispatch(1) << synchronize();
     }
-
 }
+
 void NarrowPhasesDetector::compile(luisa::compute::Device& device)
 {
     using namespace luisa::compute;
@@ -214,16 +214,24 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             Float3 t1_f1 = sa_x_end_right->read(face[1]);
             Float3 t1_f2 = sa_x_end_right->read(face[2]);
     
-            Float toi = accd::point_triangle_ccd(t0_p,  t1_p,
-                                      t0_f0, t0_f1,
-                                      t0_f2, t1_f0,
-                                      t1_f1, t1_f2,
-                                      thickness);
-        };
-        
-        // $if (toi != accd::line_search_max_t) 
-        {
-            device_log("BroadPhase Pair {} : toi = {}, vid {} & fid {} (face {})", pair_idx, toi, vid, fid, face);
+            toi = accd::point_triangle_ccd(
+                t0_p,  
+                t1_p,              
+                t0_f0, 
+                t0_f1,                    
+                t0_f2, 
+                t1_f0,                 
+                t1_f1, 
+                t1_f2,              
+                thickness);
+            
+            // BroadPhase Pair 12 : toi = 0.693334, vid 1 & fid 2 (face uint3(4, 7, 5)), dist = 0.0011289602 -> 0.00016696547
+            $if (toi != accd::line_search_max_t)
+            {
+                device_log("VF Pair {} : toi = {}, vid {} & fid {} (face {})", 
+                    pair_idx, toi, vid, fid, face
+                );
+            };
         };
 
         toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
@@ -275,7 +283,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             Float3 eb_t1_p0 = (sa_x_end_b->read(right_edge[0]));
             Float3 eb_t1_p1 = (sa_x_end_b->read(right_edge[1]));
     
-            Float toi = accd::edge_edge_ccd(
+            toi = accd::edge_edge_ccd(
                 ea_t0_p0, 
                 ea_t0_p1, 
                 eb_t0_p0, 
@@ -287,19 +295,17 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
                 thickness);
         };
         
-        // $if (toi != host_accd::line_search_max_t) 
+        $if (toi != host_accd::line_search_max_t) 
         {
-            device_log("BroadPhase Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
+            device_log("EE Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
         };
 
         toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 
-        // $if (pair_idx % 256 == 0)
-        // {
-        //     sa_toi.atomic(0).fetch_min(toi);
-        // };
-        
-        // return toi;
+        $if (pair_idx % 256 == 0)
+        {
+            sa_toi.atomic(0).fetch_min(toi);
+        };
     });
    
 
@@ -322,6 +328,7 @@ void NarrowPhasesDetector::narrow_phase_ccd_query_from_vf_pair(Stream& stream,
     stream 
         << fn_reset_toi(sa_toi).dispatch(sa_toi.size())
         << broadphase_count.copy_to(host_count.data()) 
+        // << sa_toi.copy_to(host_toi.data()) 
         << luisa::compute::synchronize();
 
     const uint num_vf_broadphase = host_count[0];
@@ -329,16 +336,35 @@ void NarrowPhasesDetector::narrow_phase_ccd_query_from_vf_pair(Stream& stream,
 
     luisa::log_info("num_vf_broadphase = {}", num_vf_broadphase); // TODO: Indirect Dispatch
     luisa::log_info("num_ee_broadphase = {}", num_ee_broadphase); // TODO: Indirect Dispatch
+    // luisa::log_info("curr toi = {} before VF", host_toi[0]);
+
+    // std::vector<float3> host_x_begin(sa_x_begin_left.size());
+    // std::vector<float3> host_x_end(sa_x_end_left.size());
+    // std::vector<uint3> host_faces(sa_faces_right.size());
+    // stream 
+    //         << sa_x_begin_left.copy_to(host_x_begin.data())
+    //         << sa_x_end_left.copy_to(host_x_end.data())
+    //         << sa_faces_right.copy_to(host_faces.data())
+    //         << luisa::compute::synchronize();
+
+    // host_narrow_phase_ccd_query_from_vf_pair(stream, 
+    //         host_x_begin, 
+    //         host_x_begin, 
+    //         host_x_end, 
+    //         host_x_end, 
+    //         host_faces, 
+    //         1e-3);
 
     stream << fn_narrow_phase_vf_ccd_query(
         sa_toi,
         sa_x_begin_left,
-        sa_x_begin_right,
+        sa_x_begin_right, // sa_x_begin_right
         sa_x_end_left,
-        sa_x_end_right,
+        sa_x_end_right, // sa_x_end_right
         sa_faces_right, thickness
     ).dispatch(num_vf_broadphase);
 
+    
 }
 
 void NarrowPhasesDetector::narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
@@ -356,12 +382,32 @@ void NarrowPhasesDetector::narrow_phase_ccd_query_from_ee_pair(Stream& stream,
     auto& host_toi = host_ccd_data->toi_per_vert;
     
     stream 
-        << fn_reset_toi(sa_toi).dispatch(sa_toi.size())
+        // << sa_toi.copy_to(host_toi.data()) 
         << broadphase_count.copy_to(host_count.data()) 
         << luisa::compute::synchronize();
 
     const uint num_vf_broadphase = host_count[0]; 
     const uint num_ee_broadphase = host_count[1];
+
+    // luisa::log_info("curr toi = {} from VF", host_toi[0]);
+
+    // std::vector<float3> host_x_begin(sa_x_begin_a.size());
+    // std::vector<float3> host_x_end(sa_x_end_a.size());
+    // std::vector<uint2> host_edges(sa_edges_left.size());
+    // stream 
+    //         << sa_x_begin_a.copy_to(host_x_begin.data())
+    //         << sa_x_end_a.copy_to(host_x_end.data())
+    //         << sa_edges_left.copy_to(host_edges.data())
+    //         << luisa::compute::synchronize();
+
+    // host_narrow_phase_ccd_query_from_ee_pair(stream, 
+    //         host_x_begin, 
+    //         host_x_begin, 
+    //         host_x_end, 
+    //         host_x_end, 
+    //         host_edges, 
+    //         host_edges, 
+    //         1e-3);
 
     stream << fn_narrow_phase_ee_ccd_query(sa_toi,
         sa_x_begin_a,
@@ -369,14 +415,15 @@ void NarrowPhasesDetector::narrow_phase_ccd_query_from_ee_pair(Stream& stream,
         sa_x_end_a,
         sa_x_end_b,
         sa_edges_left,
-        sa_edges_right, thickness
+        sa_edges_left, thickness
     ).dispatch(num_ee_broadphase) << sa_toi.view(0, 1).copy_to(host_toi.data()) << luisa::compute::synchronize();
 
     host_toi[0] /= host_accd::line_search_max_t;
     if (host_toi[0] < 1e-5)
     {
-        luisa::log_error("   : {}", host_toi[0]);
+        luisa::log_error("  small toi : {}", host_toi[0]);
     }
+
     luisa::log_info("toi = {}", host_toi[0]);
 }
 
@@ -441,15 +488,22 @@ void NarrowPhasesDetector::host_narrow_phase_ccd_query_from_vf_pair(Stream& stre
 
         if (toi != host_accd::line_search_max_t) 
         {
-            luisa::log_info("BroadPhase Pair {} : toi = {}, vid {} & fid {} (face {})", pair_idx, toi, left, right, right_face);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_left[left]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_left[left]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_right[right_face[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_right[right_face[1]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_right[right_face[2]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_right[right_face[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_right[right_face[1]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_right[right_face[2]]);
+            // luisa::log_info("BroadPhase Pair {} : toi = {}, vid {} & fid {} (face {})", 
+            //     pair_idx, toi, left, right, right_face,
+            // );
+            luisa::log_info("VF Pair {} : toi = {}, vid {} & fid {} (face {}), dist = {} -> {}", 
+                pair_idx, toi, left, right, right_face, 
+                host_distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2),
+                host_distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)
+            );
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_left[left]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_left[left]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_right[right_face[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_right[right_face[1]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_right[right_face[2]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_right[right_face[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_right[right_face[1]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_right[right_face[2]]);
         }
         return toi;
     }, [](const float left, const float right) { return min_scalar(left, right); }, host_accd::line_search_max_t);
@@ -533,15 +587,15 @@ void NarrowPhasesDetector::host_narrow_phase_ccd_query_from_ee_pair(Stream& stre
 
         if (toi != host_accd::line_search_max_t) 
         {
-            luisa::log_info("BroadPhase Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[1]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_b[right_edge[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_begin_b[right_edge[1]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_a[left_edge[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_a[left_edge[1]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_b[right_edge[0]]);
-            // luisa::log_info("BroadPhase Pair {} : positions : {}", pair_idx, sa_x_end_b[right_edge[1]]);
+            luisa::log_info("EE Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[1]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_b[right_edge[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_begin_b[right_edge[1]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_a[left_edge[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_a[left_edge[1]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_b[right_edge[0]]);
+            // luisa::log_info("             {} : positions : {}", pair_idx, sa_x_end_b[right_edge[1]]);
         }
         return toi;
     }, [](const float left, const float right) { return min_scalar(left, right); }, host_accd::line_search_max_t);

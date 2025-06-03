@@ -18,6 +18,7 @@
 
 #include "Initializer/init_mesh_data.h"
 #include "Initializer/init_xpbd_data.h"
+#include "app_simulation_demo_config.h"
 #include "polyscope/volume_grid.h"
 
 #include <polyscope/polyscope.h>
@@ -90,49 +91,24 @@ int main(int argc, char** argv)
 
     lcsv::get_scene_params().solver_type = lcsv::SolverTypeNewton;
 
+    // Some params
+    {
+        lcsv::get_scene_params().implicit_dt = 0.05;
+        lcsv::get_scene_params().num_substep = 1;
+        lcsv::get_scene_params().nonlinear_iter_count = 50;
+        lcsv::get_scene_params().pcg_iter_count = 2000;
+        // lcsv::get_scene_params().use_bending = false;
+        // lcsv::get_scene_params().use_quadratic_bending_model = true;
+        // lcsv::get_scene_params().use_xpbd_solver = false;
+        // lcsv::get_scene_params().use_vbd_solver = false;
+        // lcsv::get_scene_params().use_newton_solver = true;
+        lcsv::get_scene_params().use_gpu = false; // true
+    }
+
     // Read Mesh
     std::vector<lcsv::Initializer::ShellInfo> shell_list;
-    const std::string obj_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/";
-    const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/vtks/";
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "square8K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .fixed_point_list = {
-            lcsv::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
-            },
-        }
-    });
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
-        .fixed_point_list = {
-            lcsv::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-            },
-        }
-    });
-
-    // shell_list.push_back({
-    //     .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-    //     .fixed_point_list = {
-    //         lcsv::Initializer::FixedPointInfo{
-    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
-    //             .use_rotate = true,
-    //             .rotCenter = luisa::make_float3(0.005, 0, 0),
-    //             .rotAxis = luisa::make_float3(1, 0, 0),
-    //             .rotAngVelDeg = -72, 
-    //         },
-    //         lcsv::Initializer::FixedPointInfo{
-    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
-    //             .use_rotate = true,
-    //             .rotCenter = luisa::make_float3(-0.005, 0, 0),
-    //             .rotAxis = luisa::make_float3(1, 0, 0),
-    //             .rotAngVelDeg = 72, 
-    //         }
-    //     }
-    // });
+    Demo::Simulation::load_scene(shell_list);
+    
 
     // Init data
     lcsv::MeshData<std::vector>             host_mesh_data;
@@ -182,8 +158,8 @@ int main(int argc, char** argv)
     lcsv::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
-        narrow_phase_detector.unit_test(device, stream);
         narrow_phase_detector.compile(device);
+        // narrow_phase_detector.unit_test(device, stream);
     }
     
     // lcsv::DescentSolver  solver;
@@ -204,19 +180,6 @@ int main(int argc, char** argv)
             &narrow_phase_detector
         );
         solver.compile(device);
-    }
-
-    // Some params
-    {
-        lcsv::get_scene_params().implicit_dt = 0.05;
-        lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().nonlinear_iter_count = 1; // 50
-        lcsv::get_scene_params().pcg_iter_count = 200; // 2000
-        lcsv::get_scene_params().use_bending = false;
-        lcsv::get_scene_params().use_quadratic_bending_model = true;
-        lcsv::get_scene_params().use_xpbd_solver = false;
-        lcsv::get_scene_params().use_vbd_solver = true;
-        lcsv::get_scene_params().use_gpu = false; // true
     }
 
     // Define Simulation
@@ -475,7 +438,7 @@ int main(int argc, char** argv)
                 {
                     solver.lcsv::SolverInterface::save_current_frame_state_to_host(lcsv::get_scene_params().current_frame, "");
                 }
-                static uint state_frame = 11;
+                uint& state_frame = lcsv::get_scene_params().load_state_frame;
                 ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
                 if (ImGui::Button("Load State", ImVec2(-1, 0)))
                 {

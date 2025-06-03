@@ -76,6 +76,8 @@ struct SceneParams
     uint current_pcg_it = 0;
     uint current_substep = 0;
 
+    uint load_state_frame = -1u;
+
     uint collision_detection_frequece = 1;
     uint animation_start_frame = 9999;
 

@@ -120,7 +120,7 @@ target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="$
 # target_link_libraries(luisa-solver-test PRIVATE luisa::compute luisa-compute-solver-lib)
 
 # app
-add_executable(app-simulation Application/app_simulation.cpp)
+add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
 # add_executable(app-simulation Application/app_simulation_v2.cpp)
 target_link_libraries(app-simulation PRIVATE 
     luisa::compute polyscope 

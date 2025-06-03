@@ -74,12 +74,11 @@ template<typename T> inline Var<T> warp_reduce_op_sum(Var<T> & lane_value) { ret
 template<typename T> inline Var<T> warp_reduce_op_min(Var<T> & lane_value) { return luisa::compute::warp_active_min(lane_value); };
 template<typename T> inline Var<T> warp_reduce_op_max(Var<T> & lane_value) { return luisa::compute::warp_active_max(lane_value); };
 
-
 constexpr uint warp_dim = 32;
 constexpr uint warp_num = 32;
 
 template<typename T, typename ReduceOp>
-inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary = warp_reduce_op_sum<T>)
+inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary)
 {
     using Uint = luisa::compute::UInt;
     luisa::compute::set_block_size(reduce_block_dim);
@@ -89,21 +88,26 @@ inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<
     const luisa::compute::UInt laneIdx = threadIdx % warp_dim;
     
     Var<T> block_value = thread_value;
-    block_value = warp_reduce_op_binary(block_value);
+    block_value = warp_reduce_op_binary(block_value); // warp reduced value
 
+    luisa::compute::Shared<uint> cache_active_warp_count(1);
     luisa::compute::Shared<T> cache(warp_num);
-    $if (warpIdx == 0) { cache[threadIdx] = T(0); };
-    luisa::compute::sync_block();
 
+    $if (threadIdx == 0) { cache_active_warp_count[0] = 0; };
+    luisa::compute::sync_block();
+    
+    // $if (warpIdx == 0) { cache[threadIdx] = zero_value; };
+    // $if (warpIdx == 0) { cache[threadIdx] = luisa::compute::warp_read_first_active_lane(thread_value); };
+    // luisa::compute::sync_block();
     $if (laneIdx == 0)
     {
         cache[warpIdx] = block_value;
+        cache_active_warp_count.atomic(0).fetch_add(1u);
     };
     luisa::compute::sync_block();
-    $if (warpIdx == 0)
+    $if (threadIdx < cache_active_warp_count[0])
     {
         block_value = warp_reduce_op_binary(cache[threadIdx]);
-        // block_value = cache[0];
     };
     return block_value;
 }

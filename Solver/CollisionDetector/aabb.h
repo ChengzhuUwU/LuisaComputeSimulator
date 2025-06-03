@@ -23,6 +23,13 @@ inline auto make_aabb()
         makeFloat3(-1000.0f)
     ); 
 }
+inline auto make_aabbVar()  
+{ 
+    return makeFloat2x3(
+        makeFloat3Var( 1000.0f), 
+        makeFloat3Var(-1000.0f)
+    ); 
+}
 
 template<typename Vec3> inline auto make_aabb_from_min_max(const Vec3& min_vec, const Vec3& max_vec)  
 { 
