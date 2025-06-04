@@ -97,13 +97,71 @@ inline void NoKappa_ddBarrier_ddD(T& R, const T& d2, const T& dHat, const T& xi)
 
 namespace DistanceGradient
 {
-
-    
+   
 namespace details
 {
 
+template <uint idx, typename LargeVector>
+constexpr lcsv::Float& getVec(LargeVector& G)
+{
+    constexpr uint outer_row_idx = idx / 3;
+    constexpr uint inner_row_idx = idx % 3;
+    return G.vec[outer_row_idx][inner_row_idx];
+}
+template <uint idx, typename LargeVector>
+constexpr void setVec(LargeVector& G, const lcsv::Float& value)
+{
+    constexpr uint outer_row_idx = idx / 3;
+    constexpr uint inner_row_idx = idx % 3;
+    G.vec[outer_row_idx][inner_row_idx] = value;
+}
+template <uint idx, typename LargeMatrix>
+constexpr lcsv::Float& getMat9x9(LargeMatrix& H)
+{
+    constexpr uint col_idx = idx % 9;
+    constexpr uint row_idx = idx / 9;
+    constexpr uint outer_col_idx = col_idx / 3;
+    constexpr uint outer_row_idx = row_idx / 3;
+    constexpr uint inner_col_idx = col_idx % 3;
+    constexpr uint inner_row_idx = row_idx % 3;
+    return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
+}
+template <uint idx, typename LargeMatrix>
+constexpr lcsv::Float& getMat12x12(LargeMatrix& H)
+{
+    constexpr uint col_idx = idx % 16;
+    constexpr uint row_idx = idx / 16;
+    constexpr uint outer_col_idx = col_idx / 3;
+    constexpr uint outer_row_idx = row_idx / 3;
+    constexpr uint inner_col_idx = col_idx % 3;
+    constexpr uint inner_row_idx = row_idx % 3;
+    return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
+}
+template <uint idx, typename LargeMatrix>
+constexpr void setMat9x9(LargeMatrix& H, const lcsv::Float& value)
+{
+    constexpr uint col_idx = idx % 9;
+    constexpr uint row_idx = idx / 9;
+    constexpr uint outer_col_idx = col_idx / 3;
+    constexpr uint outer_row_idx = row_idx / 3;
+    constexpr uint inner_col_idx = col_idx % 3;
+    constexpr uint inner_row_idx = row_idx % 3;
+    H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
+}
+template <uint idx, typename LargeMatrix>
+constexpr void setMat12x12(LargeMatrix& H, const lcsv::Float& value)
+{
+    constexpr uint col_idx = idx % 16;
+    constexpr uint row_idx = idx / 16;
+    constexpr uint outer_col_idx = col_idx / 3;
+    constexpr uint outer_row_idx = row_idx / 3;
+    constexpr uint inner_col_idx = col_idx % 3;
+    constexpr uint inner_row_idx = row_idx % 3;
+    H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
+}
+
 template <class T, class Vec>
-inline void g_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, Vec g[3])
+inline void g_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, Vec& g)
 {
     T t17;
     T t18;
@@ -145,20 +203,20 @@ inline void g_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23
     t51  = (v11 * 2.0f + -(v21 * 2.0f)) * t43 * t50;
     t52  = (v12 * 2.0f + -(v22 * 2.0f)) * t43 * t50;
     t43  = (v13 * 2.0f + -(v23 * 2.0f)) * t43 * t50;
-    g[0][0] =  t42 * (t24 * t44 * 2.0f + t25 * t45 * 2.0f);
-    g[0][1] = -t42 * (t23 * t44 * 2.0f - t25 * t46 * 2.0f);
-    g[0][2] = -t42 * (t23 * t45 * 2.0f + t24 * t46 * 2.0f);
-    g[1][0] = -t51 - t42 * (t21 * t44 * 2.0f + t22 * t45 * 2.0f);
-    g[1][1] = -t52 + t42 * (t20 * t44 * 2.0f - t22 * t46 * 2.0f);
-    g[1][2] = -t43 + t42 * (t20 * t45 * 2.0f + t21 * t46 * 2.0f);
-    g[2][0] = t51 + t42 * (t18 * t44 * 2.0f + t19 * t45 * 2.0f);
-    g[2][1] = t52 - t42 * (t17 * t44 * 2.0f - t19 * t46 * 2.0f);
-    g[2][2] = t43 - t42 * (t17 * t45 * 2.0f + t18 * t46 * 2.0f);
+    getVec<0>(g) =  t42 * (t24 * t44 * 2.0f + t25 * t45 * 2.0f);
+    getVec<1>(g) = -t42 * (t23 * t44 * 2.0f - t25 * t46 * 2.0f);
+    getVec<2>(g) = -t42 * (t23 * t45 * 2.0f + t24 * t46 * 2.0f);
+    getVec<3>(g) = -t51 - t42 * (t21 * t44 * 2.0f + t22 * t45 * 2.0f);
+    getVec<4>(g) = -t52 + t42 * (t20 * t44 * 2.0f - t22 * t46 * 2.0f);
+    getVec<5>(g) = -t43 + t42 * (t20 * t45 * 2.0f + t21 * t46 * 2.0f);
+    getVec<6>(g) = t51 + t42 * (t18 * t44 * 2.0f + t19 * t45 * 2.0f);
+    getVec<7>(g) = t52 - t42 * (t17 * t44 * 2.0f - t19 * t46 * 2.0f);
+    getVec<8>(g) = t43 - t42 * (t17 * t45 * 2.0f + t18 * t46 * 2.0f);
 }
 
 template <class T, class Vec>
 inline void g_PT(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Vec g[4])
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Vec& g)
 {
     T t11;
     T t12;
@@ -203,34 +261,23 @@ inline void g_PT(
     t45  = (t13 * t32 + t11 * t34) + -(t12 * t33);
     t44  = t43 * t43;
     t46  = t45 * t45;
-    g[0][0] = t34 * t43 * t45 *  2.0f;
-    g[0][1] = t33 * t43 * t45 * -2.0f;
-    g[0][2] = t32 * t43 * t45 *  2.0f;
-    t45 *= t43;
-    g[1][0] =  - t44 * t46 * (t21 * t32 * 2.0f + t22 * t33 * 2.0f)
-            - t45 * ((t34 + t12 * t22) - t13 * t21) * 2.0f;
-    t43  = t44 * t46;
-    g[1][1] = t43 * (t20 * t32 * 2.0f - t22 * t34 * 2.0f)
-            + t45 * ((t33 + t11 * t22) - t13 * t20) * 2.0f;
-    g[1][2] = t43 * (t20 * t33 * 2.0f + t21 * t34 * 2.0f)
-            - t45 * ((t32 + t11 * t21) - t12 * t20) * 2.0f;
-    g[2][0] = t45 * (t12 * t19 - t13 * t18) * 2.0f
-            + t43 * (t18 * t32 * 2.0f + t19 * t33 * 2.0f);
-    g[2][1] = t45 * (t11 * t19 - t13 * t17) * -2.0f
-            - t43 * (t17 * t32 * 2.0f - t19 * t34 * 2.0f);
-    g[2][2] = t45 * (t11 * t18 - t12 * t17) * 2.0f
-            - t43 * (t17 * t33 * 2.0f + t18 * t34 * 2.0f);
-    g[3][0] = t45 * (t12 * t16 - t13 * t15) * -2.0f
-            - t43 * (t15 * t32 * 2.0f + t16 * t33 * 2.0f);
-    g[3][1] = t45 * (t11 * t16 - t13 * t14) * 2.0f
-            + t43 * (t14 * t32 * 2.0f - t16 * t34 * 2.0f);
-    g[3][2] = t45 * (t11 * t15 - t12 * t14) * -2.0f
-            + t43 * (t14 * t33 * 2.0f + t15 * t34 * 2.0f);
+    getVec<0>(g) = t34 * t43 * t45 *  2.0f;
+    getVec<1>(g) = t33 * t43 * t45 * -2.0f;
+    getVec<2>(g) = t32 * t43 * t45 *  2.0f; t45 *= t43;
+    getVec<3>(g) =  - t44 * t46 * (t21 * t32 * 2.0f + t22 * t33 * 2.0f) - t45 * ((t34 + t12 * t22) - t13 * t21) * 2.0f; t43  = t44 * t46;
+    getVec<4>(g) = t43 * (t20 * t32 * 2.0f - t22 * t34 * 2.0f) + t45 * ((t33 + t11 * t22) - t13 * t20) * 2.0f;
+    getVec<5>(g) = t43 * (t20 * t33 * 2.0f + t21 * t34 * 2.0f) - t45 * ((t32 + t11 * t21) - t12 * t20) * 2.0f;
+    getVec<6>(g) = t45 * (t12 * t19 - t13 * t18) * 2.0f + t43 * (t18 * t32 * 2.0f + t19 * t33 * 2.0f);
+    getVec<7>(g) = t45 * (t11 * t19 - t13 * t17) * -2.0f - t43 * (t17 * t32 * 2.0f - t19 * t34 * 2.0f);
+    getVec<8>(g) = t45 * (t11 * t18 - t12 * t17) * 2.0f - t43 * (t17 * t33 * 2.0f + t18 * t34 * 2.0f);
+    getVec<9>(g) = t45 * (t12 * t16 - t13 * t15) * -2.0f - t43 * (t15 * t32 * 2.0f + t16 * t33 * 2.0f);
+    getVec<10>(g) = t45 * (t11 * t16 - t13 * t14) * 2.0f + t43 * (t14 * t32 * 2.0f - t16 * t34 * 2.0f);
+    getVec<11>(g) = t45 * (t11 * t15 - t12 * t14) * -2.0f + t43 * (t14 * t33 * 2.0f + t15 * t34 * 2.0f);
 }
 
 template <class T, class Vec>
 inline void g_EE(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Vec g[4])
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Vec& g)
 {
     T t11;
     T t12;
@@ -292,21 +339,18 @@ inline void g_EE(
     t83   = (t11 * t44 * 2.0f + -(t13 * t46 * 2.0f)) * t76 * t78;
     t19   = (t17 * t44 * 2.0f + -(t19 * t46 * 2.0f)) * t76 * t78;
     t76   = t75 * t77;
-    g[0][0]  = -t81 + t76 * ((-t36 + t37) + t46) * 2.0f;
-    g[0][1]  =  t19 - t76 * ((-t34 + t35) + t45) * 2.0f;
-    g[0][2]  =  t18 + t76 * ((-t32 + t33) + t44) * 2.0f;
-    g[1][0]  =  t81 + t76 * (t36 - t37) * 2.0f;
-    g[1][1]  = -t19 - t76 * (t34 - t35) * 2.0f;
-    g[1][2]  = -t18 + t76 * (t32 - t33) * 2.0f;
-    t17   = t12 * t16 + -(t13 * t15);
-    g[2][0]  = t79 - t76 * (t17 + t46) * 2.0f;
-    t18   = t11 * t16 + -(t13 * t14);
-    g[2][1]  = -t83 + t76 * (t18 + t45) * 2.0f;
-    t19   = t11 * t15 + -(t12 * t14);
-    g[2][2]  = -t80 - t76 * (t19 + t44) * 2.0f;
-    g[3][0] = -t79 + t76 * t17 * 2.0f;
-    g[3][1] =  t83 - t76 * t18 * 2.0f;
-    g[3][2] =  t80 + t76 * t19 * 2.0f;
+    getVec<0>(g)  = -t81 + t76 * ((-t36 + t37) + t46) * 2.0f;
+    getVec<1>(g)  =  t19 - t76 * ((-t34 + t35) + t45) * 2.0f;
+    getVec<2>(g)  =  t18 + t76 * ((-t32 + t33) + t44) * 2.0f;
+    getVec<3>(g)  =  t81 + t76 * (t36 - t37) * 2.0f;
+    getVec<4>(g)  = -t19 - t76 * (t34 - t35) * 2.0f;
+    getVec<5>(g)  = -t18 + t76 * (t32 - t33) * 2.0f; t17   = t12 * t16 + -(t13 * t15);
+    getVec<6>(g)  = t79 - t76 * (t17 + t46) * 2.0f; t18   = t11 * t16 + -(t13 * t14);
+    getVec<7>(g)  = -t83 + t76 * (t18 + t45) * 2.0f; t19   = t11 * t15 + -(t12 * t14);
+    getVec<8>(g)  = -t80 - t76 * (t19 + t44) * 2.0f;
+    getVec<9>(g) = -t79 + t76 * t17 * 2.0f;
+    getVec<10>(g) =  t83 - t76 * t18 * 2.0f;
+    getVec<11>(g) =  t80 + t76 * t19 * 2.0f;
 }
 
 } // namespace details
@@ -314,30 +358,32 @@ inline void g_EE(
 namespace details
 {
 
-template <uint idx, typename Mat>
-constexpr void setMat9x9(Mat H[3][3], const lcsv::Float& value)
-{
-    constexpr uint col_idx = idx / 9;
-    constexpr uint row_idx = idx % 9;
-    constexpr uint outer_col_idx = col_idx / 3;
-    constexpr uint outer_row_idx = row_idx / 3;
-    constexpr uint inner_col_idx = col_idx % 3;
-    constexpr uint inner_row_idx = row_idx % 3;
-    H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
-}
-template <uint idx, typename Mat>
-constexpr void setMat12x12(Mat H[4][4], const lcsv::Float& value)
-{
-    constexpr uint col_idx = idx / 16;
-    constexpr uint row_idx = idx % 16;
-    constexpr uint outer_col_idx = col_idx / 4;
-    constexpr uint outer_row_idx = row_idx / 4;
-    constexpr uint inner_col_idx = col_idx % 4;
-    constexpr uint inner_row_idx = row_idx % 4;
-    H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
-}
-template <class T, class Mat>
-inline void H_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, Mat mat[3][3])
+// template <uint idx, typename Mat>
+// constexpr void setMat9x9(Mat H[3][3], const lcsv::Float& value)
+// {
+//     constexpr uint col_idx = idx % 9;
+//     constexpr uint row_idx = idx / 9;
+//     constexpr uint outer_col_idx = col_idx / 3;
+//     constexpr uint outer_row_idx = row_idx / 3;
+//     constexpr uint inner_col_idx = col_idx % 3;
+//     constexpr uint inner_row_idx = row_idx % 3;
+//     H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
+// }
+// template <uint idx, typename Mat>
+// constexpr void setMat12x12(Mat H[4][4], const lcsv::Float& value)
+// {
+//     constexpr uint col_idx = idx % 16;
+//     constexpr uint row_idx = idx / 16;
+//     constexpr uint outer_col_idx = col_idx / 4;
+//     constexpr uint outer_row_idx = row_idx / 4;
+//     constexpr uint inner_col_idx = col_idx % 4;
+//     constexpr uint inner_row_idx = row_idx % 4;
+//     H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
+// }
+
+
+template <class T>
+inline void H_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, Float9x9& mat)
 {
     T t17;
     T t18;
@@ -657,10 +703,9 @@ inline void H_PE3D(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23
     setMat9x9<79>(mat, t36);
     setMat9x9<80>(mat, ((t234 * -2.0f + -t279) + t283) + t102 * (t38 + t39));
 }
-
-template <class T, class Mat>
+template <class T>
 inline void H_PT(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Mat H[4][4])
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Float12x12& H)
 {
     T t11;
     T t12;
@@ -1217,10 +1262,9 @@ inline void H_PT(
     setMat12x12<142>(H, t628);
     setMat12x12<143>(H, ((t125 * t125 * t202 * 2.0f + t193 * t193 * t204 * t206 * 2.0f) - t646_tmp * (t38 + t39)) - t125 * t193 * t203 * t205 * 4.0f);
 }
-
-template <class T, class Mat>
+template <class T>
 inline void H_EE(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Mat H[4][4])
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Float12x12& H)
 {
     T t11;
     T t12;
@@ -1835,25 +1879,424 @@ inline void H_EE(
     setMat12x12<143>(H, (t53 + t98 * t98 * t156 * 2.0f) + b_t522_tmp * 4.0f);
 }
 
+// TODO: Symmetric matrix
+
+// Mollified EE energy
+template <typename T>
+inline void EEM(T input, T eps_x, T& e)
+{
+    T input_div_eps_x = input / eps_x;
+    e                 = (-input_div_eps_x + 2.0f) * input_div_eps_x;
+}
+template <typename T>
+inline void g_EEM(T input, T eps_x, T& g)
+{
+    T one_div_eps_x = 1.0f / eps_x;
+    g               = 2.0f * one_div_eps_x * (-one_div_eps_x * input + 1.0f);
+}
+template <typename T>
+inline void H_EEM(T input, T eps_x, T& H)
+{
+    H = -2.0f / (eps_x * eps_x);
+}
+inline void edge_edge_cross_norm2(const Float3& ea0,
+                                  const Float3& ea1,
+                                  const Float3& eb0,
+                                  const Float3& eb1, Float& result)
+{
+    result = length_squared_vec(cross_vec((ea1 - ea0), (eb1 - eb0)));
+}
+
+template <class T>
+inline void g_EECN2(
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Float12& g)
+{
+    T t8;
+    T t9;
+    T t10;
+    T t11;
+    T t12;
+    T t13;
+    T t23;
+    T t24;
+    T t25;
+    T t26;
+    T t27;
+    T t28;
+    T t29;
+    T t30;
+    T t31;
+    T t32;
+    T t33;
+
+    /* COMPUTEEECROSSSQNORMGRADIENT */
+    /*     G = COMPUTEEECROSSSQNORMGRADIENT(V01,V02,V03,V11,V12,V13,V21,V22,V23,V31,V32,V33) */
+    /*     This function was generated by the Symbolic Math Toolbox version 8.3. */
+    /*     01-Nov-2019 16:54:23 */
+    t8    = -v11 + v01;
+    t9    = -v12 + v02;
+    t10   = -v13 + v03;
+    t11   = -v31 + v21;
+    t12   = -v32 + v22;
+    t13   = -v33 + v23;
+    t23   = t8 * t12 + -(t9 * t11);
+    t24   = t8 * t13 + -(t10 * t11);
+    t25   = t9 * t13 + -(t10 * t12);
+    t26   = t8 * t23 * 2.0f;
+    t27   = t9 * t23 * 2.0f;
+    t28   = t8 * t24 * 2.0f;
+    t29   = t10 * t24 * 2.0f;
+    t30   = t9  * t25 * 2.0f;
+    t31   = t10 * t25 * 2.0f;
+    t32   = t11 * t23 * 2.0f;
+    t33   = t12 * t23 * 2.0f;
+    t23   = t11 * t24 * 2.0f;
+    t10   = t13 * t24 * 2.0f;
+    t9    = t12 * t25 * 2.0f;
+    t8    = t13 * t25 * 2.0f;
+    setVec<0>(g, t33 + t10);
+    setVec<1>(g, -t32 + t8);
+    setVec<2>(g, -t23 - t9);
+    setVec<3>(g, -t33 - t10);
+    setVec<4>(g, t32 - t8);
+    setVec<5>(g, t23 + t9);
+    setVec<6>(g, -t27 - t29);
+    setVec<7>(g, t26 - t31);
+    setVec<8>(g, t28 + t30);
+    setVec<9>(g, t27 + t29);
+    setVec<10>(g, -t26 + t31);
+    setVec<11>(g, -t28 - t30);
+}
+template <class T>
+inline void H_EECN2(
+    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, Float12x12& H)
+{
+    T t8;
+    T t9;
+    T t10;
+    T t11;
+    T t12;
+    T t13;
+    T t32;
+    T t33;
+    T t34;
+    T t35;
+    T t48;
+    T t36;
+    T t49;
+    T t37;
+    T t38;
+    T t39;
+    T t40;
+    T t41;
+    T t42;
+    T t43;
+    T t44;
+    T t45;
+    T t46;
+    T t47;
+    T t50;
+    T t51;
+    T t52;
+    T t20;
+    T t23;
+    T t24;
+    T t25;
+    T t86;
+    T t87;
+    T t88;
+    T t74;
+    T t75;
+    T t76;
+    T t77;
+    T t78;
+    T t79;
+    T t89;
+    T t90;
+    T t91;
+    T t92;
+    T t93;
+    T t94;
+    T t95;
+
+    /* COMPUTEEECROSSSQNORMHESSIAN */
+    /*     H = COMPUTEEECROSSSQNORMHESSIAN(V01,V02,V03,V11,V12,V13,V21,V22,V23,V31,V32,V33) */
+    /*     This function was generated by the Symbolic Math Toolbox version 8.3. */
+    /*     01-Nov-2019 16:54:23 */
+    t8     = -v11 + v01;
+    t9     = -v12 + v02;
+    t10    = -v13 + v03;
+    t11    = -v31 + v21;
+    t12    = -v32 + v22;
+    t13    = -v33 + v23;
+    t32    = t8 * t9 * 2.0f;
+    t33    = t8 * t10 * 2.0f;
+    t34    = t9 * t10 * 2.0f;
+    t35    = t8 * t11 * 2.0f;
+    t48    = t8 * t12;
+    t36    = t48 * 2.0f;
+    t49    = t9 * t11;
+    t37    = t49 * 2.0f;
+    t38    = t48 * 4.0f;
+    t48    = t8 * t13;
+    t39    = t48 * 2.0f;
+    t40    = t49 * 4.0f;
+    t41    = t9 * t12 * 2.0f;
+    t49    = t10 * t11;
+    t42    = t49 * 2.0f;
+    t43    = t48 * 4.0f;
+    t48    = t9 * t13;
+    t44    = t48 * 2.0f;
+    t45    = t49 * 4.0f;
+    t49    = t10 * t12;
+    t46    = t49 * 2.0f;
+    t47    = t48 * 4.0f;
+    t48    = t49 * 4.0f;
+    t49    = t10 * t13 * 2.0f;
+    t50    = t11 * t12 * 2.0f;
+    t51    = t11 * t13 * 2.0f;
+    t52    = t12 * t13 * 2.0f;
+    t20    = t8 * t8 * 2.0f;
+    t9     = t9 * t9 * 2.0f;
+    t8     = t10 * t10 * 2.0f;
+    t23    = t11 * t11 * 2.0f;
+    t24    = t12 * t12 * 2.0f;
+    t25    = t13 * t13 * 2.0f;
+    t86    = t35 + t41;
+    t87    = t35 + t49;
+    t88    = t41 + t49;
+    t74    = t20 + t9;
+    t75    = t20 + t8;
+    t76    = t9 + t8;
+    t77    = t23 + t24;
+    t78    = t23 + t25;
+    t79    = t24 + t25;
+    t89    = t40 + -t36;
+    t90    = t36 + -t40;
+    t91    = t37 + -t38;
+    t92    = t38 + -t37;
+    t93    = t45 + -t39;
+    t94    = t39 + -t45;
+    t95    = t42 + -t43;
+    t37    = t43 + -t42;
+    t39    = t48 + -t44;
+    t45    = t44 + -t48;
+    t38    = t46 + -t47;
+    t40    = t47 + -t46;
+    t36    = -t35 + -t41;
+    t13    = -t35 + -t49;
+    t11    = -t41 + -t49;
+    t12    = -t20 + -t9;
+    t10    = -t20 + -t8;
+    t8     = -t9 + -t8;
+    t9     = -t23 + -t24;
+    t49    = -t23 + -t25;
+    t48    = -t24 + -t25;
+    setMat12x12<0>(H, t79);
+    setMat12x12<1>(H, -t50);
+    setMat12x12<2>(H, -t51);
+    setMat12x12<3>(H, t48);
+    setMat12x12<4>(H, t50);
+    setMat12x12<5>(H, t51);
+    setMat12x12<6>(H, t11);
+    setMat12x12<7>(H, t92);
+    setMat12x12<8>(H, t37);
+    setMat12x12<9>(H, t88);
+    setMat12x12<10>(H, t91);
+    setMat12x12<11>(H, t95);
+    setMat12x12<12>(H, -t50);
+    setMat12x12<13>(H, t78);
+    setMat12x12<14>(H, -t52);
+    setMat12x12<15>(H, t50);
+    setMat12x12<16>(H, t49);
+    setMat12x12<17>(H, t52);
+    setMat12x12<18>(H, t89);
+    setMat12x12<19>(H, t13);
+    setMat12x12<20>(H, t40);
+    setMat12x12<21>(H, t90);
+    setMat12x12<22>(H, t87);
+    setMat12x12<23>(H, t38);
+    setMat12x12<24>(H, -t51);
+    setMat12x12<25>(H, -t52);
+    setMat12x12<26>(H, t77);
+    setMat12x12<27>(H, t51);
+    setMat12x12<28>(H, t52);
+    setMat12x12<29>(H, t9);
+    setMat12x12<30>(H, t93);
+    setMat12x12<31>(H, t39);
+    setMat12x12<32>(H, t36);
+    setMat12x12<33>(H, t94);
+    setMat12x12<34>(H, t45);
+    setMat12x12<35>(H, t86);
+    setMat12x12<36>(H, t48);
+    setMat12x12<37>(H, t50);
+    setMat12x12<38>(H, t51);
+    setMat12x12<39>(H, t79);
+    setMat12x12<40>(H, -t50);
+    setMat12x12<41>(H, -t51);
+    setMat12x12<42>(H, t88);
+    setMat12x12<43>(H, t91);
+    setMat12x12<44>(H, t95);
+    setMat12x12<45>(H, t11);
+    setMat12x12<46>(H, t92);
+    setMat12x12<47>(H, t37);
+    setMat12x12<48>(H, t50);
+    setMat12x12<49>(H, t49);
+    setMat12x12<50>(H, t52);
+    setMat12x12<51>(H, -t50);
+    setMat12x12<52>(H, t78);
+    setMat12x12<53>(H, -t52);
+    setMat12x12<54>(H, t90);
+    setMat12x12<55>(H, t87);
+    setMat12x12<56>(H, t38);
+    setMat12x12<57>(H, t89);
+    setMat12x12<58>(H, t13);
+    setMat12x12<59>(H, t40);
+    setMat12x12<60>(H, t51);
+    setMat12x12<61>(H, t52);
+    setMat12x12<62>(H, t9);
+    setMat12x12<63>(H, -t51);
+    setMat12x12<64>(H, -t52);
+    setMat12x12<65>(H, t77);
+    setMat12x12<66>(H, t94);
+    setMat12x12<67>(H, t45);
+    setMat12x12<68>(H, t86);
+    setMat12x12<69>(H, t93);
+    setMat12x12<70>(H, t39);
+    setMat12x12<71>(H, t36);
+    setMat12x12<72>(H, t11);
+    setMat12x12<73>(H, t89);
+    setMat12x12<74>(H, t93);
+    setMat12x12<75>(H, t88);
+    setMat12x12<76>(H, t90);
+    setMat12x12<77>(H, t94);
+    setMat12x12<78>(H, t76);
+    setMat12x12<79>(H, -t32);
+    setMat12x12<80>(H, -t33);
+    setMat12x12<81>(H, t8);
+    setMat12x12<82>(H, t32);
+    setMat12x12<83>(H, t33);
+    setMat12x12<84>(H, t92);
+    setMat12x12<85>(H, t13);
+    setMat12x12<86>(H, t39);
+    setMat12x12<87>(H, t91);
+    setMat12x12<88>(H, t87);
+    setMat12x12<89>(H, t45);
+    setMat12x12<90>(H, -t32);
+    setMat12x12<91>(H, t75);
+    setMat12x12<92>(H, -t34);
+    setMat12x12<93>(H, t32);
+    setMat12x12<94>(H, t10);
+    setMat12x12<95>(H, t34);
+    setMat12x12<96>(H, t37);
+    setMat12x12<97>(H, t40);
+    setMat12x12<98>(H, t36);
+    setMat12x12<99>(H, t95);
+    setMat12x12<100>(H,t38);
+    setMat12x12<101>(H,t86);
+    setMat12x12<102>(H,-t33);
+    setMat12x12<103>(H,-t34);
+    setMat12x12<104>(H,t74);
+    setMat12x12<105>(H,t33);
+    setMat12x12<106>(H,t34);
+    setMat12x12<107>(H,t12);
+    setMat12x12<108>(H,t88);
+    setMat12x12<109>(H,t90);
+    setMat12x12<110>(H,t94);
+    setMat12x12<111>(H,t11);
+    setMat12x12<112>(H,t89);
+    setMat12x12<113>(H,t93);
+    setMat12x12<114>(H,t8);
+    setMat12x12<115>(H,t32);
+    setMat12x12<116>(H,t33);
+    setMat12x12<117>(H,t76);
+    setMat12x12<118>(H,-t32);
+    setMat12x12<119>(H,-t33);
+    setMat12x12<120>(H,t91);
+    setMat12x12<121>(H,t87);
+    setMat12x12<122>(H,t45);
+    setMat12x12<123>(H,t92);
+    setMat12x12<124>(H,t13);
+    setMat12x12<125>(H,t39);
+    setMat12x12<126>(H,t32);
+    setMat12x12<127>(H,t10);
+    setMat12x12<128>(H,t34);
+    setMat12x12<129>(H,-t32);
+    setMat12x12<130>(H,t75);
+    setMat12x12<131>(H,-t34);
+    setMat12x12<132>(H,t95);
+    setMat12x12<133>(H,t38);
+    setMat12x12<134>(H,t86);
+    setMat12x12<135>(H,t37);
+    setMat12x12<136>(H,t40);
+    setMat12x12<137>(H,t36);
+    setMat12x12<138>(H,t33);
+    setMat12x12<139>(H,t34);
+    setMat12x12<140>(H,t12);
+    setMat12x12<141>(H,-t33);
+    setMat12x12<142>(H,-t34);
+    setMat12x12<143>(H,t74);
+}
+inline void edge_edge_cross_norm2_gradient(const Float3& ea0,
+                                           const Float3& ea1,
+                                           const Float3& eb0,
+                                           const Float3& eb1,
+                                           Float12& grad)
+{
+    details::g_EECN2(ea0[0],
+                     ea0[1],
+                     ea0[2],
+                     ea1[0],
+                     ea1[1],
+                     ea1[2],
+                     eb0[0],
+                     eb0[1],
+                     eb0[2],
+                     eb1[0],
+                     eb1[1],
+                     eb1[2],
+                     grad);
+}
+inline void edge_edge_cross_norm2_hessian(const Float3& ea0,
+                                          const Float3& ea1,
+                                          const Float3& eb0,
+                                          const Float3& eb1,
+                                          Float12x12& Hessian)
+{
+    details::H_EECN2(ea0[0],
+                     ea0[1],
+                     ea0[2],
+                     ea1[0],
+                     ea1[1],
+                     ea1[2],
+                     eb0[0],
+                     eb0[1],
+                     eb0[2],
+                     eb1[0],
+                     eb1[1],
+                     eb1[2],
+                     Hessian);
+}
+
 } // namespace details
 
 
 
-inline void point_point_distance2_gradient(Float3& a, Float3& b, Float3 G[2])
+inline void point_point_distance2_gradient(Float3& a, Float3& b, Float6& G)
 {
-    G[0] = 2.0f * (a - b);
-    G[1] = -G[0];
+    G.vec[0] = 2.0f * (a - b);
+    G.vec[1] = -G.vec[0];
 }
-inline void point_edge_distance2_gradient(Float3& p, Float3& e0, Float3& e1, Float3 G[3])
+inline void point_edge_distance2_gradient(Float3& p, Float3& e0, Float3& e1, Float9& G)
 {
-    details::g_PE3D<Float, Float3>(p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], G);
+    details::g_PE3D(p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], G);
 }
-inline void point_triangle_distance2_gradient(Float3& p, Float3& t0, Float3& t1, Float3& t2, Float3 G[4])
+inline void point_triangle_distance2_gradient(Float3& p, Float3& t0, Float3& t1, Float3& t2, Float12& G)
 {
     details::g_PT(
             p[0], p[1], p[2], t0[0], t0[1], t0[2], t1[0], t1[1], t1[2], t2[0], t2[1], t2[2], G);
 }
-inline void edge_edge_distance2_gradient(Float3& ea0, Float3& ea1, Float3& eb0, Float3& eb1, Float3 G[4])
+inline void edge_edge_distance2_gradient(Float3& ea0, Float3& ea1, Float3& eb0, Float3& eb1, Float12& G)
 {
     details::g_EE(ea0[0],
                   ea0[1],
@@ -1869,23 +2312,24 @@ inline void edge_edge_distance2_gradient(Float3& ea0, Float3& ea1, Float3& eb0, 
                   eb1[2],
                   G);
 }
-inline void point_point_distance2_hessian(Float3& a, Float3& b, Float3x3 H[2][2])
+
+inline void point_point_distance2_hessian(Float3& a, Float3& b, Float6x6 H)
 {
-    H[0][0] = makeFloat3x3(Float(1.0f));
-    H[1][1] = makeFloat3x3(Float(1.0f));
-    H[0][1] = makeFloat3x3(Float(-1.0f));
-    H[1][0] = makeFloat3x3(Float(-1.0f));
+    H.mat[0][0] = makeFloat3x3(Float(1.0f));
+    H.mat[1][1] = makeFloat3x3(Float(1.0f));
+    H.mat[0][1] = makeFloat3x3(Float(-1.0f));
+    H.mat[1][0] = makeFloat3x3(Float(-1.0f));
 }
-inline void point_edge_distance2_hessian(Float3& p, Float3& e0, Float3& e1, Float3x3 H[3][3])
+inline void point_edge_distance2_hessian(Float3& p, Float3& e0, Float3& e1, Float9x9& H)
 {
     details::H_PE3D(p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], H);
 }
-inline void point_triangle_distance2_hessian(Float3& p, Float3& t0, Float3& t1, Float3& t2, Float3x3 H[4][4])
+inline void point_triangle_distance2_hessian(Float3& p, Float3& t0, Float3& t1, Float3& t2, Float12x12& H)
 {
     details::H_PT(
             p[0], p[1], p[2], t0[0], t0[1], t0[2], t1[0], t1[1], t1[2], t2[0], t2[1], t2[2], H);
 }
-inline void edge_edge_distance2_hessian(Float3& ea0, Float3& ea1, Float3& eb0, Float3& eb1, Float3x3 H[4][4])
+inline void edge_edge_distance2_hessian(Float3& ea0, Float3& ea1, Float3& eb0, Float3& eb1, Float12x12& H)
 {
     details::H_EE(ea0[0],
                   ea0[1],
@@ -1901,8 +2345,48 @@ inline void edge_edge_distance2_hessian(Float3& ea0, Float3& ea1, Float3& eb0, F
                   eb1[2],
                   H);
 }
+inline void edge_edge_mollifier_hessian(const Float3& ea0,
+                                       const Float3& ea1,
+                                       const Float3& eb0,
+                                       const Float3& eb1,
+                                       Float         eps_x,
+                                       Float12x12& H)
+{
+    Float EECrossSqNorm;
+    details::edge_edge_cross_norm2(ea0, ea1, eb0, eb1, EECrossSqNorm);
+    $if (EECrossSqNorm < eps_x)
+    {
+        Float q_g, q_H;
+        details::g_EEM(EECrossSqNorm, eps_x, q_g);
+        details::H_EEM(EECrossSqNorm, eps_x, q_H);
 
+        Var<LargeVector<12>> g;
+        details::edge_edge_cross_norm2_gradient(ea0, ea1, eb0, eb1, g);
+        details::edge_edge_cross_norm2_hessian(ea0, ea1, eb0, eb1, H);
+
+        // H *= q_g;
+        // H += (q_H * g) * g.transpose();
+        lcsv::mult_largemat(H, H, q_g);
+        H = lcsv::add_largemat(H, lcsv::outerProduct(lcsv::mult_largevec(g, q_g), g));
+
+    // #pragma unroll
+    //     for (uint i = 0; i < 4; i++)
+    //     {
+    //     #pragma unroll
+    //         for (uint j = 0; j < 4; j++)
+    //         {
+    //             H[i][j] = q_g * H[i][j] + q_H * outer_product(g[i], g[j]); // ???? might need transpose ???
+    //         }
+    //     }
+    }
+    $else
+    {
+        // H.setZero();
+        lcsv::set_largemat_zero(H);
+    };
 }
+
+} // namespace DistanceGradient
 
 void NarrowPhasesDetector::compile(luisa::compute::Device& device)
 {

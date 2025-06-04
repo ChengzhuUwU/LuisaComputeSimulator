@@ -10,10 +10,6 @@
 // LUISA_STRUCT(luisa::compute::float4x3, cols1, cols2, cols3, cols4) {};
 // LUISA_STRUCT(luisa::compute::float3x4, cols1, cols2, cols3) {};
 
-namespace luisa 
-{
-    
-};
 
 
 
@@ -153,6 +149,14 @@ using float2x2 = luisa::float2x2;
 using float3x3 = luisa::float3x3;
 using float4x4 = luisa::float4x4;
 
+using float6 = VECTOR6;
+using float9 = VECTOR9;
+using float12 = VECTOR12;
+using float6x6 = MATRIX6;
+using float9x9 = MATRIX9;
+using float12x12 = MATRIX12;
+
+
 // using float2x3 = luisa::float2x3;
 // using float2x4 = luisa::float2x4;
 // using float3x2 = luisa::float3x2;
@@ -206,6 +210,13 @@ using Float3x2 = luisa::compute::Var<float3x2>;
 using Float3x4 = luisa::compute::Var<float3x4>;
 using Float4x2 = luisa::compute::Var<float4x2>;
 using Float4x3 = luisa::compute::Var<float4x3>;
+
+using Float6 = luisa::compute::Var<float6>;
+using Float9 = luisa::compute::Var<float9>;
+using Float12 = luisa::compute::Var<float12>;
+using Float6x6 = luisa::compute::Var<MATRIX6>;
+using Float9x9 = luisa::compute::Var<MATRIX9>;
+using Float12x12 = luisa::compute::Var<MATRIX12>;
 
 
 // using ElementOffset = luisa::ubyte4;

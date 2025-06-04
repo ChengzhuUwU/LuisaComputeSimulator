@@ -118,6 +118,8 @@ target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="$
 # add_executable(luisa-solver-test ${LUISA_SOLVER_TEST_SOURCES})
 # target_include_directories(luisa-solver-test PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/test/_framework>)
 # target_link_libraries(luisa-solver-test PRIVATE luisa::compute luisa-compute-solver-lib)
+add_executable(test-xtypes UnitTest/test_xtypes.cpp)
+target_link_libraries(test-xtypes PRIVATE luisa::compute luisa-compute-solver-lib)
 
 # app
 add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
@@ -125,6 +127,8 @@ add_executable(app-simulation Application/app_simulation.cpp Application/app_sim
 target_link_libraries(app-simulation PRIVATE 
     luisa::compute polyscope 
     luisa-compute-solver-lib)
+
+# T
 
 # file(GLOB_RECURSE SIMULATION CONFIGURE_DEPENDS Application/app_simulation.cpp)
 # add_executable(app-simulation ${LUISA_SOLVER_APP_SOURCES})
