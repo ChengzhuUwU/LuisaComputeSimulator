@@ -7,6 +7,7 @@
 #include <luisa/luisa-compute.h>
 // #include <glm/glm.hpp>
 
+
 namespace lcsv 
 {
 
@@ -78,28 +79,106 @@ struct SimulationData : SimulationType
     BufferType<float> sa_convergence;
 };
 
-enum CollisionListType
+} // namespace lcsv 
+
+
+
+
+namespace lcsv 
 {
-    CollisionListTypeVV,
-    CollisionListTypeVF,
-    CollisionListTypeEE,
-    CollisionListTypeEF,
+
+struct CollisionPairVV
+{
+    lcsv::uint2 indices; // vid1:1, vid2:1
+    lcsv::float4 vec1; // normal:3, stiff:1
+};
+struct CollisionPairVE
+{
+    lcsv::uint2 edge; 
+    uint vid;
+    float bary;
+    lcsv::float4 vec1; // normal:3, stiff 1
+};
+struct CollisionPairVF
+{
+    lcsv::uint4 indices; // vid:1, face:3
+    lcsv::float4 vec1; // normal:3, stiff:1
+    lcsv::float3 bary; // bary
+};
+struct CollisionPairEE
+{
+    lcsv::uint4 indices;
+    lcsv::float4 vec1; // normal:3, stiff 1
+    lcsv::float4 vec2; // 
 };
 
-template<template<typename...> typename BufferType>
-struct CollisionDataCCD : SimulationType
+// enum CollisionListType
+// {
+//     CollisionListTypeVV,
+//     CollisionListTypeVF,
+//     CollisionListTypeEE,
+//     CollisionListTypeEF,
+// };
+
+}
+
+LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1) {};
+LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1) {};
+LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary) {};
+LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, vec2) {};
+
+
+namespace lcsv 
 {
-    BufferType<uint> broad_phase_collision_count; // 0: VF, 1: EE
+namespace CollisionPair
+{
+    
+    template<typename T> auto get_indices(const T& pair) { return pair.indices; }
+    
+    template<typename T> auto get_vv_vid1(const T& pair)  { return pair.indices[0]; }
+    template<typename T> auto get_vv_vid2(const T& pair)  { return pair.indices[1]; }
+    template<typename T> auto get_ve_vid(const T& pair)  { return pair.vid; }
+    template<typename T> auto get_ve_edge(const T& pair) { return pair.edge; }
+    template<typename T> auto get_vf_vid(const T& pair)  { return pair.indices[0]; }
+    template<typename T> auto get_vf_face(const T& pair)  { return pair.indices.yzw(); }
+    template<typename T> auto get_ee_edge1(const T& pair)  { return pair.indices.xy(); }
+    template<typename T> auto get_ee_edge2(const T& pair)  { return pair.indices.zw(); }
+
+    template<typename T> auto get_stiff(const T& pair) { return pair.vec1[0]; }
+    template<typename T> auto get_direction(const T& pair) { return pair.vec1.yzw(); }
+
+    // inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
+    inline auto get_ve_edge_bary (const CollisionPairVE& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
+    inline auto get_vf_face_bary (const CollisionPairVF& pair) { return pair.bary; }
+    inline auto get_ee_edge1_bary(const CollisionPairEE& pair) { return pair.vec2.xy(); }
+    inline auto get_ee_edge2_bary(const CollisionPairEE& pair) { return pair.vec2.zw(); }
+    inline auto get_ve_edge_bary (const Var<CollisionPairVE>& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
+    inline auto get_vf_face_bary (const Var<CollisionPairVF>& pair) { return pair.bary; }
+    inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return pair.vec2.xy(); }
+    inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return pair.vec2.zw(); }
+
+} // namespace CollisionPair
+} // namespace lcsv 
+
+
+namespace lcsv {
+
+
+template<template<typename...> typename BufferType>
+struct CollisionData : SimulationType
+{
+    BufferType<uint> broad_phase_collision_count; // 0: VV, 1: VE, 2: VF, 3: EE
     BufferType<uint> narrow_phase_collision_count; // 0: VV, 1: VE, 2: VF, 3: EE
 
     BufferType<uint> broad_phase_list_vf;
     BufferType<uint> broad_phase_list_ee;
     BufferType<float> toi_per_vert;
+    BufferType<float> contact_energy;
 
-    BufferType<uint2> narrow_phase_indices_vv; // 0
-    BufferType<uint3> narrow_phase_indices_ve; // 1
-    BufferType<uint4> narrow_phase_indices_vf; // 2
-    BufferType<uint4> narrow_phase_indices_ee; // 3
+    BufferType<CollisionPairVV> narrow_phase_list_vv; // 0
+    BufferType<CollisionPairVE> narrow_phase_list_ve; // 1
+    BufferType<CollisionPairVF> narrow_phase_list_vf; // 2
+    BufferType<CollisionPairEE> narrow_phase_list_ee; // 3
     // BufferType<uint> narrow_phase_indices_ef; 
 
     BufferType<uint> per_vert_num_broad_phase_vf; 
@@ -116,12 +195,11 @@ struct CollisionDataCCD : SimulationType
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase; 
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase; 
 
-    constexpr uint get_broadphase_vf_count_offset() { return 0; }
-    constexpr uint get_broadphase_ee_count_offset() { return 1; }
-    constexpr uint get_narrowphase_vv_count_offset() { return 0; }
-    constexpr uint get_narrowphase_ve_count_offset() { return 1; }
-    constexpr uint get_narrowphase_vf_count_offset() { return 2; }
-    constexpr uint get_narrowphase_ee_count_offset() { return 3; }
+
+    constexpr uint get_vv_count_offset() { return 0; }
+    constexpr uint get_ve_count_offset() { return 1; }
+    constexpr uint get_vf_count_offset() { return 2; }
+    constexpr uint get_ee_count_offset() { return 3; }
 
     // template<template<typename...> typename BufferType>
     inline void resize_collision_data(
@@ -136,13 +214,14 @@ struct CollisionDataCCD : SimulationType
         
         lcsv::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4); 
+        lcsv::Initializer::resize_buffer(device, this->contact_energy, 4); 
         lcsv::Initializer::resize_buffer(device, this->toi_per_vert, num_verts); 
         lcsv::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts); 
         lcsv::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_vv, per_element_count_NP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_ve, per_element_count_NP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_vf, per_element_count_NP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_indices_ee, per_element_count_NP * num_edges); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
+        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
         lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
         lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts); 
         lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts); 
@@ -156,44 +235,17 @@ struct CollisionDataCCD : SimulationType
         this->collision_indirect_cmd_buffer_broad_phase = device.create_indirect_dispatch_buffer(2); 
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4); 
 
-        // BufferType<uint> broad_phase_collision_count; 
-        // BufferType<uint> narrow_phase_collision_count; 
-        // BufferType<uint> broad_phase_list_vf;
-        // BufferType<uint> broad_phase_list_ee;
-        // BufferType<uint2> narrow_phase_indices_vv; // 0
-        // BufferType<uint3> narrow_phase_indices_ve; // 1
-        // BufferType<uint4> narrow_phase_indices_vf; // 2
-        // BufferType<uint4> narrow_phase_indices_ee; // 3
-        // BufferType<uint> per_vert_num_broad_phase_vf; 
-        // BufferType<uint> per_vert_num_broad_phase_ee; 
-        // BufferType<uint> per_vert_num_narrow_phase_vv; 
-        // BufferType<uint> per_vert_num_narrow_phase_ve; 
-        // BufferType<uint> per_vert_num_narrow_phase_vf; 
-        // BufferType<uint> per_vert_num_narrow_phase_ee; 
-        // BufferType<uint> per_vert_prefix_narrow_phase_vv; 
-        // BufferType<uint> per_vert_prefix_narrow_phase_ve; 
-        // BufferType<uint> per_vert_prefix_narrow_phase_vf; 
-        // BufferType<uint> per_vert_prefix_narrow_phase_ee; 
-
-        const uint bytes = 
-            sizeof(uint) *  this->broad_phase_list_vf.size() * 4 +
-            sizeof(uint) *  this->broad_phase_list_ee.size() * 4 +
-            sizeof(uint2) * this->narrow_phase_indices_vv.size() * 4 +
-            sizeof(uint3) * this->narrow_phase_indices_ve.size() * 4 +
-            sizeof(uint4) * this->narrow_phase_indices_vf.size() * 4 +
-            sizeof(uint4) * this->narrow_phase_indices_ee.size() * 4 +
-            sizeof(uint) * this->per_vert_num_broad_phase_vf.size() * 4 +
-            sizeof(uint) * this->per_vert_num_broad_phase_ee.size() * 4 +
-            sizeof(uint) * this->per_vert_num_narrow_phase_vv.size() * 4 +
-            sizeof(uint) * this->per_vert_num_narrow_phase_ve.size() * 4 +
-            sizeof(uint) * this->per_vert_num_narrow_phase_vf.size() * 4 +
-            sizeof(uint) * this->per_vert_num_narrow_phase_ee.size() * 4 +
-            sizeof(uint) * this->per_vert_prefix_narrow_phase_vv.size() * 4 +
-            sizeof(uint) * this->per_vert_prefix_narrow_phase_ve.size() * 4 +
-            sizeof(uint) * this->per_vert_prefix_narrow_phase_vf.size() * 4 +
-            sizeof(uint) * this->per_vert_prefix_narrow_phase_ee.size() * 4;
-        luisa::log_info("Allocated collision buffer size {} MB", bytes / (1024 * 1024));
-        if (float(bytes) / (1024 * 1024 * 1024) > 1.0f) luisa::log_info("Allocated collision buffer size {} GB", bytes / (1024 * 1024 * 1024));
+        const uint collision_pair_bytes = 
+            sizeof(uint) * this->broad_phase_list_vf.size() +
+            sizeof(uint) * this->broad_phase_list_ee.size() +
+            sizeof(CollisionPairVV) * this->narrow_phase_list_vv.size() +
+            sizeof(CollisionPairVE) * this->narrow_phase_list_ve.size() +
+            sizeof(CollisionPairVF) * this->narrow_phase_list_vf.size() +
+            sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size()
+        ;
+        
+        luisa::log_info("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
+        if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f) luisa::log_info("Allocated buffer size for collision pair = {} GB", collision_pair_bytes / (1024 * 1024 * 1024));
     }
 };
 

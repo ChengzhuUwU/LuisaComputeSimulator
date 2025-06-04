@@ -135,8 +135,8 @@ int main(int argc, char** argv)
         // lbvh_cloth_vert.unit_test(device, stream);
     }
     
-    lcsv::CollisionDataCCD<std::vector>             host_collision_data;
-    lcsv::CollisionDataCCD<luisa::compute::Buffer>  collision_data;
+    lcsv::CollisionData<std::vector>             host_collision_data;
+    lcsv::CollisionData<luisa::compute::Buffer>  collision_data;
     {
         host_collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
         collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);

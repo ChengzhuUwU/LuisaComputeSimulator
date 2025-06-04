@@ -48,6 +48,11 @@ template<typename T> inline constexpr T is_equal_scalar(const T left, const T ri
 
 
                     //  inline constexpr int floor_scalar(const float value)  { return luisa::floor(value); }
+template<typename T> inline constexpr T exp_scalar(const T value)  { return luisa::exp(value); }
+template<typename T> inline constexpr T exp2_scalar(const T value)  { return luisa::exp2(value); }
+template<typename T> inline constexpr T log_scalar(const T value)  { return luisa::log(value); }
+template<typename T> inline constexpr T log2_scalar(const T value)  { return luisa::log2(value); }
+template<typename T> inline constexpr T log10_scalar(const T value)  { return luisa::log10(value); }
 template<typename T> inline constexpr T sign_scalar(const T value)  { return luisa::sign(value); }
 template<typename T> inline constexpr T sin_scalar(const T value)   { return luisa::sin(value); }
 template<typename T> inline constexpr T cos_scalar(const T value)   { return luisa::cos(value); }
@@ -63,6 +68,12 @@ template<typename T> inline constexpr T is_nan_scalar(const T value) { return lu
 template<typename T1, typename T2> inline constexpr T1 pow_scalar(const T1& x, const T2& y) {return luisa::pow(x, y);}
 
                     //  inline constexpr luisa::compute::Var<int> floor_scalar(const luisa::compute::Var<float> value)  { return luisa::compute::floor(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> exp_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::exp(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> exp2_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::exp2(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> exp10_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::exp10(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> log_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::log(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> log2_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::log2(value); }
+template<typename T> inline constexpr luisa::compute::Var<T> log10_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::log10(value); }
 template<typename T> inline constexpr luisa::compute::Var<T> sign_scalar(const luisa::compute::Var<T> value)  { return luisa::compute::sign(value); }
 template<typename T> inline constexpr luisa::compute::Var<T> sin_scalar(const luisa::compute::Var<T> value)   { return luisa::compute::sin(value); }
 template<typename T> inline constexpr luisa::compute::Var<T> cos_scalar(const luisa::compute::Var<T> value)   { return luisa::compute::cos(value); }

@@ -997,6 +997,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
             << luisa::compute::synchronize();
 
+        const float thickness = 0;
+        const float d_hat = 5e-3;
+        const float detection_range = d_hat + thickness;
+        // get_scene_params().thickness_vv_cloth = 0.01f;
+
         if (lcsv::get_scene_params().current_nonlinear_iter == 0)
         {
             mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
@@ -1007,8 +1012,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         mp_lbvh_face->broad_phase_query_from_verts(stream, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
-            ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_vf_count_offset(), 1), 
-            ccd_data->broad_phase_list_vf, 1e-3);
+            ccd_data->broad_phase_collision_count.view(ccd_data->get_vf_count_offset(), 1), 
+            ccd_data->broad_phase_list_vf, detection_range);
 
         if (lcsv::get_scene_params().current_nonlinear_iter == 0)
         {
@@ -1021,8 +1026,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
             mesh_data->sa_edges, 
-            ccd_data->broad_phase_collision_count.view(ccd_data->get_broadphase_ee_count_offset(), 1), 
-            ccd_data->broad_phase_list_ee, 1e-3);
+            ccd_data->broad_phase_collision_count.view(ccd_data->get_ee_count_offset(), 1), 
+            ccd_data->broad_phase_list_ee, detection_range);
         
         // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
         //     host_sim_data->sa_x_iter_start, 
@@ -1050,7 +1055,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_faces, 
-            1e-3);
+            detection_range);
 
         mp_narrowphase_detector->narrow_phase_ccd_query_from_ee_pair(stream, 
             sim_data->sa_x_iter_start, 
@@ -1059,7 +1064,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x, 
             mesh_data->sa_edges, 
             mesh_data->sa_edges, 
-            1e-3);
+            detection_range);
         
         float toi = mp_narrowphase_detector->get_global_toi(stream);
         return toi; // 0.9f * toi

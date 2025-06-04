@@ -30,8 +30,8 @@ public:
         MeshData<luisa::compute::Buffer>*           mesh_ptr, 
         SimulationData<std::vector>*                host_xpbd_ptr, 
         SimulationData<luisa::compute::Buffer>*     xpbd_ptr, 
-        CollisionDataCCD<std::vector>*              host_ccd_ptr, 
-        CollisionDataCCD<luisa::compute::Buffer>*   ccd_ptr, 
+        CollisionData<std::vector>*              host_ccd_ptr, 
+        CollisionData<luisa::compute::Buffer>*   ccd_ptr, 
 
         LBVH* lbvh_face_ptr,
         LBVH* lbvh_edge_ptr,
@@ -76,8 +76,8 @@ protected:
     SimulationData<std::vector>*                host_sim_data;
     SimulationData<luisa::compute::Buffer>*     sim_data;
 
-    CollisionDataCCD<std::vector>*              host_ccd_data;
-    CollisionDataCCD<luisa::compute::Buffer>*   ccd_data;
+    CollisionData<std::vector>*              host_ccd_data;
+    CollisionData<luisa::compute::Buffer>*   ccd_data;
 
     BufferFiller*   mp_buffer_filler;
     DeviceParallel* mp_device_parallel;

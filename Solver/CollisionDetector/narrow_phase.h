@@ -23,12 +23,12 @@ public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void compile(luisa::compute::Device& device);
     void set_collision_data(
-        CollisionDataCCD<std::vector>* host_ccd_ptr,
-        CollisionDataCCD<luisa::compute::Buffer>* ccd_ptr
+        CollisionData<std::vector>* host_ccd_ptr,
+        CollisionData<luisa::compute::Buffer>* ccd_ptr
     ) 
     { 
-        host_ccd_data = host_ccd_ptr; 
-        ccd_data = ccd_ptr; 
+        host_collision_data = host_ccd_ptr; 
+        collision_data = ccd_ptr; 
     }
 
 public:
@@ -45,6 +45,19 @@ public:
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
         const Buffer<float3>& sa_x_end_right,
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float thickness);
+
+    void narrow_phase_dcd_query_from_vf_pair(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float thickness);
+
+    void narrow_phase_dcd_query_from_ee_pair(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
         const float thickness);
@@ -72,8 +85,8 @@ public:
     float get_global_toi(Stream& stream);
 
 public:
-    CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
-    CollisionDataCCD<std::vector>* host_ccd_data;
+    CollisionData<luisa::compute::Buffer>* collision_data;
+    CollisionData<std::vector>* host_collision_data;
 
 private:
     luisa::compute::Shader<1, 
