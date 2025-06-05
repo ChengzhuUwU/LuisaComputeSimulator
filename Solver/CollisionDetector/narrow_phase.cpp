@@ -2366,8 +2366,8 @@ inline void edge_edge_mollifier_hessian(const Float3& ea0,
 
         // H *= q_g;
         // H += (q_H * g) * g.transpose();
-        lcsv::mult_largemat(H, H, q_g);
-        H = lcsv::add_largemat(H, lcsv::outerProduct(lcsv::mult_largevec(g, q_g), g));
+        lcsv::mult_largemat_scalar(H, H, q_g);
+        H = lcsv::add_largemat(H, lcsv::outer_product_largevec(lcsv::mult_largevec_scalar(g, q_g), g));
 
     // #pragma unroll
     //     for (uint i = 0; i < 4; i++)

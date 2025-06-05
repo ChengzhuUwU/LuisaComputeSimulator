@@ -481,9 +481,7 @@ using Var = luisa::compute::Var<T>;
 
 
 
-
-
-// ========== LargeVector<N> methods ==========
+// Vector set
 template<size_t N>
 void set_largevec(LargeVector<N>& left_vec, float value) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = luisa::make_float3(value); }
@@ -493,37 +491,6 @@ void set_largevec(LargeVector<N>& left_vec, const luisa::float3& vec) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec; }
 }
 template<size_t N>
-LargeVector<N> mult_largevec(const LargeVector<N>& left_vec, const float value) {
-    LargeVector<N> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] * value; }
-    return output;
-}
-template<size_t N>
-LargeVector<N> mult_largevec(const float value, const LargeVector<N>& right_vec) {
-    LargeVector<N> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = right_vec[i] * value; }
-    return output;
-}
-template<size_t N>
-LargeVector<N> add_largevec(const LargeVector<N>& left_vec, const luisa::float3& value) {
-    LargeVector<N> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + value; }
-    return output;
-}
-template<size_t N>
-LargeVector<N> add_largevec(const LargeVector<N>& left_vec, const LargeVector<N>& right_vec) {
-    LargeVector<N> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + right_vec[i]; }
-    return output;
-}
-template<size_t N>
-LargeVector<N> add_largevec(const luisa::float3& value, const LargeVector<N>& right_vec) {
-    LargeVector<N> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = right_vec[i] + value; }
-    return output;
-}
-// ========== LargeVector<N> methods ==========
-template<size_t N>
 void set_largevec(Var<LargeVector<N>>& left_vec, Var<float> value) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = luisa::compute::make_float3(value); }
 }
@@ -531,38 +498,83 @@ template<size_t N>
 void set_largevec(Var<LargeVector<N>>& left_vec, const luisa::float3& vec) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec; }
 }
+
+// Vector add
 template<size_t N>
-Var<LargeVector<N>> mult_largevec(const Var<LargeVector<N>>& left_vec, const Var<float>& value) {
-    Var<LargeVector<N>> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] * value; }
+auto add_largevec_vec(const LargeVector<N>& left_vec, const luisa::float3& value) {
+    LargeVector<N> output;
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + value; }
     return output;
 }
 template<size_t N>
-Var<LargeVector<N>> mult_largevec(const Var<float> value, const Var<LargeVector<N>>& right_vec) {
-    Var<LargeVector<N>> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = right_vec.vec[i] * value; }
+auto sub_largevec_vec(const LargeVector<N>& left_vec, const luisa::float3& value) {
+    LargeVector<N> output;
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] - value; }
     return output;
 }
 template<size_t N>
-Var<LargeVector<N>> add_largevec(const Var<LargeVector<N>>& left_vec, const Var<luisa::float3>& value) {
+auto add_largevec_vec(const LargeVector<N>& left_vec, const LargeVector<N>& right_vec) {
+    LargeVector<N> output;
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + right_vec[i]; }
+    return output;
+}
+template<size_t N>
+auto sub_largevec_vec(const LargeVector<N>& left_vec, const LargeVector<N>& right_vec) {
+    LargeVector<N> output;
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] - right_vec[i]; }
+    return output;
+}
+
+template<size_t N>
+auto add_largevec_vec(const Var<LargeVector<N>>& left_vec, const Var<luisa::float3>& value) {
     Var<LargeVector<N>> output;
     for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + value; }
     return output;
 }
 template<size_t N>
-Var<LargeVector<N>> add_largevec(const Var<LargeVector<N>>& left_vec, const Var<LargeVector<N>>& right_vec) {
+auto sub_largevec_vec(const Var<LargeVector<N>>& left_vec, const Var<luisa::float3>& value) {
+    Var<LargeVector<N>> output;
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] - value; }
+    return output;
+}
+template<size_t N>
+auto add_largevec_vec(const Var<LargeVector<N>>& left_vec, const Var<LargeVector<N>>& right_vec) {
     Var<LargeVector<N>> output;
     for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] + right_vec.vec[i]; }
     return output;
 }
 template<size_t N>
-Var<LargeVector<N>> add_largevec(const luisa::float3& value, const Var<LargeVector<N>>& right_vec) {
+auto sub_largevec_vec(const Var<LargeVector<N>>& left_vec, const Var<LargeVector<N>>& right_vec) {
     Var<LargeVector<N>> output;
-    for (size_t i = 0; i < N/3; i++) { output.vec[i] = right_vec.vec[i] + value; }
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] - right_vec.vec[i]; }
     return output;
 }
 
-// ========== LargeMatrix<M, N> methods ==========
+// Vector mult scalar
+template<size_t N>
+auto mult_largevec_scalar(LargeVector<N>& output, const LargeVector<N>& left_vec, const float value) {
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] * value; }
+}
+template<size_t N>
+auto mult_largevec_scalar(const LargeVector<N>& left_vec, const float value) {
+    LargeVector<N> output;
+    mult_largevec_scalar(output, left_vec, value);
+    return output;
+}
+template<size_t N>
+auto mult_largevec_scalar(Var<LargeVector<N>>& output, const Var<LargeVector<N>>& left_vec, const Var<float> value) {
+    for (size_t i = 0; i < N/3; i++) { output.vec[i] = left_vec.vec[i] * value; }
+    return output;
+}
+template<size_t N>
+auto mult_largevec_scalar(const Var<LargeVector<N>>& left_vec, const Var<float>& value) {
+    Var<LargeVector<N>> output;
+    mult_largevec_scalar(output, left_vec, value);
+    return output;
+}
+
+
+// Matrix set
 template<size_t M, size_t N>
 void set_largemat_zero(LargeMatrix<M, N>& left_mat) 
 {
@@ -577,151 +589,9 @@ void set_largemat_identity(LargeMatrix<M, N>& left_mat)
     for (size_t i = 0; i < M/3; i++) 
         left_mat.mat[i][i] = luisa::make_float3x3(1.0f);
 }
-template<size_t M, size_t N>
-LargeMatrix<M, N> add_largemat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
-{
-    LargeMatrix<M, N> output;
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] + right_mat.mat[i][j];
-    return output;
-}
-template<size_t M, size_t N>
-LargeMatrix<M, N> sub_largemat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
-{
-    LargeMatrix<M, N> output;
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] - right_mat.mat[i][j];
-    return output;
-}
-template<size_t M, size_t N>
-LargeMatrix<M, N> mult_largemat(const LargeMatrix<M, N>& left_mat, const float value) {
-    LargeMatrix<M, N> output;
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] * value;
-    return output;
-}
-template<size_t M, size_t N>
-LargeMatrix<M, N> mult_largemat(const float value, const LargeMatrix<M, N>& right_mat) {
-    LargeMatrix<M, N> output;
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = right_mat.mat[i][j] * value;
-    return output;
-}
-template<size_t M, size_t N>
-void mult_largemat(LargeMatrix<M, N>& output, const LargeMatrix<M, N>& left_mat, float value) {
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] * value;
-}
-template<size_t M, size_t N>
-void mult_largemat(LargeMatrix<M, N>& output, float value, const LargeMatrix<M, N>& left_mat) {
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] * value;
-}
-template<size_t M, size_t N, size_t L>
-LargeMatrix<L, N> mult_largemat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<L, M>& right_mat) {
-    LargeMatrix<L, N> result;
-    for (size_t i = 0; i < L/3; i++) {
-        for(size_t j = 0; j < N/3; j++){
-            result.mat[i][j] = luisa::make_float3x3(0.0f);
-            for(size_t k = 0; k < M/3; k++){
-                result.mat[i][j] = result.mat[i][j] + left_mat.mat[k][j] * right_mat.mat[i][k];
-            }
-        }
-    }
-    return result;
-}
-template<size_t M, size_t N, size_t L>
-LargeVector<N> mult_largemat(const LargeMatrix<M, N>& left_mat, const luisa::float3& vec){
-    static_assert(M == 3, "Can not multiply!");
-    LargeVector<N> result;
-    for (size_t i = 0; i < N/3; i++){
-        result.vec[i] = left_mat.mat[0][i] * vec;
-    }
-    return result;
-}
-template<size_t M, size_t N>
-LargeVector<N> mult_largemat(const LargeMatrix<M, N>& left_mat, const LargeVector<M>& vec) {
-    // static_assert(M == L, "Can not multiply!");
-    LargeVector<N> result;
-    for (size_t i = 0; i < N/3; i++) {
-        result.vec[i] = luisa::make_float3(0.0f);
-        for (size_t j = 0; j < M/3; j++){
-            result.vec[i] += left_mat.mat[j][i] * vec.vec[j];
-        }
-    }
-    return result;
-}
-template<size_t M, size_t N, size_t L>
-LargeVector<N> mult_largemat(const luisa::float3& vec, const LargeMatrix<M, N>& right_mat) {
-    static_assert(M == 3, "Can not multiply!");
-    LargeVector<N> result;
-    for (size_t i = 0; i < N/3; i++){
-        result.vec[i] = right_mat.mat[0][i] * vec;
-    }
-    return result;
-}
+// template<size_t M, size_t N> auto get_largemat_zero() { LargeMatrix<M, N> output; set_largemat_zero(output); return output; }
+// template<size_t M, size_t N> auto get_largemat_identity() { LargeMatrix<M, N> output; set_largemat_identity(output); return output; }
 
-
-// some methods
-template<size_t M, size_t N>
-LargeMatrix<N, M> transpose_largemat(const LargeMatrix<M, N>& left_mat) {
-    LargeMatrix<N, M> output;
-    for (size_t i = 0; i < N/3; i++) 
-        for(size_t j = 0; j < M/3; j++)
-            output.mat[i][j] = transpose_mat(left_mat[j][i]);
-    return output;
-}
-template<size_t M, size_t N>
-void set_colomn_largemat(LargeMatrix<M, N>& left_mat, const uint col_idx, const LargeVector<N>& vec) {
-    for (size_t i = 0; i < N/3; i++)
-        left_mat.mat[col_idx/3][i][col_idx%3] = (vec.vec[i]);
-}
-template<size_t M, size_t N>
-LargeVector<N> get_colomn_largemat(LargeMatrix<M, N>& left_mat, const uint col_idx) {
-    LargeVector<N> vec;
-    for (size_t i = 0; i < N/3; i++)
-        vec.vec[i] = left_mat.mat[col_idx/3][i][col_idx%3];
-    return vec;
-}
-template<size_t M, size_t N>
-void set_row_largemat(LargeMatrix<M, N>& left_mat, const size_t row_idx, const LargeVector<M>& vec) {
-    for (size_t i = 0; i < M/3; i++) {
-        auto& mat3x3 = left_mat.mat[i][row_idx/3];
-        mat3x3[0][row_idx%3] = vec.vec[i][0];
-        mat3x3[1][row_idx%1] = vec.vec[i][1];
-        mat3x3[2][row_idx%3] = vec.vec[i][2];
-    }
-}
-template<size_t M, size_t N>
-LargeVector<M> get_row_largemat(const LargeMatrix<M, N>& left_mat, const size_t row_idx) {
-    LargeVector<M> vec;
-    for (size_t i = 0; i < M/3; i++) {
-        auto& mat3x3 = left_mat.mat[i][row_idx/3];
-        vec.vec[i] = luisa::make_float3(
-            mat3x3[0][row_idx%3], 
-            mat3x3[1][row_idx%3], 
-            mat3x3[2][row_idx%3]);
-    }
-    return vec;
-}
-// = left*(right)T
-template<size_t M, size_t N>
-LargeMatrix<M, N> outerProduct(const LargeVector<N>& left_vec, const LargeVector<M>& right_vec){
-    // 对于每一列，拿左向量乘以右向量的对应元素
-    LargeMatrix<M, N> output;
-    for (size_t i = 0; i < M; i++){
-        LargeVector<N> current_culumn = mult_largevec(left_vec, right_vec.vec[i/3][i%3]);
-        set_colomn_largemat(output, i, current_culumn);
-    }  
-    return output;
-} 
-// ========== Var<LargeMatrix<M, N>> methods ==========
 template<size_t M, size_t N>
 void set_largemat_zero(Var<LargeMatrix<M, N>>& left_mat) 
 {
@@ -736,89 +606,59 @@ void set_largemat_identity(Var<LargeMatrix<M, N>>& left_mat)
     for (size_t i = 0; i < M/3; i++) 
         left_mat.mat[i][i] = luisa::make_float3x3(1.0f);
 }
-template<size_t M, size_t N>
-Var<LargeMatrix<M, N>> add_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
-    Var<LargeMatrix<M, N>> output;
-    for (size_t i = 0; i < M/3; i++)
-        for (size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] + right_mat.mat[i][j];
-    return output;
-}
-template<size_t M, size_t N>
-Var<LargeMatrix<M, N>> sub_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
-    Var<LargeMatrix<M, N>> output;
-    for (size_t i = 0; i < M/3; i++)
-        for (size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] - right_mat.mat[i][j];
-    return output;
-}
 
+// Matrix column set/get
 template<size_t M, size_t N>
-void mult_largemat(Var<LargeMatrix<M, N>>& output, const Var<LargeMatrix<M, N>>& left_mat, const Var<float>& value) {
-    for (size_t i = 0; i < M/3; i++) 
-        for(size_t j = 0; j < N/3; j++)
-            output.mat[i][j] = left_mat.mat[i][j] * value;
-}
-template<size_t M, size_t N>
-void mult_largemat(Var<LargeMatrix<M, N>>& output, const Var<float>& value, const Var<LargeMatrix<M, N>>& left_mat) {
-    mult_largemat(output, left_mat, value);
-}
-template<size_t M, size_t N>
-Var<LargeMatrix<M, N>> mult_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<float>& value) {
-    Var<LargeMatrix<M, N>> output;
-    mult_largemat(output, left_mat, value);
-    return output;
-}
-template<size_t M, size_t N>
-Var<LargeMatrix<M, N>> mult_largemat(const Var<float>& value, const Var<LargeMatrix<M, N>>& right_mat) {
-    Var<LargeMatrix<M, N>> output;
-    mult_largemat(output, right_mat, value);
-    return output;
-}
-template<size_t M, size_t N, size_t L>
-Var<LargeMatrix<L, N>> mult_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<L, M>>& right_mat) {
-    Var<LargeMatrix<L, N>> result;
-    for (size_t i = 0; i < L/3; i++) {
-        for (size_t j = 0; j < N/3; j++) {
-            result.mat[i][j] = luisa::compute::make_float3x3(0.0f);
-            for (size_t k = 0; k < M/3; k++) {
-                result.mat[i][j] = result.mat[i][j] + left_mat.mat[k][j] * right_mat.mat[i][k];
-            }
-        }
-    }
-    return result;
-}
-template<size_t M, size_t N>
-Var<LargeMatrix<N, M>> transpose_largemat(const Var<LargeMatrix<M, N>>& left_mat) {
-    Var<LargeMatrix<N, M>> output;
+auto get_colomn_largemat(LargeMatrix<M, N>& left_mat, const uint col_idx) {
+    LargeVector<N> vec;
     for (size_t i = 0; i < N/3; i++)
-        for (size_t j = 0; j < M/3; j++)
-            output.mat[i][j] = transpose_mat(left_mat.mat[j][i]);
-    return output;
+        vec.vec[i] = left_mat.mat[col_idx/3][i][col_idx%3];
+    return vec;
 }
 template<size_t M, size_t N>
-void set_colomn_largemat(Var<LargeMatrix<M, N>>& left_mat, const uint col_idx, const Var<LargeVector<N>>& vec) {
+void set_colomn_largemat(LargeMatrix<M, N>& left_mat, const uint col_idx, const LargeVector<N>& vec) {
     for (size_t i = 0; i < N/3; i++)
         left_mat.mat[col_idx/3][i][col_idx%3] = (vec.vec[i]);
 }
+
 template<size_t M, size_t N>
-Var<LargeVector<N>> get_colomn_largemat(Var<LargeMatrix<M, N>>& left_mat, const uint col_idx) {
+auto get_colomn_largemat(Var<LargeMatrix<M, N>>& left_mat, const uint col_idx) {
     Var<LargeVector<N>> vec;
     for (size_t i = 0; i < N/3; i++)
         vec.vec[i] = left_mat.mat[col_idx/3][i][col_idx%3];
     return vec;
 }
 template<size_t M, size_t N>
-void set_row_largemat(Var<LargeMatrix<M, N>>& left_mat, const size_t row_idx, const Var<LargeVector<M>>& vec) {
+void set_colomn_largemat(Var<LargeMatrix<M, N>>& left_mat, const uint col_idx, const Var<LargeVector<N>>& vec) {
+    for (size_t i = 0; i < N/3; i++)
+        left_mat.mat[col_idx/3][i][col_idx%3] = (vec.vec[i]);
+}
+
+// Matrix row set/get
+template<size_t M, size_t N>
+auto get_row_largemat(const LargeMatrix<M, N>& left_mat, const size_t row_idx) {
+    LargeVector<M> vec;
+    for (size_t i = 0; i < M/3; i++) {
+        auto& mat3x3 = left_mat.mat[i][row_idx/3];
+        vec.vec[i] = luisa::make_float3(
+            mat3x3[0][row_idx%3], 
+            mat3x3[1][row_idx%3], 
+            mat3x3[2][row_idx%3]);
+    }
+    return vec;
+}
+template<size_t M, size_t N>
+void set_row_largemat(LargeMatrix<M, N>& left_mat, const size_t row_idx, const LargeVector<M>& vec) {
     for (size_t i = 0; i < M/3; i++) {
         auto& mat3x3 = left_mat.mat[i][row_idx/3];
         mat3x3[0][row_idx%3] = vec.vec[i][0];
-        mat3x3[1][row_idx%1] = vec.vec[i][1];
+        mat3x3[1][row_idx%3] = vec.vec[i][1];
         mat3x3[2][row_idx%3] = vec.vec[i][2];
     }
 }
+
 template<size_t M, size_t N>
-Var<LargeVector<M>> get_row_largemat(const Var<LargeMatrix<M, N>>& left_mat, const size_t row_idx) {
+auto get_row_largemat(const Var<LargeMatrix<M, N>>& left_mat, const size_t row_idx) {
     Var<LargeVector<M>> vec;
     for (size_t i = 0; i < M/3; i++) {
         auto& mat3x3 = left_mat.mat[i][row_idx/3];
@@ -830,43 +670,246 @@ Var<LargeVector<M>> get_row_largemat(const Var<LargeMatrix<M, N>>& left_mat, con
     return vec;
 }
 template<size_t M, size_t N>
-Var<LargeMatrix<M, N>> outerProduct(const Var<LargeVector<N>>& left_vec, const Var<LargeVector<M>>& right_vec) {
-    Var<LargeMatrix<M, N>> output;
-    for (size_t i = 0; i < M; i++){
-        Var<LargeVector<N>> current_culumn = mult_largevec(left_vec, right_vec.vec[i/3][i%3]);
-        set_colomn_largemat(output, i, current_culumn);
-    }  
+void set_row_largemat(Var<LargeMatrix<M, N>>& left_mat, const size_t row_idx, const Var<LargeVector<M>>& vec) {
+    for (size_t i = 0; i < M/3; i++) {
+        auto& mat3x3 = left_mat.mat[i][row_idx/3];
+        mat3x3[0][row_idx%3] = vec.vec[i][0];
+        mat3x3[1][row_idx%3] = vec.vec[i][1];
+        mat3x3[2][row_idx%3] = vec.vec[i][2];
+    }
+}
+
+
+// Matrix add
+template<size_t M, size_t N>
+auto add_largemat(LargeMatrix<M, N>& output, const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
+{
+    for (size_t i = 0; i < M/3; i++) 
+        for(size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] + right_mat.mat[i][j];
+}
+template<size_t M, size_t N>
+auto sub_largemat(LargeMatrix<M, N>& output, const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
+{
+    for (size_t i = 0; i < M/3; i++) 
+        for(size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] - right_mat.mat[i][j];
+}
+template<size_t M, size_t N>
+auto add_largemat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
+{
+    LargeMatrix<M, N> output;
+    add_largemat(output, left_mat, right_mat);
     return output;
 }
+template<size_t M, size_t N>
+auto sub_largemat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<M, N>& right_mat) 
+{
+    LargeMatrix<M, N> output;
+    sub_largemat(output, left_mat, right_mat);
+    return output;
+}
+
+template<size_t M, size_t N>
+auto add_largemat(Var<LargeMatrix<M, N>>& output, const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
+    for (size_t i = 0; i < M/3; i++)
+        for (size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] + right_mat.mat[i][j];
+}
+template<size_t M, size_t N>
+auto sub_largemat(Var<LargeMatrix<M, N>>& output, const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
+    for (size_t i = 0; i < M/3; i++)
+        for (size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] - right_mat.mat[i][j];
+}
+template<size_t M, size_t N>
+auto add_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
+    Var<LargeMatrix<M, N>> output;
+    add_largemat(output, left_mat, right_mat);
+    return output;
+}
+template<size_t M, size_t N>
+auto sub_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<M, N>>& right_mat) {
+    Var<LargeMatrix<M, N>> output;
+    sub_largemat(output, left_mat, right_mat);
+    return output;
+}
+
+
+// Matrix mult scalar
+template<size_t M, size_t N>
+void mult_largemat_scalar(LargeMatrix<M, N>& output, const LargeMatrix<M, N>& left_mat, float value) {
+    for (size_t i = 0; i < M/3; i++) 
+        for(size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] * value;
+}
+template<size_t M, size_t N>
+auto mult_largemat_scalar(const LargeMatrix<M, N>& left_mat, const float value) {
+    LargeMatrix<M, N> output;
+    mult_largemat_scalar(output, left_mat, value);
+    return output;
+}
+
+
+template<size_t M, size_t N>
+void mult_largemat_scalar(Var<LargeMatrix<M, N>>& output, const Var<LargeMatrix<M, N>>& left_mat, const Var<float>& value) {
+    for (size_t i = 0; i < M/3; i++) 
+        for(size_t j = 0; j < N/3; j++)
+            output.mat[i][j] = left_mat.mat[i][j] * value;
+}
+template<size_t M, size_t N>
+auto mult_largemat_scalar(const Var<LargeMatrix<M, N>>& left_mat, const Var<float>& value) {
+    Var<LargeMatrix<M, N>> output;
+    mult_largemat_scalar(output, left_mat, value);
+    return output;
+}
+
+
+// Matrix mult matrix
 template<size_t M, size_t N, size_t L>
-Var<LargeVector<N>> mult_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<luisa::float3>& vec) {
+auto mult_largemat_mat(LargeMatrix<L, N>& result, const LargeMatrix<M, N>& left_mat, const LargeMatrix<L, M>& right_mat) {
+    for (size_t i = 0; i < L/3; i++) {
+        for (size_t j = 0; j < N/3; j++){
+            result.mat[i][j] = luisa::make_float3x3(0.0f);
+            for (size_t k = 0; k < M/3; k++){
+                result.mat[i][j] = result.mat[i][j] + left_mat.mat[k][j] * right_mat.mat[i][k];
+            }
+        }
+    }
+}
+template<size_t M, size_t N, size_t L>
+auto mult_largemat_mat(const LargeMatrix<M, N>& left_mat, const LargeMatrix<L, M>& right_mat) {
+    LargeMatrix<L, N> result;
+    mult_largemat_mat(result, left_mat, right_mat);
+    return result;
+}
+
+template<size_t M, size_t N, size_t L>
+auto mult_largemat_mat(Var<LargeMatrix<L, N>>& result, const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<L, M>>& right_mat) {
+    for (size_t i = 0; i < L/3; i++) {
+        for (size_t j = 0; j < N/3; j++){
+            result.mat[i][j] = luisa::compute::make_float3x3(0.0f);
+            for(size_t k = 0; k < M/3; k++){
+                result.mat[i][j] = result.mat[i][j] + left_mat.mat[k][j] * right_mat.mat[i][k];
+            }
+        }
+    }
+}
+template<size_t M, size_t N, size_t L>
+auto mult_largemat_mat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeMatrix<L, M>>& right_mat) {
+    Var<LargeMatrix<L, N>> result;
+    mult_largemat_mat(result, left_mat, right_mat);
+    return result;
+}
+
+
+// Matrix mult vec
+template<size_t M, size_t N>
+auto mult_largemat_vec(LargeVector<N>& result, const LargeMatrix<M, N>& left_mat, const luisa::float3& vec){
     static_assert(M == 3, "Can not multiply!");
-    Var<LargeVector<N>> result;
+    for (size_t i = 0; i < N/3; i++){
+        result.vec[i] = left_mat.mat[0][i] * vec;
+    }
+}
+template<size_t M, size_t N>
+auto mult_largemat_vec(const LargeMatrix<M, N>& left_mat, const luisa::float3& vec){
+    static_assert(M == 3, "Can not multiply!");
+    LargeVector<N> result;
+    mult_largemat_vec(result, left_mat, vec);
+    return result;
+}
+
+template<size_t M, size_t N>
+auto mult_largemat_vec(LargeVector<N>& result, const LargeMatrix<M, N>& left_mat, const LargeVector<M>& vec) {
+    // static_assert(M == L, "Can not multiply!");
+    for (size_t i = 0; i < N/3; i++) {
+        result.vec[i] = luisa::make_float3(0.0f);
+        for (size_t j = 0; j < M/3; j++){
+            result.vec[i] += left_mat.mat[j][i] * vec.vec[j];
+        }
+    }
+}
+template<size_t M, size_t N>
+auto mult_largemat_vec(const LargeMatrix<M, N>& left_mat, const LargeVector<M>& vec) {
+    // static_assert(M == L, "Can not multiply!");
+    LargeVector<N> result;
+    mult_largemat_vec(result, left_mat, vec);
+    return result;
+}
+
+template<size_t M, size_t N>
+auto mult_largemat_vec(Var<LargeVector<N>>& result, const Var<LargeMatrix<M, N>>& left_mat, const Var<luisa::float3>& vec) {
+    static_assert(M == 3, "Can not multiply!");
     for (size_t i = 0; i < N/3; i++) {
         result.vec[i] = left_mat.mat[0][i] * vec;
     }
-    return result;
 }
 template<size_t M, size_t N>
-Var<LargeVector<N>> mult_largemat(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeVector<M>>& vec) {
+auto mult_largemat_vec(const Var<LargeMatrix<M, N>>& left_mat, const Var<luisa::float3>& vec) {
+    static_assert(M == 3, "Can not multiply!");
     Var<LargeVector<N>> result;
+    mult_largemat_vec(result, left_mat, vec);
+    return result;
+}
+
+template<size_t M, size_t N>
+auto mult_largemat_vec(Var<LargeVector<N>>& result, const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeVector<M>>& vec) {
     for (size_t i = 0; i < N/3; i++) {
         result.vec[i] = luisa::compute::make_float3(0.0f);
         for (size_t j = 0; j < M/3; j++){
             result.vec[i] += left_mat.mat[j][i] * vec.vec[j];
         }
     }
-    return result;
 }
-template<size_t M, size_t N, size_t L>
-Var<LargeVector<N>> mult_largemat(const Var<luisa::float3>& vec, const Var<LargeMatrix<M, N>>& right_mat) {
-    static_assert(M == 3, "Can not multiply!");
+template<size_t M, size_t N>
+auto mult_largemat_vec(const Var<LargeMatrix<M, N>>& left_mat, const Var<LargeVector<M>>& vec) {
     Var<LargeVector<N>> result;
-    for (size_t i = 0; i < N/3; i++){
-        result.vec[i] = right_mat.mat[0][i] * vec;
-    }
+    mult_largemat_vec(result, left_mat, vec);
     return result;
 }
+
+// Matrix transfer
+template<size_t M, size_t N>
+auto transpose_largemat(const LargeMatrix<M, N>& left_mat) {
+    LargeMatrix<N, M> output;
+    for (size_t i = 0; i < N/3; i++) 
+        for(size_t j = 0; j < M/3; j++)
+            output.mat[i][j] = transpose_mat(left_mat[j][i]);
+    return output;
+}
+template<size_t M, size_t N>
+auto transpose_largemat(const Var<LargeMatrix<M, N>>& left_mat) {
+    Var<LargeMatrix<N, M>> output;
+    for (size_t i = 0; i < N/3; i++)
+        for (size_t j = 0; j < M/3; j++)
+            output.mat[i][j] = transpose_mat(left_mat.mat[j][i]);
+    return output;
+}
+
+
+
+
+// = left*(right)T
+template<size_t M, size_t N>
+auto outer_product_largevec(const LargeVector<N>& left_vec, const LargeVector<M>& right_vec){
+    // 对于每一列，拿左向量乘以右向量的对应元素
+    LargeMatrix<M, N> output;
+    for (size_t i = 0; i < M; i++){
+        LargeVector<N> current_culumn = mult_largevec_scalar(left_vec, right_vec.vec[i/3][i%3]);
+        set_colomn_largemat(output, i, current_culumn);
+    }  
+    return output;
+} 
+template<size_t M, size_t N>
+auto outer_product_largevec(const Var<LargeVector<N>>& left_vec, const Var<LargeVector<M>>& right_vec) {
+    Var<LargeMatrix<M, N>> output;
+    for (size_t i = 0; i < M; i++){
+        Var<LargeVector<N>> current_culumn = mult_largevec_scalar(left_vec, right_vec.vec[i/3][i%3]);
+        set_colomn_largemat(output, i, current_culumn);
+    }  
+    return output;
+}
+
 
 
 inline void print_largevec(const LargeVector<3>& vec)  { luisa::log_info("({})", vec.vec[0]); }
