@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/float_nxn.h"
 #include "SimulationCore/simulation_type.h"
 #include "Utils/buffer_allocator.h"
 #include <vector>
@@ -89,27 +90,35 @@ namespace lcsv
 
 struct CollisionPairVV
 {
-    lcsv::uint2 indices; // vid1:1, vid2:1
-    lcsv::float4 vec1; // normal:3, stiff:1
+    uint2 indices; // vid1:1, vid2:1
+    float4 vec1; // normal:3, stiff:1
+    float3 gradient[2];
+    float3x3 hessian[3];
 };
 struct CollisionPairVE
 {
-    lcsv::uint2 edge; 
+    uint2 edge; 
     uint vid;
     float bary;
-    lcsv::float4 vec1; // normal:3, stiff 1
+    float4 vec1; // normal:3, stiff 1
+    float3 gradient[3];
+    float3x3 hessian[6];
 };
 struct CollisionPairVF
 {
-    lcsv::uint4 indices; // vid:1, face:3
-    lcsv::float4 vec1; // normal:3, stiff:1
-    lcsv::float3 bary; // bary
+    uint4 indices; // vid:1, face:3
+    float4 vec1; // normal:3, stiff:1
+    float3 bary; // bary
+    float3 gradient[4];
+    float3x3 hessian[10];
 };
 struct CollisionPairEE
 {
-    lcsv::uint4 indices;
-    lcsv::float4 vec1; // normal:3, stiff 1
-    lcsv::float4 vec2; // 
+    uint4 indices;
+    float4 vec1; // normal:3, stiff 1
+    float4 bary; // 
+    float3 gradient[4];
+    float3x3 hessian[10];
 };
 
 // enum CollisionListType
@@ -122,10 +131,10 @@ struct CollisionPairEE
 
 }
 
-LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1) {};
-LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1) {};
-LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary) {};
-LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, vec2) {};
+LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, gradient, hessian) {};
 
 
 namespace lcsv 
@@ -150,12 +159,109 @@ namespace CollisionPair
     // inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
     inline auto get_ve_edge_bary (const CollisionPairVE& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
     inline auto get_vf_face_bary (const CollisionPairVF& pair) { return pair.bary; }
-    inline auto get_ee_edge1_bary(const CollisionPairEE& pair) { return pair.vec2.xy(); }
-    inline auto get_ee_edge2_bary(const CollisionPairEE& pair) { return pair.vec2.zw(); }
+    inline auto get_ee_edge1_bary(const CollisionPairEE& pair) { return pair.bary.xy(); }
+    inline auto get_ee_edge2_bary(const CollisionPairEE& pair) { return pair.bary.zw(); }
+
     inline auto get_ve_edge_bary (const Var<CollisionPairVE>& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
     inline auto get_vf_face_bary (const Var<CollisionPairVF>& pair) { return pair.bary; }
-    inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return pair.vec2.xy(); }
-    inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return pair.vec2.zw(); }
+    inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return pair.bary.xy(); }
+    inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return pair.bary.zw(); }
+
+
+inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
+{
+    //  0  1  
+    //     2  
+    //        
+    //           
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+}
+inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
+{
+    //  0   1  
+    //  t1  2  
+    //        
+    //           
+    H.mat[0][0] = hessian[0];
+    H.mat[0][1] = transpose_mat(hessian[1]);
+    H.mat[1][0] = hessian[1];
+    H.mat[1][1] = hessian[2];
+}
+
+inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<6>& hessian, Float9x9& H)
+{
+    //  0  1  2  
+    //     3  4  
+    //        5  
+    //           
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+    hessian[3] = H.mat[2][0];
+    hessian[4] = H.mat[2][1];
+    hessian[5] = H.mat[2][2];
+}
+inline void extract_upper_hessian(float3x3 hessian[6], float9x9& H)
+{
+    //   0   1   2  
+    //  t1   3   4  
+    //  t2  t4   5  
+    //           
+    H.mat[0][0] = hessian[0];
+    H.mat[0][1] = transpose_mat(hessian[1]);
+    H.mat[0][2] = transpose_mat(hessian[2]);
+    H.mat[1][0] = hessian[1];
+    H.mat[1][1] = hessian[2];
+    H.mat[1][2] = transpose_mat(hessian[4]);
+    H.mat[2][0] = hessian[3];
+    H.mat[2][1] = hessian[4];
+    H.mat[2][2] = hessian[5];
+}
+
+inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<10>& hessian, Float12x12& H)
+{
+    
+    //  0  1  2  3
+    //     4  5  6
+    //        7  8
+    //           9
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+    hessian[3] = H.mat[2][0];
+    hessian[4] = H.mat[2][1];
+    hessian[5] = H.mat[2][2];
+    hessian[6] = H.mat[3][0];
+    hessian[7] = H.mat[3][1];
+    hessian[8] = H.mat[3][2];
+    hessian[9] = H.mat[3][3];
+}
+inline void extract_upper_hessian(float3x3 hessian[10], float12x12& H)
+{
+    //  0    1   2   3
+    //  t1   4   5   6
+    //  t2  t5   7   8
+    //  t3  t6  t8   9
+    H.mat[0][0] = hessian[0];
+    H.mat[0][1] = transpose_mat(hessian[1]);
+    H.mat[0][2] = transpose_mat(hessian[2]);
+    H.mat[0][3] = transpose_mat(hessian[3]);
+    H.mat[1][0] = hessian[1];
+    H.mat[1][1] = hessian[2];
+    H.mat[1][2] = transpose_mat(hessian[5]);
+    H.mat[1][3] = transpose_mat(hessian[6]);
+    H.mat[2][0] = hessian[3];
+    H.mat[2][1] = hessian[4];
+    H.mat[2][2] = hessian[5];
+    H.mat[2][3] = transpose_mat(hessian[8]);
+    H.mat[3][0] = hessian[6];
+    H.mat[3][1] = hessian[7];
+    H.mat[3][2] = hessian[8];
+    H.mat[3][3] = hessian[9];
+}
+
 
 } // namespace CollisionPair
 } // namespace lcsv 

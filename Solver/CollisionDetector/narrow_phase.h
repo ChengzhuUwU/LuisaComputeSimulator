@@ -18,6 +18,11 @@ class NarrowPhasesDetector
     using Buffer = luisa::compute::Buffer<T>;
     using Stream = luisa::compute::Stream;
     using Device = luisa::compute::Device;
+
+private:
+    void compile_ccd(luisa::compute::Device& device);
+    void compile_dcd(luisa::compute::Device& device);
+    void compile_energy(luisa::compute::Device& device);
     
 public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
@@ -108,6 +113,41 @@ private:
 
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float>> fn_reset_toi;
+
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint3>, 
+        float, 
+        float
+        > fn_narrow_phase_vf_dcd_query;
+    
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint2>,
+        luisa::compute::BufferView<uint2>, 
+        float, 
+        float
+        > fn_narrow_phase_ee_dcd_query;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<uint3>, 
+        float, 
+        float
+        > fn_narrow_phase_vf_dcd_for_barrier_energy;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<uint2>, 
+        luisa::compute::BufferView<uint2>, 
+        float, 
+        float
+        >  fn_narrow_phase_ee_dcd_for_barrier_energy;
 };
 
 

@@ -326,36 +326,33 @@ enum class EdgeEdgeDistanceType : unsigned char
 //     return bary;
 // }
 
-inline UInt point_triangle_type(
+inline uint point_triangle_type(
     const Vec3f &bary, 
-    const luisa::compute::Uint3& orig_indices, 
-    luisa::compute::Uint3& valid_indices
+    luisa::uint3& valid_indices
     ) 
 {
     Bool3 is_valid = bary == 0.0f;
-    UInt valid_count = 0;
+    uint valid_count = 0;
 
-    $if (is_valid[0]) { valid_indices[valid_count] = orig_indices[0]; valid_count += 1; };
-    $if (is_valid[1]) { valid_indices[valid_count] = orig_indices[1]; valid_count += 1; };
-    $if (is_valid[2]) { valid_indices[valid_count] = orig_indices[2]; valid_count += 1; };
+    $if (is_valid[0]) { valid_indices[valid_count] = 0; valid_count += 1; };
+    $if (is_valid[1]) { valid_indices[valid_count] = 1; valid_count += 1; };
+    $if (is_valid[2]) { valid_indices[valid_count] = 2; valid_count += 1; };
     return valid_count;
 }
 
-inline UInt2 edge_edge_type(
+inline uint2 edge_edge_type(
     const Vec4f &bary, 
-    const luisa::compute::Uint2& orig_indices1, 
-    const luisa::compute::Uint2& orig_indices2, 
-    luisa::compute::Uint2& valid_indices1,
-    luisa::compute::Uint2& valid_indices2
+    luisa::uint2& valid_indices1,
+    luisa::uint2& valid_indices2
     ) 
 {
     Bool4 is_valid = bary == 0.0f;
-    UInt valid_count1 = 0;
-    UInt valid_count2 = 0;
-    $if (is_valid[0]) { valid_indices1[valid_count1] = orig_indices1[0]; valid_count1 += 1; };
-    $if (is_valid[1]) { valid_indices1[valid_count1] = orig_indices1[1]; valid_count1 += 1; };
-    $if (is_valid[2]) { valid_indices2[valid_count2] = orig_indices2[0]; valid_count2 += 1; };
-    $if (is_valid[2]) { valid_indices2[valid_count2] = orig_indices2[1]; valid_count2 += 1; };
+    uint valid_count1 = 0;
+    uint valid_count2 = 0;
+    $if (is_valid[0]) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
+    $if (is_valid[1]) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
+    $if (is_valid[2]) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
+    $if (is_valid[2]) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
     return makeUint2(valid_count1, valid_count2);
 }
 

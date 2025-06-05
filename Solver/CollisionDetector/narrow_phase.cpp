@@ -63,7 +63,7 @@ template <typename T>
 inline void NoKappa_Barrier(T& R, const T& d2, const T& dHat, const T& xi)
 {
     auto x0 = square_scalar(xi);
-    auto x1 = square_scalar(dHat) + T(2)*dHat*xi;
+    auto x1 = square_scalar(dHat) + static_cast<T>(2.0f)*dHat*xi;
     /* Simplified Expr */
     R = -square_scalar(d2 - x0 - x1)*log_scalar((d2 - x0)/x1);
 }
@@ -74,9 +74,9 @@ inline void NoKappa_dBarrier_dD(T& R, const T& d2, const T& dHat, const T& xi)
     auto x1 = d2 - x0;
     auto x2 = square_scalar(dHat);
     auto x3 = dHat*xi;
-    auto x4 = x2 + 2*x3;
+    auto x4 = x2 + static_cast<T>(2.0f)*x3;
     /* Simplified Expr */
-    R = -(2*d2 - 2*x0 - 2*x2 - 4*x3)*log_scalar(x1/x4) - square_scalar(d2 - x0 - x4)/x1;
+    R = -(static_cast<T>(2.0f)*d2 - static_cast<T>(2.0f)*x0 - static_cast<T>(2.0f)*x2 - static_cast<T>(4.0f)*x3)*log_scalar(x1/x4) - square_scalar(d2 - x0 - x4)/x1;
 }
 template <typename T>
 inline void NoKappa_ddBarrier_ddD(T& R, const T& d2, const T& dHat, const T& xi)
@@ -85,12 +85,12 @@ inline void NoKappa_ddBarrier_ddD(T& R, const T& d2, const T& dHat, const T& xi)
     auto x1 = d2 - x0;
     auto x2 = square_scalar(dHat);
     auto x3 = dHat*xi;
-    auto x4 = x2 + 2*x3;
-    auto x5 = 2;
+    auto x4 = x2 + static_cast<T>(2.0f)*x3;
+    auto x5 = static_cast<T>(2.0f);
     /* Simplified Expr */
     R = square_scalar(d2 - x0 - x4)/square_scalar(x1) 
     - x5*log_scalar(x1/x4) 
-    - x5*(2*d2 - 2*x0 - 2*x2 - 4*x3)/x1;
+    - x5*(static_cast<T>(2.0f)*d2 - static_cast<T>(2.0f)*x0 - static_cast<T>(2.0f)*x2 - static_cast<T>(4.0f)*x3)/x1;
 }
 
 } // namespace cipc
@@ -2388,7 +2388,12 @@ inline void edge_edge_mollifier_hessian(const Float3& ea0,
 
 } // namespace DistanceGradient
 
-void NarrowPhasesDetector::compile(luisa::compute::Device& device)
+namespace PNCG
+{
+
+}
+
+void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
 {
     using namespace luisa::compute;
 
@@ -2533,9 +2538,17 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             sa_toi.atomic(0).fetch_min(toi);
         };
     });
+}
+void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
 
+    const uint offset_vv = collision_data->get_vv_count_offset();
+    const uint offset_ve = collision_data->get_ve_count_offset();
+    const uint offset_vf = collision_data->get_vf_count_offset();
+    const uint offset_ee = collision_data->get_ee_count_offset();
 
-    auto fn_narrow_phase_vf_dcd_query = device.compile<1>(
+    fn_narrow_phase_vf_dcd_query = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
         broadphase_list = collision_data->broad_phase_list_vf.view(),
@@ -2549,6 +2562,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
         Var<BufferView<float3>> sa_x_left, 
         Var<BufferView<float3>> sa_x_right,
         Var<BufferView<uint3>> sa_faces_right,
+        Float d_hat,
         Float thickness
     )
     {
@@ -2567,40 +2581,136 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
         $else
         {
             Float3 p =  sa_x_left->read(vid);
-            Float3 t0 = sa_x_right->read(face[0]);
-            Float3 t1 = sa_x_right->read(face[1]);
-            Float3 t2 = sa_x_right->read(face[2]);
+            Float3 face_positions[3] = {
+                sa_x_right->read(face[0]),
+                sa_x_right->read(face[1]),
+                sa_x_right->read(face[2]),
+            };
+            Float3& t0 = face_positions[0];
+            Float3& t1 = face_positions[1];
+            Float3& t2 = face_positions[2];
 
-            Float3 bary = distance::point_triangle_distance_coeff(p, t0, t1, t2);
-            Uint3 valid_face = face;
-            Uint valid_count = distance::point_triangle_type(bary, face, valid_face);
+            Float3 bary = distance::point_triangle_distance_coeff_unclassified(p, t0, t1, t2);
+            uint3 valid_indices = makeUint3(0, 1, 2);
+            uint valid_count = distance::point_triangle_type(bary, valid_indices);
             
             Float3 x = bary[0] * (t0 - p) +
                        bary[1] * (t1 - p) +
                        bary[2] * (t2 - p);
             Float d2 = length_squared_vec(x);
-            $if (d2 < thickness * thickness)
+            $if (d2 < square_scalar(thickness + d_hat))
             {
+                Float d = sqrt_scalar(d2);
+                Float dBdD; Float ddBddD;
+                cipc::NoKappa_dBarrier_dD(dBdD, d2, d_hat, thickness);
+                cipc::NoKappa_ddBarrier_ddD(ddBddD, d2, d_hat, thickness);
+
                 $if (valid_count == 3)
                 {
                     Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
-                    // narrowphase_list_vf->write(idx, makeUint4(vid, valid_face[0], valid_face[1], valid_face[2]));
+                    Var<CollisionPairVF> vf_pair;
+                    vf_pair.indices = makeUint4(vid, face[0], face[1], face[2]);
+                    vf_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                    vf_pair.bary = bary;
+                    {
+                        Float12 G; 
+                        DistanceGradient::point_triangle_distance2_gradient(p, t0, t1, t2, G); // GradiantD
+                        mult_largevec_scalar(G, G, dBdD);                        
+
+                        Float12x12 H;
+                        DistanceGradient::point_triangle_distance2_hessian(p, t0, t1, t2, H); // HessianD
+                        H = add_largemat(
+                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            mult_largemat_scalar(H, dBdD)
+                        );
+
+                        vf_pair.gradient[0] = G.vec[0];
+                        vf_pair.gradient[1] = G.vec[1];
+                        vf_pair.gradient[2] = G.vec[2];
+                        vf_pair.gradient[3] = G.vec[3];
+                        //  0  1  2  3
+                        //     4  5  6
+                        //        7  8
+                        //           9
+                        CollisionPair::write_upper_hessian(vf_pair.hessian, H);
+                    }
                 }
                 $elif (valid_count == 2)
                 {
                     Uint idx = narrowphase_count_ve->atomic(0).fetch_add(1u);
-                    // narrowphase_list_ve->write(idx, makeUint3(vid, valid_face[0], valid_face[1]));
+                    Var<CollisionPairVE> ve_pair;
+                    ve_pair.vid = vid;
+                    ve_pair.edge = makeUint2(
+                        face[valid_indices[0]], 
+                        face[valid_indices[1]]
+                    );
+                    ve_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                    ve_pair.bary = bary[valid_indices[0]];
+                    {
+                        Float9 G; 
+                        DistanceGradient::point_edge_distance2_gradient(p, 
+                            face_positions[valid_indices[0]], 
+                            face_positions[valid_indices[1]], 
+                            G); // GradiantD
+                        mult_largevec_scalar(G, G, dBdD);                        
+
+                        Float9x9 H;
+                        DistanceGradient::point_edge_distance2_hessian(p, 
+                            face_positions[valid_indices[0]], 
+                            face_positions[valid_indices[1]],  
+                            H); // HessianD
+                        H = add_largemat(
+                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            mult_largemat_scalar(H, dBdD)
+                        );
+
+                        ve_pair.gradient[0] = G.vec[0];
+                        ve_pair.gradient[1] = G.vec[1];
+                        ve_pair.gradient[2] = G.vec[2];
+                        //  0  1  2  
+                        //     3  4  
+                        //        5  
+                        //           
+                        CollisionPair::write_upper_hessian(ve_pair.hessian, H);
+                    }
+                    narrowphase_list_ve->write(idx, ve_pair);
                 }
                 $else // valid_count == 1
                 {
                     Uint idx = narrowphase_count_vv->atomic(0).fetch_add(1u);
-                    // narrowphase_list_ve->write(idx, makeUint2(vid, valid_face[0]));
+                    Var<CollisionPairVV> vv_pair;
+                    vv_pair.indices[0] = vid;
+                    vv_pair.indices[1] = valid_indices[0];
+                    vv_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                    {
+                        Float6 G; 
+                        DistanceGradient::point_point_distance2_gradient(p, 
+                            face_positions[valid_indices[0]], 
+                            G); // GradiantD
+                        mult_largevec_scalar(G, G, dBdD);                        
+
+                        Float6x6 H;
+                        DistanceGradient::point_point_distance2_hessian(p, 
+                            face_positions[valid_indices[0]], 
+                            H); // HessianD
+                        H = add_largemat(
+                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            mult_largemat_scalar(H, dBdD)
+                        );
+
+                        vv_pair.gradient[0] = G.vec[0];
+                        vv_pair.gradient[1] = G.vec[1];
+                        //  0  1  
+                        //     2  
+                        CollisionPair::write_upper_hessian(vv_pair.hessian, H);
+                    }
+                    narrowphase_list_vv->write(idx, vv_pair);
                 };
             };
         };
     });
 
-    auto fn_narrow_phase_ee_dcd_query = device.compile<1>(
+    fn_narrow_phase_ee_dcd_query = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
         broadphase_list = collision_data->broad_phase_list_ee.view(),
@@ -2634,28 +2744,65 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             Float3 eb_p0 = (sa_x_b->read(right_edge[0]));
             Float3 eb_p1 = (sa_x_b->read(right_edge[1]));
     
-            Float4 bary = distance::edge_edge_distance_coeff(ea_p0, ea_p1, eb_p0, eb_p1);
+            Float4 bary = distance::edge_edge_distance_coeff_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
             Bool is_ee = all_vec(bary != 0.0f);
-            // Uint2 valid_edge1 = left_edge;
-            // Uint2 valid_edge2 = right_edge;
-            // Uint2 valid_counts = distance::edge_edge_type(bary, left_edge, right_edge, valid_edge1, valid_edge2);
 
             Float3 x0 = bary[0] * ea_p0 + bary[1] * ea_p1;
             Float3 x1 = bary[2] * eb_p0 + bary[3] * eb_p1;
-            Float d2 = length_squared_vec(x1 - x0);
+            Float3 x = x1 - x0;
+            Float d2 = length_squared_vec(x);
 
             $if (d2 < thickness * thickness & is_ee)
             {
+                Float d = sqrt_scalar(d2);
+
+                Float dBdD; Float ddBddD;
+                cipc::NoKappa_dBarrier_dD(dBdD, d2, d_hat, thickness);
+                cipc::NoKappa_ddBarrier_ddD(ddBddD, d2, d_hat, thickness);
+                
                 Uint idx = narrowphase_count_ee->atomic(0).fetch_add(1u);
-                // narrowphase_list_ee->write(idx, makeUint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]));
+                Var<CollisionPairEE> ee_pair;
+                ee_pair.indices = makeUint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
+                ee_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                ee_pair.bary = bary;
+                {
+                    Float12 G; 
+                    DistanceGradient::edge_edge_distance2_gradient(ea_p0, ea_p1, eb_p0, eb_p1, G); // GradiantD
+                    mult_largevec_scalar(G, G, dBdD);                        
+
+                    Float12x12 H;
+                    DistanceGradient::edge_edge_distance2_hessian(ea_p0, ea_p1, eb_p0, eb_p1, H); // HessianD
+                    H = add_largemat(
+                        outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                        mult_largemat_scalar(H, dBdD)
+                    );
+
+                    ee_pair.gradient[0] = G.vec[0];
+                    ee_pair.gradient[1] = G.vec[1];
+                    ee_pair.gradient[2] = G.vec[2];
+                    ee_pair.gradient[3] = G.vec[3];
+                    //  0  1  2  3
+                    //     4  5  6
+                    //        7  8
+                    //           9
+                    CollisionPair::write_upper_hessian(ee_pair.hessian, H);
+                }
+                narrowphase_list_ee->write(idx, ee_pair);
             };
             // Corner case (VV, VE) will only be considered in VF detection
         };
     });
+}
+void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
 
-    // const float d_hat = 1e-3;
-    
-    auto fn_narrow_phase_vf_dcd_for_barrier_energy = device.compile<1>(
+    const uint offset_vv = collision_data->get_vv_count_offset();
+    const uint offset_ve = collision_data->get_ve_count_offset();
+    const uint offset_vf = collision_data->get_vf_count_offset();
+    const uint offset_ee = collision_data->get_ee_count_offset();
+
+    fn_narrow_phase_vf_dcd_for_barrier_energy = device.compile<1>(
     [
         contact_energy = collision_data->contact_energy.view(),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
@@ -2695,16 +2842,13 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             Float3 t2 = sa_x_right->read(face[2]);
 
             Float3 bary = distance::point_triangle_distance_coeff(p, t0, t1, t2);
-            Uint3 valid_face = face;
-            Uint valid_count = distance::point_triangle_type(bary, face, valid_face);
-            
             Float3 x = bary[0] * (t0 - p) +
                        bary[1] * (t1 - p) +
                        bary[2] * (t2 - p);
             Float d2 = length_squared_vec(x);
             $if (d2 < square_scalar(thickness + d_hat))
             {
-                cipc::NoKappa_Barrier(energy, sqrt_scalar(d2), d_hat, thickness);
+                cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
             };
         };
         
@@ -2719,7 +2863,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
         };
     });
 
-    auto fn_narrow_phase_ee_dcd_for_barrier_energy = device.compile<1>(
+    fn_narrow_phase_ee_dcd_for_barrier_energy = device.compile<1>(
     [
         contact_energy = collision_data->contact_energy.view(),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
@@ -2764,7 +2908,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
 
             $if (d2 < square_scalar(thickness + d_hat))
             {
-                cipc::NoKappa_Barrier(energy, sqrt_scalar(d2), d_hat, thickness);
+                cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
             };
         };
 
@@ -2778,8 +2922,19 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
             };
         };
     });
-   
+}
+void NarrowPhasesDetector::compile(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
 
+    const uint offset_vv = collision_data->get_vv_count_offset();
+    const uint offset_ve = collision_data->get_ve_count_offset();
+    const uint offset_vf = collision_data->get_vf_count_offset();
+    const uint offset_ee = collision_data->get_ee_count_offset();
+    
+    compile_ccd(device);
+    compile_dcd(device);
+    compile_energy(device);
 }
 
 void NarrowPhasesDetector::reset_toi(Stream& stream)
