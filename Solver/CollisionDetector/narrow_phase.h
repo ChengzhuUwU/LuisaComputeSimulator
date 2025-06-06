@@ -37,12 +37,22 @@ public:
     }
 
 public:
+    void reset_energy(Stream& stream);
+    float download_energy(Stream& stream, const float kappa);
+
+    void reset_toi(Stream& stream);
+    void host_reset_toi(Stream& stream);
+    float get_global_toi(Stream& stream);
+    void download_broadphase_collision_count(Stream& stream);
+
+public:
     void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
         const Buffer<float3>& sa_x_end_right,
         const Buffer<uint3>& sa_faces_right,
+        const float d_hat, 
         const float thickness);
 
     void narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
@@ -52,12 +62,14 @@ public:
         const Buffer<float3>& sa_x_end_right,
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
+        const float d_hat, 
         const float thickness);
 
     void narrow_phase_dcd_query_from_vf_pair(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
         const Buffer<uint3>& sa_faces_right,
+        const float d_hat, 
         const float thickness);
 
     void narrow_phase_dcd_query_from_ee_pair(Stream& stream, 
@@ -65,14 +77,34 @@ public:
         const Buffer<float3>& sa_x_right, 
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
+        const float d_hat, 
+        const float thickness);
+        
+    void compute_barrier_energy_from_vf(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat,
         const float thickness);
 
+    void compute_barrier_energy_from_ee(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float d_hat,
+        const float thickness);
+
+    
+
+public:
     void host_narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
         const std::vector<float3>& sa_x_begin_left, 
         const std::vector<float3>& sa_x_begin_right, 
         const std::vector<float3>& sa_x_end_left,
         const std::vector<float3>& sa_x_end_right,
         const std::vector<uint3>& sa_faces_right,
+        const float d_hat,
         const float thickness);
 
     void host_narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
@@ -82,12 +114,10 @@ public:
         const std::vector<float3>& sa_x_end_right,
         const std::vector<uint2>& sa_edges_left,
         const std::vector<uint2>& sa_edges_right,
+        const float d_hat,
         const float thickness);
     
-    void reset_toi(Stream& stream);
-    void host_reset_toi(Stream& stream);
-    void download_collision_count(Stream& stream);
-    float get_global_toi(Stream& stream);
+    
 
 public:
     CollisionData<luisa::compute::Buffer>* collision_data;
@@ -95,24 +125,22 @@ public:
 
 private:
     luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<uint3>, float> fn_narrow_phase_vf_ccd_query;
+        luisa::compute::BufferView<uint3>, float, float> fn_narrow_phase_vf_ccd_query;
 
     luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<uint2>,
-        luisa::compute::BufferView<uint2>, float> fn_narrow_phase_ee_ccd_query ;
+        luisa::compute::BufferView<uint2>, float, float> fn_narrow_phase_ee_ccd_query ;
 
-    luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float>> fn_reset_toi;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_energy;
 
 
     luisa::compute::Shader<1, 

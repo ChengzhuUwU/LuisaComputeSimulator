@@ -47,8 +47,8 @@ public:
         mesh_data = mesh_ptr;
         sim_data = xpbd_ptr;
 
-        host_ccd_data = host_ccd_ptr;
-        ccd_data = ccd_ptr;
+        host_collision_data = host_ccd_ptr;
+        collision_data = ccd_ptr;
 
         // Tool class pointer
         mp_lbvh_face = lbvh_face_ptr;
@@ -76,8 +76,8 @@ protected:
     SimulationData<std::vector>*                host_sim_data;
     SimulationData<luisa::compute::Buffer>*     sim_data;
 
-    CollisionData<std::vector>*              host_ccd_data;
-    CollisionData<luisa::compute::Buffer>*   ccd_data;
+    CollisionData<std::vector>*              host_collision_data;
+    CollisionData<luisa::compute::Buffer>*   collision_data;
 
     BufferFiller*   mp_buffer_filler;
     DeviceParallel* mp_device_parallel;
