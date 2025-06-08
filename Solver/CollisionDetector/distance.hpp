@@ -6,6 +6,7 @@
 #define DISTANCE_HPP
 
 // #include <Eigen/Cholesky>
+#include "Core/constant_value.h"
 #include "Core/float_nxn.h"
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_type.h"
@@ -399,8 +400,8 @@ using Mat9x9f = SMatf<9, 9>;
 using Mat9x12f = SMatf<9, 12>;
 using Mat12x12f = SMatf<12, 12>;
 
-const float EPSILON = 1e-8;
-const float FLT_MAX = 1e8;
+// const float EPSILON = 1e-8;
+// const float FLT_MAX = 1e8;
 
 inline bool solve(const Mat2x2f &a, const Vec2f &b, Vec2f &x) {
     float det = a(0, 0) * a(1, 1) - a(1, 0) * a(0, 1);
@@ -419,7 +420,7 @@ inline Vec2f point_edge_distance_coeff(const SVec<T, 3> &p,
                                            const SVec<T, 3> &e1) {
     Vec3f r = (e1 - e0).template cast<float>();
     float d = r.squaredNorm();
-    if (d > EPSILON) {
+    if (d > Epsilon) {
         float x = r.dot((p - e0).template cast<float>()) / d;
         return Vec2f(1.0f - x, x);
     } else {
@@ -559,7 +560,7 @@ inline Vec4f edge_edge_distance_coeff_unclassified(const SVec<T, 3> &ea0,
             Vec4f(1.0f, 0.0f, c1(0), c1(1)), Vec4f(0.0f, 1.0f, c2(0), c2(1)),
             Vec4f(c3(0), c3(1), 1.0f, 0.0f), Vec4f(c4(0), c4(1), 0.0f, 1.0f)};
         unsigned index = 0;
-        float di = FLT_MAX;
+        float di = Float_max;
         for (unsigned i = 0; i < 4; ++i) {
             const auto &c = types[i];
             Vec3f x0 = c(0) * ea0.template cast<float>() +

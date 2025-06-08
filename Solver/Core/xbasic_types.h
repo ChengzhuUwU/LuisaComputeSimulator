@@ -12,6 +12,7 @@
 
 namespace lcsv {
 
+using uint = unsigned int;
 /*
 /// Matrix only allows size of 2, 3, 4
 template<size_t M, size_t N>

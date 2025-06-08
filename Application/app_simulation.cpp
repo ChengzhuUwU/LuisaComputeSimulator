@@ -3,6 +3,7 @@
 
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/narrow_phase.h"
+#include "Core/constant_value.h"
 #include "Initializer/init_collision_data.h"
 #include "MeshOperation/default_mesh.h"
 #include "MeshOperation/mesh_reader.h"
@@ -211,7 +212,7 @@ int main(int argc, char** argv)
                             {
                                 // Rotate
                                 const float h = lcsv::get_scene_params().implicit_dt;
-                                const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(M_PI) * h;
+                                const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(lcsv::Pi) * h;
                                 const Eigen::Vector3d rotAxis(
                                     fixed_point.rotAxis[0],
                                     fixed_point.rotAxis[1],
