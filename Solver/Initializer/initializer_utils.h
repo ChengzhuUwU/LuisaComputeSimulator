@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/xbasic_types.h"
 #include "luisa/core/logging.h"
 #include "luisa/runtime/device.h"
 #include "Utils/buffer_allocator.h"
@@ -58,10 +59,12 @@ inline void fn_graph_coloring_per_vertex(const std::vector< std::vector<uint> >&
     } prefix_vert[clusterd_vertices.size()] = curr_prefix;
 };
 
-inline void fn_graph_coloring_per_constraint(const uint num_elements, const std::string& constraint_name, 
+template <typename T>
+inline void fn_graph_coloring_per_constraint(const std::string& constraint_name, 
     std::vector< std::vector<uint> > & clusterd_constraint, 
-    const std::vector< std::vector<uint> > & vert_adj_elements, const auto& element_indices, const uint nv)
+    const std::vector< std::vector<uint> > & vert_adj_elements, const std::vector<T>& element_indices, const uint numvert_per_element)
 { 
+    const uint num_elements = element_indices.size();
     std::vector< bool > marked_constrains(num_elements, false);
     uint total_marked_count = 0;
 
@@ -101,7 +104,7 @@ inline void fn_graph_coloring_per_constraint(const uint num_elements, const std:
                 // Mark
                 current_marked[id] = true;
                 auto element = element_indices[id];
-                for (uint j = 0; j < nv; j++) 
+                for (uint j = 0; j < numvert_per_element; j++) 
                 {
                     for (const uint& adj_eid : vert_adj_elements[element[j]]) 
                     { 

@@ -23,13 +23,11 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
     std::vector< std::vector<uint> > tmp_clusterd_constraint_bending;
     {
         fn_graph_coloring_per_constraint(
-            mesh_data->num_edges, 
             "Distance  Spring Constraint", 
             tmp_clusterd_constraint_stretch_mass_spring, 
             mesh_data->vert_adj_edges, mesh_data->sa_edges, 2);
 
         fn_graph_coloring_per_constraint(
-            mesh_data->num_bending_edges, 
             "Bending   Angle  Constraint", 
             tmp_clusterd_constraint_bending, 
             mesh_data->vert_adj_bending_edges, mesh_data->sa_bending_edges, 4);
@@ -65,7 +63,6 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
         
         std::vector<std::vector<uint>> tmp_clusterd_hessian_set;
         fn_graph_coloring_per_constraint(
-            mesh_data->num_bending_edges, 
             "SpMV non-conlict set", 
             tmp_clusterd_hessian_set, 
             vert_adj_upper_verts, upper_matrix_elements, 2);

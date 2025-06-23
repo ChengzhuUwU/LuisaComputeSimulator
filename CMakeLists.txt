@@ -26,9 +26,9 @@ if (NOT TARGET luisa::compute)
     set(LUISA_COMPUTE_USE_SYSTEM_STL ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_RUST OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
-    set(LUISA_COMPUTE_ENABLE_DX  OFF CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_DX  ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_CUDA  OFF CACHE BOOL "" FORCE)
-    set(LUISA_COMPUTE_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_REMOTE OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_GUI ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_WAYLAND ON CACHE BOOL "" FORCE)
@@ -101,9 +101,9 @@ target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${C
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
 if(WIN32)
-set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
-set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
+# set(CMAKE_BUILD_TYPE Release)
+# set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
 endif()
 
 find_package(Eigen3 REQUIRED)

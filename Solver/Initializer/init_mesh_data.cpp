@@ -26,10 +26,10 @@ void init_mesh_data(
     mesh_data->num_edges = 0;
     mesh_data->num_bending_edges = 0;
 
-    mesh_data->prefix_num_verts.resize(num_clothes, 0);
-    mesh_data->prefix_num_faces.resize(num_clothes, 0);
-    mesh_data->prefix_num_edges.resize(num_clothes, 0);
-    mesh_data->prefix_num_bending_edges.resize(num_clothes, 0);
+    mesh_data->prefix_num_verts.resize(1 + num_clothes, 0);
+    mesh_data->prefix_num_faces.resize(1 + num_clothes, 0);
+    mesh_data->prefix_num_edges.resize(1 + num_clothes, 0);
+    mesh_data->prefix_num_bending_edges.resize(1 + num_clothes, 0);
 
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
