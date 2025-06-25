@@ -2458,7 +2458,7 @@ void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    luisa::log_info("num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
+    luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 }
 float NarrowPhasesDetector::get_global_toi(Stream& stream)
 {

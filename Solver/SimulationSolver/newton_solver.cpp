@@ -604,6 +604,101 @@ void NewtonSolver::compile(luisa::compute::Device& device)
     );
 }
 
+using EigenFloat3x3 = Eigen::Matrix<float, 3, 3>;
+using EigenFloat6x6 = Eigen::Matrix<float, 6, 6>;
+using EigenFloat9x9 = Eigen::Matrix<float, 9, 9>;
+using EigenFloat12x12 = Eigen::Matrix<float, 12, 12>;
+using EigenFloat3   = Eigen::Matrix<float, 3, 1>;
+EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
+{
+    EigenFloat3x3 mat; mat << 
+        input[0][0], input[1][0], input[2][0], 
+        input[0][1], input[1][1], input[2][1], 
+        input[0][2], input[1][2], input[2][2]; 
+    return mat;
+};
+float3x3 eigen3x3_to_float3x3(const EigenFloat3x3& input)
+{
+    return luisa::make_float3x3(
+        input(0, 0), input(1, 0), input(2, 0), 
+        input(0, 1), input(1, 1), input(2, 1), 
+        input(0, 2), input(1, 2), input(2, 2));
+};
+EigenFloat6x6 float6x6_to_eigen6x6(const float6x6& input)
+{
+    EigenFloat6x6 output;
+    for (uint i = 0; i < 2; ++i) 
+    {
+        for (uint j = 0; j < 2; ++j) 
+        {
+            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
+        }
+    }
+    return output;
+};
+float6x6 eigen6x6_to_float6x6(const EigenFloat6x6& input)
+{
+    float6x6 output;
+    for (uint i = 0; i < 2; ++i) 
+    {
+        for (uint j = 0; j < 2; ++j) 
+        {
+            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
+        }
+    }
+    return output;
+};
+EigenFloat9x9 float9x9_to_eigen9x9(const float9x9& input)
+{
+    EigenFloat9x9 output;
+    for (uint i = 0; i < 3; ++i) 
+    {
+        for (uint j = 0; j < 3; ++j) 
+        {
+            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
+        }
+    }
+    return output;
+};
+float9x9 eigen9x9_to_float9x9(const EigenFloat9x9& input)
+{
+    float9x9 output;
+    for (uint i = 0; i < 3; ++i) 
+    {
+        for (uint j = 0; j < 3; ++j) 
+        {
+            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
+        }
+    }
+    return output;
+};
+EigenFloat12x12 float12x12_to_eigen12x12(const float12x12 input)
+{
+    EigenFloat12x12 output;
+    for (uint i = 0; i < 4; ++i) 
+    {
+        for (uint j = 0; j < 4; ++j) 
+        {
+            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
+        }
+    }
+    return output;
+};
+float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
+{
+    float12x12 output;
+    for (uint i = 0; i < 4; ++i) 
+    {
+        for (uint j = 0; j < 4; ++j) 
+        {
+            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
+        }
+    }
+    return output;
+};
+EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
+float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
+
 // SPD projection
 template<int N>
 Eigen::Matrix<float, N, N> spd_projection(const Eigen::Matrix<float, N, N>& orig_matrix)
@@ -681,7 +776,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
     };
     
-    constexpr bool use_eigen = false;
+    constexpr bool use_eigen = true;
     constexpr bool use_upper_triangle = false;
 
     const uint curr_frame = get_scene_params().current_frame;
@@ -706,27 +801,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         sa_cgZ.resize(num_verts);
         
     }
-
-    
-
-    using EigenFloat3x3 = Eigen::Matrix<float, 3, 3>;
-    using EigenFloat3   = Eigen::Matrix<float, 3, 1>;
-    auto float3x3_to_eigen3x3 = [](const float3x3& input)
-    {
-        EigenFloat3x3 mat; mat << 
-            input[0][0], input[1][0], input[2][0], 
-            input[0][1], input[1][1], input[2][1], 
-            input[0][2], input[1][2], input[2][2]; return mat;
-    };
-    auto eigen3x3_to_float3x3 = [](const EigenFloat3x3& input)
-    {
-        return luisa::make_float3x3(
-            input(0, 0), input(1, 0), input(2, 0), 
-            input(0, 1), input(1, 1), input(2, 1), 
-            input(0, 2), input(1, 2), input(2, 2));
-    };
-    auto float3_to_eigen3 = [](const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
-    auto eigen3_to_float3 = [](const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
 
     static Eigen::SparseMatrix<float> eigen_cgA;
     static Eigen::SparseMatrix<float> springA;
@@ -1014,6 +1088,165 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             eigen_cgA += springA;
         }
     };
+    auto evaluete_self_collision = [&]()
+    {
+        auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+        const uint num_vv = host_count[collision_data->get_vv_count_offset()];
+        const uint num_ve = host_count[collision_data->get_ve_count_offset()];
+        const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+        const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+        
+        if constexpr (use_eigen) 
+        {
+            std::vector<Eigen::Triplet<float>> triplets_vv(num_vv * 36);
+            std::vector<Eigen::Triplet<float>> triplets_ve(num_ve * 81);
+            std::vector<Eigen::Triplet<float>> triplets_vf(num_vf * 144);
+            std::vector<Eigen::Triplet<float>> triplets_ee(num_ee * 144);
+
+            static Eigen::SparseMatrix<float> eigen_cgA_vv;
+            static Eigen::SparseMatrix<float> eigen_cgA_ve;
+            static Eigen::SparseMatrix<float> eigen_cgA_vf;
+            static Eigen::SparseMatrix<float> eigen_cgA_ee;
+            eigen_cgA_vv.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_vv.reserve(triplets_vv.size());
+            eigen_cgA_ve.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_ve.reserve(triplets_ve.size());
+            eigen_cgA_vf.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_vf.reserve(triplets_vf.size());
+            eigen_cgA_ee.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_ee.reserve(triplets_ee.size());
+
+            CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
+                uint2& indices = pair.indices;
+                float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+                auto proj_H = spd_projection(float6x6_to_eigen6x6(H));
+                for (uint i = 0; i < 2; ++i) 
+                {
+                    for (uint j = 0; j < 2; ++j) 
+                    {
+                        uint prefix = pair_idx * 36 + i * 18 + j * 9;
+                        for (int ii = 0; ii < 3; ++ii)
+                        {
+                            for (int jj = 0; jj < 3; ++jj) 
+                            {
+                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                    3 * pair.indices[i] + ii, 
+                                    3 * pair.indices[j] + jj, 
+                                    proj_H(ii + i * 3, jj + j * 3));
+                            }
+                        }
+                    }
+                }
+            });
+            CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
+                uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
+                float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+                auto proj_H = spd_projection(float9x9_to_eigen9x9(H));
+                for (uint i = 0; i < 3; ++i) 
+                {
+                    for (uint j = 0; j < 3; ++j) 
+                    {
+                        uint prefix = pair_idx * 81 + i * 27 + j * 9;
+                        for (int ii = 0; ii < 3; ++ii)
+                        {
+                            for (int jj = 0; jj < 3; ++jj) 
+                            {
+                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                    3 * indices[i] + ii, 
+                                    3 * indices[j] + jj, 
+                                    proj_H(ii + i * 3, jj + j * 3));
+                            }
+                        }
+                    }
+                }
+            });
+            CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
+                uint4& indices = pair.indices;
+                float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+                auto proj_H = spd_projection(float12x12_to_eigen12x12(H));
+                for (uint i = 0; i < 4; ++i) 
+                {
+                    for (uint j = 0; j < 4; ++j) 
+                    {
+                        uint prefix = pair_idx * 144 + i * 36 + j * 9;
+                        for (int ii = 0; ii < 3; ++ii)
+                        {
+                            for (int jj = 0; jj < 3; ++jj) 
+                            {
+                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                    3 * indices[i] + ii, 
+                                    3 * indices[j] + jj, 
+                                    proj_H(ii + i * 3, jj + j * 3));
+                            }
+                        }
+                    }
+                }
+            });
+            CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
+                uint4& indices = pair.indices;
+                float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+                auto proj_H = spd_projection(float12x12_to_eigen12x12(H));
+                for (uint i = 0; i < 4; ++i) 
+                {
+                    for (uint j = 0; j < 4; ++j) 
+                    {
+                        uint prefix = pair_idx * 144 + i * 36 + j * 9;
+                        for (int ii = 0; ii < 3; ++ii)
+                        {
+                            for (int jj = 0; jj < 3; ++jj) 
+                            {
+                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                    3 * indices[i] + ii, 
+                                    3 * indices[j] + jj, 
+                                    proj_H(ii + i * 3, jj + j * 3));
+                            }
+                        }
+                    }
+                }
+            });
+            CpuParallel::single_thread_for(0, num_vv, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
+
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+            });
+            CpuParallel::single_thread_for(0, num_ve, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
+                eigen_cgB.segment<3>(3 * pair.vid) += float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.edge[0]) += float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.edge[1]) += float3_to_eigen3(pair.gradient[2]);
+            });
+            CpuParallel::single_thread_for(0, num_vf, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
+                eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+            });
+            CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
+            {
+                auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
+                eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+            });
+            
+            eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
+            eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
+            eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
+            eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
+            eigen_cgA += eigen_cgA_vv + eigen_cgA_ve + eigen_cgA_vf + eigen_cgA_ee;
+        }
+    };
 
     const float thickness = 0;
     const float d_hat = 1e-2;
@@ -1149,6 +1382,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         narrowphase_dcd();
 
         mp_narrowphase_detector->download_narrowphase_collision_count(stream);
+
+        stream 
+            << collision_data->narrow_phase_list_vv.copy_to(host_collision_data->narrow_phase_list_vv.data()) 
+            << collision_data->narrow_phase_list_ve.copy_to(host_collision_data->narrow_phase_list_ve.data()) 
+            << collision_data->narrow_phase_list_vf.copy_to(host_collision_data->narrow_phase_list_vf.data()) 
+            << collision_data->narrow_phase_list_ee.copy_to(host_collision_data->narrow_phase_list_ee.data()) 
+            << luisa::compute::synchronize();
+
+
     };
     auto ccd_line_search = [&]() -> float
     {
@@ -1539,7 +1781,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
-    const bool use_ipc = false;
+    const bool use_ipc = true;
 
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
@@ -1562,6 +1804,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 evaluate_inertia(substep_dt);
 
                 evaluete_spring(1e4);
+
+                evaluete_self_collision();
             }
             linear_solver_interface();
 
