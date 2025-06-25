@@ -10,6 +10,7 @@
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 #include "luisa/backends/ext/pinned_memory_ext.hpp"
+#include "luisa/runtime/stream.h"
 #include <luisa/dsl/sugar.h>
 
 namespace lcsv 
@@ -1146,6 +1147,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         broadphase_dcd();
         
         narrowphase_dcd();
+
+        mp_narrowphase_detector->download_narrowphase_collision_count(stream);
     };
     auto ccd_line_search = [&]() -> float
     {
@@ -1536,7 +1539,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
-    const bool use_ipc = true;
+    const bool use_ipc = false;
 
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)

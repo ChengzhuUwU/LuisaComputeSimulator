@@ -2444,6 +2444,22 @@ void NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
     // luisa::log_info("num_vf_broadphase = {}", num_vf_broadphase); // TODO: Indirect Dispatch
     // luisa::log_info("num_ee_broadphase = {}", num_ee_broadphase); // TODO: Indirect Dispatch
 }
+void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
+{
+    auto narrowphase_count = collision_data->narrow_phase_collision_count.view();
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+    stream 
+        << narrowphase_count.copy_to(host_count.data()) 
+        << luisa::compute::synchronize();
+
+    const uint num_vv = host_count[collision_data->get_vv_count_offset()];
+    const uint num_ve = host_count[collision_data->get_ve_count_offset()];
+    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+
+    luisa::log_info("num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
+}
 float NarrowPhasesDetector::get_global_toi(Stream& stream)
 {
     stream << luisa::compute::synchronize();
@@ -2983,6 +2999,14 @@ void NarrowPhasesDetector::narrow_phase_dcd_query_from_vf_pair(Stream& stream,
     const float d_hat,
     const float thickness)
 {
+    auto broadphase_count = collision_data->broad_phase_collision_count.view();
+    auto& host_count = host_collision_data->broad_phase_collision_count;
+
+    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+
+    stream << 
+        fn_narrow_phase_vf_dcd_query(sa_x_left, sa_x_right, sa_faces_right, d_hat, thickness).dispatch(num_vf_broadphase);
 
 }
 
@@ -2994,7 +3018,14 @@ void NarrowPhasesDetector::narrow_phase_dcd_query_from_ee_pair(Stream& stream,
     const float d_hat,
     const float thickness)
 {
+    auto broadphase_count = collision_data->broad_phase_collision_count.view();
+    auto& host_count = host_collision_data->broad_phase_collision_count;
 
+    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+
+    stream << 
+        fn_narrow_phase_ee_dcd_query(sa_x_left, sa_x_right, sa_edges_left, sa_edges_right, d_hat, thickness).dispatch(num_ee_broadphase);
 }
 
 } // namespace lcsv 

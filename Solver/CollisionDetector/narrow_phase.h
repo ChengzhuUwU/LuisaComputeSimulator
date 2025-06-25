@@ -44,6 +44,7 @@ public:
     void host_reset_toi(Stream& stream);
     float get_global_toi(Stream& stream);
     void download_broadphase_collision_count(Stream& stream);
+    void download_narrowphase_collision_count(Stream& stream);
 
 public:
     void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
