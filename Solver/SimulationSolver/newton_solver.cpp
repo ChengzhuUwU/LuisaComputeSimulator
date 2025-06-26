@@ -1088,6 +1088,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             eigen_cgA += springA;
         }
     };
+
+    const float thickness = 0;
+    const float d_hat = 1e-2;
+    const float kappa = 1e5;
+
     auto evaluete_self_collision = [&]()
     {
         auto& host_count = host_collision_data->narrow_phase_collision_count;
@@ -1118,7 +1123,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
                 uint2& indices = pair.indices;
                 float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                auto proj_H = spd_projection(float6x6_to_eigen6x6(H));
+                EigenFloat6x6 proj_H = spd_projection(float6x6_to_eigen6x6(H));
                 for (uint i = 0; i < 2; ++i) 
                 {
                     for (uint j = 0; j < 2; ++j) 
@@ -1142,7 +1147,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
                 uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
                 float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                auto proj_H = spd_projection(float9x9_to_eigen9x9(H));
+                EigenFloat9x9 proj_H = spd_projection(float9x9_to_eigen9x9(H));
                 for (uint i = 0; i < 3; ++i) 
                 {
                     for (uint j = 0; j < 3; ++j) 
@@ -1152,7 +1157,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                         {
                             for (int jj = 0; jj < 3; ++jj) 
                             {
-                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                triplets_ve[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
                                     3 * indices[i] + ii, 
                                     3 * indices[j] + jj, 
                                     proj_H(ii + i * 3, jj + j * 3));
@@ -1164,9 +1169,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-                uint4& indices = pair.indices;
+                uint4& indices = pair.indices;  luisa::log_info("Get VF Pair : indices = {}", indices);;
                 float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                auto proj_H = spd_projection(float12x12_to_eigen12x12(H));
+                EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
+                
                 for (uint i = 0; i < 4; ++i) 
                 {
                     for (uint j = 0; j < 4; ++j) 
@@ -1176,7 +1182,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                         {
                             for (int jj = 0; jj < 3; ++jj) 
                             {
-                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                triplets_vf[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
                                     3 * indices[i] + ii, 
                                     3 * indices[j] + jj, 
                                     proj_H(ii + i * 3, jj + j * 3));
@@ -1188,9 +1194,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-                uint4& indices = pair.indices;
+                uint4& indices = pair.indices; luisa::log_info("Get VF Pair : indices = {}", indices);;
                 float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                auto proj_H = spd_projection(float12x12_to_eigen12x12(H));
+                EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
                 for (uint i = 0; i < 4; ++i) 
                 {
                     for (uint j = 0; j < 4; ++j) 
@@ -1200,7 +1206,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                         {
                             for (int jj = 0; jj < 3; ++jj) 
                             {
-                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                triplets_ee[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
                                     3 * indices[i] + ii, 
                                     3 * indices[j] + jj, 
                                     proj_H(ii + i * 3, jj + j * 3));
@@ -1212,46 +1218,41 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             CpuParallel::single_thread_for(0, num_vv, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
             });
             CpuParallel::single_thread_for(0, num_ve, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.vid) += float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.edge[0]) += float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.edge[1]) += float3_to_eigen3(pair.gradient[2]);
+                eigen_cgB.segment<3>(3 * pair.vid)     += kappa * float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.edge[0]) += kappa * float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.edge[1]) += kappa * float3_to_eigen3(pair.gradient[2]);
             });
             CpuParallel::single_thread_for(0, num_vf, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
-                eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.indices[2]) += kappa * float3_to_eigen3(pair.gradient[2]);
+                eigen_cgB.segment<3>(3 * pair.indices[3]) += kappa * float3_to_eigen3(pair.gradient[3]);
             });
             CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
             {
                 auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
-                eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
+                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
+                eigen_cgB.segment<3>(3 * pair.indices[2]) += kappa * float3_to_eigen3(pair.gradient[2]);
+                eigen_cgB.segment<3>(3 * pair.indices[3]) += kappa * float3_to_eigen3(pair.gradient[3]);
             });
             
             eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
             eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
             eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
             eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
-            eigen_cgA += eigen_cgA_vv + eigen_cgA_ve + eigen_cgA_vf + eigen_cgA_ee;
+            eigen_cgA += kappa * eigen_cgA_vv + kappa * eigen_cgA_ve + kappa * eigen_cgA_vf + kappa * eigen_cgA_ee;
         }
     };
 
-    const float thickness = 0;
-    const float d_hat = 1e-2;
-    const float kappa = 1e5;
-    
     auto broadphase_ccd = [&]()
     {
         const float ccd_query_range = d_hat + thickness;
@@ -1334,8 +1335,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     host_mesh_data->sa_edges, 
         //     1e-3);
 
-        mp_narrowphase_detector->reset_toi(stream);
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+        
 
         mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
             sim_data->sa_x_iter_start, 
@@ -1377,20 +1377,17 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // << luisa::compute::synchronize()
             ;
 
+        mp_narrowphase_detector->reset_broadphase_count(stream);
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
+
         broadphase_dcd();
         
         narrowphase_dcd();
 
         mp_narrowphase_detector->download_narrowphase_collision_count(stream);
+        mp_narrowphase_detector->download_narrowphase_list(stream);
 
-        stream 
-            << collision_data->narrow_phase_list_vv.copy_to(host_collision_data->narrow_phase_list_vv.data()) 
-            << collision_data->narrow_phase_list_ve.copy_to(host_collision_data->narrow_phase_list_ve.data()) 
-            << collision_data->narrow_phase_list_vf.copy_to(host_collision_data->narrow_phase_list_vf.data()) 
-            << collision_data->narrow_phase_list_ee.copy_to(host_collision_data->narrow_phase_list_ee.data()) 
-            << luisa::compute::synchronize();
-
-
+        
     };
     auto ccd_line_search = [&]() -> float
     {
@@ -1399,8 +1396,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
             // << luisa::compute::synchronize()
             ;
+        mp_narrowphase_detector->reset_broadphase_count(stream);
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
 
         broadphase_ccd();
+
+        mp_narrowphase_detector->reset_toi(stream);
+        mp_narrowphase_detector->download_broadphase_collision_count(stream);
         
         narrowphase_ccd();
         
@@ -1414,17 +1416,20 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x.copy_from(sa_x.data());
 
         mp_narrowphase_detector->reset_energy(stream);
+
         mp_narrowphase_detector->compute_barrier_energy_from_vf(stream, 
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_faces, 
             d_hat, thickness);
+
         mp_narrowphase_detector->compute_barrier_energy_from_ee(stream, 
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_edges, 
             mesh_data->sa_edges, 
             d_hat, thickness);
+
         return mp_narrowphase_detector->download_energy(stream, kappa);
         // return 0.0f;
     };
@@ -1733,9 +1738,16 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         if (solver.info() != Eigen::Success) { luisa::log_error("Eigen: Solve failed in {} iterations", solver.iterations()); }
         else 
         {
-            luisa::log_info("  In non-linear iter {}, Eigen-PCG : iter-count = {}, relative error = {}", 
-                    get_scene_params().current_nonlinear_iter,
-                    solver.iterations(), solver.error());
+            apply_dx(1.0f);
+            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+            {
+                sa_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
+            });
+
+            apply_dx(1.0f);
+            luisa::log_info("  In non-linear iter {:2}, Eigen-PCG : iter-count = {}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:8.6f}", 
+                get_scene_params().current_nonlinear_iter, solver.iterations(),
+                solver.error(), fast_infinity_norm(sa_cgX), host_compute_energy(sa_x, sa_x_tilde)); // from normR_0 -> normR
         }
     };
     auto eigen_decompose_solve = [&]()
@@ -1757,9 +1769,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         else
         {
             float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
-            luisa::log_info("  In non-linear iter {}, Eigen-Decompose : relative error = {}", 
-                    get_scene_params().current_nonlinear_iter,
-                    error);
+            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+            {
+                sa_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
+            });
+
+            apply_dx(1.0f);
+            luisa::log_info("  In non-linear iter {:2}, Eigen-Decompose : rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:8.6f}", 
+                get_scene_params().current_nonlinear_iter, 
+                error, fast_infinity_norm(sa_cgX), host_compute_energy(sa_x, sa_x_tilde)); // from normR_0 -> normR
         }
     };
     auto linear_solver_interface = [&]()
@@ -1768,10 +1786,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         {
             // eigen_iter_solve();
             eigen_decompose_solve();
-            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-            {
-                sa_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
-            });
         } 
         else 
         {
@@ -1788,9 +1802,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         predict_position(substep_dt);
         
-        auto prev_state_energy = Float_max;
+        luisa::log_info("In frame {} : ", get_scene_params().current_frame); 
 
-        luisa::log_info("In frame {} : ", get_scene_params().current_frame);
+        update_barrier_set();
+        auto barrier_nergy = compute_barrier_energy_from_broadphase_list();
+        
+        double prev_state_energy = host_compute_energy(sa_x_step_start, sa_x_tilde) + barrier_nergy;
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -1845,6 +1862,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     curr_energy += barrier_nergy;
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}, barrier energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy, barrier_nergy);
+                    
+                    if (alpha < 1e-3) 
+                    {
+                        luisa::log_error("  Line search failed, energy = {}, barrier energy = {}, prev state energy = {}", 
+                            curr_energy, barrier_nergy, prev_state_energy);
+                    }
                 }
 
                 prev_state_energy = curr_energy; // E_prev = E

@@ -930,7 +930,7 @@ void LBVH::broad_phase_query_from_verts(
     const float thickness)
 {
     stream
-        << fn_reset_collision_count(broadphase_count).dispatch(1)
+        // << fn_reset_collision_count(broadphase_count).dispatch(1)
         << fn_query_from_verts(
             sa_x_begin, 
             sa_x_end, 
@@ -948,7 +948,7 @@ void LBVH::broad_phase_query_from_edges(
     const float thickness)
 {
     stream
-        << fn_reset_collision_count(broadphase_count).dispatch(1)
+        // << fn_reset_collision_count(broadphase_count).dispatch(1)
         << fn_query_from_edges(
             sa_x_begin, 
             sa_x_end, 

@@ -42,9 +42,12 @@ public:
 
     void reset_toi(Stream& stream);
     void host_reset_toi(Stream& stream);
+    void reset_broadphase_count(Stream& stream);
+    void reset_narrowphase_count(Stream& stream);
     float get_global_toi(Stream& stream);
     void download_broadphase_collision_count(Stream& stream);
     void download_narrowphase_collision_count(Stream& stream);
+    void download_narrowphase_list(Stream& stream);
 
 public:
     void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
@@ -142,6 +145,8 @@ private:
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_energy;
+    luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_uint;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
 
 
     luisa::compute::Shader<1, 

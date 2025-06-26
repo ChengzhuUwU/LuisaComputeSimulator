@@ -2410,6 +2410,14 @@ void NarrowPhasesDetector::reset_toi(Stream& stream)
     auto& sa_toi = collision_data->toi_per_vert;
     stream << fn_reset_toi(sa_toi).dispatch(sa_toi.size());
 }
+void NarrowPhasesDetector::reset_broadphase_count(Stream& stream)
+{
+    stream << fn_reset_uint(collision_data->broad_phase_collision_count).dispatch(collision_data->broad_phase_collision_count.size());
+}
+void NarrowPhasesDetector::reset_narrowphase_count(Stream& stream)
+{
+    stream << fn_reset_uint(collision_data->narrow_phase_collision_count).dispatch(collision_data->narrow_phase_collision_count.size());
+}
 void NarrowPhasesDetector::reset_energy(Stream& stream)
 {
     auto& contact_energy = collision_data->contact_energy;
@@ -2452,6 +2460,11 @@ void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
     stream 
         << narrowphase_count.copy_to(host_count.data()) 
         << luisa::compute::synchronize();
+}
+void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
+{
+    auto narrowphase_count = collision_data->narrow_phase_collision_count.view();
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
 
     const uint num_vv = host_count[collision_data->get_vv_count_offset()];
     const uint num_ve = host_count[collision_data->get_ve_count_offset()];
@@ -2459,6 +2472,15 @@ void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
     luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
+
+    stream 
+            << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) 
+            << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data()) 
+            << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data()) 
+            << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data()) 
+            << luisa::compute::synchronize();
+
+    // luisa::log_info("Complete Download");
 }
 float NarrowPhasesDetector::get_global_toi(Stream& stream)
 {
@@ -2487,6 +2509,14 @@ void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
     fn_reset_toi = device.compile<1>([](Var<BufferView<float>> sa_toi)
     {
         sa_toi->write(dispatch_x(), accd::line_search_max_t);
+    });
+    fn_reset_uint = device.compile<1>([](Var<BufferView<uint>> sa_toi)
+    {
+        sa_toi->write(dispatch_x(), 0u);
+    });
+    fn_reset_float = device.compile<1>([](Var<BufferView<float>> sa_toi)
+    {
+        sa_toi->write(dispatch_x(), 0.0f);
     });
     fn_reset_energy = device.compile<1>([](Var<BufferView<float>> sa_energy)
     {
@@ -2831,6 +2861,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                         //           9
                         CollisionPair::write_upper_hessian(vf_pair.hessian, H);
                     }
+                    narrowphase_list_vf->write(idx, vf_pair);
                 }
                 $elif (valid_count == 2)
                 {
