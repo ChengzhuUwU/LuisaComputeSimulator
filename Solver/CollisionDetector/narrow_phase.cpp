@@ -3120,8 +3120,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             $if (d2 < square_scalar(thickness + d_hat))
             {
                 cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
-                device_log("pair {} 's energy = {}, d = {}, d_hat = {}, vert = {}, face = {}", 
-                    pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, vid, face);
+                // device_log("pair {} 's energy = {}, d = {}, d_hat = {}, vert = {}, face = {}", 
+                //     pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, vid, face);
             };
         };
         
@@ -3182,8 +3182,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             $if (d2 < square_scalar(thickness + d_hat))
             {
                 cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
-                device_log("pair {} 's energy = {}, d = {}, d_hat = {}, edge1 = {}, edge2 = {}", 
-                    pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, left_edge, right_edge);
+                // device_log("pair {} 's energy = {}, d = {}, d_hat = {}, edge1 = {}, edge2 = {}", 
+                //     pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, left_edge, right_edge);
             };
         };
 

@@ -234,41 +234,41 @@ inline auto edge_edge_distance_squared_unclassified(
 namespace distance 
 {
 
-enum class PointPointDistanceType : unsigned char
-{
-    PP = 0,  // point-point, the shortest distance is the distance between the two points
-};
+// enum class PointPointDistanceType : unsigned char
+// {
+//     PP = 0,  // point-point, the shortest distance is the distance between the two points
+// };
 
-enum class PointEdgeDistanceType : unsigned char
-{
-    PP_PE0 = 0,  // point-edge, the shortest distance is the distance between the point and the point 0 in edge
-    PP_PE1 = 1,  // point-edge, the shortest distance is the distance between the point and the point 1 in edge
-    PE = 2,  // point-edge, the shortest distance is the distance between the point and some point on the edge
-};
+// enum class PointEdgeDistanceType : unsigned char
+// {
+//     PP_PE0 = 0,  // point-edge, the shortest distance is the distance between the point and the point 0 in edge
+//     PP_PE1 = 1,  // point-edge, the shortest distance is the distance between the point and the point 1 in edge
+//     PE = 2,  // point-edge, the shortest distance is the distance between the point and some point on the edge
+// };
 
-enum class PointTriangleDistanceType : unsigned char
-{
-    PP_PT0 = 0,  // point-triangle, the closest point is the point 0 in triangle
-    PP_PT1 = 1,  // point-triangle, the closest point is the point 1 in triangle
-    PP_PT2 = 2,  // point-triangle, the closest point is the point 2 in triangle
-    PE_PT0T1 = 3,  // point-triangle, the closest point is on the edge (t0, t1)
-    PE_PT1T2 = 4,  // point-triangle, the closest point is on the edge (t1, t2)
-    PE_PT2T0 = 5,  // point-triangle, the closest point is on the edge (t2, t0)
-    PT       = 6,  // point-triangle, the closest point is on the triangle
-};
+// enum class PointTriangleDistanceType : unsigned char
+// {
+//     PP_PT0 = 0,  // point-triangle, the closest point is the point 0 in triangle
+//     PP_PT1 = 1,  // point-triangle, the closest point is the point 1 in triangle
+//     PP_PT2 = 2,  // point-triangle, the closest point is the point 2 in triangle
+//     PE_PT0T1 = 3,  // point-triangle, the closest point is on the edge (t0, t1)
+//     PE_PT1T2 = 4,  // point-triangle, the closest point is on the edge (t1, t2)
+//     PE_PT2T0 = 5,  // point-triangle, the closest point is on the edge (t2, t0)
+//     PT       = 6,  // point-triangle, the closest point is on the triangle
+// };
 
-enum class EdgeEdgeDistanceType : unsigned char
-{
-    PP_Ea0Eb0 = 0,  // point-point, the shortest distance is the distance between the point 0 in edge a and the point 0 in edge b
-    PP_Ea0Eb1 = 1,  // point-point, the shortest distance is the distance between the point 0 in edge a and the point 1 in edge b
-    PE_Ea0Eb0Eb1 = 2,  // point-edge, the shortest distance is the distance between the point 0 in edge a and some point the edge b
-    PP_Ea1Eb0 = 3,  // point-point, the shortest distance is the distance between the point 1 in edge a and the point 0 in edge b
-    PP_Ea1Eb1 = 4,  // point-point, the shortest distance is the distance between the point 1 in edge a and the point 1 in edge b
-    PE_Ea1Eb0Eb1 = 5,  // point-edge, the shortest distance is the distance between the point 1 in edge a and some point the edge b
-    PE_Eb0Ea0Ea1 = 6,  // point-edge, the shortest distance is the distance between the point 0 in edge b and some point the edge a
-    PE_Eb1Ea0Ea1 = 7,  // point-edge, the shortest distance is the distance between the point 1 in edge b and some point the edge a
-    EE = 8,  // edge-edge, the shortest distance is the distance between some point on edge a and some point on edge b
-};
+// enum class EdgeEdgeDistanceType : unsigned char
+// {
+//     PP_Ea0Eb0 = 0,  // point-point, the shortest distance is the distance between the point 0 in edge a and the point 0 in edge b
+//     PP_Ea0Eb1 = 1,  // point-point, the shortest distance is the distance between the point 0 in edge a and the point 1 in edge b
+//     PE_Ea0Eb0Eb1 = 2,  // point-edge, the shortest distance is the distance between the point 0 in edge a and some point the edge b
+//     PP_Ea1Eb0 = 3,  // point-point, the shortest distance is the distance between the point 1 in edge a and the point 0 in edge b
+//     PP_Ea1Eb1 = 4,  // point-point, the shortest distance is the distance between the point 1 in edge a and the point 1 in edge b
+//     PE_Ea1Eb0Eb1 = 5,  // point-edge, the shortest distance is the distance between the point 1 in edge a and some point the edge b
+//     PE_Eb0Ea0Ea1 = 6,  // point-edge, the shortest distance is the distance between the point 0 in edge b and some point the edge a
+//     PE_Eb1Ea0Ea1 = 7,  // point-edge, the shortest distance is the distance between the point 1 in edge b and some point the edge a
+//     EE = 8,  // edge-edge, the shortest distance is the distance between some point on edge a and some point on edge b
+// };
 
 // inline Vec3f point_triangle_type(
 //     const Vec3f &p, 
@@ -591,6 +591,40 @@ inline float edge_edge_distance_squared_unclassified(
 
 } // namespace host_distance
 
+namespace host_distance
+{
+
+inline uint point_triangle_type(
+    const Vec3f &bary, 
+    luisa::uint3& valid_indices
+    ) 
+{
+    // Bool3 is_valid = bary == 0.0f;
+    uint valid_count = 0;
+
+    if (bary[0] == 0.0f) { valid_indices[valid_count] = 0; valid_count += 1; };
+    if (bary[1] == 0.0f) { valid_indices[valid_count] = 1; valid_count += 1; };
+    if (bary[2] == 0.0f) { valid_indices[valid_count] = 2; valid_count += 1; };
+    return valid_count;
+}
+
+inline uint2 edge_edge_type(
+    const Vec4f &bary, 
+    luisa::uint2& valid_indices1,
+    luisa::uint2& valid_indices2
+    ) 
+{
+    // Bool4 is_valid = bary == 0.0f;
+    uint valid_count1 = 0;
+    uint valid_count2 = 0;
+    if (bary[0] == 0.0f) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
+    if (bary[1] == 0.0f) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
+    if (bary[2] == 0.0f) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
+    if (bary[2] == 0.0f) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
+    return makeUint2(valid_count1, valid_count2);
+}
+
+} // namespace host_distance
 
 } // namespace lcsv
 
