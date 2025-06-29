@@ -351,7 +351,7 @@ using EigenFloat12x12 = Eigen::Matrix<float, 12, 12>;
 using EigenFloat3   = Eigen::Matrix<float, 3, 1>;
 using EigenFloat4   = Eigen::Matrix<float, 4, 1>;
 
-EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
+static inline EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
 {
     EigenFloat3x3 mat; mat << 
         input[0][0], input[1][0], input[2][0], 
@@ -359,14 +359,14 @@ EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
         input[0][2], input[1][2], input[2][2]; 
     return mat;
 };
-float3x3 eigen3x3_to_float3x3(const EigenFloat3x3& input)
+static inline float3x3 eigen3x3_to_float3x3(const EigenFloat3x3& input)
 {
     return luisa::make_float3x3(
         input(0, 0), input(1, 0), input(2, 0), 
         input(0, 1), input(1, 1), input(2, 1), 
         input(0, 2), input(1, 2), input(2, 2));
 };
-EigenFloat6x6 float6x6_to_eigen6x6(const float6x6& input)
+static inline EigenFloat6x6 float6x6_to_eigen6x6(const float6x6& input)
 {
     EigenFloat6x6 output;
     for (uint i = 0; i < 2; ++i) 
@@ -378,7 +378,7 @@ EigenFloat6x6 float6x6_to_eigen6x6(const float6x6& input)
     }
     return output;
 };
-float6x6 eigen6x6_to_float6x6(const EigenFloat6x6& input)
+static inline float6x6 eigen6x6_to_float6x6(const EigenFloat6x6& input)
 {
     float6x6 output;
     for (uint i = 0; i < 2; ++i) 
@@ -390,7 +390,7 @@ float6x6 eigen6x6_to_float6x6(const EigenFloat6x6& input)
     }
     return output;
 };
-EigenFloat9x9 float9x9_to_eigen9x9(const float9x9& input)
+static inline EigenFloat9x9 float9x9_to_eigen9x9(const float9x9& input)
 {
     EigenFloat9x9 output;
     for (uint i = 0; i < 3; ++i) 
@@ -402,7 +402,7 @@ EigenFloat9x9 float9x9_to_eigen9x9(const float9x9& input)
     }
     return output;
 };
-float9x9 eigen9x9_to_float9x9(const EigenFloat9x9& input)
+static inline float9x9 eigen9x9_to_float9x9(const EigenFloat9x9& input)
 {
     float9x9 output;
     for (uint i = 0; i < 3; ++i) 
@@ -414,7 +414,7 @@ float9x9 eigen9x9_to_float9x9(const EigenFloat9x9& input)
     }
     return output;
 };
-EigenFloat12x12 float12x12_to_eigen12x12(const float12x12 input)
+static inline EigenFloat12x12 float12x12_to_eigen12x12(const float12x12 input)
 {
     EigenFloat12x12 output;
     for (uint i = 0; i < 4; ++i) 
@@ -426,7 +426,7 @@ EigenFloat12x12 float12x12_to_eigen12x12(const float12x12 input)
     }
     return output;
 };
-float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
+static inline float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
 {
     float12x12 output;
     for (uint i = 0; i < 4; ++i) 
@@ -438,10 +438,10 @@ float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
     }
     return output;
 };
-EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
-EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
-float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
-float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
+static inline EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
+static inline EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
+static inline float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
+static inline float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
 
 // SPD projection
 template<int N>
@@ -544,7 +544,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }
     }
 
-    auto apply_dx = [&](const float alpha)
+    auto host_apply_dx = [&](const float alpha)
     {
         if (alpha < 0.0f || alpha > 1.0f) { luisa::log_error("Alpha is not safe : {}", alpha); }
         // Update sa_x
@@ -1553,83 +1553,27 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }); 
     };
     
-    auto eigen_iter_solve = [&]()
+    
+    auto compute_energy_with_barrier = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
-        // Solve cgA * dx = cg_b_vec for dx using Conjugate Gradient
-        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver; // Eigen::IncompleteCholesky<float>
-
-        // solver.setMaxIterations(128);
-        solver.setTolerance(1e-2f);
-        solver.compute(eigen_cgA);
-
-        // 计算Jacobi预条件子的对角线逆
-        // Eigen::VectorXf eigen_cgR = eigen_cgB - eigen_cgA * eigen_cgX;
-        // Eigen::VectorXf eigen_cgM_inv(eigen_cgR.rows());
-        // for (int i = 0; i < eigen_cgR.rows(); ++i) {
-        //     float diag = eigen_cgA.coeff(i, i);
-        //     eigen_cgM_inv[i] = (std::abs(diag) > 1e-12f) ? (1.0f / diag) : 0.0f;
-        // }
-        // Eigen::VectorXf eigen_cgZ = eigen_cgR.cwiseProduct(eigen_cgM_inv);
-        // Eigen::VectorXf eigen_cgQ = eigen_cgA * eigen_cgZ;
-        // luisa::log_info("initB = {}, initR = {}, initM = {}, initZ = {}, initQ = {}",
-        //     eigen_cgB.norm(), eigen_cgR.norm(), eigen_cgM_inv.norm(), eigen_cgZ.norm(), eigen_cgQ.norm());
-
-        solver._solve_impl(eigen_cgB, eigen_cgX);
-        if (solver.info() != Eigen::Success) { luisa::log_error("Eigen: Solve failed in {} iterations", solver.iterations()); }
-        else 
-        {
-            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-            {
-                sa_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
-            });
-
-            luisa::log_info("  In non-linear iter {:2}, Eigen-PCG : iter-count = {}, rTr error = {:6.5f}, max_element(p) = {:6.5f},", 
-                get_scene_params().current_nonlinear_iter, solver.iterations(),
-                solver.error(), fast_infinity_norm(sa_cgX)); // from normR_0 -> normR
-        }
-    };
-    auto eigen_decompose_solve = [&]()
-    {
-        // Solve cgA * dx = cg_b_vec for dx using SimplicialLDLT decomposition
-        Eigen::SimplicialLDLT<Eigen::SparseMatrix<float>> solver;
-        solver.compute(eigen_cgA);
-        if (solver.info() != Eigen::Success)
-        {
-            luisa::log_error("Eigen: SimplicialLDLT decomposition failed!");
-            return;
-        }
-        solver._solve_impl(eigen_cgB, eigen_cgX);
-        if (solver.info() != Eigen::Success)
-        {
-            luisa::log_error("Eigen: SimplicialLDLT solve failed!");
-            return;
-        }
-        else
-        {
-            float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
-            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-            {
-                sa_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
-            });
-
-            luisa::log_info("  In non-linear iter {:2}, Eigen-Decompose : rTr error = {:6.5f}, max_element(p) = {:6.5f}", 
-                get_scene_params().current_nonlinear_iter, 
-                error, fast_infinity_norm(sa_cgX)); // from normR_0 -> normR
-        }
+        auto material_energy = host_compute_energy(sa_x_step_start, sa_x_tilde);
+        auto barrier_energy = host_compute_barrier_energy();;
+        return material_energy + barrier_energy;
     };
     auto linear_solver_interface = [&]()
     {
         if constexpr (use_eigen) 
         {
-            eigen_iter_solve();
+            pcg_solver->eigen_solve(eigen_cgA, eigen_cgX, eigen_cgB, compute_energy_with_barrier);
             // eigen_decompose_solve();
         } 
         else 
         {
             // simple_solve();
-            pcg_solver->host_solve(stream, pcg_spmv);
+            pcg_solver->host_solve(stream, pcg_spmv, compute_energy_with_barrier);
         }
     };
+    
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
     const bool use_ipc = true;
@@ -1643,7 +1587,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         // update_barrier_set();
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
-        double prev_state_energy = host_compute_energy(sa_x_step_start, sa_x_tilde) + host_compute_barrier_energy();
+        double prev_state_energy = compute_energy_with_barrier(sa_x_step_start, sa_x_tilde);
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -1662,15 +1606,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 host_update_barrier_set();
             }
-            linear_solver_interface();
+            linear_solver_interface(); // Solve Ax=b
 
             float alpha = 1.0f;
-            apply_dx(alpha);            
+            host_apply_dx(alpha);            
             if constexpr (use_ipc)
             { 
                 const float ccd_toi = ccd_line_search();
                 alpha = ccd_toi;
-                apply_dx(alpha);   
+                host_apply_dx(alpha);   
 
                 // auto curr_energy = host_compute_energy(sa_x, sa_x_tilde); auto barrier_nergy = compute_barrier_energy_from_broadphase_list();
                 auto curr_energy = host_compute_energy(sa_x, sa_x_tilde); auto barrier_nergy = host_compute_barrier_energy();
@@ -1682,32 +1626,27 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 {
                     if (curr_energy < prev_state_energy + Epsilon) 
                     { 
-                        // if (ccd_toi != 1.0f) 
-                        // {
-                        //     luisa::log_info("       CCD linesearch toi = {:6.5f}, energy = {:12.10f} (barrier energy = {:12.10f})", 
-                        //         ccd_toi, curr_energy, barrier_nergy);
-                        // }
                         break; 
                     }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}, barrier energy = {:12.10f} , prev state energy {:12.10f} , {}", 
-                            line_search_count, alpha, curr_energy, barrier_nergy, prev_state_energy, 
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} , {}", 
+                            line_search_count, alpha, curr_energy, prev_state_energy, 
                             ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
                     }
-                    alpha /= 2; apply_dx(alpha);
+                    alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
                     // curr_energy = host_compute_energy(sa_x, sa_x_tilde); barrier_nergy = compute_barrier_energy_from_broadphase_list();;
                     curr_energy = host_compute_energy(sa_x, sa_x_tilde); barrier_nergy = host_compute_barrier_energy();;
                     curr_energy += barrier_nergy;
-                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}, barrier energy = {:12.10f}", 
-                        line_search_count, alpha, curr_energy, barrier_nergy);
+                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
+                        line_search_count, alpha, curr_energy);
                     
                     if (alpha < 1e-4) 
                     {
-                        luisa::log_error("  Line search failed, energy = {}, barrier energy = {}, prev state energy = {}", 
-                            curr_energy, barrier_nergy, prev_state_energy);
+                        luisa::log_error("  Line search failed, energy = {}, prev state energy = {}", 
+                            curr_energy, prev_state_energy);
                     }
                 }
 
@@ -1809,7 +1748,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
 
     
-    auto pcg_spmv = [&](const luisa::compute::BufferView<float3> input_ptr, luisa::compute::BufferView<float3> output_ptr) -> void
+    auto pcg_spmv = [&](const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr) -> void
     {   
         stream 
             << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(num_verts);
@@ -1823,7 +1762,13 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr, curr_prefix).dispatch(num_elements_clustered);
         }
     };
-    
+    auto host_compute_barrier_energy = []() { return 0.0f; };
+    auto compute_energy_with_barrier = [&](const luisa::compute::Buffer<float3>& curr_x, const luisa::compute::Buffer<float3>& curr_x_tilde)
+    {
+        auto material_energy = host_compute_energy(host_x, host_x_tilde);
+        auto barrier_energy = host_compute_barrier_energy();;
+        return material_energy + barrier_energy;
+    };
 
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
@@ -1857,8 +1802,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             }
                 
             // device_pcg();
-            pcg_solver->device_solve(stream, pcg_spmv);
-            host_apply_dx(1.0f);
+            pcg_solver->device_solve(stream, pcg_spmv, compute_energy_with_barrier);
 
             // Do line search on the host
             float alpha = 1.0f;

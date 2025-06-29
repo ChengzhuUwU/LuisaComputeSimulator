@@ -3,6 +3,8 @@
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
 #include <vector>
+#include <Eigen/Sparse>
+#include <Eigen/Eigenvalues>
 
 namespace lcsv 
 {
@@ -36,11 +38,19 @@ public:
 public:
     void host_solve(
         luisa::compute::Stream& stream, 
-        std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv
+        std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
+        std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
     );
     void device_solve(
         luisa::compute::Stream& stream, 
-        std::function<void(const luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>)> func_spmv
+        std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
+        std::function<double(const luisa::compute::Buffer<float3>&, const luisa::compute::Buffer<float3>&)> func_compute_energy
+    );
+    void eigen_solve(
+        const Eigen::SparseMatrix<float>& eigen_cgA, 
+        Eigen::VectorXf& eigen_cgX,
+        const Eigen::VectorXf& eigen_cgB,
+        std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
     );
 
 private:
@@ -59,6 +69,8 @@ private:
     luisa::compute::Shader<1> fn_pcg_make_preconditioner;
     luisa::compute::Shader<1> fn_pcg_apply_preconditioner;
     luisa::compute::Shader<1> fn_pcg_apply_preconditioner_second_pass;
+    
+    luisa::compute::Shader<1, float> fn_apply_dx;
 
 private:
     MeshData<std::vector>* host_mesh_data;
