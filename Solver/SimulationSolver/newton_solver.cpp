@@ -903,164 +903,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     auto evaluete_self_collision = [&]()
     {
-        auto& host_count = host_collision_data->narrow_phase_collision_count;
-
-        const uint num_vv = host_count[collision_data->get_vv_count_offset()];
-        const uint num_ve = host_count[collision_data->get_ve_count_offset()];
-        const uint num_vf = host_count[collision_data->get_vf_count_offset()];
-        const uint num_ee = host_count[collision_data->get_ee_count_offset()];
-        
-        if constexpr (use_eigen) 
-        {
-            std::vector<Eigen::Triplet<float>> triplets_vv(num_vv * 36);
-            std::vector<Eigen::Triplet<float>> triplets_ve(num_ve * 81);
-            std::vector<Eigen::Triplet<float>> triplets_vf(num_vf * 144);
-            std::vector<Eigen::Triplet<float>> triplets_ee(num_ee * 144);
-
-            static Eigen::SparseMatrix<float> eigen_cgA_vv;
-            static Eigen::SparseMatrix<float> eigen_cgA_ve;
-            static Eigen::SparseMatrix<float> eigen_cgA_vf;
-            static Eigen::SparseMatrix<float> eigen_cgA_ee;
-            eigen_cgA_vv.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_vv.reserve(triplets_vv.size());
-            eigen_cgA_ve.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_ve.reserve(triplets_ve.size());
-            eigen_cgA_vf.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_vf.reserve(triplets_vf.size());
-            eigen_cgA_ee.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3); eigen_cgA_ee.reserve(triplets_ee.size());
-
-            CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-                uint2& indices = pair.indices;
-                float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                EigenFloat6x6 proj_H = spd_projection(float6x6_to_eigen6x6(H));
-                for (uint i = 0; i < 2; ++i) 
-                {
-                    for (uint j = 0; j < 2; ++j) 
-                    {
-                        uint prefix = pair_idx * 36 + i * 18 + j * 9;
-                        for (int ii = 0; ii < 3; ++ii)
-                        {
-                            for (int jj = 0; jj < 3; ++jj) 
-                            {
-                                triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                    3 * pair.indices[i] + ii, 
-                                    3 * pair.indices[j] + jj, 
-                                    proj_H(ii + i * 3, jj + j * 3));
-                            }
-                        }
-                    }
-                }
-            });
-            CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-                uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
-                float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                EigenFloat9x9 proj_H = spd_projection(float9x9_to_eigen9x9(H));
-                for (uint i = 0; i < 3; ++i) 
-                {
-                    for (uint j = 0; j < 3; ++j) 
-                    {
-                        uint prefix = pair_idx * 81 + i * 27 + j * 9;
-                        for (int ii = 0; ii < 3; ++ii)
-                        {
-                            for (int jj = 0; jj < 3; ++jj) 
-                            {
-                                triplets_ve[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                    3 * indices[i] + ii, 
-                                    3 * indices[j] + jj, 
-                                    proj_H(ii + i * 3, jj + j * 3));
-                            }
-                        }
-                    }
-                }
-            });
-            CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-                uint4& indices = pair.indices;  luisa::log_info("Get VF Pair : indices = {}", indices);;
-                float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
-                
-                for (uint i = 0; i < 4; ++i) 
-                {
-                    for (uint j = 0; j < 4; ++j) 
-                    {
-                        uint prefix = pair_idx * 144 + i * 36 + j * 9;
-                        for (int ii = 0; ii < 3; ++ii)
-                        {
-                            for (int jj = 0; jj < 3; ++jj) 
-                            {
-                                triplets_vf[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                    3 * indices[i] + ii, 
-                                    3 * indices[j] + jj, 
-                                    proj_H(ii + i * 3, jj + j * 3));
-                            }
-                        }
-                    }
-                }
-            });
-            CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-                uint4& indices = pair.indices; luisa::log_info("Get VF Pair : indices = {}", indices);;
-                float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-                EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
-                for (uint i = 0; i < 4; ++i) 
-                {
-                    for (uint j = 0; j < 4; ++j) 
-                    {
-                        uint prefix = pair_idx * 144 + i * 36 + j * 9;
-                        for (int ii = 0; ii < 3; ++ii)
-                        {
-                            for (int jj = 0; jj < 3; ++jj) 
-                            {
-                                triplets_ee[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                    3 * indices[i] + ii, 
-                                    3 * indices[j] + jj, 
-                                    proj_H(ii + i * 3, jj + j * 3));
-                            }
-                        }
-                    }
-                }
-            });
-            CpuParallel::single_thread_for(0, num_vv, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
-            });
-            CpuParallel::single_thread_for(0, num_ve, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.vid)     += kappa * float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.edge[0]) += kappa * float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.edge[1]) += kappa * float3_to_eigen3(pair.gradient[2]);
-            });
-            CpuParallel::single_thread_for(0, num_vf, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.indices[2]) += kappa * float3_to_eigen3(pair.gradient[2]);
-                eigen_cgB.segment<3>(3 * pair.indices[3]) += kappa * float3_to_eigen3(pair.gradient[3]);
-            });
-            CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
-            {
-                auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-                eigen_cgB.segment<3>(3 * pair.indices[0]) += kappa * float3_to_eigen3(pair.gradient[0]);
-                eigen_cgB.segment<3>(3 * pair.indices[1]) += kappa * float3_to_eigen3(pair.gradient[1]);
-                eigen_cgB.segment<3>(3 * pair.indices[2]) += kappa * float3_to_eigen3(pair.gradient[2]);
-                eigen_cgB.segment<3>(3 * pair.indices[3]) += kappa * float3_to_eigen3(pair.gradient[3]);
-            });
-            
-            eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
-            eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
-            eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
-            eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
-            eigen_cgA += kappa * eigen_cgA_vv + kappa * eigen_cgA_ve + kappa * eigen_cgA_vf + kappa * eigen_cgA_ee;
-        }
+        mp_narrowphase_detector->host_barrier_hessian_spd_projection(
+            stream, eigen_cgA, eigen_cgB
+        );
     };
 
+    // Init LBVH
     {
         mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
@@ -1098,27 +946,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
             collision_data->broad_phase_list_ee, ccd_query_range);
     };
-    auto broadphase_dcd = [&]()
-    {
-        const float dcd_query_range = d_hat + thickness;
-
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_face->refit(stream);
-        mp_lbvh_face->broad_phase_query_from_verts(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
-            collision_data->broad_phase_list_vf, dcd_query_range);
-
-        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
-        mp_lbvh_edge->refit(stream);
-        mp_lbvh_edge->broad_phase_query_from_edges(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_edges, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
-            collision_data->broad_phase_list_ee, dcd_query_range);
-    };
     auto narrowphase_ccd = [&]()
     {
         // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
@@ -1140,14 +967,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         
 
-        mp_narrowphase_detector->narrow_phase_ccd_query_from_vf_pair(stream, 
+        mp_narrowphase_detector->vf_ccd_query(stream, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_faces, 
             d_hat, thickness);
-        mp_narrowphase_detector->narrow_phase_ccd_query_from_ee_pair(stream, 
+        mp_narrowphase_detector->ee_ccd_query(stream, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x, 
@@ -1156,244 +983,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             mesh_data->sa_edges, 
             d_hat, thickness);
     };
-    auto narrowphase_dcd = [&]()
-    {
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
-        
-        mp_narrowphase_detector->narrow_phase_dcd_query_from_vf_pair(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_faces, 
-            d_hat, thickness);
-        mp_narrowphase_detector->narrow_phase_dcd_query_from_ee_pair(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_edges, 
-            mesh_data->sa_edges, 
-            d_hat, thickness);
-    };
-    auto update_barrier_set = [&]()
-    {
-        stream 
-            // << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
-            // << luisa::compute::synchronize()
-            ;
-
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-        mp_narrowphase_detector->reset_narrowphase_count(stream);
-
-        broadphase_dcd();
-        
-        narrowphase_dcd();
-
-        mp_narrowphase_detector->download_narrowphase_collision_count(stream);
-        mp_narrowphase_detector->download_narrowphase_list(stream);  
-    };
-    auto host_update_barrier_set = [&]()
-    {
-        stream 
-            // << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
-            // << luisa::compute::synchronize()
-            ;
-
-        std::vector<Eigen::Triplet<float>> triplets_vv;
-        std::vector<Eigen::Triplet<float>> triplets_ve;
-        std::vector<Eigen::Triplet<float>> triplets_vf;
-        std::vector<Eigen::Triplet<float>> triplets_ee;
-        Eigen::SparseMatrix<float> eigen_cgA_vv;
-        Eigen::SparseMatrix<float> eigen_cgA_ve;
-        Eigen::SparseMatrix<float> eigen_cgA_vf;
-        Eigen::SparseMatrix<float> eigen_cgA_ee;
-        eigen_cgA_vv.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
-        eigen_cgA_ve.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
-        eigen_cgA_vf.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
-        eigen_cgA_ee.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
-
-        std::atomic<uint> num_vv(0);
-        std::atomic<uint> num_ve(0);
-        std::atomic<uint> num_vf(0);
-        std::atomic<uint> num_ee(0);
-        CpuParallel::single_thread_for(0, host_mesh_data->num_verts, [&](const uint left)
-        {
-            const auto p = float3_to_eigen3(host_sim_data->sa_x[left]);
-            for (uint right = 0; right < host_mesh_data->num_faces; right++)
-            {
-                const uint3 right_face = host_mesh_data->sa_faces[right];
-                if (right_face[0] == left || right_face[1] == left || right_face[2] == left)
-                {
-                    continue; // Skip self-collision
-                }
-                const auto t0 = float3_to_eigen3(host_sim_data->sa_x[right_face[0]]);
-                const auto t1 = float3_to_eigen3(host_sim_data->sa_x[right_face[1]]);
-                const auto t2 = float3_to_eigen3(host_sim_data->sa_x[right_face[2]]);
-
-                // Bool is_ee = all_vec(bary != 0.0f);
-                auto bary = host_distance::point_triangle_distance_coeff_unclassified(p, t0, t1, t2);
-                // uint3 valid_indices = makeUint3(0, 1, 2);
-                // uint valid_count = host_distance::point_triangle_type(bary, valid_indices);
-                
-                auto x = bary[0] * (t0 - p) +
-                           bary[1] * (t1 - p) +
-                           bary[2] * (t2 - p);
-                float d2 = (x.squaredNorm());
-                
-                if (d2 < square_scalar(thickness + d_hat))
-                {
-                    float d = sqrt_scalar(d2);
-                    CollisionPairVF vf_pair;
-                    vf_pair.indices = makeUint4(left, right_face[0], right_face[1], right_face[2]);
-                    vf_pair.vec1 = makeFloat4(x[0], x[1], x[1], d);
-                    vf_pair.bary = eigen3_to_float3(bary);
-                    Eigen::Vector<float, 12>          G;
-                    Eigen::Matrix<float, 12, 12>      H;
-                    {
-                        Eigen::Vector4i flag = uipc::backend::cuda::distance::point_triangle_distance_flag(p, t0, t1, t2);
-                        uipc::backend::cuda::sym::codim_ipc_simplex_contact::PT_barrier_gradient_hessian(
-                           G, H, flag, kappa, d_hat, thickness, 
-                           p, 
-                           t0, 
-                           t1, 
-                           t2);
-                        // luisa::log_info("Get VF Pair : indices = {}, bary = {}, d = {}", 
-                        //     vf_pair.indices, 
-                        //     vf_pair.bary, d);
-                        H = spd_projection(H);
-                    }
-                    uint idx = num_vf.fetch_add(1);
-                    host_collision_data->narrow_phase_list_vf[idx] = (vf_pair);
-
-                    Eigen::Vector<uint, 12> insert_indice;
-                    insert_indice << 
-                        3 * left + 0,
-                        3 * left + 1,
-                        3 * left + 2,
-                        3 * right_face[0] + 0,
-                        3 * right_face[0] + 1,
-                        3 * right_face[0] + 2,
-                        3 * right_face[1] + 0,
-                        3 * right_face[1] + 1,
-                        3 * right_face[1] + 2,
-                        3 * right_face[2] + 0,
-                        3 * right_face[2] + 1,
-                        3 * right_face[2] + 2;
-                    for (uint i = 0; i < 12; ++i)
-                    {
-                        for (uint j = 0; j < 12; ++j) 
-                        {
-                            triplets_vf.push_back(Eigen::Triplet<float>(
-                                insert_indice[i], 
-                                insert_indice[j], 
-                                H(i, j)
-                            ));
-                        }
-                        eigen_cgB(insert_indice[i]) -= G(i);
-                    }
-                    // std::cout << "VF Pair: indices = " << insert_indice.transpose() << " , d = " << d << ", G = " << G.transpose() << " , H = \n" << H << std::endl;
-                }
-            }
-        });
-        CpuParallel::single_thread_for(0, host_mesh_data->num_edges, [&](const uint left)
-        {
-            const uint2 left_edge = host_mesh_data->sa_edges[left];
-            const auto ea_p0 = float3_to_eigen3(host_sim_data->sa_x[left_edge[0]]);
-            const auto ea_p1 = float3_to_eigen3(host_sim_data->sa_x[left_edge[1]]);
-            for (uint right = left + 1; right < host_mesh_data->num_edges; right++)
-            {
-                const uint2 right_edge = host_mesh_data->sa_edges[right];
-                const auto eb_p0 = float3_to_eigen3(host_sim_data->sa_x[right_edge[0]]);
-                const auto eb_p1 = float3_to_eigen3(host_sim_data->sa_x[right_edge[1]]);
-
-                if (left_edge[0] == right_edge[0] || left_edge[0] == right_edge[1] ||
-                    left_edge[1] == right_edge[0] || left_edge[1] == right_edge[1])
-                {
-                    continue; // Skip self-collision
-                }
-
-                auto bary = host_distance::edge_edge_distance_coeff_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
-                // Bool is_ee = all_vec(bary != 0.0f);
-                bool is_ee = bary.isZero(0.0f);
-
-                auto x0 = bary[0] * ea_p0 + bary[1] * ea_p1;
-                auto x1 = bary[2] * eb_p0 + bary[3] * eb_p1;
-                auto x = x1 - x0;
-                float d2 = (x.squaredNorm());
-
-                if (d2 < square_scalar(thickness + d_hat))
-                {
-                    float d = sqrt_scalar(d2);
-                    CollisionPairEE ee_pair;
-                    ee_pair.indices = makeUint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
-                    ee_pair.vec1 = makeFloat4(x[0], x[1], x[1], d);
-                    ee_pair.bary = eigen4_to_float4(bary);
-                    Eigen::Vector<float, 12>          G;
-                    Eigen::Matrix<float, 12, 12>      H;
-                    {
-                        const auto t0_Ea0 = float3_to_eigen3(host_mesh_data->sa_rest_x[left_edge[0]]);
-                        const auto t0_Ea1 = float3_to_eigen3(host_mesh_data->sa_rest_x[left_edge[1]]);
-                        const auto t0_Eb0 = float3_to_eigen3(host_mesh_data->sa_rest_x[right_edge[0]]);
-                        const auto t0_Eb1 = float3_to_eigen3(host_mesh_data->sa_rest_x[right_edge[1]]);
-                        Eigen::Vector4i flag = uipc::backend::cuda::distance::edge_edge_distance_flag(ea_p0, ea_p1, eb_p0, eb_p1);
-                        uipc::backend::cuda::sym::codim_ipc_simplex_contact::mollified_EE_barrier_gradient_hessian(
-                           G, H, flag, kappa, d_hat, thickness, 
-                           t0_Ea0, 
-                           t0_Ea1, 
-                           t0_Eb0, 
-                           t0_Eb1, 
-                           ea_p0, 
-                           ea_p1, 
-                           eb_p0, 
-                           eb_p1);
-                        H = spd_projection(H);
-                        // luisa::log_info("Get EE Pair : indices = {}, bary = {}, d = {}", 
-                        //     ee_pair.indices, 
-                        //     ee_pair.bary, d);
-                    }
-                    uint idx = num_ee.fetch_add(1);
-                    host_collision_data->narrow_phase_list_ee[idx] = (ee_pair);
-
-                    Eigen::Vector<uint, 12> insert_indice;
-                    insert_indice << 
-                        3 * left_edge[0] + 0,
-                        3 * left_edge[0] + 1,
-                        3 * left_edge[0] + 2,
-                        3 * left_edge[1] + 0,
-                        3 * left_edge[1] + 1,
-                        3 * left_edge[1] + 2,
-                        3 * right_edge[0] + 0,
-                        3 * right_edge[0] + 1,
-                        3 * right_edge[0] + 2,
-                        3 * right_edge[1] + 0,
-                        3 * right_edge[1] + 1,
-                        3 * right_edge[1] + 2;
-                    for (uint i = 0; i < 12; ++i)
-                    {
-                        for (uint j = 0; j < 12; ++j) 
-                        {
-                            triplets_ee.push_back(Eigen::Triplet<float>(
-                                insert_indice[i], 
-                                insert_indice[j], 
-                                H(i, j)
-                            ));
-                        }
-                        eigen_cgB(insert_indice[i]) -= G(i);
-                    }
-                    // std::cout << "EE Pair: indices = " << insert_indice.transpose() << " , d = " << d << ", G = " << G.transpose() << " , H = \n" << H << std::endl;
-                }
-            }
-        });
-
-        eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
-        eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
-        eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
-        eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
-        eigen_cgA += eigen_cgA_vv + eigen_cgA_ve + eigen_cgA_vf + eigen_cgA_ee;
-
-    };
-    // auto host_compute_energy = [&]()
-    // {
-    // };
     auto ccd_line_search = [&]() -> float
     {
         stream 
@@ -1415,6 +1004,62 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         return toi; // 0.9f * toi
         // return 1.0f;
     };
+
+    auto broadphase_dcd = [&]()
+    {
+        const float dcd_query_range = d_hat + thickness;
+
+        mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_face->refit(stream);
+        mp_lbvh_face->broad_phase_query_from_verts(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
+            collision_data->broad_phase_list_vf, dcd_query_range);
+
+        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_edge->refit(stream);
+        mp_lbvh_edge->broad_phase_query_from_edges(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_edges, 
+            collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
+            collision_data->broad_phase_list_ee, dcd_query_range);
+    };
+    auto narrowphase_dcd = [&]()
+    {
+        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+        
+        mp_narrowphase_detector->vf_dcd_query(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_faces, 
+            d_hat, thickness, kappa);
+        mp_narrowphase_detector->ee_dcd_query(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_edges, 
+            mesh_data->sa_edges, 
+            d_hat, thickness, kappa);
+    };
+    auto update_barrier_set = [&]()
+    {
+        stream 
+            // << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
+            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
+            // << luisa::compute::synchronize()
+            ;
+
+        mp_narrowphase_detector->reset_broadphase_count(stream);
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
+
+        broadphase_dcd();
+        
+        narrowphase_dcd();
+
+        mp_narrowphase_detector->download_narrowphase_collision_count(stream);
+        mp_narrowphase_detector->download_narrowphase_list(stream);  
+    };
     auto compute_barrier_energy_from_broadphase_list = [&]() -> float
     {
         stream 
@@ -1426,110 +1071,46 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_faces, 
-            d_hat, thickness);
+            d_hat, thickness, kappa);
 
         mp_narrowphase_detector->compute_barrier_energy_from_ee(stream, 
             sim_data->sa_x, 
             sim_data->sa_x, 
             mesh_data->sa_edges, 
             mesh_data->sa_edges, 
-            d_hat, thickness);
+            d_hat, thickness, kappa);
 
         return mp_narrowphase_detector->download_energy(stream, kappa);
         // return 0.0f;
     };
+
+    auto host_update_barrier_set = [&]()
+    {
+        mp_narrowphase_detector->host_dcd_query_libuipc(eigen_cgA, eigen_cgB, 
+            host_sim_data->sa_x, 
+            host_sim_data->sa_x, 
+            host_mesh_data->sa_rest_x, 
+            host_mesh_data->sa_rest_x, 
+            host_mesh_data->sa_faces, 
+            host_mesh_data->sa_faces, 
+            host_mesh_data->sa_edges, 
+            host_mesh_data->sa_edges, 
+            d_hat, thickness, kappa);
+
+    };
     auto host_compute_barrier_energy = [&]() -> float
     {
-        float total_energy = 0.0f;
-        CpuParallel::single_thread_for(0, host_mesh_data->num_verts, [&](const uint left)
-        {
-            const auto p = float3_to_eigen3(host_sim_data->sa_x[left]);
-            for (uint right = 0; right < host_mesh_data->num_faces; right++)
-            {
-                const uint3 right_face = host_mesh_data->sa_faces[right];
-                if (left == right_face[0] || left == right_face[1] || left == right_face[2]) continue; // Skip self-contact
-                const auto t0 = float3_to_eigen3(host_sim_data->sa_x[right_face[0]]);
-                const auto t1 = float3_to_eigen3(host_sim_data->sa_x[right_face[1]]);
-                const auto t2 = float3_to_eigen3(host_sim_data->sa_x[right_face[2]]);
-
-                // Bool is_ee = all_vec(bary != 0.0f);
-                auto bary = host_distance::point_triangle_distance_coeff_unclassified(p, t0, t1, t2);
-                // uint3 valid_indices = makeUint3(0, 1, 2);
-                // uint valid_count = host_distance::point_triangle_type(bary, valid_indices);
-                
-                auto x = bary[0] * (t0 - p) +
-                           bary[1] * (t1 - p) +
-                           bary[2] * (t2 - p);
-                float d2 = (x.squaredNorm());
-                
-                if (d2 < square_scalar(thickness + d_hat))
-                {
-                    float d = sqrt_scalar(d2);
-                    {
-                        Eigen::Vector4i flag = uipc::backend::cuda::distance::point_triangle_distance_flag(p, t0, t1, t2);
-                        auto e = uipc::backend::cuda::sym::codim_ipc_simplex_contact::PT_barrier_energy(
-                           flag, kappa, d_hat, thickness, 
-                           p, 
-                           t0, 
-                           t1, 
-                           t2);
-                        // luisa::log_info("Get PT Barrier Energy : flag = {}, kappa = {}, d = {}, d_hat = {}, thickness = {} e = {}", 
-                        //     flag, kappa, d, d_hat, thickness, e);
-                        total_energy += e;
-                    }
-                }
-            }
-        });
-        CpuParallel::single_thread_for(0, host_mesh_data->num_edges, [&](const uint left)
-        {
-            const uint2 left_edge = host_mesh_data->sa_edges[left];
-            const auto ea_p0 = float3_to_eigen3(host_sim_data->sa_x[left_edge[0]]);
-            const auto ea_p1 = float3_to_eigen3(host_sim_data->sa_x[left_edge[1]]);
-            for (uint right = left + 1; right < host_mesh_data->num_edges; right++)
-            {
-                const uint2 right_edge = host_mesh_data->sa_edges[right];
-                if (left_edge[0] == right_edge[0] || left_edge[0] == right_edge[1] ||
-                    left_edge[1] == right_edge[0] || left_edge[1] == right_edge[1]) continue; // Skip self-contact
-                const auto eb_p0 = float3_to_eigen3(host_sim_data->sa_x[right_edge[0]]);
-                const auto eb_p1 = float3_to_eigen3(host_sim_data->sa_x[right_edge[1]]);
-
-                auto bary = host_distance::edge_edge_distance_coeff_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
-                // Bool is_ee = all_vec(bary != 0.0f);
-                bool is_ee = bary.isZero(0.0f);
-
-                auto x0 = bary[0] * ea_p0 + bary[1] * ea_p1;
-                auto x1 = bary[2] * eb_p0 + bary[3] * eb_p1;
-                auto x = x1 - x0;
-                float d2 = (x.squaredNorm());
-
-                if (d2 < square_scalar(thickness + d_hat))
-                {
-                    float d = sqrt_scalar(d2);
-                    {
-                        const auto t0_Ea0 = float3_to_eigen3(host_mesh_data->sa_rest_x[left_edge[0]]);
-                        const auto t0_Ea1 = float3_to_eigen3(host_mesh_data->sa_rest_x[left_edge[1]]);
-                        const auto t0_Eb0 = float3_to_eigen3(host_mesh_data->sa_rest_x[right_edge[0]]);
-                        const auto t0_Eb1 = float3_to_eigen3(host_mesh_data->sa_rest_x[right_edge[1]]);
-                        Eigen::Vector4i flag = uipc::backend::cuda::distance::edge_edge_distance_flag(ea_p0, ea_p1, eb_p0, eb_p1);
-                        auto e = uipc::backend::cuda::sym::codim_ipc_simplex_contact::mollified_EE_barrier_energy(
-                           flag, kappa, d_hat, thickness, 
-                           t0_Ea0, 
-                           t0_Ea1, 
-                           t0_Eb0, 
-                           t0_Eb1, 
-                           ea_p0, 
-                           ea_p1, 
-                           eb_p0, 
-                           eb_p1);
-                        // luisa::log_info("Get EE Barrier Energy : flag = {}, kappa = {}, d = {}, d_hat = {}, thickness = {}, e = {}", 
-                        //     flag, kappa, d, d_hat, thickness, e);
-                        total_energy += e;
-                    }
-                }
-            }
-        });
-
-        return total_energy;
+        return mp_narrowphase_detector->host_compute_barrier_energy_uipc(
+            host_sim_data->sa_x, 
+            host_sim_data->sa_x, 
+            host_mesh_data->sa_rest_x, 
+            host_mesh_data->sa_rest_x, 
+            host_mesh_data->sa_faces, 
+            host_mesh_data->sa_faces, 
+            host_mesh_data->sa_edges, 
+            host_mesh_data->sa_edges, 
+            d_hat, thickness, kappa
+        );
     };
 
     // Solve
@@ -1556,7 +1137,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     auto compute_energy_with_barrier = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
-        auto material_energy = host_compute_energy(sa_x_step_start, sa_x_tilde);
+        auto material_energy = host_compute_energy(curr_x, curr_x_tilde);
         auto barrier_energy = host_compute_barrier_energy();;
         return material_energy + barrier_energy;
     };
@@ -1616,9 +1197,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 alpha = ccd_toi;
                 host_apply_dx(alpha);   
 
-                // auto curr_energy = host_compute_energy(sa_x, sa_x_tilde); auto barrier_nergy = compute_barrier_energy_from_broadphase_list();
-                auto curr_energy = host_compute_energy(sa_x, sa_x_tilde); auto barrier_nergy = host_compute_barrier_energy();
-                curr_energy += barrier_nergy;
+                auto curr_energy = compute_energy_with_barrier(sa_x, sa_x_tilde); 
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
                 
                 uint line_search_count = 0;
@@ -1637,9 +1216,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
-                    // curr_energy = host_compute_energy(sa_x, sa_x_tilde); barrier_nergy = compute_barrier_energy_from_broadphase_list();;
-                    curr_energy = host_compute_energy(sa_x, sa_x_tilde); barrier_nergy = host_compute_barrier_energy();;
-                    curr_energy += barrier_nergy;
+                    curr_energy = compute_energy_with_barrier(sa_x, sa_x_tilde);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                     

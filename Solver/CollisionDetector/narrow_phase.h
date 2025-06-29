@@ -7,6 +7,8 @@
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
+#include <Eigen/Sparse>
+#include <Eigen/Eigenvalues>
 
 
 namespace lcsv 
@@ -50,7 +52,8 @@ public:
     void download_narrowphase_list(Stream& stream);
 
 public:
-    void narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
+    // CCD 
+    void vf_ccd_query(Stream& stream, 
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
@@ -59,7 +62,7 @@ public:
         const float d_hat, 
         const float thickness);
 
-    void narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
+    void ee_ccd_query(Stream& stream, 
         const Buffer<float3>& sa_x_begin_left, 
         const Buffer<float3>& sa_x_begin_right, 
         const Buffer<float3>& sa_x_end_left,
@@ -68,41 +71,8 @@ public:
         const Buffer<uint2>& sa_edges_right,
         const float d_hat, 
         const float thickness);
-
-    void narrow_phase_dcd_query_from_vf_pair(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<uint3>& sa_faces_right,
-        const float d_hat, 
-        const float thickness);
-
-    void narrow_phase_dcd_query_from_ee_pair(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<uint2>& sa_edges_left,
-        const Buffer<uint2>& sa_edges_right,
-        const float d_hat, 
-        const float thickness);
-        
-    void compute_barrier_energy_from_vf(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<uint3>& sa_faces_right,
-        const float d_hat,
-        const float thickness);
-
-    void compute_barrier_energy_from_ee(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<uint2>& sa_edges_left,
-        const Buffer<uint2>& sa_edges_right,
-        const float d_hat,
-        const float thickness);
-
     
-
-public:
-    void host_narrow_phase_ccd_query_from_vf_pair(Stream& stream, 
+    void host_vf_ccd_query(Stream& stream, 
         const std::vector<float3>& sa_x_begin_left, 
         const std::vector<float3>& sa_x_begin_right, 
         const std::vector<float3>& sa_x_end_left,
@@ -111,7 +81,7 @@ public:
         const float d_hat,
         const float thickness);
 
-    void host_narrow_phase_ccd_query_from_ee_pair(Stream& stream, 
+    void host_ee_ccd_query(Stream& stream, 
         const std::vector<float3>& sa_x_begin_left, 
         const std::vector<float3>& sa_x_begin_right, 
         const std::vector<float3>& sa_x_end_left,
@@ -120,6 +90,75 @@ public:
         const std::vector<uint2>& sa_edges_right,
         const float d_hat,
         const float thickness);
+public:
+    // DCD
+    void vf_dcd_query(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat, 
+        const float thickness, const float kappa);
+
+    void ee_dcd_query(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float d_hat, 
+        const float thickness, const float kappa);
+
+    void host_dcd_query_libuipc(
+        Eigen::SparseMatrix<float>& eigen_cgA,
+        Eigen::VectorXf& eigen_cgB,
+        const std::vector<float3>& sa_x_left, 
+        const std::vector<float3>& sa_x_right, 
+        const std::vector<float3>& sa_rest_x_left, 
+        const std::vector<float3>& sa_rest_x_right, 
+        const std::vector<uint3>& sa_faces_left,
+        const std::vector<uint3>& sa_faces_right,
+        const std::vector<uint2>& sa_edges_left,
+        const std::vector<uint2>& sa_edges_right,
+        const float d_hat, 
+        const float thickness,
+        const float kappa);
+
+    void host_barrier_hessian_spd_projection(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
+
+public:
+    // Compute barrier energy
+    void compute_barrier_energy_from_vf(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa);
+
+    void compute_barrier_energy_from_ee(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa);
+
+    double host_compute_barrier_energy_uipc(
+        const std::vector<float3>& sa_x_left, 
+        const std::vector<float3>& sa_x_right,
+        const std::vector<float3>& sa_rest_x_left,
+        const std::vector<float3>& sa_rest_x_right, 
+        const std::vector<uint3>& sa_faces_left,
+        const std::vector<uint3>& sa_faces_right,
+        const std::vector<uint2>& sa_edge_left,
+        const std::vector<uint2>& sa_edge_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa);
+    
+
+public:
+    
     
     
 
@@ -154,6 +193,7 @@ private:
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<uint3>, 
         float, 
+        float,
         float
         > fn_narrow_phase_vf_dcd_query;
     
@@ -163,6 +203,7 @@ private:
         luisa::compute::BufferView<uint2>,
         luisa::compute::BufferView<uint2>, 
         float, 
+        float,
         float
         > fn_narrow_phase_ee_dcd_query;
 
@@ -171,6 +212,7 @@ private:
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<uint3>, 
         float, 
+        float,
         float
         > fn_narrow_phase_vf_dcd_for_barrier_energy;
 
@@ -180,6 +222,7 @@ private:
         luisa::compute::BufferView<uint2>, 
         luisa::compute::BufferView<uint2>, 
         float, 
+        float,
         float
         >  fn_narrow_phase_ee_dcd_for_barrier_energy;
 };
