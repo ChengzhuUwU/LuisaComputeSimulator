@@ -163,6 +163,17 @@ int main(int argc, char** argv)
         // narrow_phase_detector.unit_test(device, stream);
     }
     
+    lcsv::ConjugateGradientSolver pcg_solver;
+    {
+        pcg_solver.set_data(
+            &host_mesh_data, 
+            &mesh_data, 
+            &host_xpbd_data, 
+            &xpbd_data
+        );
+        pcg_solver.compile(device);
+    }
+
     // lcsv::DescentSolver  solver;
     lcsv::NewtonSolver      solver;
     {
@@ -178,7 +189,8 @@ int main(int argc, char** argv)
             &lbvh_edge,
             &buffer_filler, 
             &device_parallel,
-            &narrow_phase_detector
+            &narrow_phase_detector,
+            &pcg_solver
         );
         solver.compile(device);
     }
@@ -186,8 +198,7 @@ int main(int argc, char** argv)
     // Define Simulation
     {
         solver.lcsv::SolverInterface::restart_system();
-        luisa::log_info("");
-        luisa::log_info("");
+        luisa::log_info("Simulation begin...");
     }
 
     auto fn_physics_step = [&]()

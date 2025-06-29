@@ -2471,7 +2471,7 @@ void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
+    // luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 
     stream 
             << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) 

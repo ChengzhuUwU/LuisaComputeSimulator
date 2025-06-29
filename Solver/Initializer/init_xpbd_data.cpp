@@ -264,11 +264,12 @@ void resize_pcg_data(
     const uint num_edges = mesh_data->num_edges;
     const uint num_faces = mesh_data->num_faces;
 
-    
+    const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_edges * 2);
+
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    resize_buffer(host_data->sa_cgA_offdiag, num_edges * 2);
+    resize_buffer(host_data->sa_cgA_offdiag, off_diag_count);
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
     resize_buffer(host_data->sa_cgQ, num_verts);
@@ -280,7 +281,7 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    resize_buffer(device, device_data->sa_cgA_offdiag, num_edges * 2);
+    resize_buffer(device, device_data->sa_cgA_offdiag, off_diag_count);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);
     resize_buffer(device, device_data->sa_cgQ, num_verts);
