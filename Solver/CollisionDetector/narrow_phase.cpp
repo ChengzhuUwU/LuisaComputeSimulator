@@ -184,6 +184,43 @@ inline void NoKappa_ddBarrier_ddD(T& R, const T& d2, const T& dHat, const T& xi)
     - x5*(static_cast<T>(2.0f)*d2 - static_cast<T>(2.0f)*x0 - static_cast<T>(2.0f)*x2 - static_cast<T>(4.0f)*x3)/x1;
 }
 
+template <typename T>
+inline void KappaBarrier(T& R, const T& kappa, const T& d2, const T& dHat, const T& xi)
+{
+    auto x0 = square_scalar(xi);
+    auto x1 = square_scalar(dHat) + static_cast<T>(2.0f)*dHat*xi;
+    /* Simplified Expr */
+    R = -square_scalar(d2 - x0 - x1)*log_scalar((d2 - x0)/x1);
+    R = kappa * R;
+}
+template <typename T>
+inline void dKappaBarrierdD(T& R, const T& kappa, const T& d2, const T& dHat, const T& xi)
+{
+    auto x0 = square_scalar(xi);
+    auto x1 = d2 - x0;
+    auto x2 = square_scalar(dHat);
+    auto x3 = dHat*xi;
+    auto x4 = x2 + static_cast<T>(2.0f)*x3;
+    /* Simplified Expr */
+    R = -(static_cast<T>(2.0f)*d2 - static_cast<T>(2.0f)*x0 - static_cast<T>(2.0f)*x2 - static_cast<T>(4.0f)*x3)*log_scalar(x1/x4) - square_scalar(d2 - x0 - x4)/x1;
+    R = kappa * R;
+}
+template <typename T>
+inline void ddKappaBarrierddD(T& R, const T& kappa, const T& d2, const T& dHat, const T& xi)
+{
+    auto x0 = square_scalar(xi);
+    auto x1 = d2 - x0;
+    auto x2 = square_scalar(dHat);
+    auto x3 = dHat*xi;
+    auto x4 = x2 + static_cast<T>(2.0f)*x3;
+    auto x5 = static_cast<T>(2.0f);
+    /* Simplified Expr */
+    R = square_scalar(d2 - x0 - x4)/square_scalar(x1) 
+    - x5*log_scalar(x1/x4) 
+    - x5*(static_cast<T>(2.0f)*d2 - static_cast<T>(2.0f)*x0 - static_cast<T>(2.0f)*x2 - static_cast<T>(4.0f)*x3)/x1;
+    R = kappa * R;
+}
+
 } // namespace cipc
 
 namespace DistanceGradient
@@ -220,8 +257,8 @@ constexpr lcsv::Float& getMat9x9(LargeMatrix& H)
 template <uint idx, typename LargeMatrix>
 constexpr lcsv::Float& getMat12x12(LargeMatrix& H)
 {
-    constexpr uint col_idx = idx % 16;
-    constexpr uint row_idx = idx / 16;
+    constexpr uint col_idx = idx % 12;
+    constexpr uint row_idx = idx / 12;
     constexpr uint outer_col_idx = col_idx / 3;
     constexpr uint outer_row_idx = row_idx / 3;
     constexpr uint inner_col_idx = col_idx % 3;
@@ -242,8 +279,8 @@ constexpr void setMat9x9(LargeMatrix& H, const lcsv::Float& value)
 template <uint idx, typename LargeMatrix>
 constexpr void setMat12x12(LargeMatrix& H, const lcsv::Float& value)
 {
-    constexpr uint col_idx = idx % 16;
-    constexpr uint row_idx = idx / 16;
+    constexpr uint col_idx = idx % 12;
+    constexpr uint row_idx = idx / 12;
     constexpr uint outer_col_idx = col_idx / 3;
     constexpr uint outer_row_idx = row_idx / 3;
     constexpr uint inner_col_idx = col_idx % 3;
@@ -2934,17 +2971,18 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     vf_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
                     vf_pair.bary = bary;
                     {
+                        Float12 GradD;
                         Float12 G; 
-                        DistanceGradient::point_triangle_distance2_gradient(p, t0, t1, t2, G); // GradiantD
-                        mult_largevec_scalar(G, G, dBdD);                        
+                        DistanceGradient::point_triangle_distance2_gradient(p, t0, t1, t2, GradD); // GradiantD
+                        mult_largevec_scalar(G, GradD, dBdD);                        
 
                         Float12x12 H;
                         DistanceGradient::point_triangle_distance2_hessian(p, t0, t1, t2, H); // HessianD
                         H = add_largemat(
-                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
                             mult_largemat_scalar(H, dBdD)
                         );
-
+                        
                         vf_pair.gradient[0] = G.vec[0];
                         vf_pair.gradient[1] = G.vec[1];
                         vf_pair.gradient[2] = G.vec[2];
@@ -2969,12 +3007,13 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     ve_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
                     ve_pair.bary = bary[valid_indices[0]];
                     {
+                        Float9 GradG;
                         Float9 G; 
                         DistanceGradient::point_edge_distance2_gradient(p, 
                             face_positions[valid_indices[0]], 
                             face_positions[valid_indices[1]], 
-                            G); // GradiantD
-                        mult_largevec_scalar(G, G, dBdD);                        
+                            GradG); // GradiantD
+                        mult_largevec_scalar(G, GradG, dBdD);                        
 
                         Float9x9 H;
                         DistanceGradient::point_edge_distance2_hessian(p, 
@@ -2982,7 +3021,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                             face_positions[valid_indices[1]],  
                             H); // HessianD
                         H = add_largemat(
-                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            outer_product_largevec(mult_largevec_scalar(GradG, ddBddD), GradG),
                             mult_largemat_scalar(H, dBdD)
                         );
 
@@ -3005,18 +3044,19 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     vv_pair.indices[1] = valid_indices[0];
                     vv_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
                     {
+                        Float6 GradG;
                         Float6 G; 
                         DistanceGradient::point_point_distance2_gradient(p, 
                             face_positions[valid_indices[0]], 
-                            G); // GradiantD
-                        mult_largevec_scalar(G, G, dBdD);                        
+                            GradG); // GradiantD
+                        mult_largevec_scalar(G, GradG, dBdD);                        
 
                         Float6x6 H;
                         DistanceGradient::point_point_distance2_hessian(p, 
                             face_positions[valid_indices[0]], 
                             H); // HessianD
                         H = add_largemat(
-                            outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                            outer_product_largevec(mult_largevec_scalar(GradG, ddBddD), GradG),
                             mult_largemat_scalar(H, dBdD)
                         );
 
@@ -3089,14 +3129,15 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                 ee_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
                 ee_pair.bary = bary;
                 {
+                    Float12 GradD;
                     Float12 G; 
-                    DistanceGradient::edge_edge_distance2_gradient(ea_p0, ea_p1, eb_p0, eb_p1, G); // GradiantD
-                    mult_largevec_scalar(G, G, dBdD);                        
+                    DistanceGradient::edge_edge_distance2_gradient(ea_p0, ea_p1, eb_p0, eb_p1, GradD); // GradiantD
+                    mult_largevec_scalar(G, GradD, dBdD);                        
 
                     Float12x12 H;
                     DistanceGradient::edge_edge_distance2_hessian(ea_p0, ea_p1, eb_p0, eb_p1, H); // HessianD
                     H = add_largemat(
-                        outer_product_largevec(mult_largevec_scalar(G, ddBddD), G),
+                        outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
                         mult_largemat_scalar(H, dBdD)
                     );
 
@@ -3179,7 +3220,7 @@ Eigen::Matrix<float, N, N> spd_projection(const Eigen::Matrix<float, N, N>& orig
 }
 
 
-void NarrowPhasesDetector::host_dcd_query_libuipc(
+void NarrowPhasesDetector::host_ON2_dcd_query_libuipc(
         Eigen::SparseMatrix<float>& eigen_cgA,
         Eigen::VectorXf& eigen_cgB,
         const std::vector<float3>& sa_x_left, 
@@ -3222,6 +3263,7 @@ void NarrowPhasesDetector::host_dcd_query_libuipc(
         std::atomic<uint> num_vf(0);
         std::atomic<uint> num_ee(0);
 
+        // VF
         CpuParallel::single_thread_for(0, sa_x_left.size(), [&](const uint left)
         {
             const auto p = float3_to_eigen3(sa_x_left[left]);
@@ -3294,6 +3336,11 @@ void NarrowPhasesDetector::host_dcd_query_libuipc(
                         }
                         eigen_cgB(insert_indice[i]) -= G(i);
                     }
+
+                    luisa::log_info("VF Pair : indices = {}, p = {}, f = {}/{}/{}",
+                        vf_pair.indices, 
+                        eigen3_to_float3(p), 
+                        eigen3_to_float3(t0), eigen3_to_float3(t1), eigen3_to_float3(t2));
                     // std::cout << "VF Pair: indices = " << insert_indice.transpose() << " , d = " << d << ", G = " << G.transpose() << " , H = \n" << H << std::endl;
                 }
             }
@@ -3330,11 +3377,11 @@ void NarrowPhasesDetector::host_dcd_query_libuipc(
                     ee_pair.bary = eigen4_to_float4(bary);
                     Eigen::Vector<float, 12>          G;
                     Eigen::Matrix<float, 12, 12>      H;
+                    const auto t0_Ea0 = float3_to_eigen3(sa_rest_x_left[left_edge[0]]);
+                    const auto t0_Ea1 = float3_to_eigen3(sa_rest_x_left[left_edge[1]]);
+                    const auto t0_Eb0 = float3_to_eigen3(sa_rest_x_right[right_edge[0]]);
+                    const auto t0_Eb1 = float3_to_eigen3(sa_rest_x_right[right_edge[1]]);
                     {
-                        const auto t0_Ea0 = float3_to_eigen3(sa_rest_x_left[left_edge[0]]);
-                        const auto t0_Ea1 = float3_to_eigen3(sa_rest_x_left[left_edge[1]]);
-                        const auto t0_Eb0 = float3_to_eigen3(sa_rest_x_right[right_edge[0]]);
-                        const auto t0_Eb1 = float3_to_eigen3(sa_rest_x_right[right_edge[1]]);
                         Eigen::Vector4i flag = uipc::backend::cuda::distance::edge_edge_distance_flag(ea_p0, ea_p1, eb_p0, eb_p1);
                         uipc::backend::cuda::sym::codim_ipc_simplex_contact::mollified_EE_barrier_gradient_hessian(
                            G, H, flag, kappa, d_hat, thickness, 
@@ -3380,6 +3427,11 @@ void NarrowPhasesDetector::host_dcd_query_libuipc(
                         }
                         eigen_cgB(insert_indice[i]) -= G(i);
                     }
+                    luisa::log_info("EE Pair : indices = {}, e1 = {}/{}, e2 = {}/{}, t0e1 = {}/{}, t0e1 = {}/{}", 
+                        ee_pair.indices, 
+                        eigen3_to_float3(ea_p0), eigen3_to_float3(ea_p1), eigen3_to_float3(eb_p0), eigen3_to_float3(eb_p1),
+                        eigen3_to_float3(t0_Ea0), eigen3_to_float3(t0_Ea1), eigen3_to_float3(t0_Eb0), eigen3_to_float3(t0_Eb1)
+                    );
                     // std::cout << "EE Pair: indices = " << insert_indice.transpose() << " , d = " << d << ", G = " << G.transpose() << " , H = \n" << H << std::endl;
                 }
             }
@@ -3755,7 +3807,7 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
     ;
 }
 
-double NarrowPhasesDetector::host_compute_barrier_energy_uipc(
+double NarrowPhasesDetector::host_ON2_compute_barrier_energy_uipc(
     const std::vector<float3>& sa_x_left, 
     const std::vector<float3>& sa_x_right, 
     const std::vector<float3>& sa_rest_x_left,
@@ -4196,11 +4248,287 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
         stream << fn_test_ccd_ee(1e-3).dispatch(1) << synchronize();
     }
 
-    // Barrier Energy Test
+    // VF Barrier Gradient/Hessian Test
     // if constexpr (false)
     {
+        luisa::log_info("////////////////////////////////");
+        luisa::log_info("VF Barrier Gradient/Hessian Test");
+        luisa::log_info("////////////////////////////////");
 
+        const float kappa = 1e5;
+        const float d_hat = 1e-2;
+        const float thickness = 0.0f;
+
+        auto test_p = float3(0.49999505, -0.29309484, 0.45634925);
+        auto test_t0 = float3(-0.4, -0.3, -0.5);
+        auto test_t1 = float3(-0.4, -0.3, 0.5);
+        auto test_t2 = float3(0.6, -0.3, 0.5);
+        {
+            Eigen::Vector<float, 12>          G;
+            Eigen::Matrix<float, 12, 12>      H;
+            {
+                auto p = float3_to_eigen3(test_p);
+                auto t0 = float3_to_eigen3(test_t0);
+                auto t1 = float3_to_eigen3(test_t1);
+                auto t2 = float3_to_eigen3(test_t2);
+                Eigen::Vector4i flag = uipc::backend::cuda::distance::point_triangle_distance_flag(p, t0, t0, t2);
+                
+                if constexpr (false)
+                {
+                    float D;
+                    uipc::backend::cuda::distance::point_triangle_distance2(flag, p, t0, t1, t2, D);
+                    Eigen::Vector<float, 12> GradD;
+                    uipc::backend::cuda::distance::point_triangle_distance2_gradient(flag, p, t0, t1, t2, GradD); // OK
+                    float dBdD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, D, d_hat, thickness); // OK
+                    G = dBdD * GradD; // OK
+                    float ddBddD;
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, D, d_hat, thickness); // OK
+                    Eigen::Matrix<float, 12, 12> HessD;
+                    uipc::backend::cuda::distance::point_triangle_distance2_hessian(flag, p, t0, t1, t2, HessD);
+                    // std::cout << "Test VF local value : ddBddD = " << ddBddD << ", HessD = \n" << HessD << std::endl;
+                    // std::cout << "Test VF local value : ddBddD = " << ddBddD << " , GradD.transpose() = \n" << GradD.transpose() << std::endl ;
+                    // std::cout << "Test VF local value : ddBddD * GradD.transpose() = \n" << ddBddD * GradD.transpose() << std::endl ;
+                    // std::cout << "Test VF local value : ddBddD * GradD * GradD.transpose() = \n" << ddBddD * GradD * GradD.transpose() << std::endl ;
+                    H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
+                }
+
+                uipc::backend::cuda::sym::codim_ipc_simplex_contact::PT_barrier_gradient_hessian(
+                    G, H, flag, kappa, d_hat, thickness, 
+                    p, 
+                    t0, 
+                    t1, 
+                    t2);
+                std::cout << "Test VF Barrier Gradient/Hessian : "  << " G = \n" << G.transpose() << " \n H = \n" << H << std::endl;
+                // H = spd_projection(H);
+            }
+        }
+        {
+            auto fn_test_dcd_vf = device.compile<1>([&](Float d_hat, Float thickness, Float kappa)
+            {                
+                
+                Float3 p = test_p;
+                Float3 t0 = test_t0;
+                Float3 t1 = test_t1;
+                Float3 t2 = test_t2;
+
+                Float3 bary = distance::point_triangle_distance_coeff_unclassified(p, t0, t1, t2);
+                uint3 valid_indices = makeUint3(0, 1, 2);
+                uint valid_count = distance::point_triangle_type(bary, valid_indices);
+                
+                Float3 x = bary[0] * (t0 - p) +
+                        bary[1] * (t1 - p) +
+                        bary[2] * (t2 - p);
+                Float d2 = length_squared_vec(x);
+                $if (d2 < square_scalar(thickness + d_hat))
+                {
+                    Float d = sqrt_scalar(d2);
+                    Float dBdD; Float ddBddD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, d2, d_hat, thickness);
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, d2, d_hat, thickness);
+
+                    $if (valid_count == 3)
+                    {
+                        Var<CollisionPairVF> vf_pair;
+                        vf_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                        vf_pair.bary = bary;
+                        {
+                            Float12 G;
+                            Float12 GradD;
+                            DistanceGradient::point_triangle_distance2_gradient(p, t0, t1, t2, GradD); // GradiantD
+                            mult_largevec_scalar(G, GradD, dBdD);                        
+
+                            Float12x12 HessD;
+                            DistanceGradient::point_triangle_distance2_hessian(p, t0, t1, t2, HessD); // HessianD
+
+                            // device_log("Test VF local value : ddBddD = {} , H = ", ddBddD);
+                            // print_largemat(H);
+                            
+                            // auto ggT = outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD);
+                            // print_largevec(GradD);
+                            // print_largevec(mult_largevec_scalar(GradD, ddBddD));
+                            // device_log("ddBddD = {}", ddBddD);
+                            // print_largemat(ggT);
+                            
+                            // H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
+                            Float12x12 H = add_largemat(
+                                outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
+                                mult_largemat_scalar(HessD, dBdD)
+                            );
+                            
+                            vf_pair.gradient[0] = G.vec[0];
+                            vf_pair.gradient[1] = G.vec[1];
+                            vf_pair.gradient[2] = G.vec[2];
+                            vf_pair.gradient[3] = G.vec[3];
+                            //  0  1  2  3
+                            //     4  5  6
+                            //        7  8
+                            //           9
+                            CollisionPair::write_upper_hessian(vf_pair.hessian, H);
+                            device_log("Test VF Barrier Gradient = ");
+                            print_largevec(G);
+                            device_log("Test VF Barrier Hessian = ");
+                            print_largemat(H);
+                        }
+                    }
+                    $else
+                    {
+                        device_log("Error Caulc VF Case");
+                    };
+                }
+                $else
+                {
+                    device_log("VF Case Not Valid, d2 = {}, d_hat = {}, thickness = {}", d2, d_hat, thickness);
+                };
+            });
+            
+            stream << fn_test_dcd_vf(d_hat, thickness, kappa).dispatch(1) << synchronize(); 
+        }
+   
     }
+
+    // if constexpr (false)
+    {
+        luisa::log_info("////////////////////////////////");
+        luisa::log_info("EE Barrier Gradient/Hessian Test");
+        luisa::log_info("////////////////////////////////");
+        const float kappa = 1e5;
+        const float d_hat = 1e-2;
+        const float thickness = 0.0f;
+
+        auto test_ea_p0 = float3(-0.50001013, -0.2954696, 0.4555479);
+        auto test_ea_p1 = float3(0.49999505, -0.29309484, 0.45634925);
+        auto test_eb_p0 = float3(-0.4, -0.3, -0.5);
+        auto test_eb_p1 = float3(-0.4, -0.3, 0.5);
+        auto test_t0_Ea0 = float3(-0.5, 0, 0.5);
+        auto test_t0_Ea1 = float3(0.5, 0, 0.5);
+        auto test_t0_Eb0 = float3(-0.4, -0.3, -0.5);
+        auto test_t0_Eb1 = float3(-0.4, -0.3, 0.5);
+
+        {
+            Eigen::Vector<float, 12>          G;
+            Eigen::Matrix<float, 12, 12>      H;
+            {
+                auto ea_p0 = float3_to_eigen3(test_ea_p0);
+                auto ea_p1 = float3_to_eigen3(test_ea_p1);
+                auto eb_p0 = float3_to_eigen3(test_eb_p0);
+                auto eb_p1 = float3_to_eigen3(test_eb_p1);
+                auto t0_Ea0 = float3_to_eigen3(test_t0_Ea0);
+                auto t0_Ea1 = float3_to_eigen3(test_t0_Ea1);
+                auto t0_Eb0 = float3_to_eigen3(test_t0_Eb0);
+                auto t0_Eb1 = float3_to_eigen3(test_t0_Eb1);
+
+                Eigen::Vector4i flag = uipc::backend::cuda::distance::edge_edge_distance_flag(ea_p0, ea_p1, eb_p0, eb_p1);
+                {
+                    float D;
+                    uipc::backend::cuda::distance::edge_edge_distance2(flag, ea_p0, ea_p1, eb_p0, eb_p1, D);
+                    Eigen::Vector<float, 12> GradD;
+                    uipc::backend::cuda::distance::edge_edge_distance2_gradient(flag, ea_p0, ea_p1, eb_p0, eb_p1, GradD); // OK
+                    float dBdD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, D, d_hat, thickness);
+                    G = dBdD * GradD;
+                    float ddBddD;
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, D, d_hat, thickness);
+                    Eigen::Matrix<float, 12, 12> HessD;
+                    uipc::backend::cuda::distance::edge_edge_distance2_hessian(flag, ea_p0, ea_p1, eb_p0, eb_p1, HessD);
+                    H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
+                }
+                // uipc::backend::cuda::sym::codim_ipc_simplex_contact::mollified_EE_barrier_gradient_hessian(
+                //     G, H, flag, kappa, d_hat, thickness, 
+                //     t0_Ea0, 
+                //     t0_Ea1, 
+                //     t0_Eb0, 
+                //     t0_Eb1, 
+                //     ea_p0, 
+                //     ea_p1, 
+                //     eb_p0, 
+                //     eb_p1);
+                
+                // luisa::log_info("Get EE Pair : indices = {}, bary = {}, d = {}", 
+                //     ee_pair.indices, 
+                //     ee_pair.bary, d);
+                
+                std::cout << "Test EE Barrier Gradient/Hessian : "  << " G = \n" << G.transpose() << " \n H = \n" << H << std::endl;
+                // H = spd_projection(H);
+            }
+        }
+        {
+            auto fn_test_dcd_ee = device.compile<1>([&](Float d_hat, Float thickness, Float kappa)
+            {                
+                Float3 ea_p0 = test_ea_p0;
+                Float3 ea_p1 = test_ea_p1;
+                Float3 eb_p0 = test_eb_p0;
+                Float3 eb_p1 = test_eb_p1;
+                Float3 t0_Ea0 = test_t0_Ea0;
+                Float3 t0_Ea1 = test_t0_Ea1;
+                Float3 t0_Eb0 = test_t0_Eb0;
+                Float3 t0_Eb1 = test_t0_Eb1;
+
+                Float4 bary = distance::edge_edge_distance_coeff_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
+                Bool is_ee = all_vec(bary != 0.0f);
+
+                Float3 x0 = bary[0] * ea_p0 + bary[1] * ea_p1;
+                Float3 x1 = bary[2] * eb_p0 + bary[3] * eb_p1;
+                Float3 x = x1 - x0;
+                Float d2 = length_squared_vec(x);
+                
+                $if (d2 < square_scalar(d_hat + thickness) & is_ee)
+                {
+                    Float d = sqrt_scalar(d2);
+                    Float dBdD; Float ddBddD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, d2, d_hat, thickness);
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, d2, d_hat, thickness);
+
+                    $if (is_ee)
+                    {
+                        Var<CollisionPairEE> ee_pair;
+                        ee_pair.vec1 = makeFloat4(x.x, x.y, x.z, d);
+                        ee_pair.bary = bary;
+                        {
+                            Float12 GradD;
+                            Float12 G; 
+                            DistanceGradient::edge_edge_distance2_gradient(ea_p0, ea_p1, eb_p0, eb_p1, GradD); // GradiantD
+                            mult_largevec_scalar(G, GradD, dBdD);                        
+
+                            Float12x12 H;
+                            DistanceGradient::edge_edge_distance2_hessian(ea_p0, ea_p1, eb_p0, eb_p1, H); // HessianD
+                            H = add_largemat(
+                                outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
+                                mult_largemat_scalar(H, dBdD)
+                            );
+
+                            ee_pair.gradient[0] = G.vec[0];
+                            ee_pair.gradient[1] = G.vec[1];
+                            ee_pair.gradient[2] = G.vec[2];
+                            ee_pair.gradient[3] = G.vec[3];
+                            //  0  1  2  3
+                            //     4  5  6
+                            //        7  8
+                            //           9
+                            CollisionPair::write_upper_hessian(ee_pair.hessian, H);
+                            device_log("Test EE Barrier Gradient = ");
+                            print_largevec(G);
+                            device_log("Test EE Barrier Hessian = ");
+                            print_largemat(H);
+                        }
+                    }
+                    $else
+                    {
+                        device_log("Error Caulc EE Case");
+                    };
+                }
+                $else
+                {
+                    device_log("EE Case Not Valid, d2 = {}, d_hat = {}, thickness = {}", d2, d_hat, thickness);
+                };
+            });
+            
+            stream << fn_test_dcd_ee(d_hat, thickness, kappa).dispatch(1) << synchronize(); 
+        }
+   
+    }
+
+
 }
 
 }

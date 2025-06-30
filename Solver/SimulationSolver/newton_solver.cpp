@@ -1086,7 +1086,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     auto host_update_barrier_set = [&]()
     {
-        mp_narrowphase_detector->host_dcd_query_libuipc(eigen_cgA, eigen_cgB, 
+        mp_narrowphase_detector->host_ON2_dcd_query_libuipc(eigen_cgA, eigen_cgB, 
             host_sim_data->sa_x, 
             host_sim_data->sa_x, 
             host_mesh_data->sa_rest_x, 
@@ -1100,7 +1100,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto host_compute_barrier_energy = [&]() -> float
     {
-        return mp_narrowphase_detector->host_compute_barrier_energy_uipc(
+        return mp_narrowphase_detector->host_ON2_compute_barrier_energy_uipc(
             host_sim_data->sa_x, 
             host_sim_data->sa_x, 
             host_mesh_data->sa_rest_x, 

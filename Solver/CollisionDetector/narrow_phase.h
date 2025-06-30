@@ -107,7 +107,7 @@ public:
         const float d_hat, 
         const float thickness, const float kappa);
 
-    void host_dcd_query_libuipc(
+    void host_ON2_dcd_query_libuipc(
         Eigen::SparseMatrix<float>& eigen_cgA,
         Eigen::VectorXf& eigen_cgB,
         const std::vector<float3>& sa_x_left, 
@@ -143,7 +143,7 @@ public:
         const float thickness,
         const float kappa);
 
-    double host_compute_barrier_energy_uipc(
+    double host_ON2_compute_barrier_energy_uipc(
         const std::vector<float3>& sa_x_left, 
         const std::vector<float3>& sa_x_right,
         const std::vector<float3>& sa_rest_x_left,
