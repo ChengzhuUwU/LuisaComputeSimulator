@@ -2441,12 +2441,12 @@ inline void edge_edge_distance2_gradient(Float3& ea0, Float3& ea1, Float3& eb0, 
                   G);
 }
 
-inline void point_point_distance2_hessian(Float3& a, Float3& b, Float6x6 H)
+inline void point_point_distance2_hessian(Float3& a, Float3& b, Float6x6& H)
 {
-    H.mat[0][0] = makeFloat3x3(Float(1.0f));
-    H.mat[1][1] = makeFloat3x3(Float(1.0f));
-    H.mat[0][1] = makeFloat3x3(Float(-1.0f));
-    H.mat[1][0] = makeFloat3x3(Float(-1.0f));
+    H.mat[0][0] = makeFloat3x3(Float(2.0f));
+    H.mat[1][1] = makeFloat3x3(Float(2.0f));
+    H.mat[0][1] = makeFloat3x3(Float(-2.0f));
+    H.mat[1][0] = makeFloat3x3(Float(-2.0f));
 }
 inline void point_edge_distance2_hessian(Float3& p, Float3& e0, Float3& e1, Float9x9& H)
 {
@@ -4249,7 +4249,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     }
 
     // VF Barrier Gradient/Hessian Test
-    // if constexpr (false)
+    if constexpr (false)
     {
         luisa::log_info("////////////////////////////////");
         luisa::log_info("VF Barrier Gradient/Hessian Test");
@@ -4387,7 +4387,185 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
    
     }
 
-    // if constexpr (false)
+    // VV Barrier Gradient/Hessian Test
+    if constexpr (false)
+    {
+        luisa::log_info("////////////////////////////////");
+        luisa::log_info("VV Barrier Gradient/Hessian Test");
+        luisa::log_info("////////////////////////////////");
+
+        const float kappa = 1e5;
+        const float d_hat = 1e-2;
+        const float thickness = 0.0f;
+
+        auto test_p0 = float3(0.0, 0.0, 0.0);
+        auto test_p1 = float3(5e-3, 5e-3, 0.0f);
+        {
+            Eigen::Vector<float, 6>         G;
+            Eigen::Matrix<float, 6, 6>      H;
+            {
+                auto p0 = float3_to_eigen3(test_p0);
+                auto p1 = float3_to_eigen3(test_p1);
+                Eigen::Vector2i flag = uipc::backend::cuda::distance::point_point_distance_flag(p0, p1);
+
+                // if constexpr (false)
+                {
+                    float D;
+                    uipc::backend::cuda::distance::point_point_distance2(flag, p0, p1, D);
+                    Eigen::Vector<float, 6> GradD;
+                    uipc::backend::cuda::distance::point_point_distance2_gradient(flag, p0, p1, GradD); // OK
+                    float dBdD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, D, d_hat, thickness); // OK
+                    G = dBdD * GradD; // OK
+                    float ddBddD;
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, D, d_hat, thickness); // OK
+                    Eigen::Matrix<float, 6, 6> HessD;
+                    uipc::backend::cuda::distance::point_point_distance2_hessian(flag, p0, p1, HessD);
+                    H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
+                    std::cout << "Test VV local value : ddBddD = " << ddBddD << ", HessD = \n" << HessD << std::endl;
+                    // std::cout << "Test VV local value : ddBddD = " << ddBddD << " , GradD.transpose() = \n" << GradD.transpose() << std::endl ;
+                    // std::cout << "Test VV local value : ddBddD * GradD.transpose() = \n" << ddBddD * GradD.transpose() << std::endl ;
+                    // std::cout << "Test VV local value : ddBddD * GradD * GradD.transpose() = \n" << ddBddD * GradD * GradD.transpose() << std::endl ;
+                }
+
+                uipc::backend::cuda::sym::codim_ipc_simplex_contact::PP_barrier_gradient_hessian(
+                    G, H, flag, kappa, d_hat, thickness, 
+                    p0, p1);
+                std::cout << "Test VV Barrier Gradient/Hessian : "  << " G = \n" << G.transpose() << " \n H = \n" << H << std::endl;
+                // H = spd_projection(H);
+            }
+        }
+        {
+            auto fn_test_dcd_vv = device.compile<1>([&](Float d_hat, Float thickness, Float kappa)
+            {                
+                Float3 p0 = test_p0;
+                Float3 p1 = test_p1;
+
+                Float d2 = distance::point_point_distance_squared_unclassified(p0, p1);
+
+                $if (d2 < square_scalar(thickness + d_hat))
+                {
+                    Float dBdD; Float ddBddD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, d2, d_hat, thickness);
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, d2, d_hat, thickness);
+
+                    Var<CollisionPairVV> vv_pair;
+                    {
+                        Float6 G;
+                        Float6 GradD;
+                        DistanceGradient::point_point_distance2_gradient(p0, p1, GradD); // GradiantD
+                        mult_largevec_scalar(G, GradD, dBdD);                        
+
+                        Float6x6 HessD;
+                        DistanceGradient::point_point_distance2_hessian(p0, p1, HessD); // HessianD
+
+                        device_log("Test VV Barrier HessD = ");
+                        print_largemat(HessD);
+
+                        Float6x6 H = add_largemat(
+                            outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
+                            mult_largemat_scalar(HessD, dBdD)
+                        );
+                        
+                        vv_pair.gradient[0] = G.vec[0];
+                        vv_pair.gradient[1] = G.vec[1];
+                        CollisionPair::write_upper_hessian(vv_pair.hessian, H);
+                        device_log("Test VV Barrier Gradient = ");
+                        print_largevec(G);
+                        device_log("Test VV Barrier Hessian = ");
+                        print_largemat(H);
+                    }
+                }
+                $else
+                {
+                    device_log("VV Case Not Valid, d2 = {}, d_hat = {}, thickness = {}", d2, d_hat, thickness);
+                };
+            });
+            stream << fn_test_dcd_vv(d_hat, thickness, kappa).dispatch(1) << synchronize(); 
+        }
+    }
+
+    // VE Barrier Gradient/Hessian Test
+    if constexpr (false)
+    {
+        luisa::log_info("////////////////////////////////");
+        luisa::log_info("VE Barrier Gradient/Hessian Test");
+        luisa::log_info("////////////////////////////////");
+
+        const float kappa = 1e5;
+        const float d_hat = 1e-2;
+        const float thickness = 0.0f;
+
+        auto test_p = float3(0.0, 0.0, 0.0);
+        auto test_e0 = float3(-5e-3, 5e-3, 0.0f);
+        auto test_e1 = float3(5e-3, 5e-3, 0.0f);
+        {
+            Eigen::Vector<float, 9>          G;
+            Eigen::Matrix<float, 9, 9>      H;
+            {
+                auto p =  float3_to_eigen3(test_p );
+                auto e0 = float3_to_eigen3(test_e0);
+                auto e1 = float3_to_eigen3(test_e1);
+                Eigen::Vector3i flag = uipc::backend::cuda::distance::point_edge_distance_flag(p, e0, e1);
+
+                uipc::backend::cuda::sym::codim_ipc_simplex_contact::PE_barrier_gradient_hessian(
+                    G, H, flag, kappa, d_hat, thickness, 
+                    p, e0, e1);
+                std::cout << "Test VE Barrier Gradient/Hessian : "  << " G = \n" << G.transpose() << " \n H = \n" << H << std::endl;
+                // H = spd_projection(H);
+            }
+        }
+        {
+            auto fn_test_dcd_ve = device.compile<1>([&](Float d_hat, Float thickness, Float kappa)
+            {                
+                Float3 p  = test_p ;
+                Float3 e0 = test_e0;
+                Float3 e1 = test_e1;
+
+                Float d2 = distance::point_edge_distance_squared_unclassified(p, e0, e1);
+
+                $if (d2 < square_scalar(thickness + d_hat))
+                {
+                    Float dBdD; Float ddBddD;
+                    cipc::dKappaBarrierdD(dBdD, kappa, d2, d_hat, thickness);
+                    cipc::ddKappaBarrierddD(ddBddD, kappa, d2, d_hat, thickness);
+
+                    Var<CollisionPairVE> vv_pair;
+                    {
+                        Float9 G;
+                        Float9 GradD;
+                        DistanceGradient::point_edge_distance2_gradient(p, e0, e1, GradD); // GradiantD
+                        mult_largevec_scalar(G, GradD, dBdD);                        
+
+                        Float9x9 HessD;
+                        DistanceGradient::point_edge_distance2_hessian(p, e0, e1, HessD); // HessianD
+
+                        Float9x9 H = add_largemat(
+                            outer_product_largevec(mult_largevec_scalar(GradD, ddBddD), GradD),
+                            mult_largemat_scalar(HessD, dBdD)
+                        );
+                        
+                        vv_pair.gradient[0] = G.vec[0];
+                        vv_pair.gradient[1] = G.vec[1];
+                        vv_pair.gradient[2] = G.vec[2];
+                        CollisionPair::write_upper_hessian(vv_pair.hessian, H);
+                        device_log("Test VE Barrier Gradient = ");
+                        print_largevec(G);
+                        device_log("Test VE Barrier Hessian = ");
+                        print_largemat(H);
+                    }
+                }
+                $else
+                {
+                    device_log("VE Case Not Valid, d2 = {}, d_hat = {}, thickness = {}", d2, d_hat, thickness);
+                };
+            });
+            stream << fn_test_dcd_ve(d_hat, thickness, kappa).dispatch(1) << synchronize(); 
+        }
+    }
+
+    // EE Barrier Gradient/Hessian Test
+    if constexpr (false)
     {
         luisa::log_info("////////////////////////////////");
         luisa::log_info("EE Barrier Gradient/Hessian Test");

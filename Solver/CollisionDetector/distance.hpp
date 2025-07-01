@@ -229,6 +229,21 @@ inline auto edge_edge_distance_squared_unclassified(
     return squared_norm(x1 - x0);
 }
 
+inline auto point_point_distance_squared_unclassified(
+    const Vec3f &p0, 
+    const Vec3f &p1) 
+{
+    return squared_norm(p0 - p1);
+}
+inline auto point_edge_distance_squared_unclassified(
+    const Vec3f &p, 
+    const Vec3f &e0,
+    const Vec3f &e1
+) 
+{
+    return squared_norm(cross_vec(e0 - p, e1 - p)) / squared_norm(e1 - e0);
+}
+
 } // namespace distance
 
 namespace distance 
@@ -587,6 +602,21 @@ inline float edge_edge_distance_squared_unclassified(
     Vec3f x1 = c[2] * eb0.template cast<float>() +
                c[3] * eb1.template cast<float>();
     return (x1 - x0).squaredNorm();
+}
+
+inline auto point_point_distance_squared_unclassified(
+    const Vec3f &p0, 
+    const Vec3f &p1) 
+{
+    return (p0 - p1).squaredNorm();
+}
+inline auto point_edge_distance_squared_unclassified(
+    const Vec3f &p, 
+    const Vec3f &e0,
+    const Vec3f &e1
+) 
+{
+    return (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
 }
 
 } // namespace host_distance
