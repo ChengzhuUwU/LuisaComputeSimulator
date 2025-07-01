@@ -142,7 +142,15 @@ namespace lcsv
 namespace CollisionPair
 {
     
-    template<typename T> auto get_indices(const T& pair) { return pair.indices; }
+    // template<typename T> auto get_indices(const T& pair) { return pair.indices; }
+    inline auto get_indices(const CollisionPairVV& pair) { return pair.indices; }
+    inline auto get_indices(const CollisionPairVE& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
+    inline auto get_indices(const CollisionPairVF& pair) { return pair.indices; }
+    inline auto get_indices(const CollisionPairEE& pair) { return pair.indices; }
+    inline auto get_indices(const Var<CollisionPairVV>& pair) { return pair.indices; }
+    inline auto get_indices(const Var<CollisionPairVE>& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
+    inline auto get_indices(const Var<CollisionPairVF>& pair) { return pair.indices; }
+    inline auto get_indices(const Var<CollisionPairEE>& pair) { return pair.indices; }
     
     template<typename T> auto get_vv_vid1(const T& pair)  { return pair.indices[0]; }
     template<typename T> auto get_vv_vid2(const T& pair)  { return pair.indices[1]; }
@@ -178,6 +186,16 @@ inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float
     hessian[1] = H.mat[1][0];
     hessian[2] = H.mat[1][1];
 }
+inline void write_upper_hessian(float3x3 hessian[3], float6x6& H)
+{
+    //  0  1  
+    //     2  
+    //        
+    //           
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+}
 inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
 {
     //  0   1  
@@ -191,6 +209,19 @@ inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
 }
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<6>& hessian, Float9x9& H)
+{
+    //  0  1  2  
+    //     3  4  
+    //        5  
+    //           
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+    hessian[3] = H.mat[2][0];
+    hessian[4] = H.mat[2][1];
+    hessian[5] = H.mat[2][2];
+}
+inline void write_upper_hessian(float3x3 hessian[6], float9x9& H)
 {
     //  0  1  2  
     //     3  4  
@@ -221,6 +252,24 @@ inline void extract_upper_hessian(float3x3 hessian[6], float9x9& H)
 }
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<10>& hessian, Float12x12& H)
+{
+    
+    //  0  1  2  3
+    //     4  5  6
+    //        7  8
+    //           9
+    hessian[0] = H.mat[0][0];
+    hessian[1] = H.mat[1][0];
+    hessian[2] = H.mat[1][1];
+    hessian[3] = H.mat[2][0];
+    hessian[4] = H.mat[2][1];
+    hessian[5] = H.mat[2][2];
+    hessian[6] = H.mat[3][0];
+    hessian[7] = H.mat[3][1];
+    hessian[8] = H.mat[3][2];
+    hessian[9] = H.mat[3][3];
+}
+inline void write_upper_hessian(float3x3 hessian[10], float12x12& H)
 {
     
     //  0  1  2  3

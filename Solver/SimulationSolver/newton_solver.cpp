@@ -894,6 +894,19 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 });
             }
         }
+
+        // Off-diag: Collision hessian
+        auto narrowphase_count = collision_data->narrow_phase_collision_count.view();
+        auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+        const uint num_vv = host_count[collision_data->get_vv_count_offset()];
+        const uint num_ve = host_count[collision_data->get_ve_count_offset()];
+        const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+        const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+        CpuParallel::single_thread_for(0, num_vv, [](const uint pair_idx)
+        {
+        });
+
     };
 
 
@@ -964,8 +977,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     host_mesh_data->sa_edges, 
         //     host_mesh_data->sa_edges, 
         //     1e-3);
-
-        
 
         mp_narrowphase_detector->vf_ccd_query(stream, 
             sim_data->sa_x_iter_start, 
@@ -1059,6 +1070,20 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         mp_narrowphase_detector->download_narrowphase_collision_count(stream);
         mp_narrowphase_detector->download_narrowphase_list(stream);  
+        
+        mp_narrowphase_detector->host_barrier_hessian_spd_projection(stream);
+        mp_narrowphase_detector->upload_spd_narrowphase_list(stream);
+
+        stream 
+            << sim_data->sa_cgB.copy_from(sa_cgB.data())
+            << sim_data->sa_cgA_diag.copy_from(sa_cgA_diag.data());
+
+        mp_narrowphase_detector->barrier_hessian_assemble(stream, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+
+        stream 
+            << sim_data->sa_cgB.copy_to(sa_cgB.data())
+            << sim_data->sa_cgA_diag.copy_to(sa_cgA_diag.data())
+            << luisa::compute::synchronize();
     };
     auto compute_barrier_energy_from_broadphase_list = [&]() -> float
     {
@@ -1096,7 +1121,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             host_mesh_data->sa_edges, 
             host_mesh_data->sa_edges, 
             d_hat, thickness, kappa);
-
     };
     auto host_compute_barrier_energy = [&]() -> float
     {
@@ -1185,7 +1209,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 evaluete_spring(1e4);
 
-                host_update_barrier_set();
+                // host_update_barrier_set();
+                update_barrier_set();
             }
             linear_solver_interface(); // Solve Ax=b
 

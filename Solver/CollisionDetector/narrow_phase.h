@@ -50,6 +50,7 @@ public:
     void download_broadphase_collision_count(Stream& stream);
     void download_narrowphase_collision_count(Stream& stream);
     void download_narrowphase_list(Stream& stream);
+    void upload_spd_narrowphase_list(Stream& stream);
 
 public:
     // CCD 
@@ -123,6 +124,8 @@ public:
         const float kappa);
 
     void host_barrier_hessian_spd_projection(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
+    void host_barrier_hessian_spd_projection(Stream& stream);
+    void barrier_hessian_assemble(Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
 
 public:
     // Compute barrier energy
@@ -225,6 +228,12 @@ private:
         float,
         float
         >  fn_narrow_phase_ee_dcd_for_barrier_energy;
+
+    // Assemble
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vv;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_ve;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vf;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_ee;
 };
 
 

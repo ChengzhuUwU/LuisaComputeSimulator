@@ -17,7 +17,7 @@ class ConjugateGradientSolver
 {
 
 public:
-    constexpr static bool use_eigen = true;
+    constexpr static bool use_eigen = false;
     constexpr static bool use_upper_triangle = false;
 
 public:
