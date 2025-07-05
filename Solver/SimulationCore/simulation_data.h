@@ -178,137 +178,127 @@ namespace CollisionPair
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
 {
-    //  0  1  
-    //     2  
-    //        
-    //           
+    //   0   2  
+    //  t2   1  
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[1][0];
 }
 inline void write_upper_hessian(float3x3 hessian[3], float6x6& H)
 {
-    //  0  1  
-    //     2  
-    //        
-    //           
+    //   0   2  
+    //  t2   1  
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[1][0];
 }
 inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
 {
-    //  0   1  
-    //  t1  2  
-    //        
-    //           
+    //   0   2  
+    //  t2   1  
     H.mat[0][0] = hessian[0];
-    H.mat[0][1] = transpose_mat(hessian[1]);
-    H.mat[1][0] = hessian[1];
-    H.mat[1][1] = hessian[2];
+    H.mat[0][1] = transpose_mat(hessian[2]);
+    H.mat[1][0] = hessian[2];
+    H.mat[1][1] = hessian[1];
 }
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<6>& hessian, Float9x9& H)
 {
-    //  0  1  2  
-    //     3  4  
-    //        5  
-    //           
+    //   0   3   5  
+    //  t3   1   4  
+    //  t5  t4   2    
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
-    hessian[3] = H.mat[2][0];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[2][2];
+    hessian[3] = H.mat[1][0];
     hessian[4] = H.mat[2][1];
-    hessian[5] = H.mat[2][2];
+    hessian[5] = H.mat[2][0];
 }
 inline void write_upper_hessian(float3x3 hessian[6], float9x9& H)
 {
-    //  0  1  2  
-    //     3  4  
-    //        5  
-    //           
+    //   0   3   5  
+    //  t3   1   4  
+    //  t5  t4   2    
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
-    hessian[3] = H.mat[2][0];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[2][2];
+    hessian[3] = H.mat[1][0];
     hessian[4] = H.mat[2][1];
-    hessian[5] = H.mat[2][2];
+    hessian[5] = H.mat[2][0];
 }
 inline void extract_upper_hessian(float3x3 hessian[6], float9x9& H)
 {
-    //   0   1   2  
-    //  t1   3   4  
-    //  t2  t4   5  
-    //           
+    //   0   3   5  
+    //  t3   1   4  
+    //  t5  t4   2           
     H.mat[0][0] = hessian[0];
-    H.mat[0][1] = transpose_mat(hessian[1]);
-    H.mat[0][2] = transpose_mat(hessian[2]);
-    H.mat[1][0] = hessian[1];
-    H.mat[1][1] = hessian[2];
+    H.mat[0][1] = transpose_mat(hessian[3]);
+    H.mat[0][2] = transpose_mat(hessian[5]);
+    H.mat[1][0] = hessian[3];
+    H.mat[1][1] = hessian[1];
     H.mat[1][2] = transpose_mat(hessian[4]);
-    H.mat[2][0] = hessian[3];
+    H.mat[2][0] = hessian[5];
     H.mat[2][1] = hessian[4];
-    H.mat[2][2] = hessian[5];
+    H.mat[2][2] = hessian[2];
 }
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<10>& hessian, Float12x12& H)
 {
-    
-    //  0  1  2  3
-    //     4  5  6
-    //        7  8
-    //           9
+    //   0   4   7   9
+    //  t4   1   5   8
+    //  t7  t5   2   6
+    //  t9  t8  t6   3
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
-    hessian[3] = H.mat[2][0];
-    hessian[4] = H.mat[2][1];
-    hessian[5] = H.mat[2][2];
-    hessian[6] = H.mat[3][0];
-    hessian[7] = H.mat[3][1];
-    hessian[8] = H.mat[3][2];
-    hessian[9] = H.mat[3][3];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[2][2];
+    hessian[3] = H.mat[3][3];
+    hessian[4] = H.mat[1][0];
+    hessian[5] = H.mat[2][1];
+    hessian[6] = H.mat[3][2];
+    hessian[7] = H.mat[2][0];
+    hessian[8] = H.mat[3][1];
+    hessian[9] = H.mat[3][0];
 }
 inline void write_upper_hessian(float3x3 hessian[10], float12x12& H)
 {
     
-    //  0  1  2  3
-    //     4  5  6
-    //        7  8
-    //           9
+    //   0   4   7   9
+    //  t4   1   5   8
+    //  t7  t5   2   6
+    //  t9  t8  t6   3
     hessian[0] = H.mat[0][0];
-    hessian[1] = H.mat[1][0];
-    hessian[2] = H.mat[1][1];
-    hessian[3] = H.mat[2][0];
-    hessian[4] = H.mat[2][1];
-    hessian[5] = H.mat[2][2];
-    hessian[6] = H.mat[3][0];
-    hessian[7] = H.mat[3][1];
-    hessian[8] = H.mat[3][2];
-    hessian[9] = H.mat[3][3];
+    hessian[1] = H.mat[1][1];
+    hessian[2] = H.mat[2][2];
+    hessian[3] = H.mat[3][3];
+    hessian[4] = H.mat[1][0];
+    hessian[5] = H.mat[2][1];
+    hessian[6] = H.mat[3][2];
+    hessian[7] = H.mat[2][0];
+    hessian[8] = H.mat[3][1];
+    hessian[9] = H.mat[3][0];
 }
 inline void extract_upper_hessian(float3x3 hessian[10], float12x12& H)
 {
-    //  0    1   2   3
-    //  t1   4   5   6
-    //  t2  t5   7   8
-    //  t3  t6  t8   9
+    //   0   4   7   9
+    //  t4   1   5   8
+    //  t7  t5   2   6
+    //  t9  t8  t6   3
     H.mat[0][0] = hessian[0];
-    H.mat[0][1] = transpose_mat(hessian[1]);
-    H.mat[0][2] = transpose_mat(hessian[2]);
-    H.mat[0][3] = transpose_mat(hessian[3]);
-    H.mat[1][0] = hessian[1];
-    H.mat[1][1] = hessian[2];
+    H.mat[0][1] = transpose_mat(hessian[4]);
+    H.mat[0][2] = transpose_mat(hessian[7]);
+    H.mat[0][3] = transpose_mat(hessian[9]);
+    H.mat[1][0] = hessian[4];
+    H.mat[1][1] = hessian[1];
     H.mat[1][2] = transpose_mat(hessian[5]);
-    H.mat[1][3] = transpose_mat(hessian[6]);
-    H.mat[2][0] = hessian[3];
-    H.mat[2][1] = hessian[4];
-    H.mat[2][2] = hessian[5];
-    H.mat[2][3] = transpose_mat(hessian[8]);
-    H.mat[3][0] = hessian[6];
-    H.mat[3][1] = hessian[7];
-    H.mat[3][2] = hessian[8];
-    H.mat[3][3] = hessian[9];
+    H.mat[1][3] = transpose_mat(hessian[8]);
+    H.mat[2][0] = hessian[7];
+    H.mat[2][1] = hessian[5];
+    H.mat[2][2] = hessian[2];
+    H.mat[2][3] = transpose_mat(hessian[3]);
+    H.mat[3][0] = hessian[9];
+    H.mat[3][1] = hessian[8];
+    H.mat[3][2] = hessian[6];
+    H.mat[3][3] = hessian[3];
 }
 
 

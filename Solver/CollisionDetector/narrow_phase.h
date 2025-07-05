@@ -126,7 +126,7 @@ public:
     void host_barrier_hessian_spd_projection(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
     void host_barrier_hessian_spd_projection(Stream& stream);
     void barrier_hessian_assemble(Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
-
+    void host_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
 public:
     // Compute barrier energy
     void compute_barrier_energy_from_vf(Stream& stream, 

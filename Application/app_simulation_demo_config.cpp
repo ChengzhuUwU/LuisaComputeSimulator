@@ -82,7 +82,7 @@ void ccd_ipc_unit_case(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
             },
         }
     });
-    lcsv::get_scene_params().load_state_frame = 4;
+    lcsv::get_scene_params().load_state_frame = 6;
     lcsv::get_scene_params().implicit_dt = 0.05;
     lcsv::get_scene_params().num_substep = 1;
     lcsv::get_scene_params().nonlinear_iter_count = 20;

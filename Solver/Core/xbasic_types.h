@@ -492,6 +492,11 @@ void set_largevec(LargeVector<N>& left_vec, const luisa::float3& vec) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec; }
 }
 template<size_t N>
+void set_largevec(LargeVector<N>& left_vec, const luisa::float3 vec[N]) {
+    for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec[i]; }
+}
+
+template<size_t N>
 void set_largevec(Var<LargeVector<N>>& left_vec, Var<float> value) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = luisa::compute::make_float3(value); }
 }
@@ -499,6 +504,11 @@ template<size_t N>
 void set_largevec(Var<LargeVector<N>>& left_vec, const luisa::float3& vec) {
     for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec; }
 }
+template<size_t N>
+void set_largevec(Var<LargeVector<N>>& left_vec, const luisa::float3 vec[N]) {
+    for (size_t i = 0; i < N/3; i++) { left_vec.vec[i] = vec[i]; }
+}
+
 
 // Vector add
 template<size_t N>
