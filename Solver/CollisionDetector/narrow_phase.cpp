@@ -2559,6 +2559,7 @@ float NarrowPhasesDetector::download_energy(Stream& stream, const float kappa)
     auto& contact_energy = collision_data->contact_energy;
     auto& host_contact_energy = host_collision_data->contact_energy;
     stream 
+        << contact_energy.copy_to(host_contact_energy.data())
         << luisa::compute::synchronize();
     return std::accumulate(host_contact_energy.begin(), host_contact_energy.end(), 0.0f);
     // return kappa * (host_contact_energy[2] + host_contact_energy[3]);
@@ -3558,7 +3559,7 @@ void NarrowPhasesDetector::host_ON2_dcd_query_libuipc(
     
 }
 
-void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
+void NarrowPhasesDetector::host_barrier_gradient_hessian_assemble(
     luisa::compute::Stream& stream, 
     Eigen::SparseMatrix<float>& eigen_cgA,
     Eigen::VectorXf& eigen_cgB)
@@ -3593,7 +3594,7 @@ void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
             auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
             uint2& indices = pair.indices;
             float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat6x6 proj_H = spd_projection(float6x6_to_eigen6x6(H));
+            EigenFloat6x6 proj_H = (float6x6_to_eigen6x6(H));
             for (uint i = 0; i < 2; ++i) 
             {
                 for (uint j = 0; j < 2; ++j) 
@@ -3617,7 +3618,7 @@ void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
             auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
             uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
             float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat9x9 proj_H = spd_projection(float9x9_to_eigen9x9(H));
+            EigenFloat9x9 proj_H = (float9x9_to_eigen9x9(H));
             for (uint i = 0; i < 3; ++i) 
             {
                 for (uint j = 0; j < 3; ++j) 
@@ -3641,7 +3642,7 @@ void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
             auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
             uint4& indices = pair.indices;  luisa::log_info("Get VF Pair : indices = {}", indices);;
             float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
+            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
             
             for (uint i = 0; i < 4; ++i) 
             {
@@ -3666,7 +3667,7 @@ void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
             auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
             uint4& indices = pair.indices; luisa::log_info("Get VF Pair : indices = {}", indices);;
             float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
+            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
             for (uint i = 0; i < 4; ++i) 
             {
                 for (uint j = 0; j < 4; ++j) 
@@ -3780,108 +3781,12 @@ void NarrowPhasesDetector::barrier_hessian_assemble(luisa::compute::Stream& stre
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    // Prev cgB = 
-    // 1.44882     -1.56113      5.07324 
-    // -1.17315e-05    -0.850516      2.81273     
-    // 0.106109     0.980441     -3.70507     
-    // -1.55487      1.10873     -4.21825            
-    // 0            0            0            
-    // 0            0            0            
-    // 0            0            0            
-    // 0            0            0
-    
-    
-    // Prev cgA = 
-    // 1.00001e+09 -1447 4785.37 -10000 -1.50565e-06 0 -3.85761 0.0236122 -0.0762357 -4999.24 1446.98 -4785.29 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -1447 1e+09 -4210.51 -1.50565e-06 -2.26698e-16 0 0.0236122 -878.85 2825.06 1446.98 -420.384 1385.46 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 4785.37 -4210.51 1.00001e+09 0 0 0 -0.0762357 2825.06 -9125.01 -4785.29 1385.46 -4583.28 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -10000 -1.50565e-06 0 1.00001e+09 0.0115535 -0.0382033 0 0 0 -2.93791 -0.0115519 0.0382033 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -1.50565e-06 -2.26698e-16 0 0.0115535 1e+09 -2769.68 0 0 0 -0.0115519 -840.435 2769.68 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 0 0 0 -0.0382033 -2769.68 1.00001e+09 0 0 0 0.0382033 2769.68 -9162.5 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -3.85761 0.0236122 -0.0762357 0 0 0 10007.4 64.4834 18.8553 -9999.55 -64.507 -18.7791 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 0.0236122 -878.85 2825.06 0 0 0 64.4834 883.372 -2824.93 -64.507 -0.522235 -0.121145 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -0.0762357 2825.06 -9125.01 0 0 0 18.8553 -2824.93 9129.15 -18.7791 -0.121145 -0.141364 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -4999.24 1446.98 -4785.29 -2.93791 -0.0115519 0.0382033 -9999.55 -64.507 -18.7791 15005.7 -1382.46 4804.03 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 1446.98 -420.384 1385.46 -0.0115519 -840.435 2769.68 -64.507 -0.522235 -0.121145 -1382.46 1265.34 -4155.01 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -4785.29 1385.46 -4583.28 0.0382033 2769.68 -9162.5 -18.7791 -0.121145 -0.141364 4804.03 -4155.01 13749.9 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 1.00001e+09 0 5000 -10000 0 0 0 0 0 -5000 0 -5000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 1e+09 0 0 0 0 0 0 0 0 -0.000342285 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 5000 0 1.00001e+09 0 0 0 0 0 -10000 -5000 0 -5000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -10000 0 0 1.00001e+09 0 0 0 0 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1e+09 0 0 0 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.00001e+09 0 0 0 0 0 -10000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.00001e+09 0 0 -10000 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1e+09 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -10000 0 0 0 0 0 1.00001e+09 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -5000 0 -5000 0 0 0 -10000 0 0 1.00001e+09 0 5000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.000342285 0 0 0 0 0 0 0 0 1e+09 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -5000 0 -5000 0 0 -10000 0 0 0 5000 0 1.00001e+09 
-
-    if (num_vf + num_ee != 0)
-    {
-        std::vector<float3> local_cgb(sa_cgB.size());
-        stream 
-            << sa_cgB.copy_to(local_cgb.data())
-            << luisa::compute::synchronize();
-        uint tmp = 0;
-        for (auto vec : local_cgb) { luisa::log_info("vert {} : cgB = {}", tmp++, vec); }
-    }
-
-    luisa::log_info("After num vf / num ee = {}/{}", num_vf, num_ee);
-
     stream 
         << fn_assemble_collision_hessian_gradient_vv(sa_cgB, sa_cgA_diag).dispatch(num_vv)
         << fn_assemble_collision_hessian_gradient_ve(sa_cgB, sa_cgA_diag).dispatch(num_ve)
         << fn_assemble_collision_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf)
         << fn_assemble_collision_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
     
-    if (num_vf + num_ee != 0)
-    {
-        std::vector<float3> local_cgb(sa_cgB.size());
-        stream 
-            << sa_cgB.copy_to(local_cgb.data())
-            << luisa::compute::synchronize();
-        uint tmp = 0;
-        for (auto vec : local_cgb) { luisa::log_info("vert {} : cgB = {}", tmp++, vec); }
-        // luisa::log_error("Not match!!!");
-    }
-    
-    // cgB = 
-    // 1.44882     -1.56113      5.07324 
-    // -1.17315e-05    -0.850516      2.81273     
-    // 0.103298      1.41615     -3.70507     
-    // -1.55518      1.15712     -4.21825  
-    // 0.000138072    -0.021403  1.88523e-10            
-    // 0            0            0   
-    // 0.00298486    -0.462694 -1.88523e-10            
-    // 0            0            0
-    
-    // cgA = 
-    // 1.00001e+09 -1447 4785.37 -10000 -1.50565e-06 0 -3.85761 0.0236122 -0.0762357 -4999.24 1446.98 -4785.29 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -1447 1e+09 -4210.51 -1.50565e-06 -2.26698e-16 0 0.0236122 -878.85 2825.06 1446.98 -420.384 1385.46 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 4785.37 -4210.51 1.00001e+09 0 0 0 -0.0762357 2825.06 -9125.01 -4785.29 1385.46 -4583.28 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -10000 -1.50565e-06 0 1.00001e+09 0.0115535 -0.0382033 0 0 0 -2.93791 -0.0115519 0.0382033 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -1.50565e-06 -2.26698e-16 0 0.0115535 1e+09 -2769.68 0 0 0 -0.0115519 -840.435 2769.68 0 0 0 0 0 0 0 0 0 0 0 0 
-    // 0 0 0 -0.0382033 -2769.68 1.00001e+09 0 0 0 0.0382033 2769.68 -9162.5 0 0 0 0 0 0 0 0 0 0 0 0 
-    // -3.85761 0.0236122 -0.0762357 0 0 0 10007.6 63.3391 18.8308 -9999.53 -64.3906 -18.7818 -0.00966416 0.0466906 0.00120377 0 0 0 -0.20874 0.981212 0.0260236 0 0 0 
-    // 0.0236122 -878.85 2825.06 0 0 0 63.3391 1013.17 -2825.04 -64.6331 13.7451 -0.132544 0.0568393 -6.47369 0.00504171 0 0 0 1.21356 -137.593 0.108989 0 0 0 
-    // -0.0762357 2825.06 -9125.01 0 0 0 18.8308 -2825.04 9129.33 -18.7818 -0.132725 -0.121152 0.00261145 -0.213166 -0.00893942 0 0 0 0.0246145 0.32737 -0.193254 0 0 0 
-    // -4999.24 1446.98 -4785.29 -2.93791 -0.0115519 0.0382033 -9999.53 -64.6331 -18.7818 15005.7 -1382.45 4804.03 -0.000998419 0.0054818 0.00013364 0 0 0 -0.0215269 0.109668 0.00288909 0 0 0 
-    // 1446.98 -420.384 1385.46 -0.0115519 -840.435 2769.68 -64.3906 13.7451 -0.132725 -1382.45 1267.23 -4155.01 -0.00530338 -0.764901 0.000568826 0 0 0 -0.122049 -15.3887 0.012297 0 0 0 
-    // -4785.29 1385.46 -4583.28 0.0382033 2769.68 -9162.5 -18.7818 -0.132544 -0.121152 4804.03 -4155.01 13749.9 0.000290042 -0.0236754 -0.000992863 0 0 0 0.00273385 0.0363596 -0.0214639 0 0 0 
-    // 0 0 0 0 0 0 -0.00966416 0.0568393 0.00261145 -0.000998419 -0.00530338 0.000290042 1.00001e+09 -0.00407326 5000 -10000 0 0 0.0101796 -0.047463 -0.00277321 -5000 0 -5000 
-    // 0 0 0 0 0 0 0.0466906 -6.47369 -0.213166 0.0054818 -0.764901 -0.0236754 -0.00407326 1e+09 0.0104713 0 0 0 -0.0480991 6.64472 0.22637 0 -0.000342285 0 
-    // 0 0 0 0 0 0 0.00120377 0.00504171 -0.00893942 0.00013364 0.000568827 -0.000992863 5000 0.0104713 1.00001e+09 0 0 0 -0.00120913 -0.0160815 -9999.99 -5000 0 -5000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -10000 0 0 1.00001e+09 0 0 0 0 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1e+09 0 0 0 0 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.00001e+09 0 0 0 0 0 -10000 
-    // 0 0 0 0 0 0 -0.20874 1.21356 0.0246145 -0.0215269 -0.122049 0.00273385 0.0101796 -0.0480991 -0.00120913 0 0 0 1.00001e+09 -1.04342 -0.0261395 -10000 0 0 
-    // 0 0 0 0 0 0 0.981212 -137.593 0.32737 0.109668 -15.3887 0.0363596 -0.047463 6.64472 -0.0160815 0 0 0 -1.04342 1e+09 -0.347649 0 0 0 
-    // 0 0 0 0 0 0 0.0260236 0.108989 -0.193254 0.0028891 0.012297 -0.0214639 -0.00277321 0.22637 -9999.99 0 0 0 -0.0261395 -0.347649 1.00001e+09 0 0 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -5000 0 -5000 0 0 0 -10000 0 0 1.00001e+09 0 5000 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.000342285 0 0 0 0 0 0 0 0 1e+09 0 
-    // 0 0 0 0 0 0 0 0 0 0 0 0 -5000 0 -5000 0 0 -10000 0 0 0 5000 0 1.00001e+09
-        
 
 }
 
@@ -3985,7 +3890,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
 
-    fn_narrow_phase_vf_dcd_for_barrier_energy = device.compile<1>(
+    fn_compute_barrier_energy_from_vf = device.compile<1>(
     [
         contact_energy = collision_data->contact_energy.view(2, 1),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
@@ -4032,13 +3937,16 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             Float d2 = length_squared_vec(x);
             $if (d2 < square_scalar(thickness + d_hat))
             {
-                cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
+                cipc::KappaBarrier(energy, kappa, d2, d_hat, thickness);
+                device_log("        VF pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                    pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
+                // cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
                 // device_log("pair {} 's energy = {}, d = {}, d_hat = {}, vert = {}, face = {}", 
                 //     pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, vid, face);
             };
         };
         
-        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, kappa * energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
         $if (pair_idx % 256 == 0)
         {
@@ -4049,7 +3957,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
         };
     });
 
-    fn_narrow_phase_ee_dcd_for_barrier_energy = device.compile<1>(
+    fn_compute_barrier_energy_from_ee = device.compile<1>(
     [
         contact_energy = collision_data->contact_energy.view(3, 1),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
@@ -4095,13 +4003,15 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
 
             $if (d2 < square_scalar(thickness + d_hat))
             {
-                cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
-                // device_log("pair {} 's energy = {}, d = {}, d_hat = {}, edge1 = {}, edge2 = {}", 
-                //     pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, left_edge, right_edge);
+                cipc::KappaBarrier(energy, kappa, d2, d_hat, thickness);
+
+                // cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
+                device_log("        EE pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                    pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
             };
         };
 
-        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, kappa * energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
         
         $if (pair_idx % 256 == 0)
         {
@@ -4129,12 +4039,12 @@ void NarrowPhasesDetector::compute_barrier_energy_from_vf(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << fn_narrow_phase_vf_dcd_for_barrier_energy(
+    stream << fn_compute_barrier_energy_from_vf(
         sa_x_left,
         sa_x_right, // sa_x_begin_right
         sa_faces_right, d_hat, thickness, kappa
     ).dispatch(num_vf_broadphase) 
-        << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
+        // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
     ;
 }
 
@@ -4155,13 +4065,13 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << fn_narrow_phase_ee_dcd_for_barrier_energy(
+    stream << fn_compute_barrier_energy_from_ee(
         sa_x_left,
         sa_x_right, // sa_x_begin_right
         sa_edges_left, sa_edges_right,
         d_hat, thickness, kappa
     ).dispatch(num_ee_broadphase) 
-        << contact_energy.view(3, 1).copy_to(host_contact_energy.data() + 3)
+        // << contact_energy.view(3, 1).copy_to(host_contact_energy.data() + 3)
     ;
 }
 
@@ -4213,8 +4123,9 @@ double NarrowPhasesDetector::host_ON2_compute_barrier_energy_uipc(
                         t0, 
                         t1, 
                         t2);
-                    // luisa::log_info("Get PT Barrier Energy : flag = {}, kappa = {}, d = {}, d_hat = {}, thickness = {} e = {}", 
-                    //     flag, kappa, d, d_hat, thickness, e);
+                    
+                    luisa::log_info("        VF pair {}/{} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                        left, right, e, sqrt_scalar(d2), thickness, d_hat, kappa);
                     total_energy += e;
                 }
             }
@@ -4262,8 +4173,8 @@ double NarrowPhasesDetector::host_ON2_compute_barrier_energy_uipc(
                         ea_p1, 
                         eb_p0, 
                         eb_p1);
-                    // luisa::log_info("Get EE Barrier Energy : flag = {}, kappa = {}, d = {}, d_hat = {}, thickness = {}, e = {}", 
-                    //     flag, kappa, d, d_hat, thickness, e);
+                    luisa::log_info("        EE pair {}/{} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                        left, right, e, sqrt_scalar(d2), thickness, d_hat, kappa);
                     total_energy += e;
                 }
             }

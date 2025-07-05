@@ -123,7 +123,7 @@ public:
         const float thickness,
         const float kappa);
 
-    void host_barrier_hessian_spd_projection(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
+    void host_barrier_gradient_hessian_assemble(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
     void host_barrier_hessian_spd_projection(Stream& stream);
     void barrier_hessian_assemble(Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
     void host_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
@@ -217,7 +217,7 @@ private:
         float, 
         float,
         float
-        > fn_narrow_phase_vf_dcd_for_barrier_energy;
+        > fn_compute_barrier_energy_from_vf;
 
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, 
@@ -227,7 +227,7 @@ private:
         float, 
         float,
         float
-        >  fn_narrow_phase_ee_dcd_for_barrier_energy;
+        >  fn_compute_barrier_energy_from_ee;
 
     // Assemble
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vv;

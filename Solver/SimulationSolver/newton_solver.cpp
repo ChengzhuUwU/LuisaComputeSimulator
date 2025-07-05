@@ -915,6 +915,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     }
     auto broadphase_ccd = [&]()
     {
+        mp_narrowphase_detector->reset_broadphase_count(stream);
+
         const float ccd_query_range = d_hat + thickness;
 
         // if (lcsv::get_scene_params().current_nonlinear_iter == 0)
@@ -962,6 +964,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     host_mesh_data->sa_edges, 
         //     host_mesh_data->sa_edges, 
         //     1e-3);
+        
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
+        mp_narrowphase_detector->reset_toi(stream);
 
         mp_narrowphase_detector->vf_ccd_query(stream, 
             sim_data->sa_x_iter_start, 
@@ -970,6 +975,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x, 
             mesh_data->sa_faces, 
             d_hat, thickness);
+
         mp_narrowphase_detector->ee_ccd_query(stream, 
             sim_data->sa_x_iter_start, 
             sim_data->sa_x_iter_start, 
@@ -986,12 +992,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
             // << luisa::compute::synchronize()
             ;
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-        mp_narrowphase_detector->reset_narrowphase_count(stream);
-
+        
         broadphase_ccd();
 
-        mp_narrowphase_detector->reset_toi(stream);
         mp_narrowphase_detector->download_broadphase_collision_count(stream);
         
         narrowphase_ccd();
@@ -1004,6 +1007,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     auto broadphase_dcd = [&]()
     {
         const float dcd_query_range = d_hat + thickness;
+
+        mp_narrowphase_detector->reset_broadphase_count(stream);
 
         mp_lbvh_face->update_face_tree_leave_aabb(stream, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_face->refit(stream);
@@ -1024,6 +1029,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto narrowphase_dcd = [&]()
     {
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
         mp_narrowphase_detector->download_broadphase_collision_count(stream);
         
         mp_narrowphase_detector->vf_dcd_query(stream, 
@@ -1063,12 +1069,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
             // << luisa::compute::synchronize()
             ;
-
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-        mp_narrowphase_detector->reset_narrowphase_count(stream);
-
+            
         broadphase_dcd();
-        
+
+        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+            
         narrowphase_dcd();
 
         mp_narrowphase_detector->download_narrowphase_collision_count(stream);
@@ -1093,6 +1098,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream 
             << sim_data->sa_x.copy_from(sa_x.data());
 
+        // We have add thickness & dhat information in CCD broadphase~
+        // mp_narrowphase_detector->reset_broadphase_count(stream);
+        // broadphase_ccd();
+        // mp_narrowphase_detector->download_broadphase_collision_count(stream);
+        
         mp_narrowphase_detector->reset_energy(stream);
 
         mp_narrowphase_detector->compute_barrier_energy_from_vf(stream, 
@@ -1111,8 +1121,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         return mp_narrowphase_detector->download_energy(stream, kappa);
         // return 0.0f;
     };
-
-    
     auto On2_compute_barrier_energy = [&]() -> float
     {
         return mp_narrowphase_detector->host_ON2_compute_barrier_energy_uipc(
@@ -1152,8 +1160,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     auto compute_energy_with_barrier = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
+        luisa::log_info(".   Start comput energy");
         auto material_energy = host_compute_energy(curr_x, curr_x_tilde);
-        auto barrier_energy = On2_compute_barrier_energy();;
+        // auto barrier_energy = On2_compute_barrier_energy();;
+        auto barrier_energy = compute_barrier_energy_from_ccd_list();;
         return material_energy + barrier_energy;
     };
     auto linear_solver_interface = [&]()
@@ -1182,7 +1192,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         luisa::log_info("In frame {} : ", get_scene_params().current_frame); 
 
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
-        double prev_state_energy = compute_energy_with_barrier(sa_x_step_start, sa_x_tilde);
+        broadphase_dcd();
+        double prev_state_energy = compute_energy_with_barrier(sa_x_step_start, sa_x_tilde); // Not query yet~
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
