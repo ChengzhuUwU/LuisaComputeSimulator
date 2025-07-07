@@ -1160,7 +1160,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     auto compute_energy_with_barrier = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
-        luisa::log_info(".   Start comput energy");
+        // luisa::log_info(".   Start comput energy");
         auto material_energy = host_compute_energy(curr_x, curr_x_tilde);
         // auto barrier_energy = On2_compute_barrier_energy();;
         auto barrier_energy = compute_barrier_energy_from_ccd_list();;
@@ -1189,11 +1189,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         predict_position(substep_dt);
         
-        luisa::log_info("In frame {} : ", get_scene_params().current_frame); 
-
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         broadphase_dcd();
-        double prev_state_energy = compute_energy_with_barrier(sa_x_step_start, sa_x_tilde); // Not query yet~
+        double prev_state_energy = compute_energy_with_barrier(sa_x_step_start, sa_x_tilde); // Not query yet
+
+        luisa::log_info("In frame {} : Start energy = {}", get_scene_params().current_frame, prev_state_energy); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -1227,6 +1227,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 {
                     if (curr_energy < prev_state_energy + Epsilon) 
                     { 
+                        if (alpha != 0.0f)
+                        {
+                            luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} , {}", 
+                                line_search_count, alpha, curr_energy, prev_state_energy, 
+                                ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
+                        }
                         break; 
                     }
                     if (line_search_count == 0)

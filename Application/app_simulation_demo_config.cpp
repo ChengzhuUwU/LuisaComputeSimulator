@@ -107,6 +107,7 @@ void ccd_cloth_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
             },
         }
     });
+    lcsv::get_scene_params().load_state_frame = 2;
 }
 void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {
@@ -132,9 +133,9 @@ void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list
 }
 void load_scene(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {
-    const uint case_number = 5 ;
+    const uint case_number = 3  ;
 
-    switch (case_number) 
+    switch (case_number)
     {
         case 0: { ccd_vf_unit_case(shell_list); break; };
         case 1: { ccd_ee_unit_case(shell_list); break; };
