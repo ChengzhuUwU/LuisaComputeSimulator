@@ -426,6 +426,7 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Reset", ImVec2(-1, 0))) 
                 {
                     lcsv::get_scene_params().current_frame = 0;
+                    max_frame = 20;
                     solver.lcsv::SolverInterface::restart_system();
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
@@ -437,6 +438,7 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
+                    max_frame += 20;
                 }
             }
 
