@@ -3805,6 +3805,9 @@ void NarrowPhasesDetector::host_spmv(Stream& stream, const std::vector<float3>& 
         auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
         auto indices = CollisionPair::get_indices(pair);
         float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+        
+        H.mat[0][0] = makeFloat3x3(0.0f);
+        H.mat[1][1] = makeFloat3x3(0.0f);
 
         float6 input_vec;
         float6 output_vec;
@@ -3822,6 +3825,10 @@ void NarrowPhasesDetector::host_spmv(Stream& stream, const std::vector<float3>& 
         auto indices = CollisionPair::get_indices(pair);
         float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
         
+        H.mat[0][0] = makeFloat3x3(0.0f);
+        H.mat[1][1] = makeFloat3x3(0.0f);
+        H.mat[2][2] = makeFloat3x3(0.0f);
+
         float9 input_vec;
         float9 output_vec;
         float3 input[3] = {
@@ -3840,6 +3847,11 @@ void NarrowPhasesDetector::host_spmv(Stream& stream, const std::vector<float3>& 
         auto indices = CollisionPair::get_indices(pair);
         float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
        
+        H.mat[0][0] = makeFloat3x3(0.0f);
+        H.mat[1][1] = makeFloat3x3(0.0f);
+        H.mat[2][2] = makeFloat3x3(0.0f);
+        H.mat[3][3] = makeFloat3x3(0.0f);
+
         float12 input_vec;
         float12 output_vec;
         float3 input[4] = {
@@ -3859,6 +3871,11 @@ void NarrowPhasesDetector::host_spmv(Stream& stream, const std::vector<float3>& 
         auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
         auto indices = CollisionPair::get_indices(pair);
         float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+        
+        H.mat[0][0] = makeFloat3x3(0.0f);
+        H.mat[1][1] = makeFloat3x3(0.0f);
+        H.mat[2][2] = makeFloat3x3(0.0f);
+        H.mat[3][3] = makeFloat3x3(0.0f);
         
         float12 input_vec;
         float12 output_vec;
@@ -3938,8 +3955,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             $if (d2 < square_scalar(thickness + d_hat))
             {
                 cipc::KappaBarrier(energy, kappa, d2, d_hat, thickness);
-                device_log("        VF pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
-                    pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
+                // device_log("        VF pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                //     pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
                 // cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
                 // device_log("pair {} 's energy = {}, d = {}, d_hat = {}, vert = {}, face = {}", 
                 //     pair_idx, energy, sqrt_scalar(d2), thickness + d_hat, vid, face);
@@ -4006,8 +4023,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
                 cipc::KappaBarrier(energy, kappa, d2, d_hat, thickness);
 
                 // cipc::NoKappa_Barrier(energy, d2, d_hat, thickness);
-                device_log("        EE pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
-                    pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
+                // device_log("        EE pair {} 's energy = {}, d = {}, thickness = {}, d_hat = {}, kappa = {}", 
+                //     pair_idx, energy, sqrt_scalar(d2), thickness, d_hat, kappa);
             };
         };
 
