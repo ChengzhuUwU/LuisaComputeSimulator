@@ -132,9 +132,9 @@ public:
     void reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
-    void update_vert_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position);
-    void update_edge_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint2>& input_edges);
-    void update_face_tree_leave_aabb(Stream& stream, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint3>& input_faces);
+    void update_vert_tree_leave_aabb(Stream& stream, const float thickness, const Buffer<float3>& start_position, const Buffer<float3>& end_position);
+    void update_edge_tree_leave_aabb(Stream& stream, const float thickness, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint2>& input_edges);
+    void update_face_tree_leave_aabb(Stream& stream, const float thickness, const Buffer<float3>& start_position, const Buffer<float3>& end_position, const Buffer<uint3>& input_faces);
     
     void broad_phase_query_from_verts(Stream& stream, 
         const BufferView<float3> sa_x_begin, 

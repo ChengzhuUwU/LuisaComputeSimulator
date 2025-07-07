@@ -826,25 +826,25 @@ void LBVH::construct_tree(Stream& stream)
 
 // Refit 
 
-void LBVH::update_vert_tree_leave_aabb(Stream& stream, 
+void LBVH::update_vert_tree_leave_aabb(Stream& stream, const float thickness, 
     const Buffer<float3>& start_position, 
     const Buffer<float3>& end_position)
 {
-    stream << fn_update_vert_tree_leave_aabb(start_position, end_position, 0.01f).dispatch(start_position.size());
+    stream << fn_update_vert_tree_leave_aabb(start_position, end_position, thickness).dispatch(start_position.size());
 }
-void LBVH::update_edge_tree_leave_aabb(Stream& stream, 
+void LBVH::update_edge_tree_leave_aabb(Stream& stream, const float thickness, 
     const Buffer<float3>& start_position, 
     const Buffer<float3>& end_position, 
     const Buffer<uint2>& input_edges)
 {
-    stream << fn_update_edge_tree_leave_aabb(start_position, end_position, input_edges, 0.01f).dispatch(input_edges.size());
+    stream << fn_update_edge_tree_leave_aabb(start_position, end_position, input_edges, thickness).dispatch(input_edges.size());
 }
-void LBVH::update_face_tree_leave_aabb(Stream& stream, 
+void LBVH::update_face_tree_leave_aabb(Stream& stream, const float thickness, 
     const Buffer<float3>& start_position, 
     const Buffer<float3>& end_position, 
     const Buffer<uint3>& input_faces)
 {
-    stream << fn_update_face_tree_leave_aabb(start_position, end_position, input_faces, 0.01f).dispatch(input_faces.size());
+    stream << fn_update_face_tree_leave_aabb(start_position, end_position, input_faces, thickness).dispatch(input_faces.size());
 }
 void LBVH::refit(Stream& stream)
 {

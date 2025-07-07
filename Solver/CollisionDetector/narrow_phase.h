@@ -96,6 +96,8 @@ public:
     void vf_dcd_query(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
         const Buffer<uint3>& sa_faces_right,
         const float d_hat, 
         const float thickness, const float kappa);
@@ -103,6 +105,8 @@ public:
     void ee_dcd_query(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
         const float d_hat, 
@@ -132,6 +136,8 @@ public:
     void compute_barrier_energy_from_vf(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
         const Buffer<uint3>& sa_faces_right,
         const float d_hat,
         const float thickness,
@@ -140,6 +146,8 @@ public:
     void compute_barrier_energy_from_ee(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
         const float d_hat,
@@ -198,7 +206,7 @@ private:
         float, 
         float,
         float
-        > fn_narrow_phase_vf_dcd_query;
+        > fn_narrow_phase_vf_dcd_query_barrier;
     
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>,
@@ -208,7 +216,30 @@ private:
         float, 
         float,
         float
-        > fn_narrow_phase_ee_dcd_query;
+        > fn_narrow_phase_ee_dcd_query_barrier;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint3>, 
+        float, 
+        float,
+        float
+        > fn_narrow_phase_vf_dcd_query_repulsion;
+    
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<uint2>,
+        luisa::compute::BufferView<uint2>, 
+        float, 
+        float,
+        float
+        > fn_narrow_phase_ee_dcd_query_repulsion;
 
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, 
@@ -228,6 +259,29 @@ private:
         float,
         float
         >  fn_compute_barrier_energy_from_ee;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<uint3>, 
+        float, 
+        float,
+        float
+        > fn_compute_repulsion_energy_from_vf;
+
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<uint2>, 
+        luisa::compute::BufferView<uint2>, 
+        float, 
+        float,
+        float
+        >  fn_compute_repulsion_energy_from_ee;
 
     // Assemble
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vv;
