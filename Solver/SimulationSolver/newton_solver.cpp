@@ -917,14 +917,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         mp_narrowphase_detector->reset_broadphase_count(stream);
 
-        const float ccd_query_range = d_hat + thickness;
+        const float ccd_query_range = thickness;
 
         // if (lcsv::get_scene_params().current_nonlinear_iter == 0)
         // {
         //     mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
         //     mp_lbvh_face->construct_tree(stream);
         // }
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, ccd_query_range, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_face->refit(stream);
         mp_lbvh_face->broad_phase_query_from_verts(stream, 
             sim_data->sa_x_iter_start, 
@@ -937,7 +937,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         //     mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
         //     mp_lbvh_edge->construct_tree(stream);
         // }
-        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, ccd_query_range, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
         mp_lbvh_edge->refit(stream);
         mp_lbvh_edge->broad_phase_query_from_edges(stream, 
             sim_data->sa_x_iter_start, 
@@ -1010,7 +1010,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         mp_narrowphase_detector->reset_broadphase_count(stream);
 
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, dcd_query_range, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_face->refit(stream);
         mp_lbvh_face->broad_phase_query_from_verts(stream, 
             sim_data->sa_x, 
@@ -1018,7 +1018,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
             collision_data->broad_phase_list_vf, dcd_query_range);
 
-        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, dcd_query_range, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
         mp_lbvh_edge->refit(stream);
         mp_lbvh_edge->broad_phase_query_from_edges(stream, 
             sim_data->sa_x, 
@@ -1030,7 +1030,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     auto narrowphase_dcd = [&]()
     {
         mp_narrowphase_detector->reset_narrowphase_count(stream);
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
         
         mp_narrowphase_detector->vf_dcd_query(stream, 
             sim_data->sa_x, 
@@ -1107,8 +1106,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // mp_narrowphase_detector->reset_broadphase_count(stream);
         // broadphase_ccd();
         // mp_narrowphase_detector->download_broadphase_collision_count(stream);
-        
+
+        broadphase_dcd();
         mp_narrowphase_detector->reset_energy(stream);
+        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+
+        // mp_narrowphase_detector->reset_energy(stream);
 
         mp_narrowphase_detector->compute_barrier_energy_from_vf(stream, 
             sim_data->sa_x, 
@@ -1204,8 +1207,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
-    const bool use_ipc = false;
-
+    const bool use_linesearch = true;
+    const bool use_ipc = false && use_linesearch;
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
@@ -1233,13 +1236,16 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             }
             linear_solver_interface(); // Solve Ax=b
 
-            float alpha = 1.0f;
+            float alpha = 1.0f; float ccd_toi = 1.0f;
             host_apply_dx(alpha);            
-            if constexpr (use_ipc)
+            if constexpr (use_linesearch)
             { 
-                const float ccd_toi = ccd_line_search();
-                alpha = ccd_toi;
-                host_apply_dx(alpha);   
+                if constexpr (use_ipc)
+                {
+                    ccd_toi = ccd_line_search();
+                    alpha = ccd_toi;
+                    host_apply_dx(alpha);   
+                }
 
                 auto curr_energy = compute_energy_with_barrier(sa_x, sa_x_tilde); 
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }

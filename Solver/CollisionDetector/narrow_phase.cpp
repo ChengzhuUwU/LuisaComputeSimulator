@@ -2580,6 +2580,8 @@ void NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
 
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    if (num_vf_broadphase > collision_data->broad_phase_list_vf.size() / 2) { luisa::log_error("BroadPhase VF outof range"); }
+    if (num_ee_broadphase > collision_data->broad_phase_list_ee.size() / 2) { luisa::log_error("BroadPhase EE outof range"); }
 
     // luisa::log_info("num_vf_broadphase = {}", num_vf_broadphase); // TODO: Indirect Dispatch
     // luisa::log_info("num_ee_broadphase = {}", num_ee_broadphase); // TODO: Indirect Dispatch
@@ -2605,12 +2607,19 @@ void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
 
     // luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 
-    stream 
-            << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) 
-            << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data()) 
-            << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data()) 
-            << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data()) 
-            << luisa::compute::synchronize();
+    
+    stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) << luisa::compute::synchronize(); 
+    stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data()) << luisa::compute::synchronize(); 
+    stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data()) << luisa::compute::synchronize(); 
+    stream << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data()) << luisa::compute::synchronize(); 
+
+    // Why this can not run ???
+    // stream 
+    //         << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) 
+    //         << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data()) 
+    //         << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data()) 
+    //         << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data()) 
+    //         << luisa::compute::synchronize();
 
     // luisa::log_info("Complete Download");
 }
@@ -2851,17 +2860,20 @@ void NarrowPhasesDetector::vf_ccd_query(Stream& stream,
     //         host_faces, 
     //         1e-3);
 
-    stream << fn_narrow_phase_vf_ccd_query(
-        sa_x_begin_left,
-        sa_x_begin_right, // sa_x_begin_right
-        sa_x_end_left,
-        sa_x_end_right, // sa_x_end_right
-        sa_faces_right, d_hat, thickness
-    ).dispatch(num_vf_broadphase) 
-        << sa_toi.view(0, 1).copy_to(host_toi.data())
+    if (num_vf_broadphase != 0) 
+    {
+        stream << fn_narrow_phase_vf_ccd_query(
+            sa_x_begin_left,
+            sa_x_begin_right, // sa_x_begin_right
+            sa_x_end_left,
+            sa_x_end_right, // sa_x_end_right
+            sa_faces_right, d_hat, thickness
+        ).dispatch(num_vf_broadphase) ;
+    
+    }
+    stream << sa_toi.view(0, 1).copy_to(host_toi.data())
     ;
 
-    
 }
 
 void NarrowPhasesDetector::ee_ccd_query(Stream& stream, 
@@ -2902,15 +2914,18 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
     //         host_edges, 
     //         1e-3);
 
-    stream << fn_narrow_phase_ee_ccd_query(
-        sa_x_begin_a,
-        sa_x_begin_b,
-        sa_x_end_a,
-        sa_x_end_b,
-        sa_edges_left,
-        sa_edges_left, d_hat, thickness
-    ).dispatch(num_ee_broadphase) 
-        << sa_toi.view(0, 1).copy_to(host_toi.data())
+    if (num_ee_broadphase != 0)
+    {
+        stream << fn_narrow_phase_ee_ccd_query(
+            sa_x_begin_a,
+            sa_x_begin_b,
+            sa_x_end_a,
+            sa_x_end_b,
+            sa_edges_left,
+            sa_edges_left, d_hat, thickness
+        ).dispatch(num_ee_broadphase);
+    }
+    stream << sa_toi.view(0, 1).copy_to(host_toi.data())
     ;
 }
 
@@ -3281,7 +3296,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                             vf_pair.gradient[2] = G.vec[2];
                             vf_pair.gradient[3] = G.vec[3];
                             CollisionPair::write_upper_hessian(vf_pair.hessian, H);
-                            luisa::compute::device_log("VF pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, vf_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
+                            // luisa::compute::device_log("VF pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, vf_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
                         }
                         narrowphase_list_vf->write(idx, vf_pair);
                     }
@@ -3383,7 +3398,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                             ee_pair.gradient[2] = G.vec[2];
                             ee_pair.gradient[3] = G.vec[3];
                             CollisionPair::write_upper_hessian(ee_pair.hessian, H);
-                            luisa::compute::device_log("EE pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, ee_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
+                            // luisa::compute::device_log("EE pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, ee_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
                         }
                         narrowphase_list_ee->write(idx, ee_pair);
                     }
@@ -3508,9 +3523,12 @@ void NarrowPhasesDetector::vf_dcd_query(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << 
-        // fn_narrow_phase_vf_dcd_query(sa_x_left, sa_x_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
-        fn_narrow_phase_vf_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+    if (num_vf_broadphase != 0)
+    {
+        stream << 
+            // fn_narrow_phase_vf_dcd_query(sa_x_left, sa_x_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+            fn_narrow_phase_vf_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+    }
 
 }
 
@@ -3531,9 +3549,12 @@ void NarrowPhasesDetector::ee_dcd_query(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << 
-        // fn_narrow_phase_ee_dcd_query(sa_x_left, sa_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
-        fn_narrow_phase_ee_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+    if (num_ee_broadphase != 0)
+    {
+        stream << 
+            // fn_narrow_phase_ee_dcd_query(sa_x_left, sa_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+            fn_narrow_phase_ee_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+    }
 }
 
 template<int N>
@@ -4431,20 +4452,23 @@ void NarrowPhasesDetector::compute_barrier_energy_from_vf(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << fn_compute_repulsion_energy_from_vf(
-        sa_x_left,
-        sa_x_right,
-        sa_rest_x_left,
-        sa_rest_x_right,
-        sa_faces_right, d_hat, thickness, kappa
-    ).dispatch(num_vf_broadphase) 
-    // stream << fn_compute_barrier_energy_from_vf(
-    //     sa_x_left,
-    //     sa_x_right, // sa_x_begin_right
-    //     sa_faces_right, d_hat, thickness, kappa
-    // ).dispatch(num_vf_broadphase) 
-        // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
-    ;
+    if (num_vf_broadphase != 0)
+    {
+        stream << fn_compute_repulsion_energy_from_vf(
+            sa_x_left,
+            sa_x_right,
+            sa_rest_x_left,
+            sa_rest_x_right,
+            sa_faces_right, d_hat, thickness, kappa
+        ).dispatch(num_vf_broadphase) 
+        // stream << fn_compute_barrier_energy_from_vf(
+        //     sa_x_left,
+        //     sa_x_right, // sa_x_begin_right
+        //     sa_faces_right, d_hat, thickness, kappa
+        // ).dispatch(num_vf_broadphase) 
+            // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
+        ;
+    }
 }
 
 void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream, 
@@ -4466,22 +4490,26 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << fn_compute_repulsion_energy_from_ee(
-        sa_x_left,
-        sa_x_right, // sa_x_begin_right
-        sa_rest_x_left,
-        sa_rest_x_right,
-        sa_edges_left, sa_edges_right,
-        d_hat, thickness, kappa
-    ).dispatch(num_ee_broadphase) 
-    // stream << fn_compute_barrier_energy_from_ee(
-    //     sa_x_left,
-    //     sa_x_right, // sa_x_begin_right
-    //     sa_edges_left, sa_edges_right,
-    //     d_hat, thickness, kappa
-    // ).dispatch(num_ee_broadphase) 
-        // << contact_energy.view(3, 1).copy_to(host_contact_energy.data() + 3)
-    ;
+    if (num_ee_broadphase != 0)
+    {
+        stream << fn_compute_repulsion_energy_from_ee(
+            sa_x_left,
+            sa_x_right, // sa_x_begin_right
+            sa_rest_x_left,
+            sa_rest_x_right,
+            sa_edges_left, sa_edges_right,
+            d_hat, thickness, kappa
+        ).dispatch(num_ee_broadphase) 
+        // stream << fn_compute_barrier_energy_from_ee(
+        //     sa_x_left,
+        //     sa_x_right, // sa_x_begin_right
+        //     sa_edges_left, sa_edges_right,
+        //     d_hat, thickness, kappa
+        // ).dispatch(num_ee_broadphase) 
+            // << contact_energy.view(3, 1).copy_to(host_contact_energy.data() + 3)
+        ;
+    }
+    
 }
 
 double NarrowPhasesDetector::host_ON2_compute_barrier_energy_uipc(

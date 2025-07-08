@@ -76,7 +76,7 @@ inline Var<float> ccd_helper(
         };
     };
     if constexpr (print_ccd_iter_count) $if (iter_count != 1) { luisa::compute::device_log("CCD iter for {}, toi = {}", iter_count, toi); };
-    assert(toi > 0.0f);
+    luisa::compute::device_assert(toi > 0.0f);
     return toi;
 }
 

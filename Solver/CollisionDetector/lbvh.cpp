@@ -594,7 +594,7 @@ void LBVH::compile(luisa::compute::Device& device)
     )
     {
         const Uint vid = dispatch_id().x;
-        Uint current = num_leaves;
+        Uint current = 0;
         Uint loop = 0;
         $while (true) {
             loop += 1;
