@@ -202,6 +202,8 @@ private:
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<uint3>, 
         float, 
         float,
@@ -209,6 +211,8 @@ private:
         > fn_narrow_phase_vf_dcd_query_barrier;
     
     luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>,
+        luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<uint2>,
@@ -244,6 +248,8 @@ private:
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<uint3>, 
         float, 
         float,
@@ -251,6 +257,8 @@ private:
         > fn_compute_barrier_energy_from_vf;
 
     luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<uint2>, 

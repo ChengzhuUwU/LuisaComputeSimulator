@@ -94,7 +94,7 @@ int main(int argc, char** argv)
 
     // Some params
     {
-        lcsv::get_scene_params().implicit_dt = 0.05;
+        lcsv::get_scene_params().implicit_dt = 1.0f/ 120.f;
         lcsv::get_scene_params().num_substep = 1;
         lcsv::get_scene_params().nonlinear_iter_count = 50;
         lcsv::get_scene_params().pcg_iter_count = 2000;
