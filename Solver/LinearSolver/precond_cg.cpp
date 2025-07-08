@@ -507,6 +507,7 @@ void ConjugateGradientSolver::host_solve(
         normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
         save_dot_rz(0, sa_convergence, dot_rz);
 
+        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
         if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
         {
             break;
@@ -521,8 +522,8 @@ void ConjugateGradientSolver::host_solve(
         
         const float alpha = read_alpha(sa_convergence);
 
-        // luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
-        //         iter, normR, beta, alpha);
+        luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
+                iter, normR, beta, alpha);
         
         pcg_step(alpha);
     }
@@ -533,9 +534,14 @@ void ConjugateGradientSolver::host_solve(
         host_apply_dx(1.0f);
         curr_energy = func_compute_energy(sa_x, sa_x_iter_start);
     }
+    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
+    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
+    {
+        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+    }
     luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {}", 
         get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, fast_infinity_norm(host_sim_data->sa_cgX), print_energy ? luisa::format("{:6.5f}", curr_energy) : ""
+        iter, normR / normR_0, infinity_norm, print_energy ? luisa::format("{:6.5f}", curr_energy) : ""
     );
             
     /*
