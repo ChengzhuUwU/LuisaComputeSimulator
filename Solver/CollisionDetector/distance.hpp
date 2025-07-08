@@ -346,13 +346,11 @@ inline uint point_triangle_type(
     const Vec3f &bary, 
     luisa::uint3& valid_indices
     ) 
-{
-    Bool3 is_valid = bary == 0.0f;
+{    
     uint valid_count = 0;
-
-    $if (is_valid[0]) { valid_indices[valid_count] = 0; valid_count += 1; };
-    $if (is_valid[1]) { valid_indices[valid_count] = 1; valid_count += 1; };
-    $if (is_valid[2]) { valid_indices[valid_count] = 2; valid_count += 1; };
+    $if (bary[0] != 0.0f) { valid_indices[valid_count] = 0; valid_count += 1; };
+    $if (bary[1] != 0.0f) { valid_indices[valid_count] = 1; valid_count += 1; };
+    $if (bary[2] != 0.0f) { valid_indices[valid_count] = 2; valid_count += 1; };
     return valid_count;
 }
 
@@ -362,13 +360,12 @@ inline uint2 edge_edge_type(
     luisa::uint2& valid_indices2
     ) 
 {
-    Bool4 is_valid = bary == 0.0f;
     uint valid_count1 = 0;
     uint valid_count2 = 0;
-    $if (is_valid[0]) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
-    $if (is_valid[1]) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
-    $if (is_valid[2]) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
-    $if (is_valid[2]) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
+    $if (bary[0] != 0.0f) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
+    $if (bary[1] != 0.0f) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
+    $if (bary[2] != 0.0f) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
+    $if (bary[3] != 0.0f) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
     return makeUint2(valid_count1, valid_count2);
 }
 
@@ -632,9 +629,9 @@ inline uint point_triangle_type(
     // Bool3 is_valid = bary == 0.0f;
     uint valid_count = 0;
 
-    if (bary[0] == 0.0f) { valid_indices[valid_count] = 0; valid_count += 1; };
-    if (bary[1] == 0.0f) { valid_indices[valid_count] = 1; valid_count += 1; };
-    if (bary[2] == 0.0f) { valid_indices[valid_count] = 2; valid_count += 1; };
+    $if (bary[0] != 0.0f) { valid_indices[valid_count] = 0; valid_count += 1; };
+    $if (bary[1] != 0.0f) { valid_indices[valid_count] = 1; valid_count += 1; };
+    $if (bary[2] != 0.0f) { valid_indices[valid_count] = 2; valid_count += 1; };
     return valid_count;
 }
 
@@ -647,10 +644,10 @@ inline uint2 edge_edge_type(
     // Bool4 is_valid = bary == 0.0f;
     uint valid_count1 = 0;
     uint valid_count2 = 0;
-    if (bary[0] == 0.0f) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
-    if (bary[1] == 0.0f) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
-    if (bary[2] == 0.0f) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
-    if (bary[2] == 0.0f) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
+    $if (bary[0] != 0.0f) { valid_indices1[valid_count1] = 0; valid_count1 += 1; };
+    $if (bary[1] != 0.0f) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
+    $if (bary[2] != 0.0f) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
+    $if (bary[3] != 0.0f) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
     return makeUint2(valid_count1, valid_count2);
 }
 
