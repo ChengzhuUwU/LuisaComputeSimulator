@@ -24,6 +24,7 @@ class NarrowPhasesDetector
 private:
     void compile_ccd(luisa::compute::Device& device);
     void compile_dcd(luisa::compute::Device& device);
+    void compile_assemble(luisa::compute::Device& device);
     void compile_energy(luisa::compute::Device& device);
     
 public:
@@ -93,7 +94,7 @@ public:
         const float thickness);
 public:
     // DCD
-    void vf_dcd_query(Stream& stream, 
+    void vf_dcd_query_barrier(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
         const Buffer<float3>& sa_rest_x_left, 
@@ -102,7 +103,26 @@ public:
         const float d_hat, 
         const float thickness, const float kappa);
 
-    void ee_dcd_query(Stream& stream, 
+    void ee_dcd_query_barrier(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float d_hat, 
+        const float thickness, const float kappa);
+
+    void vf_dcd_query_repulsion(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat, 
+        const float thickness, const float kappa);
+
+    void ee_dcd_query_repulsion(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
         const Buffer<float3>& sa_rest_x_left, 
@@ -130,7 +150,9 @@ public:
     void host_barrier_gradient_hessian_assemble(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
     void host_barrier_hessian_spd_projection(Stream& stream);
     void barrier_hessian_assemble(Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
-    void host_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+    void repulsion_hessian_assemble(Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
+    void host_spmv_barrier(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+    void host_spmv_repulsion(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
 public:
     // Compute barrier energy
     void compute_barrier_energy_from_vf(Stream& stream, 
@@ -292,10 +314,12 @@ private:
         >  fn_compute_repulsion_energy_from_ee;
 
     // Assemble
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vv;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_ve;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_vf;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_collision_hessian_gradient_ee;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_vv;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_ve;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_vf;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_ee;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_vf;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_ee;
 };
 
 

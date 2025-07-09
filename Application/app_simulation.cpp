@@ -259,7 +259,7 @@ int main(int argc, char** argv)
 
 
     uint max_frame = 20; 
-    constexpr bool draw_bounding_box = true;
+    constexpr bool draw_bounding_box = false;
     constexpr bool use_ui = true; 
     
     // Init rendering data
@@ -399,6 +399,47 @@ int main(int argc, char** argv)
         polyscope::state::userCallback = [&]()
         {
             if (ImGui::IsKeyPressed(ImGuiKey_Escape)) polyscope::unshow();
+
+            // Selection
+            {
+                static polyscope::PickResult prev_selection;
+                if (polyscope::haveSelection())
+                {
+                    polyscope::PickResult selection = polyscope::getSelection();
+                    if (selection.isHit 
+                        && !(selection.screenCoords.x == prev_selection.screenCoords.x && selection.screenCoords.y == prev_selection.screenCoords.y)
+                    )
+                    {
+                        prev_selection = selection;
+                        for (uint meshIdx = 0; meshIdx < surface_meshes.size(); meshIdx++)
+                        {
+                            polyscope::SurfaceMesh* mesh = surface_meshes[meshIdx];
+                            if (mesh == selection.structure)
+                            {
+                                polyscope::SurfaceMeshPickResult meshPickResult = mesh->interpretPickResult(selection);
+                                if (meshPickResult.elementType == polyscope::MeshElement::VERTEX)
+                                {
+                                    uint prefix = host_mesh_data.prefix_num_verts[meshIdx];
+                                    uint vid = prefix + meshPickResult.index;
+                                    luisa::log_info("Select Vert {:3} on mesh {}", vid, meshIdx);
+                                }
+                                else if (meshPickResult.elementType == polyscope::MeshElement::FACE)
+                                {
+                                    uint prefix = host_mesh_data.prefix_num_faces[meshIdx];
+                                    uint vid = prefix + meshPickResult.index;
+                                    luisa::log_info("Select Face {:3} on mesh {}", vid, meshIdx);
+                                }
+                                else if (meshPickResult.elementType == polyscope::MeshElement::EDGE)
+                                {
+                                    uint prefix = host_mesh_data.prefix_num_edges[meshIdx];
+                                    uint vid = prefix + meshPickResult.index;
+                                    luisa::log_info("Select Edge {:3} on mesh {}", vid, meshIdx);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {

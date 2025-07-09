@@ -522,8 +522,8 @@ void ConjugateGradientSolver::host_solve(
         
         const float alpha = read_alpha(sa_convergence);
 
-        luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
-                iter, normR, beta, alpha);
+        // luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
+        //         iter, normR, beta, alpha);
         
         pcg_step(alpha);
     }
