@@ -943,7 +943,10 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                        bary[2] * (p - t2);
             Float d2 = length_squared_vec(x);
             // luisa::compute::device_log("VF pair {}-{} : d = {}", vid, face, sqrt_scalar(d2));
-            $if (d2 < square_scalar(thickness + d_hat) & d2 > 1e-8f)
+            $if (
+                d2 < square_scalar(thickness + d_hat) 
+                // & d2 > 1e-8f
+            )
             {
                 Float3 rest_p = sa_rest_x_a->read(vid);
                 Float3 rest_t0 = sa_rest_x_b->read(face[0]);
@@ -960,6 +963,9 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
                     Float stiff = stiffness_repulsion * C;
+                    $if (d < 5e-3f) { stiff = 1e3f * C; };
+                    $if (d < 2e-3f) { stiff = 1e5f * C; };
+                    $if (d < 1e-3f) { stiff = 1e7f * C; };
                     Float3 normal = x / d;
                     {
                         Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
@@ -1050,7 +1056,10 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
             Float d2 = length_squared_vec(x);
             // luisa::compute::device_log("EE pair {}-{} : d = {}", left_edge, right_edge, sqrt_scalar(d2));
 
-            $if (d2 < square_scalar(thickness + d_hat) & d2 > 1e-8f)
+            $if (
+                d2 < square_scalar(thickness + d_hat)
+                //  & d2 > 1e-8f
+            )
             {
                 Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
                 Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
@@ -1068,11 +1077,14 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     Float C = thickness + d_hat - d;
                     Float3 normal = normalize_vec(x);
                     Float stiff = stiffness_repulsion * C;
+                    // $if (d < 5e-3f) { stiff = 1e3f * C; };
+                    // $if (d < 2e-3f) { stiff = 1e5f * C; };
+                    // $if (d < 1e-3f) { stiff = 1e7f * C; };
                     {
                         Uint idx = narrowphase_count_ee->atomic(0).fetch_add(1u);
                         Var<CollisionPairEE> ee_pair;
                         ee_pair.indices = makeUint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
-                        ee_pair.vec1 = makeFloat4(x.x, x.y, x.z, stiff);
+                        ee_pair.vec1 = makeFloat4(normal.x, normal.y, normal.z, stiff);
                         ee_pair.bary = bary;
                         {
                             Float4 weight = makeFloat4(bary[0], bary[1], -bary[2], -bary[3]);
