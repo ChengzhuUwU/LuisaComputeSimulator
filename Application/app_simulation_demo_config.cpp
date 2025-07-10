@@ -194,7 +194,7 @@ void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list
 void load_scene(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
-        6
+        7
     ;
 
     switch (case_number)

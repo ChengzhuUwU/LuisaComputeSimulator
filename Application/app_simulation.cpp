@@ -258,7 +258,7 @@ int main(int argc, char** argv)
     };
 
 
-    uint max_frame = 20; 
+    uint max_frame = 0; uint optimize_frames = 20;
     constexpr bool draw_bounding_box = false;
     constexpr bool use_ui = true; 
     
@@ -443,7 +443,7 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
-                ImGui::InputScalar("Max Frame", ImGuiDataType_U32, &max_frame);
+                ImGui::InputScalar("Optimize Frames", ImGuiDataType_U32, &optimize_frames);
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
                 ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().pcg_iter_count);
@@ -467,7 +467,7 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Reset", ImVec2(-1, 0))) 
                 {
                     lcsv::get_scene_params().current_frame = 0;
-                    max_frame = 20;
+                    max_frame = 0;
                     solver.lcsv::SolverInterface::restart_system();
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
@@ -479,7 +479,17 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
-                    max_frame += 20;
+                    max_frame = lcsv::get_scene_params().current_frame + optimize_frames;
+                }
+                if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
+                {
+                    is_simulate_frame = true;
+                    max_frame = 10000;
+                }
+                if (ImGui::Button("End Simulation", ImVec2(-1, 0)))
+                {
+                    is_simulate_frame = false;
+                    max_frame = lcsv::get_scene_params().current_frame;
                 }
             }
 
@@ -510,7 +520,7 @@ int main(int argc, char** argv)
                 if (lcsv::get_scene_params().current_frame >= max_frame)
                 {
                     is_simulate_frame = false;
-                    SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcsv::get_scene_params().current_frame);
+                    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcsv::get_scene_params().current_frame);
                 }
             }
         };
