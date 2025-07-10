@@ -1159,6 +1159,39 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         return mp_narrowphase_detector->download_energy(stream, kappa);
         // return 0.0f;
     };
+    auto compute_penalty_energy = [&]() -> float
+    {
+        stream 
+            << sim_data->sa_x.copy_from(sa_x.data());
+
+        broadphase_dcd();
+        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+        
+        mp_narrowphase_detector->reset_energy(stream);
+        mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_rest_x,
+            mesh_data->sa_rest_x,
+            mesh_data->sa_rest_vert_area,
+            mesh_data->sa_rest_face_area,
+            mesh_data->sa_faces, 
+            d_hat, thickness, kappa);
+
+        mp_narrowphase_detector->compute_penalty_energy_from_ee(stream, 
+            sim_data->sa_x, 
+            sim_data->sa_x, 
+            mesh_data->sa_rest_x,
+            mesh_data->sa_rest_x,
+            mesh_data->sa_rest_edge_area,
+            mesh_data->sa_rest_edge_area,
+            mesh_data->sa_edges, 
+            mesh_data->sa_edges, 
+            d_hat, thickness, kappa);
+
+        return mp_narrowphase_detector->download_energy(stream, kappa);
+        // return 0.0f;
+    };
     auto On2_compute_barrier_energy = [&]() -> float
     {
         return mp_narrowphase_detector->host_ON2_compute_barrier_energy_uipc(
@@ -1201,7 +1234,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // luisa::log_info(".   Start comput energy");
         auto material_energy = host_compute_energy(curr_x, curr_x_tilde);
         // auto barrier_energy = On2_compute_barrier_energy();;
-        auto barrier_energy = compute_barrier_energy();;
+        // auto barrier_energy = compute_barrier_energy();;
+        auto barrier_energy = compute_penalty_energy();;
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         return material_energy + barrier_energy;
     };

@@ -180,6 +180,31 @@ public:
         const float thickness,
         const float kappa);
 
+    void compute_penalty_energy_from_vf(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
+        const Buffer<float>& sa_rest_area_left, 
+        const Buffer<float>& sa_rest_area_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa);
+
+    void compute_penalty_energy_from_ee(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
+        const Buffer<float>& sa_rest_area_left, 
+        const Buffer<float>& sa_rest_area_right, 
+        const Buffer<uint2>& sa_edges_left,
+        const Buffer<uint2>& sa_edges_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa);
+
     double host_ON2_compute_barrier_energy_uipc(
         const std::vector<float3>& sa_x_left, 
         const std::vector<float3>& sa_x_right,
@@ -303,6 +328,8 @@ private:
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float>, 
+        luisa::compute::BufferView<float>, 
         luisa::compute::BufferView<uint3>, 
         float, 
         float,
@@ -314,6 +341,8 @@ private:
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
+        luisa::compute::BufferView<float>, 
+        luisa::compute::BufferView<float>, 
         luisa::compute::BufferView<uint2>, 
         luisa::compute::BufferView<uint2>, 
         float, 

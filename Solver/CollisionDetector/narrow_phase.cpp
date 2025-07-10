@@ -532,6 +532,8 @@ namespace lcsv // DCD
 {
 
 constexpr float stiffness_repulsion = 2e6;
+constexpr bool use_area_weighting = true;
+constexpr float rest_distance_culling_rate = 2.0f;
 
 void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
 {
@@ -891,8 +893,6 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         };
     });
 
-    constexpr bool use_area_weighting = true;
-
     // Proximity Query
     fn_narrow_phase_vf_dcd_query_repulsion = device.compile<1>(
     [
@@ -963,7 +963,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     rest_t1,
                     rest_t2
                 );
-                $if (rest_d2 > square_scalar(thickness + d_hat))
+                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
@@ -1082,7 +1082,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     rest_eb_p0,
                     rest_eb_p1
                 );
-                $if (rest_d2 > square_scalar(thickness + d_hat))
+                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
@@ -2317,6 +2317,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
         Var<BufferView<float3>> sa_x_right,
         Var<BufferView<float3>> sa_rest_x_left, 
         Var<BufferView<float3>> sa_rest_x_right,
+        Var<BufferView<float>> sa_rest_area_left, 
+        Var<BufferView<float>> sa_rest_area_right,
         Var<BufferView<uint3>> sa_faces_right,
         Float d_hat,
         Float thickness,
@@ -2344,7 +2346,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             Float3 t2 = sa_x_right->read(face[2]);
 
             Float d2 = distance::point_triangle_distance_squared_unclassified(p, t0, t1, t2);
-            $if (d2 < square_scalar(thickness + d_hat) & d2 > 1e-8f)
+            $if (d2 < square_scalar(thickness + d_hat))
             {
                 Float3 rest_p  = sa_rest_x_left->read(vid);
                 Float3 rest_t0 = sa_rest_x_right->read(face[0]);
@@ -2357,11 +2359,12 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
                     rest_t1,
                     rest_t2
                 );
-                $if (rest_d2 > square_scalar(thickness + d_hat))
+                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
-                    energy = 0.5f * stiffness_repulsion * C * C;
+                    Float area = 0.5f * (sa_rest_area_left.read(vid) + sa_rest_area_right.read(fid));
+                    energy = 0.5f * area * stiffness_repulsion * C * C;
                 };
             };
         };
@@ -2389,6 +2392,8 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
         Var<BufferView<float3>> sa_x_b,
         Var<BufferView<float3>> sa_rest_x_a, 
         Var<BufferView<float3>> sa_rest_x_b,
+        Var<BufferView<float>> sa_rest_area_a, 
+        Var<BufferView<float>> sa_rest_area_b,
         Var<BufferView<uint2>> sa_edges_left,
         Var<BufferView<uint2>> sa_edges_right,
         Float d_hat,
@@ -2418,7 +2423,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
             Float3 eb_p1 = (sa_x_b->read(right_edge[1]));
     
             Float d2 = distance::edge_edge_distance_squared_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
-            $if (d2 < square_scalar(thickness + d_hat) & d2 > 1e-8f)
+            $if (d2 < square_scalar(thickness + d_hat))
             {
                 Float3 rest_ea_x0 = (sa_rest_x_a->read(left_edge[0]));
                 Float3 rest_ea_x1 = (sa_rest_x_a->read(left_edge[1]));
@@ -2431,11 +2436,12 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
                     rest_eb_x0,
                     rest_eb_x1
                 );
-                $if (rest_d2 > square_scalar(thickness + d_hat))
+                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
-                    energy = 0.5f * stiffness_repulsion * C * C;
+                    Float area = 0.5f * (sa_rest_area_a.read(left) + sa_rest_area_b.read(right));
+                    energy = 0.5f * area * stiffness_repulsion * C * C;
                 };
             };
         };
@@ -2473,8 +2479,8 @@ void NarrowPhasesDetector::compute_barrier_energy_from_vf(Stream& stream,
 
     if (num_vf_broadphase != 0)
     {
-        stream << fn_compute_repulsion_energy_from_vf(
-        // stream << fn_compute_barrier_energy_from_vf(
+        // stream << fn_compute_repulsion_energy_from_vf(
+        stream << fn_compute_barrier_energy_from_vf(
             sa_x_left,
             sa_x_right,
             sa_rest_x_left,
@@ -2507,8 +2513,8 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
 
     if (num_ee_broadphase != 0)
     {
-        // stream << fn_compute_barrier_energy_from_ee(
-        stream << fn_compute_repulsion_energy_from_ee(
+        stream << fn_compute_barrier_energy_from_ee(
+        // stream << fn_compute_repulsion_energy_from_ee(
             sa_x_left,
             sa_x_right, // sa_x_begin_right
             sa_rest_x_left,
@@ -2523,6 +2529,80 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
         //     d_hat, thickness, kappa
         // ).dispatch(num_ee_broadphase) 
             // << contact_energy.view(3, 1).copy_to(host_contact_energy.data() + 3)
+        ;
+    }
+    
+}
+void NarrowPhasesDetector::compute_penalty_energy_from_vf(Stream& stream, 
+        const Buffer<float3>& sa_x_left, 
+        const Buffer<float3>& sa_x_right, 
+        const Buffer<float3>& sa_rest_x_left, 
+        const Buffer<float3>& sa_rest_x_right, 
+        const Buffer<float>& sa_rest_area_left, 
+        const Buffer<float>& sa_rest_area_right, 
+        const Buffer<uint3>& sa_faces_right,
+        const float d_hat,
+        const float thickness,
+        const float kappa)
+{
+    auto& contact_energy = collision_data->contact_energy;
+    auto& host_contact_energy = host_collision_data->contact_energy;
+    auto broadphase_count = collision_data->broad_phase_collision_count.view();
+    auto& host_count = host_collision_data->broad_phase_collision_count;
+
+    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+
+    if (num_vf_broadphase != 0)
+    {
+        stream << fn_compute_repulsion_energy_from_vf(
+        // stream << fn_compute_barrier_energy_from_vf(
+            sa_x_left,
+            sa_x_right,
+            sa_rest_x_left,
+            sa_rest_x_right,
+            sa_rest_area_left,
+            sa_rest_area_right,
+            sa_faces_right, d_hat, thickness, kappa
+        ).dispatch(num_vf_broadphase) 
+            // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
+        ;
+    }
+}
+
+void NarrowPhasesDetector::compute_penalty_energy_from_ee(Stream& stream, 
+    const Buffer<float3>& sa_x_left, 
+    const Buffer<float3>& sa_x_right, 
+    const Buffer<float3>& sa_rest_x_left, 
+    const Buffer<float3>& sa_rest_x_right, 
+    const Buffer<float>& sa_rest_area_left, 
+    const Buffer<float>& sa_rest_area_right, 
+    const Buffer<uint2>& sa_edges_left,
+    const Buffer<uint2>& sa_edges_right,
+    const float d_hat,
+    const float thickness,
+        const float kappa)
+{
+    auto& contact_energy = collision_data->contact_energy;
+    auto& host_contact_energy = host_collision_data->contact_energy;
+    auto broadphase_count = collision_data->broad_phase_collision_count.view();
+    auto& host_count = host_collision_data->broad_phase_collision_count;
+
+    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+
+    if (num_ee_broadphase != 0)
+    {
+        stream << fn_compute_repulsion_energy_from_ee(
+            sa_x_left,
+            sa_x_right, // sa_x_begin_right
+            sa_rest_x_left,
+            sa_rest_x_right,
+            sa_rest_area_left,
+            sa_rest_area_right,
+            sa_edges_left, sa_edges_right,
+            d_hat, thickness, kappa
+        ).dispatch(num_ee_broadphase) 
         ;
     }
     
