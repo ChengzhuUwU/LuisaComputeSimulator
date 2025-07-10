@@ -531,7 +531,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
 namespace lcsv // DCD
 {
 
-constexpr float stiffness_repulsion = 1e2;
+constexpr float stiffness_repulsion = 2e6;
 
 void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
 {
@@ -891,6 +891,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         };
     });
 
+    constexpr bool use_area_weighting = true;
+
     // Proximity Query
     fn_narrow_phase_vf_dcd_query_repulsion = device.compile<1>(
     [
@@ -907,6 +909,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         Var<BufferView<float3>> sa_x_right,
         Var<BufferView<float3>> sa_rest_x_a, 
         Var<BufferView<float3>> sa_rest_x_b,
+        Var<BufferView<float>> sa_rest_area_a, 
+        Var<BufferView<float>> sa_rest_area_b,
         Var<BufferView<uint3>> sa_faces_right,
         Float d_hat,
         Float thickness,
@@ -963,11 +967,15 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
-                    Float stiff = stiffness_repulsion * C;
-                    $if (d < 5e-3f) { stiff = 1e3f * C; };
-                    $if (d < 2e-3f) { stiff = 1e5f * C; };
-                    $if (d < 1e-3f) { stiff = 1e7f * C; };
                     Float3 normal = x / d;
+                    Float stiff = stiffness_repulsion * C;
+                    if constexpr (use_area_weighting)
+                    {
+                        Float area_a = sa_rest_area_a->read(vid);
+                        Float area_b = sa_rest_area_b->read(fid);
+                        Float avg_area = 0.5f * (area_a + area_b);
+                        stiff = avg_area * stiff;
+                    }
                     {
                         Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
                         Var<CollisionPairVF> vf_pair;
@@ -1022,6 +1030,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         Var<BufferView<float3>> sa_x_b,
         Var<BufferView<float3>> sa_rest_x_a, 
         Var<BufferView<float3>> sa_rest_x_b,
+        Var<BufferView<float>> sa_rest_area_a, 
+        Var<BufferView<float>> sa_rest_area_b,
         Var<BufferView<uint2>> sa_edges_left,
         Var<BufferView<uint2>> sa_edges_right,
         Float d_hat,
@@ -1076,11 +1086,16 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                 {
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
-                    Float3 normal = normalize_vec(x);
+                    // Float3 normal = normalize_vec(x);
+                    Float3 normal = x / d;
                     Float stiff = stiffness_repulsion * C;
-                    // $if (d < 5e-3f) { stiff = 1e3f * C; };
-                    // $if (d < 2e-3f) { stiff = 1e5f * C; };
-                    // $if (d < 1e-3f) { stiff = 1e7f * C; };
+                    if constexpr (use_area_weighting)
+                    {
+                        Float area_a = sa_rest_area_a->read(left);
+                        Float area_b = sa_rest_area_b->read(right);
+                        Float avg_area = 0.5f * (area_a + area_b);
+                        stiff = avg_area * stiff;
+                    }
                     {
                         Uint idx = narrowphase_count_ee->atomic(0).fetch_add(1u);
                         Var<CollisionPairEE> ee_pair;
@@ -1174,6 +1189,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     const Buffer<float3>& sa_x_right, 
     const Buffer<float3>& sa_rest_x_left, 
     const Buffer<float3>& sa_rest_x_right, 
+    const Buffer<float>& sa_rest_area_left, 
+    const Buffer<float>& sa_rest_area_right, 
     const Buffer<uint3>& sa_faces_right,
     const float d_hat,
     const float thickness,
@@ -1188,7 +1205,7 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     if (num_vf_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_vf_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+            fn_narrow_phase_vf_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
     }
 
 }
@@ -1198,6 +1215,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     const Buffer<float3>& sa_x_right, 
     const Buffer<float3>& sa_rest_x_left, 
     const Buffer<float3>& sa_rest_x_right, 
+    const Buffer<float>& sa_rest_area_left, 
+    const Buffer<float>& sa_rest_area_right, 
     const Buffer<uint2>& sa_edges_left,
     const Buffer<uint2>& sa_edges_right,
     const float d_hat,
@@ -1213,7 +1232,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     if (num_ee_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_ee_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+            fn_narrow_phase_ee_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
     }
 }
 

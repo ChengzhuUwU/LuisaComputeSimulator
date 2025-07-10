@@ -1058,6 +1058,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x, 
             mesh_data->sa_rest_x,
             mesh_data->sa_rest_x,
+            mesh_data->sa_rest_vert_area,
+            mesh_data->sa_rest_face_area,
             mesh_data->sa_faces, 
             d_hat, thickness, kappa);
             
@@ -1066,6 +1068,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sim_data->sa_x,
             mesh_data->sa_rest_x,
             mesh_data->sa_rest_x, 
+            mesh_data->sa_rest_edge_area, 
+            mesh_data->sa_rest_edge_area, 
             mesh_data->sa_edges, 
             mesh_data->sa_edges, 
             d_hat, thickness, kappa);
