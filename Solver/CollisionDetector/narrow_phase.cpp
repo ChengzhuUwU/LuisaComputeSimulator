@@ -199,10 +199,11 @@ void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
     // luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 
     
-    stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data()) << luisa::compute::synchronize(); 
+    if (num_vv != 0) stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data());
+    if (num_ve != 0) stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data());
+    if (num_vf != 0) stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data());
+    if (num_ee != 0) stream << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_to(host_collision_data->narrow_phase_list_ee.data());
+    stream << luisa::compute::synchronize();
 
     // Why this can not run ???
     // stream 
@@ -226,10 +227,10 @@ void NarrowPhasesDetector::upload_spd_narrowphase_list(Stream& stream)
 
     // luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 
-    stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_from(host_collision_data->narrow_phase_list_vv.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_from(host_collision_data->narrow_phase_list_ve.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_from(host_collision_data->narrow_phase_list_vf.data()) << luisa::compute::synchronize(); 
-    stream << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_from(host_collision_data->narrow_phase_list_ee.data()) << luisa::compute::synchronize(); 
+    if (num_vv != 0) stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_from(host_collision_data->narrow_phase_list_vv.data()); 
+    if (num_ve != 0) stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_from(host_collision_data->narrow_phase_list_ve.data()); 
+    if (num_vf != 0) stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_from(host_collision_data->narrow_phase_list_vf.data()); 
+    if (num_ee != 0) stream << collision_data->narrow_phase_list_ee.view(0, num_ee).copy_from(host_collision_data->narrow_phase_list_ee.data()); 
 
     // stream 
     //     << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_from(host_collision_data->narrow_phase_list_vv.data()) 
@@ -1893,11 +1894,12 @@ void NarrowPhasesDetector::barrier_hessian_assemble(luisa::compute::Stream& stre
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    stream 
-        << fn_assemble_barrier_hessian_gradient_vv(sa_cgB, sa_cgA_diag).dispatch(num_vv)
-        << fn_assemble_barrier_hessian_gradient_ve(sa_cgB, sa_cgA_diag).dispatch(num_ve)
-        << fn_assemble_barrier_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf)
-        << fn_assemble_barrier_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
+
+    if (num_vv != 0) stream << fn_assemble_barrier_hessian_gradient_vv(sa_cgB, sa_cgA_diag).dispatch(num_vv);
+    if (num_ve != 0) stream << fn_assemble_barrier_hessian_gradient_ve(sa_cgB, sa_cgA_diag).dispatch(num_ve);
+    if (num_vf != 0) stream << fn_assemble_barrier_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf);
+    if (num_ee != 0) stream << fn_assemble_barrier_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
+ 
 }
 void NarrowPhasesDetector::repulsion_hessian_assemble(luisa::compute::Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag)
 {
@@ -1905,9 +1907,8 @@ void NarrowPhasesDetector::repulsion_hessian_assemble(luisa::compute::Stream& st
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    stream 
-        << fn_assemble_repulsion_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf)
-        << fn_assemble_repulsion_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
+    if (num_vf != 0) stream << fn_assemble_repulsion_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf);
+    if (num_ee != 0) stream << fn_assemble_repulsion_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
 }
 
 void NarrowPhasesDetector::host_spmv_barrier(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array)
