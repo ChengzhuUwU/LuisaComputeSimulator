@@ -302,8 +302,7 @@ void init_mesh_data(
                 for (const uint& adj_eid : vert_adj_edges)
                 {
                     const auto adj_edge = mesh_data->sa_edges[adj_eid];
-                    uint adj_edge_sum_indices = adj_edge[0] + adj_edge[1];
-                    if (fn_vert_in_face(face_sum_indices - adj_edge_sum_indices, face))
+                    if (fn_vert_in_face(adj_edge[0], face) && fn_vert_in_face(adj_edge[1], face))
                     {
                         adj_edges_set.insert(adj_eid);
                     }
@@ -450,8 +449,8 @@ void init_mesh_data(
         float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
         float sum_edge_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_edge_area);
         float sum_vert_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_vert_area);
-        // luisa::log_info("Average areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
-        luisa::log_info("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
+        // luisa::log_info("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
+        luisa::log_info("Average areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
     }
 
     // Init vert status
