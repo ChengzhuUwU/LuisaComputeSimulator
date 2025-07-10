@@ -129,6 +129,16 @@ inline T parallel_for_and_reduce_sum(uint start_pos, uint end_pos, ParallelFunc 
         T()
         ); 
 }
+template<typename T>
+inline T parallel_reduce_sum(const T* array, const uint size)
+{
+    return parallel_for_and_reduce_sum<T>(0, size, [&](const uint index) { return array[index]; }); 
+}
+template<typename T>
+inline T parallel_reduce_sum(const std::vector<T>& array)
+{
+    return parallel_for_and_reduce_sum<T>(0, array.size(), [&](const uint index) { return array[index]; }); 
+}
 template<typename T, typename ParallelFunc>
 inline T single_thread_for_and_reduce_sum(uint start_pos, uint end_pos, ParallelFunc func_parallel)
 {

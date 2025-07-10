@@ -84,16 +84,6 @@ void init_mesh_data(
         uint prefix_num_edges = 0;
         uint prefix_num_bending_edges = 0;
 
-        struct AABB {
-            float3 packed_min; float3 packed_max;
-            AABB operator+(const AABB& input_aabb) const {
-                AABB tmp;
-                tmp.packed_min = lcsv::min_vec(packed_min, input_aabb.packed_min);
-                tmp.packed_max = lcsv::max_vec(packed_max, input_aabb.packed_max);
-                return tmp;
-            }
-        };
-
         for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
         {
             auto& curr_shell_info = shell_infos[clothIdx];
@@ -135,18 +125,39 @@ void init_mesh_data(
 
             // Set fixed-points
             {
+                struct AABB 
+                {
+                    float3 packed_min; float3 packed_max;
+                    AABB operator+(const AABB& input_aabb) const 
+                    {
+                        AABB tmp;
+                        tmp.packed_min = lcsv::min_vec(packed_min, input_aabb.packed_min);
+                        tmp.packed_max = lcsv::max_vec(packed_max, input_aabb.packed_max);
+                        return tmp;
+                    }
+                    AABB() : packed_min(float3(Float_max)), packed_max(float3(-Float_max)) {}
+                    AABB(const float3& pos) : packed_min(pos), packed_max(pos) {}
+                };
+
                 AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(0, curr_num_verts, [&](const uint vid)
                 {
                     auto pos = mesh_data->sa_rest_x[prefix_num_verts + vid];
-                    return AABB{
-                        .packed_min = pos,
-                        .packed_max = pos,
-                    };
+                    return AABB(pos);
                 });
 
                 auto pos_min = local_aabb.packed_min;
                 auto pos_max = local_aabb.packed_max;
                 auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
+
+                float avg_spring_length = CpuParallel::parallel_for_and_reduce_sum<float>(0, curr_num_edges, [&](const uint eid)
+                {
+                    auto edge = mesh_data->sa_edges[prefix_num_edges + eid];
+                    return length_vec(mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
+                }) / float(curr_num_edges);
+                luisa::log_info("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}", clothIdx, 
+                    curr_num_verts, curr_num_faces, curr_num_edges, avg_spring_length,
+                    pos_max - pos_min);
+
 
                 CpuParallel::single_thread_for(0, curr_num_verts, [&](const uint local_vid)
                 {
@@ -272,6 +283,61 @@ void init_mesh_data(
             }
         }
         upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_bending_csr, mesh_data->vert_adj_verts_with_bending);
+
+        // face_adj_edges
+        // Face adj edges
+        mesh_data->face_adj_edges.resize(num_faces);
+        mesh_data->face_adj_faces.resize(num_faces);
+        mesh_data->edge_adj_faces.resize(num_edges, makeUint2(-1u));
+        auto fn_vert_in_face = [](const uint& vid, const uint3& face) { return vid == face[0] || vid == face[1] || vid == face[2]; };
+        CpuParallel::parallel_for(0, num_faces, [&](const uint fid)
+        {
+            std::unordered_set<uint> adj_edges_set; adj_edges_set.reserve(3);
+            const auto face = mesh_data->sa_faces[fid];
+            uint face_sum_indices = face[0] + face[1] + face[2];
+            for (uint j = 0; j < 3; j++)
+            {
+                const uint vid = face[j];
+                const auto& vert_adj_edges = mesh_data->vert_adj_edges[vid];
+                for (const uint& adj_eid : vert_adj_edges)
+                {
+                    const auto adj_edge = mesh_data->sa_edges[adj_eid];
+                    uint adj_edge_sum_indices = adj_edge[0] + adj_edge[1];
+                    if (fn_vert_in_face(face_sum_indices - adj_edge_sum_indices, face))
+                    {
+                        adj_edges_set.insert(adj_eid);
+                    }
+                }
+            }
+            if (adj_edges_set.size() != 3) luisa::log_error("Face {} adj edge count {} != 3", fid, adj_edges_set.size());
+            uint3 face_adj_edges; uint idx = 0;
+            for (const auto& adj_eid : adj_edges_set) { face_adj_edges[idx++] = adj_eid; }
+            mesh_data->face_adj_edges[fid] = face_adj_edges;
+        });
+        std::vector<uint> edge_adj_face_count(num_edges, 0);
+        CpuParallel::single_thread_for(0, num_faces, [&](const uint fid)
+        {
+            uint3 face_adj_edges = mesh_data->face_adj_edges[fid];
+            for (uint j = 0; j < 3; j++)
+            {
+                uint adj_eid = face_adj_edges[j];
+                uint& offset = edge_adj_face_count[adj_eid];
+                mesh_data->edge_adj_faces[adj_eid][offset++] = fid;
+            }
+        });
+        CpuParallel::parallel_for(0, num_faces, [&](const uint fid)
+        {
+            const uint3 face_adj_edges = mesh_data->face_adj_edges[fid];
+            uint3 face_adj_faces;
+            for (uint j = 0; j < 3; j++)
+            {
+                uint adj_eid = face_adj_edges[j];
+                uint2 edge_adj_faces = mesh_data->edge_adj_faces[adj_eid];
+                if (edge_adj_faces[0] != -1u && edge_adj_faces[0] != fid) face_adj_faces[j] = edge_adj_faces[0];
+                if (edge_adj_faces[1] != -1u && edge_adj_faces[1] != fid) face_adj_faces[j] = edge_adj_faces[1];
+            }
+            mesh_data->face_adj_faces[fid] = face_adj_faces;
+        });
     }
 
     // Init energy
@@ -344,6 +410,48 @@ void init_mesh_data(
                 mesh_data->sa_bending_edges_Q[eid] = m_Q; // See : A quadratic bending model for inextensible surfaces.
             }
         });
+
+        // Rest area
+        mesh_data->sa_rest_vert_area.resize(num_verts);
+        mesh_data->sa_rest_edge_area.resize(num_edges);
+        mesh_data->sa_rest_face_area.resize(num_faces);
+        
+        CpuParallel::parallel_for(0, num_faces, [&](const uint fid)
+        {
+            const uint3 face = mesh_data->sa_faces[fid]; 
+            float area = compute_face_area(
+                mesh_data->sa_rest_x[face[0]],
+                mesh_data->sa_rest_x[face[1]],
+                mesh_data->sa_rest_x[face[2]]
+            );
+            mesh_data->sa_rest_face_area[fid] = area;
+        });
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            const auto& adj_faces = mesh_data->vert_adj_faces[vid];
+            double area = 0.0;
+            for (const uint& adj_fid : adj_faces) area += mesh_data->sa_rest_face_area[adj_fid] / 3.0;
+            mesh_data->sa_rest_vert_area[vid] = area;
+        });
+        CpuParallel::parallel_for(0, num_edges, [&](const uint eid)
+        {
+            uint2 adj_faces = mesh_data->edge_adj_faces[eid];
+            double area = 0.0;
+            for (uint j = 0; j < 2; j++)
+            {
+                uint adj_fid = adj_faces[j];
+                if (adj_fid != -1u)
+                {
+                    area += mesh_data->sa_rest_face_area[adj_fid] / 3.0;
+                }
+            }
+            mesh_data->sa_rest_edge_area[eid] = area;
+        });
+        float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
+        float sum_edge_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_edge_area);
+        float sum_vert_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_vert_area);
+        // luisa::log_info("Average areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
+        luisa::log_info("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
     }
 
     // Init vert status
@@ -384,12 +492,20 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_edges_rest_state_length, input_data->sa_edges_rest_state_length)
         << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
         << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
+
+        << upload_buffer(device, output_data->sa_rest_vert_area, input_data->sa_rest_vert_area)
+        << upload_buffer(device, output_data->sa_rest_edge_area, input_data->sa_rest_edge_area)
+        << upload_buffer(device, output_data->sa_rest_face_area, input_data->sa_rest_face_area)
+
         // No std::vector<std::vector<uint>> vert_adj_verts info
         << upload_buffer(device, output_data->sa_vert_adj_verts_csr, input_data->sa_vert_adj_verts_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_verts_with_bending_csr, input_data->sa_vert_adj_verts_with_bending_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_faces_csr, input_data->sa_vert_adj_faces_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_edges_csr, input_data->sa_vert_adj_edges_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr) 
+        << upload_buffer(device, output_data->edge_adj_faces, input_data->edge_adj_faces) 
+        << upload_buffer(device, output_data->face_adj_edges, input_data->face_adj_edges) 
+        << upload_buffer(device, output_data->face_adj_faces, input_data->face_adj_faces) 
         << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy) 
         << upload_buffer(device, output_data->sa_pcg_convergence, input_data->sa_pcg_convergence) 
         << luisa::compute::synchronize();
