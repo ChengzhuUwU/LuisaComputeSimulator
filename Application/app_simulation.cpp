@@ -448,9 +448,12 @@ int main(int argc, char** argv)
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
                 ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().pcg_iter_count);
                 ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
-                ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
-                ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
-                ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+                ImGui::Checkbox("Use Energy LineSearch", &lcsv::get_scene_params().use_energy_linesearch);
+                ImGui::Checkbox("Use CCD LineSearch", &lcsv::get_scene_params().use_ccd_linesearch);
+                
+                // ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
+                // ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
+                // ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
                 // ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
                 ImGui::Checkbox("Print Energy", &lcsv::get_scene_params().print_system_energy);
                 ImGui::Checkbox("Use GPU Solver", &lcsv::get_scene_params().use_gpu);

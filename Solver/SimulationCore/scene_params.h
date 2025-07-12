@@ -38,6 +38,8 @@ struct SceneParams
     bool use_gpu = false;
     bool fix_scene = false;
     bool use_substep = true;
+    bool use_energy_linesearch = false;
+    bool use_ccd_linesearch = false;
     
     bool print_system_energy = false;
     bool print_pcg_convergence = false;

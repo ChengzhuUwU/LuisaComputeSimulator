@@ -1117,8 +1117,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_cgB.copy_from(sa_cgB.data())
             << sim_data->sa_cgA_diag.copy_from(sa_cgA_diag.data());
 
-        // mp_narrowphase_detector->barrier_hessian_assemble(stream, sim_data->sa_cgB, sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->repulsion_hessian_assemble(stream, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+        // mp_narrowphase_detector->barrier_hessian_assemble(stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+        mp_narrowphase_detector->compute_repulsion_gradiant_hessian_and_assemble(stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
 
         stream 
             << sim_data->sa_cgB.copy_to(sa_cgB.data())
@@ -1156,7 +1156,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             mesh_data->sa_edges, 
             d_hat, thickness, kappa);
 
-        return mp_narrowphase_detector->download_energy(stream, kappa);
+        return mp_narrowphase_detector->download_energy(stream);
         // return 0.0f;
     };
     auto compute_penalty_energy = [&]() -> float
@@ -1164,8 +1164,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream 
             << sim_data->sa_x.copy_from(sa_x.data());
 
-        broadphase_dcd();
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
+        // broadphase_dcd();
+        // mp_narrowphase_detector->download_broadphase_collision_count(stream);
         
         mp_narrowphase_detector->reset_energy(stream);
         mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
@@ -1189,7 +1189,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             mesh_data->sa_edges, 
             d_hat, thickness, kappa);
 
-        return mp_narrowphase_detector->download_energy(stream, kappa);
+        return mp_narrowphase_detector->download_energy(stream);
         // return 0.0f;
     };
     auto On2_compute_barrier_energy = [&]() -> float
@@ -1255,8 +1255,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
-    const bool use_linesearch = false;
-    const bool use_ipc = false && use_linesearch;
+    const bool use_linesearch = get_scene_params().use_energy_linesearch;
+    const bool use_ipc = get_scene_params().use_ccd_linesearch && use_linesearch;
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
@@ -1286,9 +1286,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
             float alpha = 1.0f; float ccd_toi = 1.0f;
             host_apply_dx(alpha);            
-            if constexpr (use_linesearch)
+            if (use_linesearch)
             { 
-                if constexpr (use_ipc)
+                if (use_ipc)
                 {
                     ccd_toi = ccd_line_search();
                     alpha = ccd_toi;

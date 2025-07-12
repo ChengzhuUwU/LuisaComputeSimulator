@@ -175,6 +175,9 @@ namespace CollisionPair
     inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return pair.bary.xy(); }
     inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return pair.bary.zw(); }
 
+    template<typename T> auto get_vf_weight(const T& pair)  { return makeFloat4(1.0f, -pair.bary[0], -pair.bary[1], - pair.bary[2]); }
+    template<typename T> auto get_ee_weight(const T& pair)  { return makeFloat4(pair.bary[0], pair.bary[1], -pair.bary[2], -pair.bary[3]); }
+
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
 {

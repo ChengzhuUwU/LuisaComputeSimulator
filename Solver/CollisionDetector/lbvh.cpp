@@ -172,10 +172,12 @@ Var<int> findSplit(const Var<int2>& ranges, const luisa::compute::BufferView<mor
         $while (true) {
             t = (t + 1) >> 1;
             IndexType newSplit = split + t;
-            Morton64 ms = get_morton(sa_morton_sorted, newSplit);
-            IndexType cp_split = find_common_prefix(mi, ms);
-            $if (cp_split > cp_node) {
-                split = newSplit;
+            $if (newSplit < j) {
+                Morton64 ms = get_morton(sa_morton_sorted, newSplit);
+                IndexType cp_split = find_common_prefix(mi, ms);
+                $if (cp_split > cp_node) {
+                    split = newSplit;
+                };
             };
             $if (!(t > 1)) { $break; };
         };

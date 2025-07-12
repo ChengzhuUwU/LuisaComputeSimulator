@@ -145,7 +145,7 @@ void NarrowPhasesDetector::reset_energy(Stream& stream)
     auto& contact_energy = collision_data->contact_energy;
     stream << fn_reset_energy(contact_energy).dispatch(contact_energy.size());
 }
-float NarrowPhasesDetector::download_energy(Stream& stream, const float kappa)
+float NarrowPhasesDetector::download_energy(Stream& stream)
 {
     auto& contact_energy = collision_data->contact_energy;
     auto& host_contact_energy = host_collision_data->contact_energy;
@@ -893,8 +893,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         };
     });
 
-    // Proximity Query
-    fn_narrow_phase_vf_dcd_query_repulsion = device.compile<1>(
+    // Penalty Query
+    fn_narrow_phase_vf_dcd_query_penalty = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
         broadphase_list = collision_data->broad_phase_list_vf.view(),
@@ -968,13 +968,14 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     Float d = sqrt_scalar(d2);
                     Float C = thickness + d_hat - d;
                     Float3 normal = x / d;
-                    Float stiff = stiffness_repulsion * C;
+                    Float stiff = stiffness_repulsion;
                     if constexpr (use_area_weighting)
                     {
                         Float area_a = sa_rest_area_a->read(vid);
                         Float area_b = sa_rest_area_b->read(fid);
                         Float avg_area = 0.5f * (area_a + area_b);
                         stiff = avg_area * stiff;
+                        // luisa::compute::device_log("VF pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
                     }
                     {
                         Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
@@ -1019,7 +1020,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         };
     });
 
-    fn_narrow_phase_ee_dcd_query_repulsion = device.compile<1>(
+    fn_narrow_phase_ee_dcd_query_penalty = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
         broadphase_list = collision_data->broad_phase_list_ee.view(),
@@ -1088,13 +1089,14 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     Float C = thickness + d_hat - d;
                     // Float3 normal = normalize_vec(x);
                     Float3 normal = x / d;
-                    Float stiff = stiffness_repulsion * C;
+                    Float stiff = stiffness_repulsion;
                     if constexpr (use_area_weighting)
                     {
                         Float area_a = sa_rest_area_a->read(left);
                         Float area_b = sa_rest_area_b->read(right);
                         Float avg_area = 0.5f * (area_a + area_b);
                         stiff = avg_area * stiff;
+                        // luisa::compute::device_log("EE pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
                     }
                     {
                         Uint idx = narrowphase_count_ee->atomic(0).fetch_add(1u);
@@ -1160,7 +1162,6 @@ void NarrowPhasesDetector::vf_dcd_query_barrier(Stream& stream,
     }
 
 }
-
 void NarrowPhasesDetector::ee_dcd_query_barrier(Stream& stream, 
     const Buffer<float3>& sa_x_left, 
     const Buffer<float3>& sa_x_right, 
@@ -1184,6 +1185,7 @@ void NarrowPhasesDetector::ee_dcd_query_barrier(Stream& stream,
             fn_narrow_phase_ee_dcd_query_barrier(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
     }
 }
+
 void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream, 
     const Buffer<float3>& sa_x_left, 
     const Buffer<float3>& sa_x_right, 
@@ -1205,11 +1207,10 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     if (num_vf_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_vf_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+            fn_narrow_phase_vf_dcd_query_penalty(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
     }
 
 }
-
 void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream, 
     const Buffer<float3>& sa_x_left, 
     const Buffer<float3>& sa_x_right, 
@@ -1232,7 +1233,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     if (num_ee_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_ee_dcd_query_repulsion(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+            fn_narrow_phase_ee_dcd_query_penalty(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
     }
 }
 
@@ -1534,6 +1535,10 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     [
         narrowphase_list_vv = collision_data->narrow_phase_list_vv.view()
     , &atomic_sub_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1559,6 +1564,10 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     [
         narrowphase_list_ve = collision_data->narrow_phase_list_ve.view()
     , &atomic_sub_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1584,6 +1593,10 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     [
         narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
     , &atomic_sub_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1609,6 +1622,10 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     [
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
     , &atomic_sub_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1635,6 +1652,10 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     [
         narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
     , &atomic_add_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1645,25 +1666,40 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
 
         const Float stiff = CollisionPair::get_stiff(pair);
         const Float3 normal = CollisionPair::get_direction(pair);
-        const Float3 face_bary = CollisionPair::get_vf_face_bary(pair);
-        const Float4 weight = makeFloat4(1.0f, -face_bary.x, -face_bary.y, -face_bary.z);
-        const Float3x3 xxT = stiff * outer_product(normal, normal);
-
-        for (uint j = 0; j < 4; j++)
+        const Float4 weight = CollisionPair::get_vf_weight(pair);
+        const Float3 diff = 
+            weight[0] * sa_x_left.read(indices[0]) + 
+            weight[1] * sa_x_right.read(indices[1]) + 
+            weight[2] * sa_x_right.read(indices[2]) + 
+            weight[3] * sa_x_right.read(indices[3]);
+        
+        const Float d = length_vec(diff);
+        // const Float d = dot_vec(diff, normal);
+        // $if (d < d_hat + thickness)
         {
-            Float3 force = stiff * weight[j] * normal;
-            Float3x3 hessian = stiff * weight[j] * weight[j] * xxT;
-            
-            // device_log("VF pair {} on vert {} : force = {}, stiff = {}, weight = {}", pair_idx, indices[j], force, stiff, weight);
-            atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
-            atomic_add_float3(sa_cgB, indices[j], force);
-        }
+            const Float C = thickness + d_hat - d;
+            const Float3x3 xxT = stiff * outer_product(normal, normal);
+    
+            for (uint j = 0; j < 4; j++)
+            {
+                Float3 force = stiff * C * weight[j] * normal;
+                Float3x3 hessian = stiff * weight[j] * weight[j] * xxT;
+                
+                // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
+                atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
+                atomic_add_float3(sa_cgB, indices[j], force);
+            }
+        };
     });
 
     fn_assemble_repulsion_hessian_gradient_ee = device.compile<1>(
     [
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
     , &atomic_add_float3, &atomic_add_float3x3](
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right, 
+        Float d_hat,
+        Float thickness,
         Var<BufferView<float3>> sa_cgB, 
         Var<BufferView<float3x3>> sa_cgA_diag
     )
@@ -1674,237 +1710,39 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
 
         const Float stiff = CollisionPair::get_stiff(pair);
         const Float3 normal = CollisionPair::get_direction(pair);
-        const Float2 edge1_bary = CollisionPair::get_ee_edge1_bary(pair);
-        const Float2 edge2_bary = CollisionPair::get_ee_edge2_bary(pair);
-        const Float4 weight = makeFloat4(edge1_bary.x, edge1_bary.y, -edge2_bary.x, -edge2_bary.y);
-        const Float3x3 xxT = stiff * outer_product(normal, normal);
+        const Float4 weight = CollisionPair::get_ee_weight(pair);
 
-        for (uint j = 0; j < 4; j++)
+        const Float3 diff = 
+            weight[0] * sa_x_left.read(indices[0]) + 
+            weight[1] * sa_x_left.read(indices[1]) + 
+            weight[2] * sa_x_right.read(indices[2]) + 
+            weight[3] * sa_x_right.read(indices[3]);
+        
+        const Float d = length_vec(diff);
+        // const Float d = dot_vec(diff, normal);
+        // $if (d < d_hat + thickness)
         {
-            Float3 force = stiff * weight[j] * normal;
-            Float3x3 hessian = stiff * weight[j] * weight[j] * xxT;
-            // device_log("EE pair {} on vert {} : force = {}, stiff = {}, weight = {}", pair_idx, indices[j], force, stiff, weight);
-            atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
-            atomic_add_float3(sa_cgB, indices[j], force);
-        }
+            const Float C = d_hat + thickness - d;
+            const Float3x3 xxT = stiff * outer_product(normal, normal);
+    
+            for (uint j = 0; j < 4; j++)
+            {
+                Float3 force = stiff * C * weight[j] * normal;
+                Float3x3 hessian = stiff * weight[j] * weight[j] * xxT;
+                // device_log("EE pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
+                atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
+                atomic_add_float3(sa_cgB, indices[j], force);
+            }
+        };
     });
 }
 
-void NarrowPhasesDetector::host_barrier_gradient_hessian_assemble(
-    luisa::compute::Stream& stream, 
-    Eigen::SparseMatrix<float>& eigen_cgA,
-    Eigen::VectorXf& eigen_cgB)
-{
-    auto& host_count = host_collision_data->narrow_phase_collision_count;
-
-    const uint num_vv = host_count[collision_data->get_vv_count_offset()];
-    const uint num_ve = host_count[collision_data->get_ve_count_offset()];
-    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
-
-    // if constexpr (use_eigen) 
-    // Eigen Decomposition
-    // if constexpr (false)
-    {
-        std::vector<Eigen::Triplet<float>> triplets_vv(num_vv * 36);
-        std::vector<Eigen::Triplet<float>> triplets_ve(num_ve * 81);
-        std::vector<Eigen::Triplet<float>> triplets_vf(num_vf * 144);
-        std::vector<Eigen::Triplet<float>> triplets_ee(num_ee * 144);
-
-        Eigen::SparseMatrix<float> eigen_cgA_vv;
-        Eigen::SparseMatrix<float> eigen_cgA_ve;
-        Eigen::SparseMatrix<float> eigen_cgA_vf;
-        Eigen::SparseMatrix<float> eigen_cgA_ee;
-        eigen_cgA_vv.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_vv.reserve(triplets_vv.size());
-        eigen_cgA_ve.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_ve.reserve(triplets_ve.size());
-        eigen_cgA_vf.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_vf.reserve(triplets_vf.size());
-        eigen_cgA_ee.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_ee.reserve(triplets_ee.size());
-
-        CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-            uint2& indices = pair.indices;
-            float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat6x6 proj_H = (float6x6_to_eigen6x6(H));
-            for (uint i = 0; i < 2; ++i) 
-            {
-                for (uint j = 0; j < 2; ++j) 
-                {
-                    uint prefix = pair_idx * 36 + i * 18 + j * 9;
-                    for (int ii = 0; ii < 3; ++ii)
-                    {
-                        for (int jj = 0; jj < 3; ++jj) 
-                        {
-                            triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                3 * pair.indices[i] + ii, 
-                                3 * pair.indices[j] + jj, 
-                                proj_H(ii + i * 3, jj + j * 3));
-                        }
-                    }
-                }
-            }
-        });
-        CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-            uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
-            float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat9x9 proj_H = (float9x9_to_eigen9x9(H));
-            for (uint i = 0; i < 3; ++i) 
-            {
-                for (uint j = 0; j < 3; ++j) 
-                {
-                    uint prefix = pair_idx * 81 + i * 27 + j * 9;
-                    for (int ii = 0; ii < 3; ++ii)
-                    {
-                        for (int jj = 0; jj < 3; ++jj) 
-                        {
-                            triplets_ve[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                3 * indices[i] + ii, 
-                                3 * indices[j] + jj, 
-                                proj_H(ii + i * 3, jj + j * 3));
-                        }
-                    }
-                }
-            }
-        });
-        CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-            uint4& indices = pair.indices;  luisa::log_info("Get VF Pair : indices = {}", indices);;
-            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
-            
-            for (uint i = 0; i < 4; ++i) 
-            {
-                for (uint j = 0; j < 4; ++j) 
-                {
-                    uint prefix = pair_idx * 144 + i * 36 + j * 9;
-                    for (int ii = 0; ii < 3; ++ii)
-                    {
-                        for (int jj = 0; jj < 3; ++jj) 
-                        {
-                            triplets_vf[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                3 * indices[i] + ii, 
-                                3 * indices[j] + jj, 
-                                proj_H(ii + i * 3, jj + j * 3));
-                        }
-                    }
-                }
-            }
-        });
-        CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-            uint4& indices = pair.indices; luisa::log_info("Get VF Pair : indices = {}", indices);;
-            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
-            for (uint i = 0; i < 4; ++i) 
-            {
-                for (uint j = 0; j < 4; ++j) 
-                {
-                    uint prefix = pair_idx * 144 + i * 36 + j * 9;
-                    for (int ii = 0; ii < 3; ++ii)
-                    {
-                        for (int jj = 0; jj < 3; ++jj) 
-                        {
-                            triplets_ee[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
-                                3 * indices[i] + ii, 
-                                3 * indices[j] + jj, 
-                                proj_H(ii + i * 3, jj + j * 3));
-                        }
-                    }
-                }
-            }
-        });
-        CpuParallel::single_thread_for(0, num_vv, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
-        });
-        CpuParallel::single_thread_for(0, num_ve, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-            eigen_cgB.segment<3>(3 * pair.vid)     += float3_to_eigen3(pair.gradient[0]);
-            eigen_cgB.segment<3>(3 * pair.edge[0]) += float3_to_eigen3(pair.gradient[1]);
-            eigen_cgB.segment<3>(3 * pair.edge[1]) += float3_to_eigen3(pair.gradient[2]);
-        });
-        CpuParallel::single_thread_for(0, num_vf, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
-            eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
-            eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
-        });
-        CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
-            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
-            eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
-            eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
-        });
-        
-        eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
-        eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
-        eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
-        eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
-        eigen_cgA += eigen_cgA_vv + eigen_cgA_ve + eigen_cgA_vf + eigen_cgA_ee;
-    }
-}
-void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
-    luisa::compute::Stream& stream)
-{
-    auto& host_count = host_collision_data->narrow_phase_collision_count;
-
-    const uint num_vv = host_count[collision_data->get_vv_count_offset()];
-    const uint num_ve = host_count[collision_data->get_ve_count_offset()];
-    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
-
-    {
-        CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
-            uint2& indices = pair.indices;
-            float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat6x6 proj_H = spd_projection(float6x6_to_eigen6x6(H));
-            H = eigen6x6_to_float6x6(proj_H);
-            CollisionPair::write_upper_hessian(pair.hessian, H);
-        });
-        CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
-            uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
-            float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat9x9 proj_H = spd_projection(float9x9_to_eigen9x9(H));
-            H = eigen9x9_to_float9x9(proj_H);
-            CollisionPair::write_upper_hessian(pair.hessian, H);
-        });
-        CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
-            uint4& indices = pair.indices; //  luisa::log_info("Get VF Pair : indices = {}", indices);;
-            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
-            H = eigen12x12_to_float12x12(proj_H);
-            CollisionPair::write_upper_hessian(pair.hessian, H);
-        });
-        CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
-        {
-            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
-            uint4& indices = pair.indices; // luisa::log_info("Get VF Pair : indices = {}", indices);;
-            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
-            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
-            H = eigen12x12_to_float12x12(proj_H);
-            CollisionPair::write_upper_hessian(pair.hessian, H);
-        });
-    }
-}
-
-void NarrowPhasesDetector::barrier_hessian_assemble(luisa::compute::Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag)
+void NarrowPhasesDetector::compute_barrier_gradient_hessian_and_assemble(luisa::compute::Stream& stream, 
+    const Buffer<float3>& sa_x_left, 
+    const Buffer<float3>& sa_x_right, 
+    const float d_hat,
+    const float thickness,
+    Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag)
 {
     auto& host_count = host_collision_data->narrow_phase_collision_count;
 
@@ -1914,20 +1752,25 @@ void NarrowPhasesDetector::barrier_hessian_assemble(luisa::compute::Stream& stre
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
 
-    if (num_vv != 0) stream << fn_assemble_barrier_hessian_gradient_vv(sa_cgB, sa_cgA_diag).dispatch(num_vv);
-    if (num_ve != 0) stream << fn_assemble_barrier_hessian_gradient_ve(sa_cgB, sa_cgA_diag).dispatch(num_ve);
-    if (num_vf != 0) stream << fn_assemble_barrier_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf);
-    if (num_ee != 0) stream << fn_assemble_barrier_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
+    if (num_vv != 0) stream << fn_assemble_barrier_hessian_gradient_vv(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_vv);
+    if (num_ve != 0) stream << fn_assemble_barrier_hessian_gradient_ve(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_ve);
+    if (num_vf != 0) stream << fn_assemble_barrier_hessian_gradient_vf(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_vf);
+    if (num_ee != 0) stream << fn_assemble_barrier_hessian_gradient_ee(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_ee);
  
 }
-void NarrowPhasesDetector::repulsion_hessian_assemble(luisa::compute::Stream& stream, Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag)
+void NarrowPhasesDetector::compute_repulsion_gradiant_hessian_and_assemble(luisa::compute::Stream& stream, 
+    const Buffer<float3>& sa_x_left, 
+    const Buffer<float3>& sa_x_right, 
+    const float d_hat,
+    const float thickness,
+    Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag)
 {
     auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    if (num_vf != 0) stream << fn_assemble_repulsion_hessian_gradient_vf(sa_cgB, sa_cgA_diag).dispatch(num_vf);
-    if (num_ee != 0) stream << fn_assemble_repulsion_hessian_gradient_ee(sa_cgB, sa_cgA_diag).dispatch(num_ee);
+    if (num_vf != 0) stream << fn_assemble_repulsion_hessian_gradient_vf(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_vf);
+    if (num_ee != 0) stream << fn_assemble_repulsion_hessian_gradient_ee(sa_x_left, sa_x_right, d_hat, thickness, sa_cgB, sa_cgA_diag).dispatch(num_ee);
 }
 
 void NarrowPhasesDetector::host_spmv_barrier(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array)
@@ -2063,8 +1906,7 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
         }; 
         const float stiff = CollisionPair::get_stiff(pair);
         const float3 normal = CollisionPair::get_direction(pair);
-        const float3 face_bary = CollisionPair::get_vf_face_bary(pair);
-        const float4 weight = makeFloat4(1.0f, -face_bary.x, -face_bary.y, -face_bary.z);
+        const float4 weight = CollisionPair::get_vf_weight(pair);
         const float3x3 xxT = stiff * outer_product(normal, normal);
 
         for (uint j = 0; j < 4; j++)
@@ -2083,6 +1925,7 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
         output_array[indices[2]] += output_vec[2];
         output_array[indices[3]] += output_vec[3];
     });
+
     CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
     {
         auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
@@ -2102,9 +1945,7 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
         }; 
         const float stiff = CollisionPair::get_stiff(pair);
         const float3 normal = CollisionPair::get_direction(pair);
-        const float2 edge1_bary = CollisionPair::get_ee_edge1_bary(pair);
-        const float2 edge2_bary = CollisionPair::get_ee_edge2_bary(pair);
-        const float4 weight = makeFloat4(edge1_bary.x, edge1_bary.y, -edge2_bary.x, -edge2_bary.y);
+        const float4 weight = CollisionPair::get_ee_weight(pair);
         const float3x3 xxT = stiff * outer_product(normal, normal);
 
         for (uint j = 0; j < 4; j++)
@@ -2315,58 +2156,32 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
     ]( 
         Var<BufferView<float3>> sa_x_left, 
         Var<BufferView<float3>> sa_x_right,
-        Var<BufferView<float3>> sa_rest_x_left, 
-        Var<BufferView<float3>> sa_rest_x_right,
-        Var<BufferView<float>> sa_rest_area_left, 
-        Var<BufferView<float>> sa_rest_area_right,
-        Var<BufferView<uint3>> sa_faces_right,
         Float d_hat,
         Float thickness,
         Float kappa
     )
     {
         const Uint pair_idx = dispatch_x();
-        const Uint vid =  broadphase_list->read(2 * pair_idx + 0);
-        const Uint fid = broadphase_list->read(2 * pair_idx + 1);
-        const Uint3 face = sa_faces_right.read(fid);
+        const auto& pair = narrowphase_list_vf->read(pair_idx);
+        const auto indices = CollisionPair::get_indices(pair);
+
+        const Float stiff = CollisionPair::get_stiff(pair);
+        const Float3 normal = CollisionPair::get_direction(pair);
+        const Float4 weight = CollisionPair::get_vf_weight(pair);
+        const Float3 diff = 
+            weight[0] * sa_x_left.read(indices[0]) + 
+            weight[1] * sa_x_right.read(indices[1]) + 
+            weight[2] * sa_x_right.read(indices[2]) + 
+            weight[3] * sa_x_right.read(indices[3]);
+        const Float d = dot_vec(diff, normal);
 
         Float energy = 0.0f;
-        $if (
-            vid == face[0] | 
-            vid == face[1] | 
-            vid == face[2]) 
-        {
 
-        }
-        $else
+        $if (d < thickness + d_hat)
         {
-            Float3 p =  sa_x_left->read(vid);
-            Float3 t0 = sa_x_right->read(face[0]);
-            Float3 t1 = sa_x_right->read(face[1]);
-            Float3 t2 = sa_x_right->read(face[2]);
-
-            Float d2 = distance::point_triangle_distance_squared_unclassified(p, t0, t1, t2);
-            $if (d2 < square_scalar(thickness + d_hat))
-            {
-                Float3 rest_p  = sa_rest_x_left->read(vid);
-                Float3 rest_t0 = sa_rest_x_right->read(face[0]);
-                Float3 rest_t1 = sa_rest_x_right->read(face[1]);
-                Float3 rest_t2 = sa_rest_x_right->read(face[2]);
-                
-                Float rest_d2 = distance::point_triangle_distance_squared_unclassified(
-                    rest_p,
-                    rest_t0,
-                    rest_t1,
-                    rest_t2
-                );
-                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
-                {
-                    Float d = sqrt_scalar(d2);
-                    Float C = thickness + d_hat - d;
-                    Float area = 0.5f * (sa_rest_area_left.read(vid) + sa_rest_area_right.read(fid));
-                    energy = 0.5f * area * stiffness_repulsion * C * C;
-                };
-            };
+            Float C = thickness + d_hat - d;
+            energy = 0.5f * stiff * C * C;
+            // device_log("VF energy : Pair {} , weight = {}, diff = {}, normal = {} d = {}, proj = {}, C = {}, E = {} ", pair_idx, weight, diff, normal, length_vec(diff), d, C, energy);
         };
         
         energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -2388,62 +2203,34 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
         narrowphase_count_ee = collision_data->narrow_phase_collision_count.view(offset_ee, 1),
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
     ](
-        Var<BufferView<float3>> sa_x_a, 
-        Var<BufferView<float3>> sa_x_b,
-        Var<BufferView<float3>> sa_rest_x_a, 
-        Var<BufferView<float3>> sa_rest_x_b,
-        Var<BufferView<float>> sa_rest_area_a, 
-        Var<BufferView<float>> sa_rest_area_b,
-        Var<BufferView<uint2>> sa_edges_left,
-        Var<BufferView<uint2>> sa_edges_right,
+        Var<BufferView<float3>> sa_x_left, 
+        Var<BufferView<float3>> sa_x_right,
         Float d_hat,
         Float thickness,
         Float kappa
     )
     {
         const Uint pair_idx = dispatch_x();
-        const Uint left =  broadphase_list->read(2 * pair_idx + 0);
-        const Uint right = broadphase_list->read(2 * pair_idx + 1);
-        const Uint2 left_edge  = sa_edges_left.read(left);
-        const Uint2 right_edge = sa_edges_right.read(right);
+        const auto& pair = narrowphase_list_ee->read(pair_idx);
+        const auto indices = CollisionPair::get_indices(pair);
+
+        const Float stiff = CollisionPair::get_stiff(pair);
+        const Float3 normal = CollisionPair::get_direction(pair);
+        const Float4 weight = CollisionPair::get_ee_weight(pair);
+        const Float3 diff = 
+            weight[0] * sa_x_left.read(indices[0]) + 
+            weight[1] * sa_x_left.read(indices[1]) + 
+            weight[2] * sa_x_right.read(indices[2]) + 
+            weight[3] * sa_x_right.read(indices[3]);
+        const Float d = dot_vec(diff, normal);
 
         Float energy = 0.0f;
-        $if (
-            left_edge[0] == right_edge[0] |
-            left_edge[0] == right_edge[1] |
-            left_edge[1] == right_edge[0] |
-            left_edge[1] == right_edge[1]) 
+
+        $if (d < thickness + d_hat)
         {
-        }
-        $else
-        {
-            Float3 ea_p0 = (sa_x_a->read(left_edge[0]));
-            Float3 ea_p1 = (sa_x_a->read(left_edge[1]));
-            Float3 eb_p0 = (sa_x_b->read(right_edge[0]));
-            Float3 eb_p1 = (sa_x_b->read(right_edge[1]));
-    
-            Float d2 = distance::edge_edge_distance_squared_unclassified(ea_p0, ea_p1, eb_p0, eb_p1);
-            $if (d2 < square_scalar(thickness + d_hat))
-            {
-                Float3 rest_ea_x0 = (sa_rest_x_a->read(left_edge[0]));
-                Float3 rest_ea_x1 = (sa_rest_x_a->read(left_edge[1]));
-                Float3 rest_eb_x0 = (sa_rest_x_b->read(right_edge[0]));
-                Float3 rest_eb_x1 = (sa_rest_x_b->read(right_edge[1]));
-    
-                Float rest_d2 = distance::edge_edge_distance_squared_unclassified(
-                    rest_ea_x0,
-                    rest_ea_x1,
-                    rest_eb_x0,
-                    rest_eb_x1
-                );
-                $if (rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
-                {
-                    Float d = sqrt_scalar(d2);
-                    Float C = thickness + d_hat - d;
-                    Float area = 0.5f * (sa_rest_area_a.read(left) + sa_rest_area_b.read(right));
-                    energy = 0.5f * area * stiffness_repulsion * C * C;
-                };
-            };
+            Float C = thickness + d_hat - d;
+            energy = 0.5f * stiff * C * C;
+            // device_log("EE energy : Pair {}, weight = {}, diff = {}, normal = {}, d = {}, proj = {}, C = {}, E = {} ", pair_idx, weight, diff, normal, length_vec(diff), d, C, energy);
         };
 
         energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -2479,7 +2266,6 @@ void NarrowPhasesDetector::compute_barrier_energy_from_vf(Stream& stream,
 
     if (num_vf_broadphase != 0)
     {
-        // stream << fn_compute_repulsion_energy_from_vf(
         stream << fn_compute_barrier_energy_from_vf(
             sa_x_left,
             sa_x_right,
@@ -2491,7 +2277,6 @@ void NarrowPhasesDetector::compute_barrier_energy_from_vf(Stream& stream,
         ;
     }
 }
-
 void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream, 
     const Buffer<float3>& sa_x_left, 
     const Buffer<float3>& sa_x_right, 
@@ -2514,7 +2299,6 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
     if (num_ee_broadphase != 0)
     {
         stream << fn_compute_barrier_energy_from_ee(
-        // stream << fn_compute_repulsion_energy_from_ee(
             sa_x_left,
             sa_x_right, // sa_x_begin_right
             sa_rest_x_left,
@@ -2533,6 +2317,7 @@ void NarrowPhasesDetector::compute_barrier_energy_from_ee(Stream& stream,
     }
     
 }
+
 void NarrowPhasesDetector::compute_penalty_energy_from_vf(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
@@ -2546,25 +2331,18 @@ void NarrowPhasesDetector::compute_penalty_energy_from_vf(Stream& stream,
         const float kappa)
 {
     auto& contact_energy = collision_data->contact_energy;
-    auto& host_contact_energy = host_collision_data->contact_energy;
-    auto broadphase_count = collision_data->broad_phase_collision_count.view();
-    auto& host_count = host_collision_data->broad_phase_collision_count;
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
 
-    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    const uint num_vf_narrowphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_narrowphase = host_count[collision_data->get_ee_count_offset()];
 
-    if (num_vf_broadphase != 0)
+    if (num_vf_narrowphase != 0)
     {
         stream << fn_compute_repulsion_energy_from_vf(
-        // stream << fn_compute_barrier_energy_from_vf(
             sa_x_left,
             sa_x_right,
-            sa_rest_x_left,
-            sa_rest_x_right,
-            sa_rest_area_left,
-            sa_rest_area_right,
-            sa_faces_right, d_hat, thickness, kappa
-        ).dispatch(num_vf_broadphase) 
+            d_hat, thickness, kappa
+        ).dispatch(num_vf_narrowphase) 
             // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
         ;
     }
@@ -2584,25 +2362,18 @@ void NarrowPhasesDetector::compute_penalty_energy_from_ee(Stream& stream,
         const float kappa)
 {
     auto& contact_energy = collision_data->contact_energy;
-    auto& host_contact_energy = host_collision_data->contact_energy;
-    auto broadphase_count = collision_data->broad_phase_collision_count.view();
-    auto& host_count = host_collision_data->broad_phase_collision_count;
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
 
-    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    const uint num_vf_narrowphase = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee_narrowphase = host_count[collision_data->get_ee_count_offset()];
 
-    if (num_ee_broadphase != 0)
+    if (num_ee_narrowphase != 0)
     {
         stream << fn_compute_repulsion_energy_from_ee(
             sa_x_left,
-            sa_x_right, // sa_x_begin_right
-            sa_rest_x_left,
-            sa_rest_x_right,
-            sa_rest_area_left,
-            sa_rest_area_right,
-            sa_edges_left, sa_edges_right,
+            sa_x_right, 
             d_hat, thickness, kappa
-        ).dispatch(num_ee_broadphase) 
+        ).dispatch(num_ee_narrowphase) 
         ;
     }
     
@@ -2718,7 +2489,7 @@ double NarrowPhasesDetector::host_ON2_compute_barrier_energy_uipc(
 
 } // namespace lcsv 
 
-namespace lcsv // Host CCD
+namespace lcsv // Host Methods
 {
 
 void NarrowPhasesDetector::host_vf_ccd_query(Stream& stream, 
@@ -2898,6 +2669,221 @@ void NarrowPhasesDetector::host_ee_ccd_query(Stream& stream,
     // }
     // luisa::log_info("toi = {}", min_toi);
     // sa_toi[0] = min_scalar(min_toi, sa_toi[0]);
+}
+
+void NarrowPhasesDetector::host_barrier_gradient_hessian_assemble(
+    luisa::compute::Stream& stream, 
+    Eigen::SparseMatrix<float>& eigen_cgA,
+    Eigen::VectorXf& eigen_cgB)
+{
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+    const uint num_vv = host_count[collision_data->get_vv_count_offset()];
+    const uint num_ve = host_count[collision_data->get_ve_count_offset()];
+    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+
+    // if constexpr (use_eigen) 
+    // Eigen Decomposition
+    // if constexpr (false)
+    {
+        std::vector<Eigen::Triplet<float>> triplets_vv(num_vv * 36);
+        std::vector<Eigen::Triplet<float>> triplets_ve(num_ve * 81);
+        std::vector<Eigen::Triplet<float>> triplets_vf(num_vf * 144);
+        std::vector<Eigen::Triplet<float>> triplets_ee(num_ee * 144);
+
+        Eigen::SparseMatrix<float> eigen_cgA_vv;
+        Eigen::SparseMatrix<float> eigen_cgA_ve;
+        Eigen::SparseMatrix<float> eigen_cgA_vf;
+        Eigen::SparseMatrix<float> eigen_cgA_ee;
+        eigen_cgA_vv.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_vv.reserve(triplets_vv.size());
+        eigen_cgA_ve.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_ve.reserve(triplets_ve.size());
+        eigen_cgA_vf.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_vf.reserve(triplets_vf.size());
+        eigen_cgA_ee.resize(eigen_cgA.rows(), eigen_cgA.cols()); eigen_cgA_ee.reserve(triplets_ee.size());
+
+        CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
+            uint2& indices = pair.indices;
+            float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat6x6 proj_H = (float6x6_to_eigen6x6(H));
+            for (uint i = 0; i < 2; ++i) 
+            {
+                for (uint j = 0; j < 2; ++j) 
+                {
+                    uint prefix = pair_idx * 36 + i * 18 + j * 9;
+                    for (int ii = 0; ii < 3; ++ii)
+                    {
+                        for (int jj = 0; jj < 3; ++jj) 
+                        {
+                            triplets_vv[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                3 * pair.indices[i] + ii, 
+                                3 * pair.indices[j] + jj, 
+                                proj_H(ii + i * 3, jj + j * 3));
+                        }
+                    }
+                }
+            }
+        });
+        CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
+            uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
+            float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat9x9 proj_H = (float9x9_to_eigen9x9(H));
+            for (uint i = 0; i < 3; ++i) 
+            {
+                for (uint j = 0; j < 3; ++j) 
+                {
+                    uint prefix = pair_idx * 81 + i * 27 + j * 9;
+                    for (int ii = 0; ii < 3; ++ii)
+                    {
+                        for (int jj = 0; jj < 3; ++jj) 
+                        {
+                            triplets_ve[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                3 * indices[i] + ii, 
+                                3 * indices[j] + jj, 
+                                proj_H(ii + i * 3, jj + j * 3));
+                        }
+                    }
+                }
+            }
+        });
+        CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
+            uint4& indices = pair.indices;  luisa::log_info("Get VF Pair : indices = {}", indices);;
+            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
+            
+            for (uint i = 0; i < 4; ++i) 
+            {
+                for (uint j = 0; j < 4; ++j) 
+                {
+                    uint prefix = pair_idx * 144 + i * 36 + j * 9;
+                    for (int ii = 0; ii < 3; ++ii)
+                    {
+                        for (int jj = 0; jj < 3; ++jj) 
+                        {
+                            triplets_vf[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                3 * indices[i] + ii, 
+                                3 * indices[j] + jj, 
+                                proj_H(ii + i * 3, jj + j * 3));
+                        }
+                    }
+                }
+            }
+        });
+        CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
+            uint4& indices = pair.indices; luisa::log_info("Get VF Pair : indices = {}", indices);;
+            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat12x12 proj_H = (float12x12_to_eigen12x12(H));
+            for (uint i = 0; i < 4; ++i) 
+            {
+                for (uint j = 0; j < 4; ++j) 
+                {
+                    uint prefix = pair_idx * 144 + i * 36 + j * 9;
+                    for (int ii = 0; ii < 3; ++ii)
+                    {
+                        for (int jj = 0; jj < 3; ++jj) 
+                        {
+                            triplets_ee[prefix + ii * 3 + jj] = Eigen::Triplet<float>(
+                                3 * indices[i] + ii, 
+                                3 * indices[j] + jj, 
+                                proj_H(ii + i * 3, jj + j * 3));
+                        }
+                    }
+                }
+            }
+        });
+        CpuParallel::single_thread_for(0, num_vv, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
+            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+        });
+        CpuParallel::single_thread_for(0, num_ve, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
+            eigen_cgB.segment<3>(3 * pair.vid)     += float3_to_eigen3(pair.gradient[0]);
+            eigen_cgB.segment<3>(3 * pair.edge[0]) += float3_to_eigen3(pair.gradient[1]);
+            eigen_cgB.segment<3>(3 * pair.edge[1]) += float3_to_eigen3(pair.gradient[2]);
+        });
+        CpuParallel::single_thread_for(0, num_vf, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
+            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+            eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
+            eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+        });
+        CpuParallel::single_thread_for(0, num_ee, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
+            eigen_cgB.segment<3>(3 * pair.indices[0]) += float3_to_eigen3(pair.gradient[0]);
+            eigen_cgB.segment<3>(3 * pair.indices[1]) += float3_to_eigen3(pair.gradient[1]);
+            eigen_cgB.segment<3>(3 * pair.indices[2]) += float3_to_eigen3(pair.gradient[2]);
+            eigen_cgB.segment<3>(3 * pair.indices[3]) += float3_to_eigen3(pair.gradient[3]);
+        });
+        
+        eigen_cgA_vv.setFromTriplets(triplets_vv.begin(), triplets_vv.end());
+        eigen_cgA_ve.setFromTriplets(triplets_ve.begin(), triplets_ve.end());
+        eigen_cgA_vf.setFromTriplets(triplets_vf.begin(), triplets_vf.end());
+        eigen_cgA_ee.setFromTriplets(triplets_ee.begin(), triplets_ee.end());
+        eigen_cgA += eigen_cgA_vv + eigen_cgA_ve + eigen_cgA_vf + eigen_cgA_ee;
+    }
+}
+
+void NarrowPhasesDetector::host_barrier_hessian_spd_projection(
+    luisa::compute::Stream& stream)
+{
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+    const uint num_vv = host_count[collision_data->get_vv_count_offset()];
+    const uint num_ve = host_count[collision_data->get_ve_count_offset()];
+    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+
+    {
+        CpuParallel::parallel_for(0, num_vv, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vv[pair_idx];
+            uint2& indices = pair.indices;
+            float6x6 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat6x6 proj_H = spd_projection(float6x6_to_eigen6x6(H));
+            H = eigen6x6_to_float6x6(proj_H);
+            CollisionPair::write_upper_hessian(pair.hessian, H);
+        });
+        CpuParallel::parallel_for(0, num_ve, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ve[pair_idx];
+            uint3 indices = makeUint3(pair.vid, pair.edge[0], pair.edge[1]);
+            float9x9 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat9x9 proj_H = spd_projection(float9x9_to_eigen9x9(H));
+            H = eigen9x9_to_float9x9(proj_H);
+            CollisionPair::write_upper_hessian(pair.hessian, H);
+        });
+        CpuParallel::parallel_for(0, num_vf, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_vf[pair_idx];
+            uint4& indices = pair.indices; //  luisa::log_info("Get VF Pair : indices = {}", indices);;
+            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
+            H = eigen12x12_to_float12x12(proj_H);
+            CollisionPair::write_upper_hessian(pair.hessian, H);
+        });
+        CpuParallel::parallel_for(0, num_ee, [&](const uint pair_idx)
+        {
+            auto& pair = host_collision_data->narrow_phase_list_ee[pair_idx];
+            uint4& indices = pair.indices; // luisa::log_info("Get VF Pair : indices = {}", indices);;
+            float12x12 H; CollisionPair::extract_upper_hessian(pair.hessian, H);
+            EigenFloat12x12 proj_H = spd_projection(float12x12_to_eigen12x12(H));
+            H = eigen12x12_to_float12x12(proj_H);
+            CollisionPair::write_upper_hessian(pair.hessian, H);
+        });
+    }
 }
 
 void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream)
@@ -3543,5 +3529,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
 
 
 }
+
+
 
 }
