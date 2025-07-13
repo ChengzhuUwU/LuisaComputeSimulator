@@ -88,12 +88,44 @@ struct SimulationData : SimulationType
 namespace lcsv 
 {
 
+// struct CollisionPairVV
+// {
+//     uint2 indices; // vid1:1, vid2:1
+//     float4 vec1; // normal:3, stiff:1
+//     float3 gradient[2];
+//     float3x3 hessian[3];
+// };
+// struct CollisionPairVE
+// {
+//     uint2 edge; 
+//     uint vid;
+//     float bary;
+//     float4 vec1; // normal:3, stiff 1
+//     float3 gradient[3];
+//     float3x3 hessian[6];
+// };
+// struct CollisionPairVF
+// {
+//     uint4 indices; // vid:1, face:3
+//     float4 vec1; // normal:3, stiff:1
+//     float2 bary; // bary
+//     float2 vec2;
+//     float3 gradient[4];
+//     float3x3 hessian[10];
+// };
+// struct CollisionPairEE
+// {
+//     uint4 indices;
+//     float4 vec1; // normal:3, stiff 1
+//     float2 bary; // 
+//     float2 vec2;
+//     float3 gradient[4];
+//     float3x3 hessian[10];
+// };
 struct CollisionPairVV
 {
     uint2 indices; // vid1:1, vid2:1
     float4 vec1; // normal:3, stiff:1
-    float3 gradient[2];
-    float3x3 hessian[3];
 };
 struct CollisionPairVE
 {
@@ -101,8 +133,6 @@ struct CollisionPairVE
     uint vid;
     float bary;
     float4 vec1; // normal:3, stiff 1
-    float3 gradient[3];
-    float3x3 hessian[6];
 };
 struct CollisionPairVF
 {
@@ -110,8 +140,6 @@ struct CollisionPairVF
     float4 vec1; // normal:3, stiff:1
     float2 bary; // bary
     float2 vec2;
-    float3 gradient[4];
-    float3x3 hessian[10];
 };
 struct CollisionPairEE
 {
@@ -119,8 +147,6 @@ struct CollisionPairEE
     float4 vec1; // normal:3, stiff 1
     float2 bary; // 
     float2 vec2;
-    float3 gradient[4];
-    float3x3 hessian[10];
 };
 
 // enum CollisionListType
@@ -133,10 +159,15 @@ struct CollisionPairEE
 
 }
 
-LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1, gradient, hessian) {};
-LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
-LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
-LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1) {};
+LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1) {};
+LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2) {};
+LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2) {};
+
+// LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1, gradient, hessian) {};
+// LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
+// LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
+// LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
 
 
 namespace lcsv 
@@ -401,6 +432,7 @@ struct CollisionData : SimulationType
         const uint per_element_count_BP = 128;
         const uint per_element_count_NP = 64;
         
+        constexpr bool use_vv_ve = false;
         lcsv::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4); 
         lcsv::Initializer::resize_buffer(device, this->contact_energy, 4); 
@@ -409,6 +441,10 @@ struct CollisionData : SimulationType
         lcsv::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        // if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        // if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        // if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1); 
+        // if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
         lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 

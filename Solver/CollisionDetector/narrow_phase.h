@@ -96,25 +96,6 @@ public:
         const float thickness);
 public:
     // DCD
-    void vf_dcd_query_barrier(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<float3>& sa_rest_x_left, 
-        const Buffer<float3>& sa_rest_x_right, 
-        const Buffer<uint3>& sa_faces_right,
-        const float d_hat, 
-        const float thickness, const float kappa);
-
-    void ee_dcd_query_barrier(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<float3>& sa_rest_x_left, 
-        const Buffer<float3>& sa_rest_x_right, 
-        const Buffer<uint2>& sa_edges_left,
-        const Buffer<uint2>& sa_edges_right,
-        const float d_hat, 
-        const float thickness, const float kappa);
-
     void vf_dcd_query_repulsion(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
@@ -138,60 +119,17 @@ public:
         const float d_hat, 
         const float thickness, const float kappa);
 
-    void host_ON2_dcd_query_libuipc(
-        Eigen::SparseMatrix<float>& eigen_cgA,
-        Eigen::VectorXf& eigen_cgB,
-        const std::vector<float3>& sa_x_left, 
-        const std::vector<float3>& sa_x_right, 
-        const std::vector<float3>& sa_rest_x_left, 
-        const std::vector<float3>& sa_rest_x_right, 
-        const std::vector<uint3>& sa_faces_left,
-        const std::vector<uint3>& sa_faces_right,
-        const std::vector<uint2>& sa_edges_left,
-        const std::vector<uint2>& sa_edges_right,
-        const float d_hat, 
-        const float thickness,
-        const float kappa);
-
-    void host_barrier_gradient_hessian_assemble(Stream& stream, Eigen::SparseMatrix<float>& eigen_cgA, Eigen::VectorXf& eigen_cgB);
-    void host_barrier_hessian_spd_projection(Stream& stream);
-    void compute_barrier_gradient_hessian_and_assemble(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const float d_hat,
-        const float thickness,
-        Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
     void compute_repulsion_gradiant_hessian_and_assemble(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
         const float d_hat,
         const float thickness,
         Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
-    void host_spmv_barrier(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+
     void host_spmv_repulsion(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+
 public:
     // Compute barrier energy
-    void compute_barrier_energy_from_vf(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<float3>& sa_rest_x_left, 
-        const Buffer<float3>& sa_rest_x_right, 
-        const Buffer<uint3>& sa_faces_right,
-        const float d_hat,
-        const float thickness,
-        const float kappa);
-
-    void compute_barrier_energy_from_ee(Stream& stream, 
-        const Buffer<float3>& sa_x_left, 
-        const Buffer<float3>& sa_x_right, 
-        const Buffer<float3>& sa_rest_x_left, 
-        const Buffer<float3>& sa_rest_x_right, 
-        const Buffer<uint2>& sa_edges_left,
-        const Buffer<uint2>& sa_edges_right,
-        const float d_hat,
-        const float thickness,
-        const float kappa);
-
     void compute_penalty_energy_from_vf(Stream& stream, 
         const Buffer<float3>& sa_x_left, 
         const Buffer<float3>& sa_x_right, 
@@ -217,25 +155,9 @@ public:
         const float thickness,
         const float kappa);
 
-    double host_ON2_compute_barrier_energy_uipc(
-        const std::vector<float3>& sa_x_left, 
-        const std::vector<float3>& sa_x_right,
-        const std::vector<float3>& sa_rest_x_left,
-        const std::vector<float3>& sa_rest_x_right, 
-        const std::vector<uint3>& sa_faces_left,
-        const std::vector<uint3>& sa_faces_right,
-        const std::vector<uint2>& sa_edge_left,
-        const std::vector<uint2>& sa_edge_right,
-        const float d_hat,
-        const float thickness,
-        const float kappa);
-    
-
 public:
     
     
-    
-
 public:
     CollisionData<luisa::compute::Buffer>* collision_data;
     CollisionData<std::vector>* host_collision_data;
@@ -267,29 +189,6 @@ private:
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<uint3>, 
-        float, 
-        float,
-        float
-        > fn_narrow_phase_vf_dcd_query_barrier;
-    
-    luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<uint2>,
-        luisa::compute::BufferView<uint2>, 
-        float, 
-        float,
-        float
-        > fn_narrow_phase_ee_dcd_query_barrier;
-
-    luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
-        luisa::compute::BufferView<float3>,
         luisa::compute::BufferView<float>,
         luisa::compute::BufferView<float>,
         luisa::compute::BufferView<uint3>, 
@@ -315,29 +214,6 @@ private:
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, 
         luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<uint3>, 
-        float, 
-        float,
-        float
-        > fn_compute_barrier_energy_from_vf;
-
-    luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<uint2>, 
-        luisa::compute::BufferView<uint2>, 
-        float, 
-        float,
-        float
-        >  fn_compute_barrier_energy_from_ee;
-
-    luisa::compute::Shader<1, 
-        luisa::compute::BufferView<float3>, 
-        luisa::compute::BufferView<float3>, 
         float, 
         float,
         float
@@ -352,10 +228,6 @@ private:
         >  fn_compute_repulsion_energy_from_ee;
 
     // Assemble
-    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_vv;
-    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_ve;
-    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_vf;
-    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_barrier_hessian_gradient_ee;
     luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_vf;
     luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_ee;
 };

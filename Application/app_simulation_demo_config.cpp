@@ -54,7 +54,7 @@ void ccd_ee_unit_case(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
             },
         }
     });
-    lcsv::get_scene_params().load_state_frame = 4;
+    lcsv::get_scene_params().load_state_frame = 28;
     lcsv::get_scene_params().implicit_dt = 0.05;
     lcsv::get_scene_params().num_substep = 1;
     lcsv::get_scene_params().nonlinear_iter_count = 1;
@@ -194,7 +194,7 @@ void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list
 void load_scene(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
-        7
+        1
     ;
 
     switch (case_number)
