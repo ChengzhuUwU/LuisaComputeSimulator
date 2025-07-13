@@ -163,8 +163,9 @@ template<typename T> auto get_vf_face(const T& pair)  { return pair.indices.yzw(
 template<typename T> auto get_ee_edge1(const T& pair)  { return pair.indices.xy(); }
 template<typename T> auto get_ee_edge2(const T& pair)  { return pair.indices.zw(); }
 
-template<typename T> auto get_stiff(const T& pair) { return pair.vec1[3]; }
+// template<typename T> auto get_stiff(const T& pair) { return pair.vec1[3]; }
 template<typename T> auto get_direction(const T& pair) { return pair.vec1.xyz(); }
+template<typename T> auto get_area(const T& pair) { return pair.vec1[3]; }
 
 // inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
 inline auto get_ve_edge_bary (const CollisionPairVE& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
