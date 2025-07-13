@@ -429,8 +429,8 @@ struct CollisionData : SimulationType
         // const uint num_verts = mesh_data->num_verts;
         // const uint num_edges = mesh_data->num_edges;
         
-        const uint per_element_count_BP = 128;
-        const uint per_element_count_NP = 64;
+        const uint per_element_count_BP = 256;
+        const uint per_element_count_NP = 96;
         
         constexpr bool use_vv_ve = false;
         lcsv::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
@@ -439,12 +439,12 @@ struct CollisionData : SimulationType
         lcsv::Initializer::resize_buffer(device, this->toi_per_vert, num_verts); 
         lcsv::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts); 
         lcsv::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
-        // if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
-        // if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
-        // if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1); 
-        // if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
+        // lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        // lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1); 
+        if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
         lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
         lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
