@@ -192,12 +192,13 @@ inline Vec4f edge_edge_distance_coeff_unclassified(const Vec3f &ea0,
         } $elif (c4[0] > 1.0f) {
             c4 = Vec2f(1.0f, 0.0f);
         };
-        Vec4f types[4] = {
+        luisa::compute::ArrayFloat4<4> types = {
             Vec4f(1.0f, 0.0f, c1[0], c1[1]), 
             Vec4f(0.0f, 1.0f, c2[0], c2[1]),
             Vec4f(c3[0], c3[1], 1.0f, 0.0f), 
-            Vec4f(c4[0], c4[1], 0.0f, 1.0f)};
-        uint index = 0;
+            Vec4f(c4[0], c4[1], 0.0f, 1.0f)
+        };
+        Var<uint> index = 0;
         Var<float> di = Float_max;
         for (unsigned i = 0; i < 4; ++i) {
             const auto &c = types[i];
