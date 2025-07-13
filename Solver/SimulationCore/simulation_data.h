@@ -202,6 +202,22 @@ template<typename T, typename Vec4> void write_ee_weight(T& pair, const Vec4& ed
     pair.bary = makeFloat2(edge_bary[0], edge_bary[2]);
 }
 
+template<typename T> auto get_vf_stiff(const T& pair)  { return pair.vec2; }
+template<typename T> auto get_ee_stiff(const T& pair) { return pair.vec2; }
+
+template<typename T> auto get_vf_k1(const T& pair) { return pair.vec2[0]; }
+template<typename T> auto get_vf_k2(const T& pair) { return pair.vec2[1]; }
+template<typename T> auto get_ee_k1(const T& pair) { return pair.vec2[0]; }
+template<typename T> auto get_ee_k2(const T& pair) { return pair.vec2[1]; }
+
+template<typename T, typename FloatType> void write_vf_stiff(T& pair, const FloatType& k1, const FloatType& k2)  
+{ 
+    pair.vec2 = makeFloat2(k1, k2);
+}
+template<typename T, typename FloatType> void write_ee_stiff(T& pair, const FloatType& k1, const FloatType& k2)  
+{ 
+    pair.vec2 = makeFloat2(k1, k2);
+}
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
 {
