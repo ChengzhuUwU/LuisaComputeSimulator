@@ -540,7 +540,7 @@ enum class ContactEnergyType
     Penalty,
     Barrier,
 };
-constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Barrier; // Penalty or Barrier
+constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Penalty; // Penalty or Barrier
 
 void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
 {
@@ -1001,46 +1001,6 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                         k1 = dBdD;
                         k2 = ddBddD;
                     }
-                    
-                    {
-                        Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
-                        Var<CollisionPairVF> vf_pair;
-                        vf_pair.indices = makeUint4(vid, face[0], face[1], face[2]);
-                        vf_pair.vec1 = makeFloat4(normal.x, normal.y, normal.z, d);
-                        CollisionPair::write_vf_weight(vf_pair, bary);
-                        CollisionPair::write_vf_stiff(vf_pair, k1, k2);;
-                        {
-                            Float4 weight = makeFloat4(1.0f, -bary[0], -bary[1], -bary[2]);
-                            Float12 G;
-                            
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                G.vec[j] = k1 * weight[j] * normal; // Gradient is negative of force
-                            }
-
-                            // G.vec[0] = stiff * weight[0] * normal;
-                            // G.vec[1] = stiff * weight[1] * normal;
-                            // G.vec[2] = stiff * weight[2] * normal;
-                            // G.vec[3] = stiff * weight[3] * normal;
-    
-                            Float12x12 H;
-                            Float3x3 xxT = k2 * outer_product(normal, normal);
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                for (uint jj = 0; jj < 4; jj++)
-                                {
-                                    H.mat[j][jj] = weight[j] * weight[jj] * xxT;
-                                }
-                            }
-                            vf_pair.gradient[0] = G.vec[0];
-                            vf_pair.gradient[1] = G.vec[1];
-                            vf_pair.gradient[2] = G.vec[2];
-                            vf_pair.gradient[3] = G.vec[3];
-                            CollisionPair::write_upper_hessian(vf_pair.hessian, H);
-                            // luisa::compute::device_log("VF pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, vf_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
-                        }
-                        narrowphase_list_vf->write(idx, vf_pair);
-                    }
                 };
             };
         };
@@ -1146,32 +1106,6 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                         ee_pair.vec1 = makeFloat4(normal.x, normal.y, normal.z, d);
                         CollisionPair::write_ee_weight(ee_pair, bary);
                         CollisionPair::write_ee_stiff(ee_pair, k1, k2);
-                        
-                        {
-                            Float4 weight = makeFloat4(bary[0], bary[1], -bary[2], -bary[3]);
-                            Float12 G;
-                            
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                G.vec[j] = k1 * weight[j] * normal;
-                            }
-    
-                            Float12x12 H;
-                            Float3x3 xxT = k2 * outer_product(normal, normal);
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                for (uint jj = 0; jj < 4; jj++)
-                                {
-                                    H.mat[j][jj] = weight[j] * weight[jj] * xxT;
-                                }
-                            }
-                            ee_pair.gradient[0] = G.vec[0];
-                            ee_pair.gradient[1] = G.vec[1];
-                            ee_pair.gradient[2] = G.vec[2];
-                            ee_pair.gradient[3] = G.vec[3];
-                            CollisionPair::write_upper_hessian(ee_pair.hessian, H);
-                            // luisa::compute::device_log("EE pair {} ({}) with C = {}, G = {} - {} - {} - {}", idx, ee_pair.indices, C, G.vec[0], G.vec[1], G.vec[2], G.vec[3]);
-                        }
                         narrowphase_list_ee->write(idx, ee_pair);
                     }
                 };
@@ -1727,14 +1661,14 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
         // $if (d < d_hat + thickness)
         {
             // const Float C = thickness + d_hat - d;
-            const Float3x3 xxT = k2 * outer_product(normal, normal);
+            const Float3x3 nnT = outer_product(normal, normal);
     
             for (uint j = 0; j < 4; j++)
             {
                 Float3 force;
                 Float3x3 hessian;
                 force = k1 * weight[j] * normal;
-                hessian = k2 * weight[j] * weight[j] * xxT;
+                hessian = k2 * weight[j] * weight[j] * nnT;
 
                 // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
                 atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
@@ -1769,14 +1703,14 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
 
         {
             // const Float C = thickness + d_hat - d;
-            const Float3x3 xxT = k2 * outer_product(normal, normal);
+            const Float3x3 nnT = outer_product(normal, normal);
     
             for (uint j = 0; j < 4; j++)
             {
                 Float3 force;
                 Float3x3 hessian;
                 force = k1 * weight[j] * normal;
-                hessian = k2 * weight[j] * weight[j] * xxT;
+                hessian = k2 * weight[j] * weight[j] * nnT;
 
                 // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
                 atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
