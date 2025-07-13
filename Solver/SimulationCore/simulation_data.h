@@ -108,7 +108,8 @@ struct CollisionPairVF
 {
     uint4 indices; // vid:1, face:3
     float4 vec1; // normal:3, stiff:1
-    float3 bary; // bary
+    float2 bary; // bary
+    float2 vec2;
     float3 gradient[4];
     float3x3 hessian[10];
 };
@@ -116,7 +117,8 @@ struct CollisionPairEE
 {
     uint4 indices;
     float4 vec1; // normal:3, stiff 1
-    float4 bary; // 
+    float2 bary; // 
+    float2 vec2;
     float3 gradient[4];
     float3x3 hessian[10];
 };
@@ -133,8 +135,8 @@ struct CollisionPairEE
 
 LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1, gradient, hessian) {};
 LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
-LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, gradient, hessian) {};
-LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
+LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
 
 
 namespace lcsv 
@@ -142,41 +144,63 @@ namespace lcsv
 namespace CollisionPair
 {
     
-    // template<typename T> auto get_indices(const T& pair) { return pair.indices; }
-    inline auto get_indices(const CollisionPairVV& pair) { return pair.indices; }
-    inline auto get_indices(const CollisionPairVE& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
-    inline auto get_indices(const CollisionPairVF& pair) { return pair.indices; }
-    inline auto get_indices(const CollisionPairEE& pair) { return pair.indices; }
-    inline auto get_indices(const Var<CollisionPairVV>& pair) { return pair.indices; }
-    inline auto get_indices(const Var<CollisionPairVE>& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
-    inline auto get_indices(const Var<CollisionPairVF>& pair) { return pair.indices; }
-    inline auto get_indices(const Var<CollisionPairEE>& pair) { return pair.indices; }
-    
-    template<typename T> auto get_vv_vid1(const T& pair)  { return pair.indices[0]; }
-    template<typename T> auto get_vv_vid2(const T& pair)  { return pair.indices[1]; }
-    template<typename T> auto get_ve_vid(const T& pair)  { return pair.vid; }
-    template<typename T> auto get_ve_edge(const T& pair) { return pair.edge; }
-    template<typename T> auto get_vf_vid(const T& pair)  { return pair.indices[0]; }
-    template<typename T> auto get_vf_face(const T& pair)  { return pair.indices.yzw(); }
-    template<typename T> auto get_ee_edge1(const T& pair)  { return pair.indices.xy(); }
-    template<typename T> auto get_ee_edge2(const T& pair)  { return pair.indices.zw(); }
+// template<typename T> auto get_indices(const T& pair) { return pair.indices; }
+inline auto get_indices(const CollisionPairVV& pair) { return pair.indices; }
+inline auto get_indices(const CollisionPairVE& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
+inline auto get_indices(const CollisionPairVF& pair) { return pair.indices; }
+inline auto get_indices(const CollisionPairEE& pair) { return pair.indices; }
+inline auto get_indices(const Var<CollisionPairVV>& pair) { return pair.indices; }
+inline auto get_indices(const Var<CollisionPairVE>& pair) { return makeUint3(pair.vid, pair.edge[0], pair.edge[1]); }
+inline auto get_indices(const Var<CollisionPairVF>& pair) { return pair.indices; }
+inline auto get_indices(const Var<CollisionPairEE>& pair) { return pair.indices; }
 
-    template<typename T> auto get_stiff(const T& pair) { return pair.vec1[3]; }
-    template<typename T> auto get_direction(const T& pair) { return pair.vec1.xyz(); }
+template<typename T> auto get_vv_vid1(const T& pair)  { return pair.indices[0]; }
+template<typename T> auto get_vv_vid2(const T& pair)  { return pair.indices[1]; }
+template<typename T> auto get_ve_vid(const T& pair)  { return pair.vid; }
+template<typename T> auto get_ve_edge(const T& pair) { return pair.edge; }
+template<typename T> auto get_vf_vid(const T& pair)  { return pair.indices[0]; }
+template<typename T> auto get_vf_face(const T& pair)  { return pair.indices.yzw(); }
+template<typename T> auto get_ee_edge1(const T& pair)  { return pair.indices.xy(); }
+template<typename T> auto get_ee_edge2(const T& pair)  { return pair.indices.zw(); }
 
-    // inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
-    inline auto get_ve_edge_bary (const CollisionPairVE& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
-    inline auto get_vf_face_bary (const CollisionPairVF& pair) { return pair.bary; }
-    inline auto get_ee_edge1_bary(const CollisionPairEE& pair) { return pair.bary.xy(); }
-    inline auto get_ee_edge2_bary(const CollisionPairEE& pair) { return pair.bary.zw(); }
+template<typename T> auto get_stiff(const T& pair) { return pair.vec1[3]; }
+template<typename T> auto get_direction(const T& pair) { return pair.vec1.xyz(); }
 
-    inline auto get_ve_edge_bary (const Var<CollisionPairVE>& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
-    inline auto get_vf_face_bary (const Var<CollisionPairVF>& pair) { return pair.bary; }
-    inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return pair.bary.xy(); }
-    inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return pair.bary.zw(); }
+// inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
+inline auto get_ve_edge_bary (const CollisionPairVE& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
+inline auto get_vf_face_bary (const CollisionPairVF& pair) { return makeFloat3(pair.bary[0], pair.bary[1], 1.0f - pair.bary[0] - pair.bary[1]); }
+inline auto get_ee_edge1_bary(const CollisionPairEE& pair) { return makeFloat2(pair.bary[0], 1.0f - pair.bary[0]); }
+inline auto get_ee_edge2_bary(const CollisionPairEE& pair) { return makeFloat2(pair.bary[1], 1.0f - pair.bary[1]); }
 
-    template<typename T> auto get_vf_weight(const T& pair)  { return makeFloat4(1.0f, -pair.bary[0], -pair.bary[1], - pair.bary[2]); }
-    template<typename T> auto get_ee_weight(const T& pair)  { return makeFloat4(pair.bary[0], pair.bary[1], -pair.bary[2], -pair.bary[3]); }
+inline auto get_ve_edge_bary (const Var<CollisionPairVE>& pair) { return makeFloat2(pair.bary, 1.0f - pair.bary); }
+inline auto get_vf_face_bary (const Var<CollisionPairVF>& pair) { return makeFloat3(pair.bary[0], pair.bary[1], 1.0f - pair.bary[0] - pair.bary[1]); }
+inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair) { return makeFloat2(pair.bary[0], 1.0f - pair.bary[0]); }
+inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair) { return makeFloat2(pair.bary[1], 1.0f - pair.bary[1]); }
+
+template<typename T> auto get_vf_weight(const T& pair)  
+{ 
+    return makeFloat4(
+        1.0f, 
+        -pair.bary[0], 
+        -pair.bary[1], 
+        pair.bary[0] + pair.bary[1] - 1.0f); 
+}
+template<typename T> auto get_ee_weight(const T& pair)  
+{ 
+    return makeFloat4(
+        pair.bary[0], 
+        1.0f - pair.bary[0], 
+        -pair.bary[1], 
+        pair.bary[1] - 1.0f); 
+}
+template<typename T, typename Vec3> void write_vf_weight(T& pair, const Vec3& face_bary)  
+{ 
+    pair.bary = makeFloat2(face_bary[0], face_bary[1]);
+}
+template<typename T, typename Vec4> void write_ee_weight(T& pair, const Vec4& edge_bary)  
+{ 
+    pair.bary = makeFloat2(edge_bary[0], edge_bary[2]);
+}
 
 
 inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
