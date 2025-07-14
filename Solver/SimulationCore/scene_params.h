@@ -133,16 +133,18 @@ struct SceneParams
     float damping_tet = 0.0f; 
 
     // Thickness & Friction
-    float thickness_vv_obstacle = 0.01f;
-    float thickness_vv_cloth = 0.01f;
-    float thickness_vv_tet = 0.01f;
-    float thickness_vv_cross = 0.01f;
+    float thickness = 0.0f;
+    float d_hat = 3e-3f;
+    // float thickness_vv_obstacle = 0.01f;
+    // float thickness_vv_cloth = 0.01f;
+    // float thickness_vv_tet = 0.01f;
+    // float thickness_vv_cross = 0.01f;
 
-    float friction_cloth = 0.25;
-    float friction_tet = 0.1;
-    float friction_cross = 0.1;
-    float friction_obstacle_cloth = 0.25;
-    float friction_obstacle_tet = 0.1;
+    // float friction_cloth = 0.25;
+    // float friction_tet = 0.1;
+    // float friction_cross = 0.1;
+    // float friction_obstacle_cloth = 0.25;
+    // float friction_obstacle_tet = 0.1;
     float collision_query_range_rate = lcsv::Sqrt_2;
     // float collision_query_range_vv = thickness_vv * Sqrt_2;
 
@@ -150,7 +152,7 @@ struct SceneParams
     float chebyshev_omega = 1.0f;
     
     lcsv::float3 gravity{0, -9.8f, 0};
-    lcsv::float3 floor{0, -0.5f, 0};
+    lcsv::float3 floor{0, 0, 0};
 
     // constant
     bool use_fixed_verts = false;

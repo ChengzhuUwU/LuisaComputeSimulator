@@ -248,6 +248,31 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, c
         float mass = sa_vert_mass[vid];
         return length_squared_vec(x_new - x_tilde) * mass / (2 * substep_dt * substep_dt);
     };
+    auto compute_energy_goundcollision = [](
+        const uint vid, 
+        const std::vector<float3>& sa_x, 
+        const std::vector<uint>& sa_is_fixed, 
+        const std::vector<float>& sa_rest_vert_area, 
+        const float3& floor,
+        const bool use_floor,
+        const float d_hat, const float thickness)
+    {
+        if (!use_floor) return 0.0f;
+        if (sa_is_fixed[vid]) return 0.0f;
+        float3 x_k = sa_x[vid];
+        float diff = x_k.y - floor.y;
+        if (diff < d_hat + thickness)
+        {
+            float C = d_hat + thickness - diff;
+            float area = sa_rest_vert_area[vid];
+            float stiff = 1e7 * area;
+            return 0.5f * stiff * C * C;
+        }
+        else 
+        {
+            return 0.0f;
+        }
+    };
     auto compute_energy_spring = [](
         const uint eid, 
         const std::vector<float3>& sa_x, 
@@ -276,6 +301,15 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, c
             host_mesh_data->sa_vert_mass, 
             get_scene_params().get_substep_dt());
     });
+    double energy_goundcollision = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
+    {
+        return compute_energy_goundcollision(vid, 
+            curr_x,
+            host_mesh_data->sa_is_fixed, 
+            host_mesh_data->sa_rest_vert_area, 
+            get_scene_params().floor, get_scene_params().use_floor, 
+            get_scene_params().d_hat, get_scene_params().thickness);;
+    });
     double energy_spring = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_edges, [&](const uint eid)
     {
         return compute_energy_spring(eid, 
@@ -285,7 +319,7 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, c
             1e4);
     });
     // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);
-    return energy_inertia + energy_spring;
+    return energy_inertia + energy_goundcollision + energy_spring;
 };
 
 } // namespace lcsv

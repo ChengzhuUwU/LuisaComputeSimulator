@@ -523,8 +523,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
 
     static Eigen::SparseMatrix<float> eigen_cgA;
-    static Eigen::SparseMatrix<float> springA;
+
+    static Eigen::SparseMatrix<float> eigen_groundA;
+    static Eigen::SparseMatrix<float> eigen_springA;
     static std::vector<Eigen::Triplet<float>> triplets_springA;
+    static std::vector<Eigen::Triplet<float>> triplets_inertiaA;
+    static std::vector<Eigen::Triplet<float>> triplets_groundA;
     static Eigen::VectorXf eigen_cgB; 
     static Eigen::VectorXf eigen_cgX;
     
@@ -537,9 +541,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             eigen_cgX.resize(mesh_data->num_verts * 3);
             eigen_cgA.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
             eigen_cgA.reserve(mesh_data->num_verts * 9 + mesh_data->num_edges * 9 * 2);
-            springA.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
-            springA.reserve(mesh_data->num_edges * 9 * 4);
+            eigen_springA.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
+            eigen_springA.reserve(mesh_data->num_edges * 9 * 4);
+            eigen_groundA.resize(mesh_data->num_verts * 3, mesh_data->num_verts * 3);
+            eigen_groundA.reserve(mesh_data->num_verts * 9);
+            triplets_inertiaA.resize(mesh_data->num_verts * 9);
             triplets_springA.resize(mesh_data->num_edges * 9 * 4);
+            triplets_groundA.resize(mesh_data->num_verts * 9);
         }
     }
 
@@ -606,12 +614,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
         auto* sa_vert_mass = host_mesh_data->sa_vert_mass.data();
 
-        static std::vector<Eigen::Triplet<float>> triplets_A;
-        if (triplets_A.empty())
-        {
-            triplets_A.resize(mesh_data->num_verts * 9);
-        }
-
         const uint num_verts = host_mesh_data->num_verts;
 
         CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
@@ -649,7 +651,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 {
                     for (int jj = 0; jj < 3; ++jj)
                     {
-                        triplets_A[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
+                        triplets_inertiaA[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
                     }
                 }
                 // Assemble gradient
@@ -663,13 +665,68 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 sa_cgA_diag[vid] = hessian;
             }
         });
-        if constexpr (use_eigen) { eigen_cgA.setFromTriplets(triplets_A.begin(), triplets_A.end()); }
+        if constexpr (use_eigen) { eigen_cgA.setFromTriplets(triplets_inertiaA.begin(), triplets_inertiaA.end()); }
+    };
+    auto evaluate_ground_collision = [&]()
+    {
+        if (!get_scene_params().use_floor) return;
+
+        auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
+        auto* sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data();
+
+        const uint num_verts = host_mesh_data->num_verts;
+        const float floor_y = get_scene_params().floor.y; 
+        const float stiffness_ground = 1e7;
+        const float d_hat = get_scene_params().d_hat;
+        const float thickness = get_scene_params().thickness;
+
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            if (sa_is_fixed[vid]) return;
+            float3 x_k = sa_x[vid];
+            float diff = x_k.y - get_scene_params().floor.y;
+
+            float3 force = makeFloat3(0.0f);
+            float3x3 hessian = makeFloat3x3(0.0f);
+            if (diff < d_hat + thickness)
+            {
+                float C = d_hat + thickness - diff;
+                float3 normal = makeFloat3(0, 1, 0);
+                float area = sa_rest_vert_area[vid];
+                float stiff = stiffness_ground * area;
+                force = stiff * C * normal;
+                hessian = stiff * outer_product(normal, normal);
+            }
+            
+            if constexpr (use_eigen) 
+            {
+                const uint prefix_triplets_A = 9 * vid;
+                const uint prefix_triplets_b = 3 * vid;
+
+                // Assemble diagonal 3x3 block for vertex vid
+                for (int ii = 0; ii < 3; ++ii)
+                {
+                    for (int jj = 0; jj < 3; ++jj)
+                    {
+                        triplets_groundA[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
+                    }
+                }
+                eigen_cgB.segment<3>(prefix_triplets_b) = float3_to_eigen3(force);
+            }
+            else 
+            {  
+                // sa_cgX[vid] = dx_0;
+                sa_cgB[vid] = sa_cgB[vid] + force;
+                sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+            }
+        });
+        if constexpr (use_eigen) { eigen_groundA.setFromTriplets(triplets_groundA.begin(), triplets_groundA.end()); eigen_cgA += eigen_groundA; }
     };
     auto reset_off_diag = [&]()
     {
         if constexpr (use_eigen)
         {
-            springA.setZero();
+            eigen_springA.setZero();
         }
         else 
         {
@@ -826,8 +883,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         if constexpr (use_eigen) 
         {
             // Add spring contributions to cgA and cg_b_vec
-            springA.setFromTriplets(triplets_springA.begin(), triplets_springA.end());
-            eigen_cgA += springA;
+            eigen_springA.setFromTriplets(triplets_springA.begin(), triplets_springA.end());
+            eigen_cgA += eigen_springA;
         }
     };
     auto pcg_spmv = [&](const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr) -> void
@@ -902,8 +959,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
 
 
-    const float thickness = 0;
-    const float d_hat = 1e-2;
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
     const float kappa = 1e5;
 
     // Init LBVH
@@ -1005,6 +1062,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         return toi; // 0.9f * toi
         // return 1.0f;
     };
+
 
     auto broadphase_dcd = [&]()
     {
@@ -1195,6 +1253,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             reset_off_diag();
             {
                 evaluate_inertia(substep_dt);
+                evaluate_ground_collision();
 
                 evaluete_spring(1e4);
 

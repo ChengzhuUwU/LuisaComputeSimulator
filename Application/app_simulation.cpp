@@ -496,6 +496,12 @@ int main(int argc, char** argv)
                 }
             }
 
+            if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen)) 
+            {
+                ImGui::Checkbox("Use Ground Collision", &lcsv::get_scene_params().use_floor);
+                ImGui::SliderFloat("Floor Y", &lcsv::get_scene_params().floor.y, -1.0f, 1.0f); 
+            }
+            
             if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
                 if (ImGui::Button("Save mesh", ImVec2(-1, 0)))
