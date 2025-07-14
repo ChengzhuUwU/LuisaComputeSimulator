@@ -547,7 +547,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
 namespace lcsv // DCD
 {
 
-constexpr float stiffness_repulsion = 2e6;
+constexpr float stiffness_repulsion = 1e7;
 constexpr bool use_area_weighting = true;
 constexpr float rest_distance_culling_rate = 1.0f;
 
@@ -556,7 +556,7 @@ enum class ContactEnergyType
     Penalty,
     Barrier,
 };
-constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Barrier; // Penalty or Barrier
+constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Penalty; // Penalty or Barrier
 
 void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
 {
@@ -1062,7 +1062,7 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
                 if (j != jj)
                 {
                     float3x3 hessian = weight[j] * weight[jj] * xxT;
-                    output_vec[j] += hessian * output_vec[jj];
+                    output_vec[j] += hessian * input_vec[jj];
                 }
             }
         }
@@ -1102,7 +1102,7 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
                 if (j != jj)
                 {
                     float3x3 hessian = weight[j] * weight[jj] * xxT;
-                    output_vec[j] += hessian * output_vec[jj];
+                    output_vec[j] += hessian * input_vec[jj];
                 }
             }
         }
