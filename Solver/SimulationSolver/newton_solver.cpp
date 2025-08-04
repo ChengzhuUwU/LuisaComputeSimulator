@@ -953,8 +953,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }
 
         // Off-diag: Collision hessian
-        // mp_narrowphase_detector->host_spmv_barrier(stream, input_ptr, output_ptr);
-        // mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
+        mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
 
     };
 
@@ -1068,8 +1067,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         const float dcd_query_range = d_hat + thickness;
 
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-
         mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
         mp_lbvh_face->refit(stream);
         mp_lbvh_face->broad_phase_query_from_verts(stream, 
@@ -1088,9 +1085,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             collision_data->broad_phase_list_ee, dcd_query_range);
     };
     auto narrowphase_dcd = [&]()
-    {
-        mp_narrowphase_detector->reset_narrowphase_count(stream);
-        
+    {   
         mp_narrowphase_detector->vf_dcd_query_repulsion(stream, 
             sim_data->sa_x, 
             sim_data->sa_x, 
@@ -1120,6 +1115,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // << luisa::compute::synchronize()
             ;
             
+        mp_narrowphase_detector->reset_broadphase_count(stream);
+        mp_narrowphase_detector->reset_narrowphase_count(stream);
+
         broadphase_dcd();
 
         mp_narrowphase_detector->download_broadphase_collision_count(stream);

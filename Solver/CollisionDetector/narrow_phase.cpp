@@ -203,9 +203,13 @@ void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    // luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
+    luisa::log_info("       num_vv = {}, num_ve = {}, num_vf = {}, num_ee = {}", num_vv, num_ve, num_vf, num_ee); 
 
     
+    // if (num_vv != 0) stream << collision_data->narrow_phase_list_vv.copy_to(host_collision_data->narrow_phase_list_vv.data());
+    // if (num_ve != 0) stream << collision_data->narrow_phase_list_ve.copy_to(host_collision_data->narrow_phase_list_ve.data());
+    // if (num_vf != 0) stream << collision_data->narrow_phase_list_vf.copy_to(host_collision_data->narrow_phase_list_vf.data());
+    // if (num_ee != 0) stream << collision_data->narrow_phase_list_ee.copy_to(host_collision_data->narrow_phase_list_ee.data());
     if (num_vv != 0) stream << collision_data->narrow_phase_list_vv.view(0, num_vv).copy_to(host_collision_data->narrow_phase_list_vv.data());
     if (num_ve != 0) stream << collision_data->narrow_phase_list_ve.view(0, num_ve).copy_to(host_collision_data->narrow_phase_list_ve.data());
     if (num_vf != 0) stream << collision_data->narrow_phase_list_vf.view(0, num_vf).copy_to(host_collision_data->narrow_phase_list_vf.data());
@@ -547,7 +551,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
 namespace lcsv // DCD
 {
 
-constexpr float stiffness_repulsion = 1e7;
+constexpr float stiffness_repulsion = 1e9;
 constexpr bool use_area_weighting = true;
 constexpr float rest_distance_culling_rate = 1.0f;
 
@@ -806,12 +810,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     const float thickness,
     const float kappa)
 {
-    auto broadphase_count = collision_data->broad_phase_collision_count.view();
     auto& host_count = host_collision_data->broad_phase_collision_count;
-
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
-
     if (num_vf_broadphase != 0)
     {
         stream << 
@@ -832,10 +832,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     const float thickness,
     const float kappa)
 {
-    auto broadphase_count = collision_data->broad_phase_collision_count.view();
     auto& host_count = host_collision_data->broad_phase_collision_count;
-
-    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
     if (num_ee_broadphase != 0)
@@ -1131,14 +1128,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
 
     fn_compute_repulsion_energy_from_vf = device.compile<1>(
     [
-        contact_energy = collision_data->contact_energy.view(2, 1),
-        broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
-        broadphase_list = collision_data->broad_phase_list_vf.view(),
-        narrowphase_count_vv = collision_data->narrow_phase_collision_count.view(offset_vv, 1),
-        narrowphase_count_ve = collision_data->narrow_phase_collision_count.view(offset_ve, 1),
-        narrowphase_count_vf = collision_data->narrow_phase_collision_count.view(offset_vf, 1),
-        narrowphase_list_vv = collision_data->narrow_phase_list_vv.view(),
-        narrowphase_list_ve = collision_data->narrow_phase_list_ve.view(),
+        contact_energy = collision_data->contact_energy.view(offset_vf, 1),
         narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
     ]( 
         Var<BufferView<float3>> sa_x_left, 
@@ -1194,10 +1184,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
 
     fn_compute_repulsion_energy_from_ee = device.compile<1>(
     [
-        contact_energy = collision_data->contact_energy.view(3, 1),
-        broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
-        broadphase_list = collision_data->broad_phase_list_ee.view(),
-        narrowphase_count_ee = collision_data->narrow_phase_collision_count.view(offset_ee, 1),
+        contact_energy = collision_data->contact_energy.view(offset_ee, 1),
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
     ](
         Var<BufferView<float3>> sa_x_left, 
@@ -1268,7 +1255,6 @@ void NarrowPhasesDetector::compute_penalty_energy_from_vf(Stream& stream,
     auto& host_count = host_collision_data->narrow_phase_collision_count;
 
     const uint num_vf_narrowphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_narrowphase = host_count[collision_data->get_ee_count_offset()];
 
     if (num_vf_narrowphase != 0)
     {
@@ -1295,12 +1281,8 @@ void NarrowPhasesDetector::compute_penalty_energy_from_ee(Stream& stream,
     const float thickness,
         const float kappa)
 {
-    auto& contact_energy = collision_data->contact_energy;
     auto& host_count = host_collision_data->narrow_phase_collision_count;
-
-    const uint num_vf_narrowphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_narrowphase = host_count[collision_data->get_ee_count_offset()];
-
     if (num_ee_narrowphase != 0)
     {
         stream << fn_compute_repulsion_energy_from_ee(

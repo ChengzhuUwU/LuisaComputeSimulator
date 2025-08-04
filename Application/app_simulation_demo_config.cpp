@@ -193,6 +193,8 @@ void dcd_cloth_ball(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
     });
     // lcsv::get_scene_params().load_state_frame = 4;
 
+    lcsv::get_scene_params().d_hat = 5e-3f;
+    lcsv::get_scene_params().thickness = 0.0f;
     lcsv::get_scene_params().implicit_dt = 0.01f;
     lcsv::get_scene_params().nonlinear_iter_count = 1;
     lcsv::get_scene_params().pcg_iter_count = 50;
