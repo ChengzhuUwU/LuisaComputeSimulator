@@ -3,6 +3,8 @@
 #include "Core/float_n.h"
 #include "SimulationCore/solver_interface.h"
 #include "LinearSolver/precond_cg.h"
+#include "luisa/runtime/device.h"
+#include "luisa/runtime/stream.h"
 
 namespace lcsv
 {
@@ -24,8 +26,24 @@ public:
     void compile(luisa::compute::Device& device);
 
 private:
-    // void compile_force(luisa::compute::Device& device);
-    // void compile_cg(luisa::compute::Device& device);
+    
+private:
+    // Host functions
+    void host_predict_position();
+    void host_update_velocity();
+    void host_evaluate_inertia() ;
+    void host_evaluate_ground_collision();
+    void host_reset_off_diag();
+    void host_reset_cgB_cgX_diagA();
+    void host_evaluete_spring();
+
+    // Device functions
+    void device_broadphase_ccd(luisa::compute::Stream& stream);
+    void device_broadphase_dcd(luisa::compute::Stream& stream);
+    void device_narrowphase_ccd(luisa::compute::Stream& stream);
+    void device_narrowphase_dcd(luisa::compute::Stream& stream);
+    void device_update_contact_list(luisa::compute::Stream& stream) ;
+    float device_compute_contact_energy(luisa::compute::Stream& stream);
 
 private:
     void collision_detection(luisa::compute::Stream& stream);

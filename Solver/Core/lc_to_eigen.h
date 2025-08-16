@@ -17,6 +17,12 @@ using EigenFloat6   = Eigen::Matrix<float, 6, 1>;
 using EigenFloat9   = Eigen::Matrix<float, 9, 1>;
 using EigenFloat12   = Eigen::Matrix<float, 12, 1>;
 
+inline EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
+inline EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
+inline float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
+inline float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
+
+
 inline EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
 {
     EigenFloat3x3 mat; mat << 
@@ -104,10 +110,26 @@ inline float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
     }
     return output;
 };
-inline EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
-inline EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
-inline float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
-inline float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
 
+// SPD projection
+template<int N>
+Eigen::Matrix<float, N, N> spd_projection(const Eigen::Matrix<float, N, N>& orig_matrix)
+{
+    // Ensure the matrix is symmetric
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<float, N, N>> eigensolver(orig_matrix);
+    Eigen::Matrix<float, N, 1> eigenvalues = eigensolver.eigenvalues();
+    Eigen::Matrix<float, N, N> eigenvectors = eigensolver.eigenvectors();
+
+    // Set negative eigenvalues to zero (or abs, as in your python code)
+    for (int i = 0; i < N; ++i) 
+    {
+        eigenvalues[i] = std::max(0.0f, eigenvalues[i]);
+        // eigenvalues(i) = std::abs(eigenvalues(i));
+    }
+
+    // Reconstruct the matrix: V * diag(lam) * V^T
+    Eigen::Matrix<float, N, N> D = eigenvalues.asDiagonal();
+    return eigenvectors * D * eigenvectors.transpose();
+}
 
 }

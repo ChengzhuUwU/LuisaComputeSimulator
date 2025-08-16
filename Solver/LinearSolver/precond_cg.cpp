@@ -1,4 +1,5 @@
 #include "precond_cg.h"
+#include "Core/lc_to_eigen.h"
 #include "Core/scalar.h"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
@@ -703,18 +704,6 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
         iter, normR / normR_0, host_infinity_norm(host_sim_data->sa_cgX), print_energy ? luisa::format("{:6.5f}", curr_energy) : ""
     );
 }
-
-using EigenFloat3x3 = Eigen::Matrix<float, 3, 3>;
-using EigenFloat6x6 = Eigen::Matrix<float, 6, 6>;
-using EigenFloat9x9 = Eigen::Matrix<float, 9, 9>;
-using EigenFloat12x12 = Eigen::Matrix<float, 12, 12>;
-using EigenFloat3   = Eigen::Matrix<float, 3, 1>;
-using EigenFloat4   = Eigen::Matrix<float, 4, 1>;
-
-static inline EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
-static inline EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
-static inline float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
-static inline float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
 
 void ConjugateGradientSolver::eigen_solve(
     const Eigen::SparseMatrix<float>& eigen_cgA, 

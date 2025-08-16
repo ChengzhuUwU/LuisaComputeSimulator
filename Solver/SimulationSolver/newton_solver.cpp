@@ -344,27 +344,519 @@ void NewtonSolver::compile(luisa::compute::Device& device)
     
 }
 
-
-// SPD projection
-template<int N>
-Eigen::Matrix<float, N, N> spd_projection(const Eigen::Matrix<float, N, N>& orig_matrix)
+// Host functions
+void NewtonSolver::host_predict_position()
 {
-    // Ensure the matrix is symmetric
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<float, N, N>> eigensolver(orig_matrix);
-    Eigen::Matrix<float, N, 1> eigenvalues = eigensolver.eigenvalues();
-    Eigen::Matrix<float, N, N> eigenvectors = eigensolver.eigenvectors();
+    CpuParallel::parallel_for(0, host_mesh_data->num_verts, 
+        [
+            sa_x = host_sim_data->sa_x.data(),
+            sa_v = host_sim_data->sa_v.data(),
+            sa_cgX = host_sim_data->sa_cgX.data(),
+            sa_x_step_start = host_sim_data->sa_x_step_start.data(),
+            sa_x_iter_start = host_sim_data->sa_x_iter_start.data(),
+            sa_x_tilde = host_sim_data->sa_x_tilde.data(),
+            sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
+            substep_dt = get_scene_params().get_substep_dt()
+        ](const uint vid)
+    {   
+        const float3 gravity(0, -9.8f, 0);
+        float3 x_prev = sa_x_step_start[vid];
+        float3 v_prev = sa_v[vid];
+        float3 outer_acceleration = gravity;
+        // If we consider gravity energy here, then we will not consider it in potential energy 
+        float3 v_pred = v_prev + substep_dt * outer_acceleration;
+        if (sa_is_fixed[vid] != 0) { v_pred = Zero3; };
 
-    // Set negative eigenvalues to zero (or abs, as in your python code)
-    for (int i = 0; i < N; ++i) 
+        const float3 x_pred = x_prev + substep_dt * v_pred; 
+        sa_x_iter_start[vid] = x_prev;
+        sa_x_tilde[vid] = x_pred;
+
+        // sa_x[vid] = x_pred;
+        // sa_cgX[vid] = v_prev * substep_dt;
+        sa_x[vid] = x_prev;
+        sa_cgX[vid] = luisa::make_float3(0.0f);
+    });
+}
+void NewtonSolver::host_update_velocity()
+{
+    CpuParallel::parallel_for(0, host_mesh_data->num_verts, 
+        [
+            sa_x = host_sim_data->sa_x.data(),
+            sa_v = host_sim_data->sa_v.data(),
+            sa_x_step_start = host_sim_data->sa_x_step_start.data(),
+            sa_v_step_start = host_sim_data->sa_v_step_start.data(),
+            sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
+            substep_dt = get_scene_params().get_substep_dt(), 
+            fix_scene = get_scene_params().fix_scene, 
+            damping = get_scene_params().damping_cloth
+        ](const uint vid)
+    {   
+        float3 x_step_begin = sa_x_step_start[vid];
+        float3 x_step_end = sa_x[vid];
+
+        float3 dx = x_step_end - x_step_begin;
+        float3 vel = dx / substep_dt;
+
+        if (fix_scene) 
+        {
+            dx = Zero3;
+            vel = Zero3;
+            sa_x[vid] = x_step_begin;
+            return;
+        };
+
+        vel *= exp(-damping * substep_dt);
+
+        sa_v[vid] = vel;
+        sa_v_step_start[vid] = vel;
+        sa_x_step_start[vid] = x_step_end;
+    });
+}
+void NewtonSolver::host_evaluate_inertia()
+{
+    CpuParallel::parallel_for(0, host_mesh_data->num_verts,
+        [
+            sa_cgB = host_sim_data->sa_cgB.data(),
+            sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
+            sa_x = host_sim_data->sa_x.data(),
+            sa_x_tilde = host_sim_data->sa_x_tilde.data(),
+            sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
+            sa_vert_mass = host_mesh_data->sa_vert_mass.data(),
+            substep_dt = get_scene_params().get_substep_dt()
+        ](const uint vid)
     {
-        eigenvalues[i] = std::max(0.0f, eigenvalues[i]);
-        // eigenvalues(i) = std::abs(eigenvalues(i));
+        const float3 gravity(0, -9.8f, 0);
+        const float h = substep_dt;
+        const float h_2_inv = 1.f / (h * h);
+
+        float3 x_k = sa_x[vid];
+        float3 x_tilde = sa_x_tilde[vid];
+        // float3 v_0 = sa_v[vid];
+
+        auto is_fixed = sa_is_fixed[vid];
+        float mass = sa_vert_mass[vid];
+        
+        float3 gradient = -mass * h_2_inv * (x_k - x_tilde) ; // !should not add gravity
+        float3x3 hessian = luisa::make_float3x3(1.0f) * mass * h_2_inv;
+
+        if (is_fixed != 0)
+        {
+            hessian = hessian + luisa::make_float3x3(1.0f) * float(1E9);
+            // mat = luisa::make_float3x3(1.0f);
+            // gradient = luisa::make_float3(0.0f);
+        };
+        {  
+            // sa_cgX[vid] = dx_0;
+            sa_cgB[vid] = gradient;
+            sa_cgA_diag[vid] = hessian;
+        }
+    });
+}
+void NewtonSolver::host_evaluate_ground_collision()
+{
+    if (!get_scene_params().use_floor) return;
+
+    auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
+    auto* sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data();
+
+    const uint num_verts = host_mesh_data->num_verts;
+    const float floor_y = get_scene_params().floor.y; 
+
+    CpuParallel::parallel_for(0, num_verts, 
+        [
+            sa_cgB = host_sim_data->sa_cgB.data(),
+            sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
+            sa_x = host_sim_data->sa_x.data(),
+            sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
+            sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data(),
+            sa_vert_mass = host_mesh_data->sa_vert_mass.data(),
+            substep_dt = get_scene_params().get_substep_dt(),
+            d_hat = get_scene_params().d_hat,
+            floor_y = get_scene_params().floor.y,
+            thickness = get_scene_params().thickness,
+            stiffness_ground = 1e7f
+        ](const uint vid)
+    {
+        if (sa_is_fixed[vid]) return;
+        float3 x_k = sa_x[vid];
+        float diff = x_k.y - get_scene_params().floor.y;
+
+        float3 force = makeFloat3(0.0f);
+        float3x3 hessian = makeFloat3x3(0.0f);
+        if (diff < d_hat + thickness)
+        {
+            float C = d_hat + thickness - diff;
+            float3 normal = makeFloat3(0, 1, 0);
+            float area = sa_rest_vert_area[vid];
+            float stiff = stiffness_ground * area;
+            force = stiff * C * normal;
+            hessian = stiff * outer_product(normal, normal);
+        }
+        {  
+            // sa_cgX[vid] = dx_0;
+            sa_cgB[vid] = sa_cgB[vid] + force;
+            sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+        }
+    });
+    // if constexpr (use_eigen) 
+    // {
+    //     const uint prefix_triplets_A = 9 * vid;
+    //     const uint prefix_triplets_b = 3 * vid;
+    //     // Assemble diagonal 3x3 block for vertex vid
+    //     for (int ii = 0; ii < 3; ++ii)
+    //     {
+    //         for (int jj = 0; jj < 3; ++jj)
+    //         {
+    //             triplets_groundA[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
+    //         }
+    //     }
+    //     eigen_cgB.segment<3>(prefix_triplets_b) = float3_to_eigen3(force);
+    // }
+    // else 
+    // if constexpr (use_eigen) { eigen_groundA.setFromTriplets(triplets_groundA.begin(), triplets_groundA.end()); eigen_cgA += eigen_groundA; }
+}
+void NewtonSolver::host_reset_off_diag()
+{
+    // if constexpr (use_eigen)
+    // {
+    //     eigen_springA.setZero();
+    // }
+    // else 
+    {
+        CpuParallel::parallel_set(host_sim_data->sa_cgA_offdiag, luisa::make_float3x3(0.0f));
+    }
+}
+void NewtonSolver::host_reset_cgB_cgX_diagA()
+{
+    // if constexpr (use_eigen)
+    // {
+    //     eigen_cgA.setZero();
+    //     eigen_cgB.setZero();
+    //     eigen_cgX.setZero();
+    // }
+    // else 
+    {
+        CpuParallel::parallel_set(host_sim_data->sa_cgA_diag, luisa::make_float3x3(0.0f));
+        CpuParallel::parallel_set(host_sim_data->sa_cgB, luisa::make_float3(0.0f));
+        CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
+    }
+}
+void NewtonSolver::host_evaluete_spring()
+{
+    const uint num_verts = host_mesh_data->num_verts;
+    const uint num_edges = host_mesh_data->num_edges;
+    
+    // auto& culster = host_xpbd_data->sa_clusterd_springs;
+    // auto& sa_edges = host_mesh_data->sa_edges;
+    // auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
+    
+    auto& culster = host_sim_data->sa_prefix_merged_springs;
+    auto& sa_edges = host_sim_data->sa_merged_edges;
+    auto& sa_rest_length = host_sim_data->sa_merged_edges_rest_length;
+
+    for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+    {
+        const uint curr_prefix = culster[cluster_idx];
+        const uint next_prefix = culster[cluster_idx + 1];
+        const uint num_elements_clustered = next_prefix - curr_prefix;
+
+        // CpuParallel::single_thread_for(0, mesh_data->num_edges, [&](const uint eid)
+        CpuParallel::parallel_for(0, num_elements_clustered, 
+            [
+                sa_x = host_sim_data->sa_x.data(),
+                sa_edges = host_sim_data->sa_merged_edges.data(),
+                sa_rest_length = host_sim_data->sa_merged_edges_rest_length.data(),
+                sa_cgB = host_sim_data->sa_cgB.data(),
+                sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
+                sa_cgA_offdiag = host_sim_data->sa_cgA_offdiag.data(),
+            curr_prefix, stiffness_stretch = 1e4f](const uint index)
+        {
+            // const uint eid = culster[curr_prefix + index];
+            const uint eid = curr_prefix + index;
+            
+            uint2 edge = sa_edges[eid];
+
+            float3 vert_pos[2] = { sa_x[edge[0]],sa_x[edge[1]] };
+            float3 force[2] = {Zero3, Zero3};
+            float3x3 He = luisa::make_float3x3(0.0f);
+
+            const float L = sa_rest_length[eid];
+            const float stiffness_stretch_spring = stiffness_stretch;
+
+            float3 diff = vert_pos[1] - vert_pos[0];
+            float l = max_scalar(length_vec(diff), Epsilon);
+            float l0 = L;
+            float C = l - l0;
+
+            float3 dir = diff / l;
+            float3x3 xxT = outer_product(diff, diff);
+            float x_inv = 1.f / l;
+            float x_squared_inv = x_inv * x_inv;
+
+            force[0] = stiffness_stretch_spring * dir * C;
+            force[1] = -force[0];
+            He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+            
+            // Stable but Responsive Cloth
+            // if (C > 0.0f)
+            // {
+            //     force[0] = stiffness_stretch_spring * C * dir;
+            //     force[1] = -force[0];
+            //     He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * (1.0f - L * x_inv) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+            // }
+            
+            // SPD Projection
+            // Eigen::Matrix<float, 6, 6> orig_hessian;
+            // orig_hessian.block<3, 3>(0, 0) = float3x3_to_eigen3x3(He);
+            // orig_hessian.block<3, 3>(3, 3) = float3x3_to_eigen3x3(He);
+            // orig_hessian.block<3, 3>(0, 3) = float3x3_to_eigen3x3(-1.0f * He);
+            // orig_hessian.block<3, 3>(3, 0) = float3x3_to_eigen3x3(-1.0f * He);
+            // Eigen::Matrix<float, 6, 6> projected_hessian = spd_projection(orig_hessian);
+
+            // if constexpr (use_eigen) 
+            // {
+            //     const uint prefix_triplets_A = 9 * eid * 4;
+            //     const uint prefix_triplets_b = 3 * eid * 2;
+            //     // Assemble 3x3 blocks for edge (off-diagonal and diagonal)
+            //     for (int ii = 0; ii < 3; ++ii)
+            //     {
+            //         for (int jj = 0; jj < 3; ++jj) 
+            //         {
+            //             // Diagonal blocks
+            //             triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 0] = Eigen::Triplet<float>(3 * edge[0] + ii, 3 * edge[0] + jj, He[ii][jj]);
+            //             triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 1] = Eigen::Triplet<float>(3 * edge[1] + ii, 3 * edge[1] + jj, He[ii][jj]);
+            //             // Off-diagonal blocks
+            //             triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 2] = Eigen::Triplet<float>(3 * edge[0] + ii, 3 * edge[1] + jj, -He[ii][jj]);
+            //             triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 3] = Eigen::Triplet<float>(3 * edge[1] + ii, 3 * edge[0] + jj, -He[ii][jj]);
+            //         }
+            //     }
+            //     // Assemble force to gradient
+            //     eigen_cgB.segment<3>(3 * edge[0]) += float3_to_eigen3(force[0]);
+            //     eigen_cgB.segment<3>(3 * edge[1]) += float3_to_eigen3(force[1]);
+            // }
+            // else
+            {
+                sa_cgB[edge[0]] = sa_cgB[edge[0]] + force[0];
+                sa_cgB[edge[1]] = sa_cgB[edge[1]] + force[1];
+                sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + He;
+                sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + He;
+                // sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 0));
+                // sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 3));
+                
+                // if constexpr (use_upper_triangle)
+                // {
+                //     for (uint ii = 0; ii < 2; ii++)
+                //     {
+                //         for (uint jj = ii + 1; jj < 2; jj++)
+                //         {
+                //             const uint hessian_index = host_sim_data->sa_hessian_slot_per_edge[eid];
+                //             sa_cgA_offdiag[hessian_index] = sa_cgA_offdiag[hessian_index] - He;
+                //         }
+                //     }
+                // }
+                // else 
+                {
+                    sa_cgA_offdiag[eid * 2 + 0] = -1.0f * He;
+                    sa_cgA_offdiag[eid * 2 + 1] = -1.0f * He;
+                    // sa_cgA_offdiag[eid * 2 + 0] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 3));
+                    // sa_cgA_offdiag[eid * 2 + 1] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 0));
+                }
+                // const uint num_offdiag_upper = 1;
+                // uint edge_offset = 0;
+                // for (uint ii = 0; ii < 2; ii++)
+                // {
+                //     for (uint jj = ii + 1; jj < 2; jj++)
+                //     {
+                //         const uint hessian_index = host_xpbd_data->sa_clusterd_hessian_slot_per_edge[num_offdiag_upper * eid + 0];
+                //         edge_offset += 1;
+                //         float3x3 offdiag_hessian = -1.0f * He;
+                //         const bool need_transpose = edge[ii] > edge[jj];
+                //         sa_cgA_offdiag[hessian_index] = sa_cgA_offdiag[hessian_index] + need_transpose ? luisa::transpose(offdiag_hessian) : offdiag_hessian;
+                //     }
+                // }
+                
+            }
+        }, 32);
     }
 
-    // Reconstruct the matrix: V * diag(lam) * V^T
-    Eigen::Matrix<float, N, N> D = eigenvalues.asDiagonal();
-    return eigenvectors * D * eigenvectors.transpose();
+    // if constexpr (use_eigen) 
+    // {
+    //     // Add spring contributions to cgA and cg_b_vec
+    //     eigen_springA.setFromTriplets(triplets_springA.begin(), triplets_springA.end());
+    //     eigen_cgA += eigen_springA;
+    // }
 }
+
+// Device functions
+void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
+{
+    const float thickness = get_scene_params().thickness;
+    const float ccd_query_range = thickness + 0; // + d_hat ???
+    
+    mp_narrowphase_detector->reset_broadphase_count(stream);
+
+    mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
+    mp_lbvh_face->refit(stream);
+    mp_lbvh_face->broad_phase_query_from_verts(stream, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x, 
+        collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
+        collision_data->broad_phase_list_vf, ccd_query_range);
+
+    mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
+    mp_lbvh_edge->refit(stream);
+    mp_lbvh_edge->broad_phase_query_from_edges(stream, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x, 
+        mesh_data->sa_edges, 
+        collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
+        collision_data->broad_phase_list_ee, ccd_query_range);
+}
+void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
+{
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
+    const float dcd_query_range = d_hat + thickness;
+
+    mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+    mp_lbvh_face->refit(stream);
+    mp_lbvh_face->broad_phase_query_from_verts(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
+        collision_data->broad_phase_list_vf, dcd_query_range);
+
+    mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+    mp_lbvh_edge->refit(stream);
+    mp_lbvh_edge->broad_phase_query_from_edges(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_edges, 
+        collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
+        collision_data->broad_phase_list_ee, dcd_query_range);
+}
+void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
+{
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
+
+    // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
+    //     host_sim_data->sa_x_iter_start, 
+    //     host_sim_data->sa_x_iter_start, 
+    //     host_sim_data->sa_x, 
+    //     host_sim_data->sa_x, 
+    //     host_mesh_data->sa_faces, 
+    //     1e-3);
+
+    // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
+    //     host_sim_data->sa_x_iter_start, 
+    //     host_sim_data->sa_x_iter_start, 
+    //     host_sim_data->sa_x, 
+    //     host_sim_data->sa_x, 
+    //     host_mesh_data->sa_edges, 
+    //     host_mesh_data->sa_edges, 
+    //     1e-3);
+    
+    // mp_narrowphase_detector->reset_narrowphase_count(stream);
+    mp_narrowphase_detector->reset_toi(stream);
+
+    mp_narrowphase_detector->vf_ccd_query(stream, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_faces, 
+        d_hat, thickness);
+
+    mp_narrowphase_detector->ee_ccd_query(stream, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x_iter_start, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_edges, 
+        mesh_data->sa_edges, 
+        d_hat, thickness);
+}
+void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
+{
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
+    const float kappa = get_scene_params().stiffness_collision;
+
+    mp_narrowphase_detector->vf_dcd_query_repulsion(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_vert_area,
+        mesh_data->sa_rest_face_area,
+        mesh_data->sa_faces, 
+        d_hat, thickness, kappa);
+        
+    mp_narrowphase_detector->ee_dcd_query_repulsion(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x,
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_x, 
+        mesh_data->sa_rest_edge_area, 
+        mesh_data->sa_rest_edge_area, 
+        mesh_data->sa_edges, 
+        mesh_data->sa_edges, 
+        d_hat, thickness, kappa);
+}
+void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
+{
+    mp_narrowphase_detector->reset_broadphase_count(stream);
+    mp_narrowphase_detector->reset_narrowphase_count(stream);
+
+    device_broadphase_dcd(stream);
+
+    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    
+    device_narrowphase_dcd(stream);
+
+    mp_narrowphase_detector->download_narrowphase_collision_count(stream);
+}
+float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream)
+{
+    // stream << sim_data->sa_x.copy_from(sa_x.data());
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
+    const float kappa = get_scene_params().stiffness_collision;
+
+    mp_narrowphase_detector->reset_energy(stream);
+    mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_vert_area,
+        mesh_data->sa_rest_face_area,
+        mesh_data->sa_faces, 
+        d_hat, thickness, kappa);
+
+    mp_narrowphase_detector->compute_penalty_energy_from_ee(stream, 
+        sim_data->sa_x, 
+        sim_data->sa_x, 
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_x,
+        mesh_data->sa_rest_edge_area,
+        mesh_data->sa_rest_edge_area,
+        mesh_data->sa_edges, 
+        mesh_data->sa_edges, 
+        d_hat, thickness, kappa);
+
+    return mp_narrowphase_detector->download_energy(stream);
+    // return 0.0f;
+}
+
+static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min value in array
+{
+    return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
+    {
+        return luisa::length(ptr[vid]);
+    }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+};
 
 void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
@@ -399,28 +891,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     std::vector<float3>& sa_cgR = host_sim_data->sa_cgR;
     std::vector<float3>& sa_cgZ = host_sim_data->sa_cgZ;
 
-    auto fast_dot = [](const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) -> float
-    {
-        return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(left_ptr[vid], right_ptr[vid]);
-        });
-    };
-    auto fast_norm = [](const std::vector<float3>& ptr) -> float
-    {
-        float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(ptr[vid], ptr[vid]);
-        });
-        return sqrt(tmp);
-    };
-    auto fast_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
-    {
-        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::length(ptr[vid]);
-        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
-    };
+    
     
     constexpr bool use_eigen = ConjugateGradientSolver::use_eigen;
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
@@ -462,333 +933,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         {
             sa_x[vid] = sa_x_iter_start[vid] + alpha * sa_cgX[vid];
         });
-    };
-    auto predict_position = [&](const float substep_dt)
-    {
-        auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
-
-        CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](const uint vid)
-        {   
-            const float3 gravity(0, -9.8f, 0);
-            float3 x_prev = sa_x_step_start[vid];
-            float3 v_prev = sa_v[vid];
-            float3 outer_acceleration = gravity;
-            // If we consider gravity energy here, then we will not consider it in potential energy 
-            float3 v_pred = v_prev + substep_dt * outer_acceleration;
-            if (sa_is_fixed[vid] != 0) { v_pred = Zero3; };
-
-            sa_x_iter_start[vid] = x_prev;
-            const float3 x_pred = x_prev + substep_dt * v_pred; 
-            sa_x_tilde[vid] = x_pred;
-
-            // sa_x[vid] = x_pred;
-            // sa_cgX[vid] = v_prev * substep_dt;
-            sa_x[vid] = x_prev;
-            sa_cgX[vid] = luisa::make_float3(0.0f);
-        });
-    };
-    auto update_velocity = [&](const float substep_dt, const bool fix_scene, const float damping)
-    {
-        CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](const uint vid)
-        {   
-            float3 x_step_begin = sa_x_step_start[vid];
-            float3 x_step_end = sa_x[vid];
-
-            float3 dx = x_step_end - x_step_begin;
-            float3 vel = dx / substep_dt;
-
-            if (fix_scene) 
-            {
-                dx = Zero3;
-                vel = Zero3;
-                sa_x[vid] = x_step_begin;
-                return;
-            };
-
-            vel *= exp(-damping * substep_dt);
-
-            sa_v[vid] = vel;
-            sa_v_step_start[vid] = vel;
-            sa_x_step_start[vid] = x_step_end;
-        });
-    };
-    auto evaluate_inertia = [&](const float substep_dt)
-    {
-        auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
-        auto* sa_vert_mass = host_mesh_data->sa_vert_mass.data();
-
-        const uint num_verts = host_mesh_data->num_verts;
-
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            const float3 gravity(0, -9.8f, 0);
-            const float h = substep_dt;
-            const float h_2_inv = 1.f / (h * h);
-
-            float3 x_k = sa_x[vid];
-            float3 x_tilde = sa_x_tilde[vid];
-            // float3 v_0 = sa_v[vid];
-
-            auto is_fixed = sa_is_fixed[vid];
-            float mass = sa_vert_mass[vid];
-            
-            float3 gradient = -mass * h_2_inv * (x_k - x_tilde) ; // !should not add gravity
-            float3x3 hessian = luisa::make_float3x3(1.0f) * mass * h_2_inv;
-
-            if (is_fixed != 0)
-            {
-                hessian = hessian + luisa::make_float3x3(1.0f) * float(1E9);
-                // mat = luisa::make_float3x3(1.0f);
-                // gradient = luisa::make_float3(0.0f);
-            };
-            
-            // float3 dx_0 = substep_dt * v_0;
-
-            if constexpr (use_eigen) 
-            {
-                const uint prefix_triplets_A = 9 * vid;
-                const uint prefix_triplets_b = 3 * vid;
-
-                // Assemble diagonal 3x3 block for vertex vid
-                for (int ii = 0; ii < 3; ++ii)
-                {
-                    for (int jj = 0; jj < 3; ++jj)
-                    {
-                        triplets_inertiaA[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
-                    }
-                }
-                // Assemble gradient
-                eigen_cgB.segment<3>(prefix_triplets_b) = float3_to_eigen3(gradient);
-                // eigen_cgX.segment<3>(prefix_triplets_b) = float3_to_eigen3(dx_0);
-            }
-            else 
-            {  
-                // sa_cgX[vid] = dx_0;
-                sa_cgB[vid] = gradient;
-                sa_cgA_diag[vid] = hessian;
-            }
-        });
-        if constexpr (use_eigen) { eigen_cgA.setFromTriplets(triplets_inertiaA.begin(), triplets_inertiaA.end()); }
-    };
-    auto evaluate_ground_collision = [&]()
-    {
-        if (!get_scene_params().use_floor) return;
-
-        auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
-        auto* sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data();
-
-        const uint num_verts = host_mesh_data->num_verts;
-        const float floor_y = get_scene_params().floor.y; 
-        const float stiffness_ground = 1e7;
-        const float d_hat = get_scene_params().d_hat;
-        const float thickness = get_scene_params().thickness;
-
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            if (sa_is_fixed[vid]) return;
-            float3 x_k = sa_x[vid];
-            float diff = x_k.y - get_scene_params().floor.y;
-
-            float3 force = makeFloat3(0.0f);
-            float3x3 hessian = makeFloat3x3(0.0f);
-            if (diff < d_hat + thickness)
-            {
-                float C = d_hat + thickness - diff;
-                float3 normal = makeFloat3(0, 1, 0);
-                float area = sa_rest_vert_area[vid];
-                float stiff = stiffness_ground * area;
-                force = stiff * C * normal;
-                hessian = stiff * outer_product(normal, normal);
-            }
-            
-            if constexpr (use_eigen) 
-            {
-                const uint prefix_triplets_A = 9 * vid;
-                const uint prefix_triplets_b = 3 * vid;
-
-                // Assemble diagonal 3x3 block for vertex vid
-                for (int ii = 0; ii < 3; ++ii)
-                {
-                    for (int jj = 0; jj < 3; ++jj)
-                    {
-                        triplets_groundA[prefix_triplets_A + ii * 3 + jj] = Eigen::Triplet<float>(3 * vid + ii, 3 * vid + jj, hessian[jj][ii]); // mat[i][j] is ok???
-                    }
-                }
-                eigen_cgB.segment<3>(prefix_triplets_b) = float3_to_eigen3(force);
-            }
-            else 
-            {  
-                // sa_cgX[vid] = dx_0;
-                sa_cgB[vid] = sa_cgB[vid] + force;
-                sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
-            }
-        });
-        if constexpr (use_eigen) { eigen_groundA.setFromTriplets(triplets_groundA.begin(), triplets_groundA.end()); eigen_cgA += eigen_groundA; }
-    };
-    auto reset_off_diag = [&]()
-    {
-        if constexpr (use_eigen)
-        {
-            eigen_springA.setZero();
-        }
-        else 
-        {
-            CpuParallel::parallel_set(sa_cgA_offdiag, luisa::make_float3x3(0.0f));
-        }
-    };
-    auto reset_diag_and_cgb = [&]()
-    {
-        if constexpr (use_eigen)
-        {
-            eigen_cgA.setZero();
-            eigen_cgB.setZero();
-            eigen_cgX.setZero();
-        }
-        else 
-        {
-            CpuParallel::parallel_set(sa_cgA_diag, luisa::make_float3x3(0.0f));
-            CpuParallel::parallel_set(sa_cgB, luisa::make_float3(0.0f));
-            CpuParallel::parallel_set(sa_cgX, luisa::make_float3(0.0f));
-        }
-    };
-    auto evaluete_spring = [&](const float stiffness_stretch)
-    {
-        const uint num_verts = host_mesh_data->num_verts;
-        const uint num_edges = host_mesh_data->num_edges;
-        
-        // auto& culster = host_xpbd_data->sa_clusterd_springs;
-        // auto& sa_edges = host_mesh_data->sa_edges;
-        // auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
-        
-        auto& culster = host_sim_data->sa_prefix_merged_springs;
-        auto& sa_edges = host_sim_data->sa_merged_edges;
-        auto& sa_rest_length = host_sim_data->sa_merged_edges_rest_length;
-
-        for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
-        {
-            const uint curr_prefix = culster[cluster_idx];
-            const uint next_prefix = culster[cluster_idx + 1];
-            const uint num_elements_clustered = next_prefix - curr_prefix;
-
-            // CpuParallel::single_thread_for(0, mesh_data->num_edges, [&](const uint eid)
-            CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
-            {
-                // const uint eid = culster[curr_prefix + index];
-                const uint eid = curr_prefix + index;
-                
-                uint2 edge = sa_edges[eid];
-
-                float3 vert_pos[2] = { sa_x[edge[0]],sa_x[edge[1]] };
-                float3 force[2] = {Zero3, Zero3};
-                float3x3 He = luisa::make_float3x3(0.0f);
-
-                const float L = sa_rest_length[eid];
-                const float stiffness_stretch_spring = stiffness_stretch;
-
-                float3 diff = vert_pos[1] - vert_pos[0];
-                float l = max_scalar(length_vec(diff), Epsilon);
-                float l0 = L;
-                float C = l - l0;
-
-                float3 dir = diff / l;
-                float3x3 xxT = outer_product(diff, diff);
-                float x_inv = 1.f / l;
-                float x_squared_inv = x_inv * x_inv;
-
-                force[0] = stiffness_stretch_spring * dir * C;
-                force[1] = -force[0];
-                He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
-                
-                // Stable but Responsive Cloth
-                // if (C > 0.0f)
-                // {
-                //     force[0] = stiffness_stretch_spring * C * dir;
-                //     force[1] = -force[0];
-                //     He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * (1.0f - L * x_inv) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
-                // }
-                
-                // SPD Projection
-                // Eigen::Matrix<float, 6, 6> orig_hessian;
-                // orig_hessian.block<3, 3>(0, 0) = float3x3_to_eigen3x3(He);
-                // orig_hessian.block<3, 3>(3, 3) = float3x3_to_eigen3x3(He);
-                // orig_hessian.block<3, 3>(0, 3) = float3x3_to_eigen3x3(-1.0f * He);
-                // orig_hessian.block<3, 3>(3, 0) = float3x3_to_eigen3x3(-1.0f * He);
-                // Eigen::Matrix<float, 6, 6> projected_hessian = spd_projection(orig_hessian);
-
-                if constexpr (use_eigen) 
-                {
-                    const uint prefix_triplets_A = 9 * eid * 4;
-                    const uint prefix_triplets_b = 3 * eid * 2;
-
-                    // Assemble 3x3 blocks for edge (off-diagonal and diagonal)
-                    for (int ii = 0; ii < 3; ++ii)
-                    {
-                        for (int jj = 0; jj < 3; ++jj) 
-                        {
-                            // Diagonal blocks
-                            triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 0] = Eigen::Triplet<float>(3 * edge[0] + ii, 3 * edge[0] + jj, He[ii][jj]);
-                            triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 1] = Eigen::Triplet<float>(3 * edge[1] + ii, 3 * edge[1] + jj, He[ii][jj]);
-
-                            // Off-diagonal blocks
-                            triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 2] = Eigen::Triplet<float>(3 * edge[0] + ii, 3 * edge[1] + jj, -He[ii][jj]);
-                            triplets_springA[prefix_triplets_A + 4 * (ii * 3 + jj) + 3] = Eigen::Triplet<float>(3 * edge[1] + ii, 3 * edge[0] + jj, -He[ii][jj]);
-                        }
-                    }
-                    // Assemble force to gradient
-                    eigen_cgB.segment<3>(3 * edge[0]) += float3_to_eigen3(force[0]);
-                    eigen_cgB.segment<3>(3 * edge[1]) += float3_to_eigen3(force[1]);
-                }
-                else
-                {
-                    sa_cgB[edge[0]] = sa_cgB[edge[0]] + force[0];
-                    sa_cgB[edge[1]] = sa_cgB[edge[1]] + force[1];
-                    sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + He;
-                    sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + He;
-                    // sa_cgA_diag[edge[0]] = sa_cgA_diag[edge[0]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 0));
-                    // sa_cgA_diag[edge[1]] = sa_cgA_diag[edge[1]] + eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 3));
-                    
-                    if constexpr (use_upper_triangle)
-                    {
-                        for (uint ii = 0; ii < 2; ii++)
-                        {
-                            for (uint jj = ii + 1; jj < 2; jj++)
-                            {
-                                const uint hessian_index = host_sim_data->sa_hessian_slot_per_edge[eid];
-                                sa_cgA_offdiag[hessian_index] = sa_cgA_offdiag[hessian_index] - He;
-                            }
-                        }
-                    }
-                    else 
-                    {
-                        sa_cgA_offdiag[eid * 2 + 0] = -1.0f * He;
-                        sa_cgA_offdiag[eid * 2 + 1] = -1.0f * He;
-                        // sa_cgA_offdiag[eid * 2 + 0] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(0, 3));
-                        // sa_cgA_offdiag[eid * 2 + 1] = eigen3x3_to_float3x3(projected_hessian.block<3, 3>(3, 0));
-                    }
-                    // const uint num_offdiag_upper = 1;
-                    // uint edge_offset = 0;
-                    // for (uint ii = 0; ii < 2; ii++)
-                    // {
-                    //     for (uint jj = ii + 1; jj < 2; jj++)
-                    //     {
-                    //         const uint hessian_index = host_xpbd_data->sa_clusterd_hessian_slot_per_edge[num_offdiag_upper * eid + 0];
-                    //         edge_offset += 1;
-                    //         float3x3 offdiag_hessian = -1.0f * He;
-                    //         const bool need_transpose = edge[ii] > edge[jj];
-                    //         sa_cgA_offdiag[hessian_index] = sa_cgA_offdiag[hessian_index] + need_transpose ? luisa::transpose(offdiag_hessian) : offdiag_hessian;
-                    //     }
-                    // }
-                    
-                }
-            }, 32);
-        }
-
-        if constexpr (use_eigen) 
-        {
-            // Add spring contributions to cgA and cg_b_vec
-            eigen_springA.setFromTriplets(triplets_springA.begin(), triplets_springA.end());
-            eigen_cgA += eigen_springA;
-        }
     };
     auto pcg_spmv = [&](const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr) -> void
     {   
@@ -965,75 +1109,18 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // return 1.0f;
     };
 
-
-    auto broadphase_dcd = [&]()
-    {
-        const float dcd_query_range = d_hat + thickness;
-
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_face->refit(stream);
-        mp_lbvh_face->broad_phase_query_from_verts(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
-            collision_data->broad_phase_list_vf, dcd_query_range);
-
-        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
-        mp_lbvh_edge->refit(stream);
-        mp_lbvh_edge->broad_phase_query_from_edges(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_edges, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
-            collision_data->broad_phase_list_ee, dcd_query_range);
-    };
-    auto narrowphase_dcd = [&]()
-    {   
-        mp_narrowphase_detector->vf_dcd_query_repulsion(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_vert_area,
-            mesh_data->sa_rest_face_area,
-            mesh_data->sa_faces, 
-            d_hat, thickness, kappa);
-            
-        mp_narrowphase_detector->ee_dcd_query_repulsion(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x,
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_x, 
-            mesh_data->sa_rest_edge_area, 
-            mesh_data->sa_rest_edge_area, 
-            mesh_data->sa_edges, 
-            mesh_data->sa_edges, 
-            d_hat, thickness, kappa);
-    };
-    auto update_barrier_set = [&]()
+    auto update_contact_set = [&]()
     {
         stream 
             // << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
             << sim_data->sa_x.copy_from(sa_x.data())
             ;
             
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-        mp_narrowphase_detector->reset_narrowphase_count(stream);
-
-        broadphase_dcd();
-
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
-            
-        narrowphase_dcd();
-
-        mp_narrowphase_detector->download_narrowphase_collision_count(stream);
-        mp_narrowphase_detector->download_narrowphase_list(stream);  
+        device_update_contact_list(stream);
+        mp_narrowphase_detector->download_narrowphase_list(stream);
     };
     auto evaluate_contact = [&]()
     {
-        // mp_narrowphase_detector->host_barrier_hessian_spd_projection(stream);
-        // mp_narrowphase_detector->upload_spd_narrowphase_list(stream);
-
         stream 
             << sim_data->sa_cgB.copy_from(sa_cgB.data())
             << sim_data->sa_cgA_diag.copy_from(sa_cgA_diag.data());
@@ -1050,6 +1137,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_x.copy_from(sa_x.data());
 
         mp_narrowphase_detector->reset_energy(stream);
+
         mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
             sim_data->sa_x, 
             sim_data->sa_x, 
@@ -1125,7 +1213,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             pcg_solver->host_solve(stream, pcg_spmv, compute_energy_interface);
         }
     };
-    
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
     const bool use_energy_linesearch = get_scene_params().use_energy_linesearch;
@@ -1133,7 +1220,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
-        predict_position(substep_dt);
+        host_predict_position();
         
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         double prev_state_energy = Float_max;
@@ -1142,19 +1229,19 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
-            
-            CpuParallel::parallel_set(sa_cgX, luisa::make_float3(0.0f)); // 
+                        
+            host_reset_cgB_cgX_diagA();
 
-            reset_diag_and_cgb();
-            reset_off_diag();
+            host_reset_off_diag();
             {
-                evaluate_inertia(substep_dt);
-                evaluate_ground_collision();
+                host_evaluate_inertia();
 
-                evaluete_spring(1e4);
+                host_evaluate_ground_collision();
 
-                update_barrier_set();
+                host_evaluete_spring();
 
+                update_contact_set();
+                
                 evaluate_contact();
 
                 // if (iter == 0) // Always refresh for collision count is variant 
@@ -1226,7 +1313,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
             CpuParallel::parallel_copy(sa_x, sa_x_iter_start); // x_prev = x
         }
-        update_velocity(substep_dt, false, lcsv::get_scene_params().damping_cloth);
+        host_update_velocity();
     }
 
     // Output
