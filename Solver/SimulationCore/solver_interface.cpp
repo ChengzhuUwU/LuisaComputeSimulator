@@ -234,7 +234,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 }
 
 // Evaluate Energy
-double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde)
+double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde)
 {
     auto compute_energy_inertia = [](
         const uint vid, 
@@ -283,8 +283,9 @@ double SolverInterface::host_compute_energy(const std::vector<float3>& curr_x, c
         const uint2 edge = sa_edges[eid];
         const float rest_edge_length = sa_edge_rest_state_length[eid];
         float3 diff = sa_x[edge[1]] - sa_x[edge[0]];
-        float orig_lengthsqr = length_squared_vec(diff);
-        float l = sqrt_scalar(orig_lengthsqr);
+        // float orig_lengthsqr = length_squared_vec(diff);
+        // float l = sqrt_scalar(orig_lengthsqr);
+        float l = max_scalar(length_vec(diff), Epsilon);
         float l0 = rest_edge_length;
         float C = l - l0;
         float energy = 0.0f;

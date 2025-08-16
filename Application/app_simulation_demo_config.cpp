@@ -1,4 +1,6 @@
 #include "app_simulation_demo_config.h"
+#include "Core/constant_value.h"
+#include "Core/float_n.h"
 #include "SimulationCore/scene_params.h"
 
 namespace Demo::Simulation
@@ -182,6 +184,22 @@ void dcd_cloth_ball(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
         }
     });
     shell_list.push_back({
+        .model_name = obj_mesh_path + "square2K.obj",
+        .transform = luisa::make_float3(0.0, 0.12, 0),
+        .rotation = lcsv::makeFloat3(0, lcsv::Pi / 6.0f, 0),
+        .scale = lcsv::makeFloat3(0.2f),
+        .fixed_point_list = {
+        }
+    });
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "square2K.obj",
+        .transform = luisa::make_float3(0.0, 0.14, 0),
+        .rotation = lcsv::makeFloat3(0, lcsv::Pi / 6.0f * 2, 0),
+        .scale = lcsv::makeFloat3(0.2f),
+        .fixed_point_list = {
+        }
+    });
+    shell_list.push_back({
         .model_name = obj_mesh_path + "sphere1K.obj",
         .transform = luisa::make_float3(0.0, 0.02, 0),
         .scale = lcsv::makeFloat3(0.1f),
@@ -193,11 +211,11 @@ void dcd_cloth_ball(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
     });
     // lcsv::get_scene_params().load_state_frame = 4;
 
-    lcsv::get_scene_params().d_hat = 5e-3f;
+    lcsv::get_scene_params().d_hat = 3e-3f;
     lcsv::get_scene_params().thickness = 0.0f;
     lcsv::get_scene_params().implicit_dt = 0.01f;
-    lcsv::get_scene_params().nonlinear_iter_count = 1;
-    lcsv::get_scene_params().pcg_iter_count = 50;
+    lcsv::get_scene_params().nonlinear_iter_count = 5;
+    lcsv::get_scene_params().pcg_iter_count = 200;
 }
 void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {

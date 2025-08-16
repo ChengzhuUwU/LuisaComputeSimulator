@@ -5,6 +5,7 @@
 #include "SimulationSolver/descent_solver.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Core/float_nxn.h"
+#include "Core/lc_to_eigen.h"
 #include "Core/scalar.h"
 #include "Core/xbasic_types.h"
 #include "SimulationCore/scene_params.h"
@@ -343,104 +344,6 @@ void NewtonSolver::compile(luisa::compute::Device& device)
     
 }
 
-using EigenFloat3x3 = Eigen::Matrix<float, 3, 3>;
-using EigenFloat6x6 = Eigen::Matrix<float, 6, 6>;
-using EigenFloat9x9 = Eigen::Matrix<float, 9, 9>;
-using EigenFloat12x12 = Eigen::Matrix<float, 12, 12>;
-using EigenFloat3   = Eigen::Matrix<float, 3, 1>;
-using EigenFloat4   = Eigen::Matrix<float, 4, 1>;
-
-static inline EigenFloat3x3 float3x3_to_eigen3x3(const float3x3& input)
-{
-    EigenFloat3x3 mat; mat << 
-        input[0][0], input[1][0], input[2][0], 
-        input[0][1], input[1][1], input[2][1], 
-        input[0][2], input[1][2], input[2][2]; 
-    return mat;
-};
-static inline float3x3 eigen3x3_to_float3x3(const EigenFloat3x3& input)
-{
-    return luisa::make_float3x3(
-        input(0, 0), input(1, 0), input(2, 0), 
-        input(0, 1), input(1, 1), input(2, 1), 
-        input(0, 2), input(1, 2), input(2, 2));
-};
-static inline EigenFloat6x6 float6x6_to_eigen6x6(const float6x6& input)
-{
-    EigenFloat6x6 output;
-    for (uint i = 0; i < 2; ++i) 
-    {
-        for (uint j = 0; j < 2; ++j) 
-        {
-            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
-        }
-    }
-    return output;
-};
-static inline float6x6 eigen6x6_to_float6x6(const EigenFloat6x6& input)
-{
-    float6x6 output;
-    for (uint i = 0; i < 2; ++i) 
-    {
-        for (uint j = 0; j < 2; ++j) 
-        {
-            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
-        }
-    }
-    return output;
-};
-static inline EigenFloat9x9 float9x9_to_eigen9x9(const float9x9& input)
-{
-    EigenFloat9x9 output;
-    for (uint i = 0; i < 3; ++i) 
-    {
-        for (uint j = 0; j < 3; ++j) 
-        {
-            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
-        }
-    }
-    return output;
-};
-static inline float9x9 eigen9x9_to_float9x9(const EigenFloat9x9& input)
-{
-    float9x9 output;
-    for (uint i = 0; i < 3; ++i) 
-    {
-        for (uint j = 0; j < 3; ++j) 
-        {
-            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
-        }
-    }
-    return output;
-};
-static inline EigenFloat12x12 float12x12_to_eigen12x12(const float12x12 input)
-{
-    EigenFloat12x12 output;
-    for (uint i = 0; i < 4; ++i) 
-    {
-        for (uint j = 0; j < 4; ++j) 
-        {
-            output.block<3, 3>(i * 3, j * 3) = float3x3_to_eigen3x3(input.mat[i][j]);
-        }
-    }
-    return output;
-};
-static inline float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
-{
-    float12x12 output;
-    for (uint i = 0; i < 4; ++i) 
-    {
-        for (uint j = 0; j < 4; ++j) 
-        {
-            output.mat[i][j] = eigen3x3_to_float3x3(input.block<3, 3>(i * 3, j * 3));
-        }
-    }
-    return output;
-};
-static inline EigenFloat3 float3_to_eigen3(const float3& input) { EigenFloat3 vec; vec << input[0], input[1], input[2]; return vec; };
-static inline EigenFloat4 float4_to_eigen4(const float4& input) { EigenFloat4 vec; vec << input[0], input[1], input[2], input[3]; return vec; };
-static inline float3 eigen3_to_float3(const EigenFloat3& input) { return luisa::make_float3(input(0, 0), input(1, 0), input(2, 0)); };
-static inline float4 eigen4_to_float4(const EigenFloat4& input) { return luisa::make_float4(input(0, 0), input(1, 0), input(2, 0), input(3, 0)); };
 
 // SPD projection
 template<int N>
@@ -634,9 +537,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
             if (is_fixed != 0)
             {
-                hessian = luisa::make_float3x3(1.0f) * float(1E9);
+                hessian = hessian + luisa::make_float3x3(1.0f) * float(1E9);
                 // mat = luisa::make_float3x3(1.0f);
-                gradient = luisa::make_float3(0.0f);
+                // gradient = luisa::make_float3(0.0f);
             };
             
             // float3 dx_0 = substep_dt * v_0;
@@ -1112,7 +1015,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream 
             // << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
             << sim_data->sa_x.copy_from(sa_x.data())
-            // << luisa::compute::synchronize()
             ;
             
         mp_narrowphase_detector->reset_broadphase_count(stream);
@@ -1143,14 +1045,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_cgA_diag.copy_to(sa_cgA_diag.data())
             << luisa::compute::synchronize();
     };
-    auto compute_penalty_energy = [&]() -> float
+    auto compute_contact_energy = [&]() -> float
     {
         stream << sim_data->sa_x.copy_from(sa_x.data());
-        // broadphase_dcd();
-        // mp_narrowphase_detector->download_broadphase_collision_count(stream);
 
-        // update_barrier_set();
-        
         mp_narrowphase_detector->reset_energy(stream);
         mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
             sim_data->sa_x, 
@@ -1199,13 +1097,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     
     
-    auto compute_energy_with_barrier = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
+    auto compute_energy_interface = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
         // luisa::log_info(".   Start comput energy");
-        auto material_energy = host_compute_energy(curr_x, curr_x_tilde);
+        auto material_energy = host_compute_elastic_energy(curr_x, curr_x_tilde);
         // auto barrier_energy = On2_compute_barrier_energy();;
         // auto barrier_energy = compute_barrier_energy();;
-        auto barrier_energy = compute_penalty_energy();;
+        auto barrier_energy = compute_contact_energy();;
         // auto barrier_energy = 0.0f;
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
@@ -1218,13 +1116,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         if constexpr (use_eigen) 
         {
-            pcg_solver->eigen_solve(eigen_cgA, eigen_cgX, eigen_cgB, compute_energy_with_barrier);
+            pcg_solver->eigen_solve(eigen_cgA, eigen_cgX, eigen_cgB, compute_energy_interface);
             // eigen_decompose_solve();
         } 
         else 
         {
             // simple_solve();
-            pcg_solver->host_solve(stream, pcg_spmv, compute_energy_with_barrier);
+            pcg_solver->host_solve(stream, pcg_spmv, compute_energy_interface);
         }
     };
     
@@ -1259,8 +1157,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 evaluate_contact();
 
-                if (iter == 0) { prev_state_energy = compute_energy_with_barrier(sa_x, sa_x_tilde); }
+                // if (iter == 0) // Always refresh for collision count is variant 
+                { prev_state_energy = compute_energy_interface(sa_x, sa_x_tilde); }
             }
+
             linear_solver_interface(); // Solve Ax=b
 
             float alpha = 1.0f; float ccd_toi = 1.0f;
@@ -1274,17 +1174,18 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     host_apply_dx(alpha);   
                 }
 
-                auto curr_energy = compute_energy_with_barrier(sa_x, sa_x_tilde); 
+                // Energy after CCD or just solving Axb
+                auto curr_energy = compute_energy_interface(sa_x, sa_x_tilde); 
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
                 
                 uint line_search_count = 0;
-                while (line_search_count < 20)
+                while (line_search_count < 20) // Compare energy
                 {
                     if (curr_energy < prev_state_energy + Epsilon) 
                     { 
-                        if (alpha != 0.0f)
+                        // if (alpha != 1.0f)
                         {
-                            luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} , {}", 
+                            luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
                                 line_search_count, alpha, curr_energy, prev_state_energy, 
                                 ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
                         }
@@ -1292,14 +1193,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} , {}", 
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
                             line_search_count, alpha, curr_energy, prev_state_energy, 
-                            ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
+                            ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
                     }
-                    alpha /= 2; host_apply_dx(alpha);
-                    line_search_count++;
+                    alpha /= 2; host_apply_dx(alpha); 
 
-                    curr_energy = compute_energy_with_barrier(sa_x, sa_x_tilde);
+                    curr_energy = compute_energy_interface(sa_x, sa_x_tilde);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                     
@@ -1308,8 +1208,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                         luisa::log_error("  Line search failed, energy = {}, prev state energy = {}", 
                             curr_energy, prev_state_energy);
                     }
+                    line_search_count++;
                 }
-
                 prev_state_energy = curr_energy; // E_prev = E
             }
 
@@ -1425,7 +1325,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto host_compute_barrier_energy = []() { return 0.0f; };
     auto compute_energy_with_barrier = [&](const luisa::compute::Buffer<float3>& curr_x, const luisa::compute::Buffer<float3>& curr_x_tilde)
     {
-        auto material_energy = host_compute_energy(host_x, host_x_tilde);
+        auto material_energy = host_compute_elastic_energy(host_x, host_x_tilde);
         auto barrier_energy = host_compute_barrier_energy();;
         return material_energy + barrier_energy;
     };
@@ -1438,7 +1338,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
             << luisa::compute::synchronize();
         
-        auto prev_state_energy = host_compute_energy(host_x_step_start, host_x_tilde);
+        auto prev_state_energy = host_compute_elastic_energy(host_x_step_start, host_x_tilde);
         luisa::log_info("In frame {} : ", get_scene_params().current_frame);
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
@@ -1473,7 +1373,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 // alpha = ccd_line_search();
                 // apply_dx(alpha);   
 
-                auto curr_energy = host_compute_energy(host_x, host_x_tilde);
+                auto curr_energy = host_compute_elastic_energy(host_x, host_x_tilde);
                 uint line_search_count = 0;
                 while (line_search_count < 20)
                 {
@@ -1486,7 +1386,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
-                    curr_energy = host_compute_energy(host_x, host_x_tilde);
+                    curr_energy = host_compute_elastic_energy(host_x, host_x_tilde);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                 }
