@@ -161,8 +161,8 @@ void NewtonSolver::compile(luisa::compute::Device& device)
             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
             sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
             culster = sim_data->sa_prefix_merged_springs.view(),
-            sa_edges = sim_data->sa_merged_edges.view(),
-            sa_rest_length = sim_data->sa_merged_edges_rest_length.view()
+            sa_edges = sim_data->sa_merged_stretch_springs.view(),
+            sa_rest_length = sim_data->sa_merged_stretch_spring_rest_length.view()
         ](const Float stiffness_stretch, const Uint curr_prefix)
     {
         // const Uint curr_prefix = culster->read(cluster_idx);
@@ -219,7 +219,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
     fn_pcg_spmv_offdiag = device.compile<1>(
         [
-            sa_edges = sim_data->sa_merged_edges.view(),
+            sa_edges = sim_data->sa_merged_stretch_springs.view(),
             sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
             culster = sim_data->sa_prefix_merged_springs.view()
         ](
@@ -297,8 +297,8 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
     fn_calc_energy_spring = device.compile<1>(
         [
-            sa_edges = mesh_data->sa_edges.view(),
-            sa_edge_rest_state_length = mesh_data->sa_edges_rest_state_length.view(),
+            sa_edges = sim_data->sa_stretch_springs.view(),
+            sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
             sa_block_result = sim_data->sa_block_result.view()
         ](
             Var<BufferView<float3>> sa_x,
@@ -548,11 +548,11 @@ void NewtonSolver::host_evaluete_spring()
     
     // auto& culster = host_xpbd_data->sa_clusterd_springs;
     // auto& sa_edges = host_mesh_data->sa_edges;
-    // auto& sa_rest_length = host_mesh_data->sa_edges_rest_state_length;
+    // auto& sa_rest_length = host_mesh_data->sa_stretch_spring_rest_state_length;
     
     auto& culster = host_sim_data->sa_prefix_merged_springs;
-    auto& sa_edges = host_sim_data->sa_merged_edges;
-    auto& sa_rest_length = host_sim_data->sa_merged_edges_rest_length;
+    auto& sa_edges = host_sim_data->sa_merged_stretch_springs;
+    auto& sa_rest_length = host_sim_data->sa_merged_stretch_spring_rest_length;
 
     for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
     {
@@ -564,8 +564,8 @@ void NewtonSolver::host_evaluete_spring()
         CpuParallel::parallel_for(0, num_elements_clustered, 
             [
                 sa_x = host_sim_data->sa_x.data(),
-                sa_edges = host_sim_data->sa_merged_edges.data(),
-                sa_rest_length = host_sim_data->sa_merged_edges_rest_length.data(),
+                sa_edges = host_sim_data->sa_merged_stretch_springs.data(),
+                sa_rest_length = host_sim_data->sa_merged_stretch_spring_rest_length.data(),
                 sa_cgB = host_sim_data->sa_cgB.data(),
                 sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
                 sa_cgA_offdiag = host_sim_data->sa_cgA_offdiag.data(),
@@ -891,8 +891,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     std::vector<float3>& sa_cgR = host_sim_data->sa_cgR;
     std::vector<float3>& sa_cgZ = host_sim_data->sa_cgZ;
 
-    
-    
     constexpr bool use_eigen = ConjugateGradientSolver::use_eigen;
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
 
@@ -974,7 +972,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // auto& sa_edges = host_mesh_data->sa_edges;
             // auto& cluster = host_xpbd_data->sa_clusterd_springs;
 
-            auto& sa_edges = host_sim_data->sa_merged_edges;
+            auto& sa_edges = host_sim_data->sa_merged_stretch_springs;
             auto& cluster = host_sim_data->sa_prefix_merged_springs;
             
             for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
@@ -1241,7 +1239,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 host_evaluete_spring();
 
                 update_contact_set();
-                
+
                 evaluate_contact();
 
                 // if (iter == 0) // Always refresh for collision count is variant 

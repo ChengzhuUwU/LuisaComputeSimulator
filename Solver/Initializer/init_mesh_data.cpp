@@ -4,6 +4,8 @@
 #include "Energy/bending_energy.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
+#include <algorithm>
+#include <numeric>
 
 namespace lcsv 
 {
@@ -18,25 +20,43 @@ void init_mesh_data(
     std::vector<lcsv::Initializer::ShellInfo>& shell_infos, 
     lcsv::MeshData<std::vector>* mesh_data)
 {
-    const uint num_clothes = shell_infos.size();
-    std::vector<SimMesh::TriangleMeshData> input_meshes(num_clothes);
+    std::sort(shell_infos.begin(), shell_infos.end(), 
+    [](const Initializer::ShellInfo& left, const Initializer::ShellInfo& right)
+    {
+        return int(left.shell_type) < int(right.shell_type);
+    });
+    const uint num_meshes = shell_infos.size();
+    std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
     mesh_data->num_verts = 0;
     mesh_data->num_faces = 0;
     mesh_data->num_edges = 0;
     mesh_data->num_bending_edges = 0;
 
-    mesh_data->prefix_num_verts.resize(1 + num_clothes, 0);
-    mesh_data->prefix_num_faces.resize(1 + num_clothes, 0);
-    mesh_data->prefix_num_edges.resize(1 + num_clothes, 0);
-    mesh_data->prefix_num_bending_edges.resize(1 + num_clothes, 0);
+    mesh_data->prefix_num_verts.resize(1 + num_meshes, 0);
+    mesh_data->prefix_num_faces.resize(1 + num_meshes, 0);
+    mesh_data->prefix_num_edges.resize(1 + num_meshes, 0);
+    mesh_data->prefix_num_bending_edges.resize(1 + num_meshes, 0);
+
+    uint num_verts_cloth = 0;
+    uint num_faces_cloth = 0;
+    uint num_edges_cloth = 0;
+    uint num_bending_edges_cloth = 0;
+    uint num_verts_tetrahedral = 0;
+    uint num_faces_tetrahedral = 0;
+    uint num_edges_tetrahedral = 0;
+    uint num_bending_edges_tetrahedral = 0;
+    uint num_verts_obstacle = 0;
+    uint num_faces_obstacle = 0;
+    uint num_edges_obstacle = 0;
+    uint num_bending_edges_obstacle = 0;
 
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
-    for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
+    for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
     {
-        const auto& shell_info = shell_infos[clothIdx];
-        auto& input_mesh = input_meshes[clothIdx]; // TODO: Get (multiple) original mesh data from params
+        const auto& shell_info = shell_infos[meshIdx];
+        auto& input_mesh = input_meshes[meshIdx]; // TODO: Get (multiple) original mesh data from params
         bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
 
         // std::string obj_name = model_name;
@@ -45,21 +65,63 @@ void init_mesh_data(
         //     obj_name = path.stem().string();
         // }
 
-        mesh_data->prefix_num_verts[clothIdx] = mesh_data->num_verts;
-        mesh_data->prefix_num_faces[clothIdx] = mesh_data->num_faces;
-        mesh_data->prefix_num_edges[clothIdx] = mesh_data->num_edges;
-        mesh_data->prefix_num_bending_edges[clothIdx] = mesh_data->num_bending_edges;
+        mesh_data->prefix_num_verts[meshIdx] = mesh_data->num_verts;
+        mesh_data->prefix_num_faces[meshIdx] = mesh_data->num_faces;
+        mesh_data->prefix_num_edges[meshIdx] = mesh_data->num_edges;
+        mesh_data->prefix_num_bending_edges[meshIdx] = mesh_data->num_bending_edges;
 
-        mesh_data->num_verts += input_mesh.model_positions.size();
-        mesh_data->num_faces += input_mesh.faces.size();
-        mesh_data->num_edges += input_mesh.edges.size();
-        mesh_data->num_bending_edges += input_mesh.bending_edges.size();
+        const uint curr_num_verts = input_mesh.model_positions.size();
+        const uint curr_num_faces = input_mesh.faces.size();
+        const uint curr_num_edges = input_mesh.edges.size();
+        const uint curr_num_bending_edges = input_mesh.bending_edges.size();
+        
+        if (shell_info.shell_type == ShellTypeCloth)
+        {
+            num_verts_cloth += curr_num_verts;
+            num_faces_cloth += curr_num_faces;
+            num_edges_cloth += curr_num_edges;
+            num_bending_edges_cloth += curr_num_bending_edges;
+            
+        }
+        else if (shell_info.shell_type == ShellTypeTetrahedral)
+        {
+            num_verts_tetrahedral += curr_num_verts;
+            num_faces_tetrahedral += curr_num_faces;
+            num_edges_tetrahedral += curr_num_edges;
+            num_bending_edges_tetrahedral += curr_num_bending_edges;
+        }
+        else if (shell_info.shell_type == ShellTypeObstacle)
+        {
+            num_verts_obstacle += curr_num_verts;
+            num_faces_obstacle += curr_num_faces;
+            num_edges_obstacle += curr_num_edges;
+            num_bending_edges_obstacle += curr_num_bending_edges;
+        }
+
+        mesh_data->num_verts += curr_num_verts;
+        mesh_data->num_faces += curr_num_faces;
+        mesh_data->num_edges += curr_num_edges;
+        mesh_data->num_bending_edges += curr_num_bending_edges;
+        // mesh_data->num_tets += shell_info.shell_type == ShellTypeTetrahedral ? input_mesh.tets.size() : 0;
     }
 
-    mesh_data->prefix_num_verts[num_clothes] = mesh_data->num_verts;
-    mesh_data->prefix_num_faces[num_clothes] = mesh_data->num_faces;
-    mesh_data->prefix_num_edges[num_clothes] = mesh_data->num_edges;
-    mesh_data->prefix_num_bending_edges[num_clothes] = mesh_data->num_bending_edges;
+    mesh_data->prefix_num_verts[num_meshes] = mesh_data->num_verts;
+    mesh_data->prefix_num_faces[num_meshes] = mesh_data->num_faces;
+    mesh_data->prefix_num_edges[num_meshes] = mesh_data->num_edges;
+    mesh_data->prefix_num_bending_edges[num_meshes] = mesh_data->num_bending_edges;
+
+    mesh_data->range_verts_cloth = {0, num_verts_cloth};
+    mesh_data->range_faces_cloth = {0, num_faces_cloth};
+    mesh_data->range_edges_cloth = {0, num_edges_cloth};
+    mesh_data->range_bending_edges_cloth = {0, num_bending_edges_cloth};
+    mesh_data->range_verts_tetrahedral = {num_verts_cloth, num_verts_cloth + num_verts_tetrahedral};
+    mesh_data->range_faces_tetrahedral = {num_faces_cloth, num_faces_cloth + num_faces_tetrahedral};
+    mesh_data->range_edges_tetrahedral = {num_edges_cloth, num_edges_cloth + num_edges_tetrahedral};
+    mesh_data->range_bending_edges_tetrahedral = {num_bending_edges_cloth, num_bending_edges_cloth + num_bending_edges_tetrahedral};
+    mesh_data->range_verts_obstacle = {num_verts_cloth + num_verts_tetrahedral, num_verts_cloth + num_verts_tetrahedral + num_verts_obstacle};
+    mesh_data->range_faces_obstacle = {num_faces_cloth + num_faces_tetrahedral, num_faces_cloth + num_faces_tetrahedral + num_faces_obstacle};
+    mesh_data->range_edges_obstacle = {num_edges_cloth + num_edges_tetrahedral, num_edges_cloth + num_edges_tetrahedral + num_edges_obstacle};
+    mesh_data->range_bending_edges_obstacle = {num_bending_edges_cloth + num_bending_edges_tetrahedral, num_bending_edges_cloth + num_bending_edges_tetrahedral + num_bending_edges_obstacle};
 
     uint num_verts = mesh_data->num_verts;
     uint num_faces = mesh_data->num_faces;
@@ -84,10 +146,10 @@ void init_mesh_data(
         uint prefix_num_edges = 0;
         uint prefix_num_bending_edges = 0;
 
-        for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++)
+        for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            auto& curr_shell_info = shell_infos[clothIdx];
-            const auto& curr_input_mesh = input_meshes[clothIdx];
+            auto& curr_shell_info = shell_infos[meshIdx];
+            const auto& curr_input_mesh = input_meshes[meshIdx];
 
             const uint curr_num_verts = curr_input_mesh.model_positions.size();
             const uint curr_num_faces = curr_input_mesh.faces.size();
@@ -154,7 +216,7 @@ void init_mesh_data(
                     auto edge = mesh_data->sa_edges[prefix_num_edges + eid];
                     return length_vec(mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
                 }) / float(curr_num_edges);
-                luisa::log_info("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}", clothIdx, 
+                luisa::log_info("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}", meshIdx, 
                     curr_num_verts, curr_num_faces, curr_num_edges, avg_spring_length,
                     pos_max - pos_min);
 
@@ -186,26 +248,6 @@ void init_mesh_data(
             prefix_num_bending_edges += curr_num_bending_edges;
         }
             
-    }
-    
-    // Init vert info
-    {
-        // Set vert mass
-        {
-            mesh_data->sa_vert_mass.resize(num_verts); 
-            mesh_data->sa_vert_mass_inv.resize(num_verts);
-
-            const float defulat_density = 0.01f;
-            const float default_mass = 1.0f;
-            const float defulat_mass = defulat_density * default_mass;
-            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-            {
-                bool is_fixed = mesh_data->sa_is_fixed[vid] != 0;
-                mesh_data->sa_vert_mass[vid] = (defulat_mass);
-                mesh_data->sa_vert_mass_inv[vid] = is_fixed ? 0.0f : 1.0f / (defulat_mass);
-            });
-        }
-
     }
 
     // Init adjacent list
@@ -266,7 +308,7 @@ void init_mesh_data(
                 inner_list.push_back(vid2);
             }
         };
-        mesh_data->vert_adj_verts_with_bending = mesh_data->vert_adj_verts;
+        mesh_data->vert_adj_verts_with_material_constraints = mesh_data->vert_adj_verts;
         for (uint eid = 0; eid < mesh_data->num_bending_edges; eid++)
         {
             const uint4 edge = mesh_data->sa_bending_edges[eid];
@@ -274,7 +316,7 @@ void init_mesh_data(
             {
                 for (size_t j = 0; j < 4; j++)
                 {
-                    if (i != j) { insert_adj_vert(mesh_data->vert_adj_verts_with_bending, edge[i], edge[j]); }
+                    if (i != j) { insert_adj_vert(mesh_data->vert_adj_verts_with_material_constraints, edge[i], edge[j]); }
                     if (i != j) { if (edge[i] == edge[j])
                     {
                         luisa::log_info("Redundant Edge {} : {} & {}", eid, edge[i], edge[j]);
@@ -282,7 +324,7 @@ void init_mesh_data(
                 }
             }
         }
-        upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_bending_csr, mesh_data->vert_adj_verts_with_bending);
+        upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_material_constraints_csr, mesh_data->vert_adj_verts_with_material_constraints);
 
         // face_adj_edges
         // Face adj edges
@@ -339,78 +381,8 @@ void init_mesh_data(
         });
     }
 
-    // Init energy
+    // Compute rest area
     {
-        // Rest spring length
-        mesh_data->sa_edges_rest_state_length.resize(num_edges);
-        CpuParallel::parallel_for(0, num_edges, [&](const uint eid)
-        {
-            uint2 edge = mesh_data->sa_edges[eid];
-            float3 x1 = mesh_data->sa_rest_x[edge[0]];
-            float3 x2 = mesh_data->sa_rest_x[edge[1]];
-            mesh_data->sa_edges_rest_state_length[eid] = lcsv::length_vec(x1 - x2); /// 
-        });
-
-        // Rest bending info
-        mesh_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
-        mesh_data->sa_bending_edges_Q.resize(num_bending_edges);
-        CpuParallel::parallel_for(0, num_bending_edges, [&](const uint eid)
-        {
-            const uint4 edge = mesh_data->sa_bending_edges[eid];
-            const float3 vert_pos[4] = {
-                mesh_data->sa_rest_x[edge[0]], 
-                mesh_data->sa_rest_x[edge[1]], 
-                mesh_data->sa_rest_x[edge[2]], 
-                mesh_data->sa_rest_x[edge[3]]};
-            
-            // Rest state angle
-            {
-                const float3& x1 = vert_pos[2];
-                const float3& x2 = vert_pos[3];
-                const float3& x3 = vert_pos[0];
-                const float3& x4 = vert_pos[1];
-        
-                float3 tmp;
-                const float angle = lcsv::BendingEnergy::CalcGradientsAndAngle(x1, x2, x3, x4, tmp, tmp, tmp, tmp);
-                if (luisa::isnan(angle)) luisa::log_error("is nan rest angle {}", eid);
-    
-                mesh_data->sa_bending_edges_rest_angle[eid] = angle; 
-            }
-
-            // Rest state Q
-            {
-                auto calculateCotTheta = [](const float3& x, const float3& y)
-                {
-                    // const float scaled_cos_theta = dot_vec(x, y);
-                    // const float scaled_sin_theta = (sqrt_scalar(1.0f - square_scalar(scaled_cos_theta))); 
-                    const float scaled_cos_theta = luisa::dot(x, y);
-                    const float scaled_sin_theta = luisa::length(luisa::cross(x, y)); 
-                    return scaled_cos_theta / scaled_sin_theta;
-                };
-
-                float3 e0 = vert_pos[1] - vert_pos[0];
-                float3 e1 = vert_pos[2] - vert_pos[0];
-                float3 e2 = vert_pos[3] - vert_pos[0];
-                float3 e3 = vert_pos[2] - vert_pos[1];
-                float3 e4 = vert_pos[3] - vert_pos[1];
-                const float cot_01 = calculateCotTheta(e0, -e1);
-                const float cot_02 = calculateCotTheta(e0, -e2);
-                const float cot_03 = calculateCotTheta(e0, e3);
-                const float cot_04 = calculateCotTheta(e0, e4);
-                const float4 K = luisa::make_float4(
-                    cot_03 + cot_04, 
-                    cot_01 + cot_02, 
-                    -cot_01 - cot_03, 
-                    -cot_02 - cot_04);
-                const float A_0 = 0.5f * luisa::length(luisa::cross(e0, e1));
-                const float A_1 = 0.5f * luisa::length(luisa::cross(e0, e2));
-                // if (is_nan_vec<float4>(K) || is_inf_vec<float4>(K)) fast_print_err("Q of Bending is Illigal");
-                const float4x4 m_Q = (3.f / (A_0 + A_1)) * lcsv::outer_product(K, K); // Q = 3 qq^T / (A0+A1) ==> Q is symmetric
-                mesh_data->sa_bending_edges_Q[eid] = m_Q; // See : A quadratic bending model for inextensible surfaces.
-            }
-        });
-
-        // Rest area
         mesh_data->sa_rest_vert_area.resize(num_verts);
         mesh_data->sa_rest_edge_area.resize(num_edges);
         mesh_data->sa_rest_face_area.resize(num_faces);
@@ -453,6 +425,25 @@ void init_mesh_data(
         luisa::log_info("Average areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
     }
 
+    // Init vert info
+    {
+        // Set vert mass
+        {
+            mesh_data->sa_vert_mass.resize(num_verts); 
+            mesh_data->sa_vert_mass_inv.resize(num_verts);
+
+            const float defulat_density = 10.0f;
+            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+            {
+                bool is_fixed = mesh_data->sa_is_fixed[vid] != 0;
+                const float mass = defulat_density * mesh_data->sa_rest_vert_area[vid];
+                mesh_data->sa_vert_mass[vid] = mass;
+                mesh_data->sa_vert_mass_inv[vid] = is_fixed ? 0.0f : 1.0f / (mass);
+            });
+        }
+
+    }
+
     // Init vert status
     {
         mesh_data->sa_x_frame_outer.resize(num_verts); mesh_data->sa_x_frame_outer = mesh_data->sa_rest_x;
@@ -479,6 +470,20 @@ void upload_mesh_buffers(
     output_data->num_edges = input_data->num_edges;
     output_data->num_bending_edges = input_data->num_bending_edges;
 
+    output_data->num_tets = input_data->num_tets;
+    output_data->range_verts_cloth = input_data->range_verts_cloth;
+    output_data->range_faces_cloth = input_data->range_faces_cloth;
+    output_data->range_edges_cloth = input_data->range_edges_cloth;
+    output_data->range_bending_edges_cloth = input_data->range_bending_edges_cloth;
+    output_data->range_verts_tetrahedral = input_data->range_verts_tetrahedral;
+    output_data->range_faces_tetrahedral = input_data->range_faces_tetrahedral;
+    output_data->range_edges_tetrahedral = input_data->range_edges_tetrahedral;
+    output_data->range_bending_edges_tetrahedral = input_data->range_bending_edges_tetrahedral;
+    output_data->range_verts_obstacle = input_data->range_verts_obstacle;
+    output_data->range_faces_obstacle = input_data->range_faces_obstacle;
+    output_data->range_edges_obstacle = input_data->range_edges_obstacle;
+    output_data->range_bending_edges_obstacle = input_data->range_bending_edges_obstacle;
+
     stream 
         << upload_buffer(device, output_data->sa_rest_x, input_data->sa_rest_x)
         << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)
@@ -488,9 +493,6 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_vert_mass, input_data->sa_vert_mass)
         << upload_buffer(device, output_data->sa_vert_mass_inv, input_data->sa_vert_mass_inv)
         << upload_buffer(device, output_data->sa_is_fixed, input_data->sa_is_fixed)
-        << upload_buffer(device, output_data->sa_edges_rest_state_length, input_data->sa_edges_rest_state_length)
-        << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
-        << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
 
         << upload_buffer(device, output_data->sa_rest_vert_area, input_data->sa_rest_vert_area)
         << upload_buffer(device, output_data->sa_rest_edge_area, input_data->sa_rest_edge_area)
@@ -498,7 +500,7 @@ void upload_mesh_buffers(
 
         // No std::vector<std::vector<uint>> vert_adj_verts info
         << upload_buffer(device, output_data->sa_vert_adj_verts_csr, input_data->sa_vert_adj_verts_csr) 
-        << upload_buffer(device, output_data->sa_vert_adj_verts_with_bending_csr, input_data->sa_vert_adj_verts_with_bending_csr) 
+        << upload_buffer(device, output_data->sa_vert_adj_verts_with_material_constraints_csr, input_data->sa_vert_adj_verts_with_material_constraints_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_faces_csr, input_data->sa_vert_adj_faces_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_edges_csr, input_data->sa_vert_adj_edges_csr) 
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr) 

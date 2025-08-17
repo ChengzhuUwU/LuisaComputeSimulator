@@ -39,10 +39,25 @@ public:
 template<template<typename...> typename BufferType>
 struct MeshData : SimulationType
 {
-    uint num_verts;
-    uint num_faces;
-    uint num_edges;
-    uint num_bending_edges;
+    uint num_verts = 0;
+    uint num_faces = 0;
+    uint num_edges = 0;
+    
+    uint num_bending_edges = 0;
+    uint num_tets = 0;
+
+    uint2 range_verts_cloth;
+    uint2 range_faces_cloth;
+    uint2 range_edges_cloth;
+    uint2 range_bending_edges_cloth;
+    uint2 range_verts_tetrahedral;
+    uint2 range_faces_tetrahedral;
+    uint2 range_edges_tetrahedral;
+    uint2 range_bending_edges_tetrahedral;
+    uint2 range_verts_obstacle;
+    uint2 range_faces_obstacle;
+    uint2 range_edges_obstacle;
+    uint2 range_bending_edges_obstacle;
 
     // Input 
     BufferType<float3> sa_rest_x;
@@ -60,15 +75,10 @@ struct MeshData : SimulationType
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;
     BufferType<float> sa_rest_face_area;
-    
-    // Energy
-    BufferType<float> sa_edges_rest_state_length;
-    BufferType<float> sa_bending_edges_rest_angle;
-    BufferType<float4x4> sa_bending_edges_Q;
 
     // Adjacent
     BufferType<uint> sa_vert_adj_verts_csr; 
-    BufferType<uint> sa_vert_adj_verts_with_bending_csr; 
+    BufferType<uint> sa_vert_adj_verts_with_material_constraints_csr; 
     BufferType<uint> sa_vert_adj_faces_csr; 
     BufferType<uint> sa_vert_adj_edges_csr; 
     BufferType<uint> sa_vert_adj_bending_edges_csr; 
@@ -92,7 +102,7 @@ struct MeshData : SimulationType
     std::vector<uint> prefix_num_bending_edges;
 
     std::vector< std::vector<uint> > vert_adj_verts;
-    std::vector< std::vector<uint> > vert_adj_verts_with_bending;
+    std::vector< std::vector<uint> > vert_adj_verts_with_material_constraints;
     std::vector< std::vector<uint> > vert_adj_faces;
     std::vector< std::vector<uint> > vert_adj_edges;
     std::vector< std::vector<uint> > vert_adj_bending_edges;

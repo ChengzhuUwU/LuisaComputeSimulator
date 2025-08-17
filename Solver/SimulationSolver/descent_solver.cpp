@@ -262,8 +262,8 @@ void DescentSolver::compile(luisa::compute::Device& device)
             sa_iter_position = sim_data->sa_x.view(),
             sa_start_position = sim_data->sa_x_step_start.view(),
             sa_vert_adj_edges_csr = mesh_data->sa_vert_adj_edges_csr.view(),
-            sa_edges = mesh_data->sa_edges.view(),
-            sa_rest_length = mesh_data->sa_edges_rest_state_length.view()
+            sa_edges = sim_data->sa_stretch_springs.view(),
+            sa_rest_length = sim_data->sa_stretch_spring_rest_state_length.view()
         , extractHf, writeHf, outer_product, makeHf1](const Float stiffness_stretch)
         {
             const Uint vid = dispatch_id().x;
@@ -674,8 +674,8 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     {
         auto* sa_iter_position = host_sim_data->sa_x.data();
         auto* sa_vert_adj_edges_csr = host_mesh_data->sa_vert_adj_edges_csr.data();
-        auto* sa_edges = host_mesh_data->sa_edges.data();
-        auto* sa_rest_length = host_mesh_data->sa_edges_rest_state_length.data();
+        auto* sa_edges = host_sim_data->sa_stretch_springs.data();
+        auto* sa_rest_length = host_sim_data->sa_stretch_spring_rest_state_length.data();
         auto* sa_Hf1 = host_sim_data->sa_Hf1.data();
 
         CpuParallel::parallel_for(0, host_mesh_data->num_verts, [&](const uint vid)
@@ -789,10 +789,10 @@ void DescentSolver::solve_constraints_VBD(luisa::compute::Stream& stream)
     //     compute_energy(iter_position); 
     // }
 
-    // for (uint cluster = 0; cluster < xpbd_data->num_clusters_per_vertex_bending; cluster++)
+    // for (uint cluster = 0; cluster < xpbd_data->num_clusters_per_vertex_with_material_constraints; cluster++)
     // {
-    //     const uint next_prefix = xpbd_data->clusterd_per_vertex_bending[cluster + 1];
-    //     const uint curr_prefix = xpbd_data->clusterd_per_vertex_bending[cluster];
+    //     const uint next_prefix = xpbd_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
+    //     const uint curr_prefix = xpbd_data->clusterd_per_vertex_with_material_constraints[cluster];
     //     const uint num_verts_cluster = next_prefix - curr_prefix;
 
     //     vbd_evaluate_inertia(iter_position, cluster);

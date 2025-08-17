@@ -315,8 +315,8 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
     {
         return compute_energy_spring(eid, 
             curr_x, 
-            host_mesh_data->sa_edges, 
-            host_mesh_data->sa_edges_rest_state_length, 
+            host_sim_data->sa_stretch_springs, 
+            host_sim_data->sa_stretch_spring_rest_state_length, 
             1e4);
     });
     // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);

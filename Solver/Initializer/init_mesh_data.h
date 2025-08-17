@@ -22,6 +22,12 @@ struct FixedPointInfo
     float rotAngVelDeg;
     std::vector<uint> fixed_point_verts; 
 };
+enum ShellType
+{
+    ShellTypeCloth,
+    ShellTypeTetrahedral,
+    ShellTypeObstacle,
+};
 struct ShellInfo
 {
     std::string model_name = "square8K.obj";
@@ -29,6 +35,7 @@ struct ShellInfo
     float3 rotation = luisa::make_float3(0.0f * lcsv::Pi); // Rotation in x-channel means rotate along with x-axis
     float3 scale = luisa::make_float3(1.0f);
     std::vector<FixedPointInfo> fixed_point_list;
+    ShellType shell_type = ShellTypeCloth;
 };
 
 void init_mesh_data(

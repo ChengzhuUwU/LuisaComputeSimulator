@@ -24,9 +24,18 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_step_start;
     BufferType<float3> sa_x_iter_start;
 
+    // Energy
+    BufferType<uint2> sa_stretch_springs;
+    BufferType<float> sa_stretch_spring_rest_state_length;
+    BufferType<uint3> sa_stretch_faces;
+    BufferType<float2x2> sa_stretch_faces_Dm_inv;
+    BufferType<uint4> sa_bending_edges;
+    BufferType<float> sa_bending_edges_rest_angle;
+    BufferType<float4x4> sa_bending_edges_Q;
+
     // Merged constraints
-    BufferType<uint2> sa_merged_edges; 
-    BufferType<float> sa_merged_edges_rest_length;
+    BufferType<uint2> sa_merged_stretch_springs; 
+    BufferType<float> sa_merged_stretch_spring_rest_length;
 
     BufferType<uint4> sa_merged_bending_edges; 
     BufferType<float> sa_merged_bending_edges_angle;
@@ -57,9 +66,9 @@ struct SimulationData : SimulationType
     // BufferType<uint> sa_clusterd_hessian_slot_per_triangle; 
 
     // VBD
-    uint num_clusters_per_vertex_bending = 0; 
-    BufferType<uint> prefix_per_vertex_bending; 
-    BufferType<uint> clusterd_per_vertex_bending; 
+    uint num_clusters_per_vertex_with_material_constraints = 0; 
+    BufferType<uint> prefix_per_vertex_with_material_constraints; 
+    BufferType<uint> clusterd_per_vertex_with_material_constraints; 
     BufferType<uint> per_vertex_bending_cluster_id; // ubyte
     
     BufferType<float> sa_Hf; 
@@ -514,7 +523,7 @@ public:
 
 public:
     std::vector< std::vector<uint> > cloth_vert_adj_verts;
-    std::vector< std::vector<uint> > cloth_vert_adj_verts_with_bending;
+    std::vector< std::vector<uint> > cloth_vert_adj_verts_with_material_constraints;
     std::vector< std::vector<uint> > cloth_vert_adj_faces;
     std::vector< std::vector<uint> > cloth_vert_adj_edges;
     std::vector< std::vector<uint> > cloth_vert_adj_bending_edges;
