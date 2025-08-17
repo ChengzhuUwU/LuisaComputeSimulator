@@ -1,8 +1,12 @@
 #include "SimulationCore/solver_interface.h"
 #include "Core/scalar.h"
 #include "Utils/cpu_parallel.h"
+#include "Utils/reduce_helper.h"
 #include "SimulationCore/scene_params.h"
 #include "MeshOperation/mesh_reader.h"
+#include "luisa/dsl/builtin.h"
+#include "luisa/runtime/buffer.h"
+#include "luisa/runtime/stream.h"
 
 namespace lcsv 
 {
@@ -234,7 +238,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 }
 
 // Evaluate Energy
-double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x, const std::vector<float3>& curr_x_tilde)
+double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x)
 {
     auto compute_energy_inertia = [](
         const uint vid, 
@@ -298,7 +302,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
     {
         return compute_energy_inertia(vid, 
             curr_x, 
-            curr_x_tilde, 
+            host_sim_data->sa_x_tilde, 
             host_mesh_data->sa_vert_mass, 
             get_scene_params().get_substep_dt());
     });
@@ -321,6 +325,129 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
     });
     // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);
     return energy_inertia + energy_goundcollision + energy_spring;
+};
+void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
+    const bool use_debug_info = false;
+    luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
+
+    fn_reset_float = device.compile<1>([](Var<BufferView<float>> buffer)
+    {
+        buffer->write(dispatch_x(), 0.0f);
+    });
+    fn_calc_energy_inertia = device.compile<1>(
+        [
+            sa_x_tilde = sim_data->sa_x_tilde.view(),
+            sa_vert_mass = mesh_data->sa_vert_mass.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ](
+            Var<BufferView<float3>> sa_x, 
+            Float substep_dt
+        )
+    {
+        const Uint vid = dispatch_id().x;
+
+        Float energy = 0.0f;
+
+        {
+            Float3 x_new = sa_x->read(vid);
+            Float3 x_tilde = sa_x_tilde->read(vid);
+            Float mass = sa_vert_mass->read(vid);
+            energy = length_squared_vec(x_new - x_tilde) * mass / (2.0f * substep_dt * substep_dt);
+        };
+
+        energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        $if(vid % 256 == 0)
+        {
+            // sa_block_result->write(vid / 256, energy);
+            sa_block_result->atomic(vid / 256).fetch_add(energy);
+        };
+    }, default_option);
+
+    fn_calc_energy_ground_collision = device.compile<1>(
+        [
+            sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
+            sa_block_result = sim_data->sa_block_result.view()      
+        ](
+            Var<BufferView<float3>> sa_x, 
+            Float floor_y,
+            Bool use_ground_collision,
+            Float stiffness,
+            Float d_hat,
+            Float thickness
+        )
+    {
+        const Uint vid = dispatch_id().x;
+
+        Float energy = 0.0f;
+
+        $if (use_ground_collision)
+        {
+            Float3 x_k = sa_x->read(vid);
+            Float diff = x_k.y - floor_y;
+            $if (diff < d_hat + thickness)
+            {
+                Float C = d_hat + thickness - diff;
+                Float area = sa_rest_vert_area->read(vid);
+                Float stiff = stiffness * area;
+                energy = 0.5f * stiff * C * C;
+            };
+        };
+
+        energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        $if(vid % 256 == 0)
+        {
+            // sa_block_result->write(vid / 256, energy);
+            sa_block_result->atomic(vid / 256).fetch_add(energy);
+        };
+    }, default_option);
+
+    fn_calc_energy_spring = device.compile<1>(
+        [
+            sa_edges = sim_data->sa_stretch_springs.view(),
+            sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ](
+            Var<BufferView<float3>> sa_x,
+            Float stiffness_spring
+        )
+    {
+        const Uint eid = dispatch_id().x;
+        Float energy = 0.0f;
+        {
+            const Uint2 edge = sa_edges->read(eid);
+            const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
+            Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
+            Float orig_lengthsqr = length_squared_vec(diff);
+            Float l = sqrt_scalar(orig_lengthsqr);
+            Float l0 = rest_edge_length;
+            Float C = l - l0;
+            // if (C > 0.0f)
+                energy = 0.5f * stiffness_spring * C * C;
+        };
+        energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        $if (eid % 256 == 0)
+        {
+            // sa_block_result->write(eid / 256, energy);
+            sa_block_result->atomic(eid / 256).fetch_add(energy);
+        };
+    }, default_option);
+}
+double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x)
+{
+    stream 
+        << fn_reset_float(sim_data->sa_block_result).dispatch(1)
+        << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt()).dispatch(mesh_data->num_verts)
+        << fn_calc_energy_ground_collision(curr_x, get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(mesh_data->num_verts)
+        << fn_calc_energy_spring(curr_x, 1e4f).dispatch(host_sim_data->sa_stretch_springs.size())
+        ;
+    
+    stream 
+        << sim_data->sa_block_result.view(0, 1).copy_to(host_sim_data->sa_block_result.data())
+        << luisa::compute::synchronize();
+    return host_sim_data->sa_block_result[0];
+    // return energy_inertia + energy_goundcollision + energy_spring;
 };
 
 } // namespace lcsv

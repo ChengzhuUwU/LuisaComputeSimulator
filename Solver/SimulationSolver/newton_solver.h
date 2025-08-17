@@ -43,6 +43,7 @@ private:
     void device_narrowphase_ccd(luisa::compute::Stream& stream);
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
     void device_update_contact_list(luisa::compute::Stream& stream) ;
+    void device_ccd_line_search(luisa::compute::Stream& stream) ;
     float device_compute_contact_energy(luisa::compute::Stream& stream);
 
 private:
@@ -63,13 +64,11 @@ private:
     luisa::compute::Shader<1, float> fn_evaluate_inertia; // Float substep_dt
     luisa::compute::Shader<1, float, uint> fn_evaluate_spring; // Float stiffness_stretch, Uint cluster_idx
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, float> fn_calc_energy_inertia; // Var<BufferView<float3>> sa_x, Float substep_dt
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, float> fn_calc_energy_spring; // Var<BufferView<float3>> sa_x, Float stiffness_spring
-
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag ;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, uint> fn_pcg_spmv_offdiag;
 
     luisa::compute::Shader<1, float> fn_apply_dx;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;;
     
 
     

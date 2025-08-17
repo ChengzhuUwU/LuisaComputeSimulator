@@ -267,68 +267,6 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         }
     );
 
-    fn_calc_energy_inertia = device.compile<1>(
-        [
-            sa_x_tilde = sim_data->sa_x_tilde.view(),
-            sa_vert_mass = mesh_data->sa_vert_mass.view(),
-            sa_block_result = sim_data->sa_block_result.view()
-        ](
-            Var<BufferView<float3>> sa_x, 
-            Float substep_dt
-        )
-    {
-        const Uint vid = dispatch_id().x;
-
-        Float energy = 0.0f;
-
-        {
-            Float3 x_new = sa_x->read(vid);
-            Float3 x_tilde = sa_x_tilde->read(vid);
-            Float mass = sa_vert_mass->read(vid);
-            energy = length_squared_vec(x_new - x_tilde) * mass / (2.0f * substep_dt * substep_dt);
-        };
-
-        energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if(vid % 256 == 0)
-        {
-            sa_block_result->write(vid / 256, energy);
-        };
-    }, default_option);
-
-    fn_calc_energy_spring = device.compile<1>(
-        [
-            sa_edges = sim_data->sa_stretch_springs.view(),
-            sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
-            sa_block_result = sim_data->sa_block_result.view()
-        ](
-            Var<BufferView<float3>> sa_x,
-            Float stiffness_spring
-        )
-    {
-        const Uint eid = dispatch_id().x;
-
-        Float energy = 0.0f;
-        {
-            const Uint2 edge = sa_edges->read(eid);
-            const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
-            Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
-            Float orig_lengthsqr = length_squared_vec(diff);
-            Float l = sqrt_scalar(orig_lengthsqr);
-            Float l0 = rest_edge_length;
-            Float C = l - l0;
-            // if (C > 0.0f)
-                energy = 0.5f * stiffness_spring * C * C;
-        };
-
-        energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if (eid % 256 == 0)
-        {
-            sa_block_result->write(eid / 256, energy);
-        };
-
-    }, default_option);
-
-    
 
     fn_apply_dx = device.compile<1>(
         [
@@ -341,6 +279,17 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
     }, default_option);
 
+    fn_apply_dx_non_constant = device.compile<1>(
+        [
+            sa_x = sim_data->sa_x.view(),
+            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+            sa_cgX = sim_data->sa_cgX.view()
+        ](Var<BufferView<float>> alpha_buffer) 
+    {
+        const Float alpha = alpha_buffer.read(0);
+        const UInt vid = dispatch_id().x;
+        sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
+    }, default_option);
     
 }
 
@@ -817,6 +766,14 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
 
     mp_narrowphase_detector->download_narrowphase_collision_count(stream);
 }
+void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
+{
+    device_broadphase_ccd(stream);
+
+    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    
+    device_narrowphase_ccd(stream);
+}
 float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream)
 {
     // stream << sim_data->sa_x.copy_from(sa_x.data());
@@ -895,7 +852,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
 
     static Eigen::SparseMatrix<float> eigen_cgA;
-
     static Eigen::SparseMatrix<float> eigen_groundA;
     static Eigen::SparseMatrix<float> eigen_springA;
     static std::vector<Eigen::Triplet<float>> triplets_springA;
@@ -903,7 +859,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     static std::vector<Eigen::Triplet<float>> triplets_groundA;
     static Eigen::VectorXf eigen_cgB; 
     static Eigen::VectorXf eigen_cgX;
-    
     if constexpr (use_eigen) 
     {
         Eigen::setNbThreads(12);
@@ -1016,97 +971,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         mp_lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
-    auto broadphase_ccd = [&]()
-    {
-        mp_narrowphase_detector->reset_broadphase_count(stream);
-
-        const float ccd_query_range = thickness;
-
-        // if (lcsv::get_scene_params().current_nonlinear_iter == 0)
-        // {
-        //     mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
-        //     mp_lbvh_face->construct_tree(stream);
-        // }
-        mp_lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_face->refit(stream);
-        mp_lbvh_face->broad_phase_query_from_verts(stream, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1), 
-            collision_data->broad_phase_list_vf, ccd_query_range);
-
-        // if (lcsv::get_scene_params().current_nonlinear_iter == 0)
-        // {
-        //     mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
-        //     mp_lbvh_edge->construct_tree(stream);
-        // }
-        mp_lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
-        mp_lbvh_edge->refit(stream);
-        mp_lbvh_edge->broad_phase_query_from_edges(stream, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x, 
-            mesh_data->sa_edges, 
-            collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1), 
-            collision_data->broad_phase_list_ee, ccd_query_range);
-    };
-    auto narrowphase_ccd = [&]()
-    {
-        // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_vf_pair(stream, 
-        //     host_sim_data->sa_x_iter_start, 
-        //     host_sim_data->sa_x_iter_start, 
-        //     host_sim_data->sa_x, 
-        //     host_sim_data->sa_x, 
-        //     host_mesh_data->sa_faces, 
-        //     1e-3);
-
-        // mp_narrowphase_detector->host_narrow_phase_ccd_query_from_ee_pair(stream, 
-        //     host_sim_data->sa_x_iter_start, 
-        //     host_sim_data->sa_x_iter_start, 
-        //     host_sim_data->sa_x, 
-        //     host_sim_data->sa_x, 
-        //     host_mesh_data->sa_edges, 
-        //     host_mesh_data->sa_edges, 
-        //     1e-3);
-        
-        // mp_narrowphase_detector->reset_narrowphase_count(stream);
-        mp_narrowphase_detector->reset_toi(stream);
-
-        mp_narrowphase_detector->vf_ccd_query(stream, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_faces, 
-            d_hat, thickness);
-
-        mp_narrowphase_detector->ee_ccd_query(stream, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x_iter_start, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_edges, 
-            mesh_data->sa_edges, 
-            d_hat, thickness);
-    };
-    auto ccd_line_search = [&]() -> float
-    {
-        stream 
-            << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
-            // << luisa::compute::synchronize()
-            ;
-        
-        broadphase_ccd();
-
-        mp_narrowphase_detector->download_broadphase_collision_count(stream);
-        
-        narrowphase_ccd();
-        
-        float toi = mp_narrowphase_detector->get_global_toi(stream);
-        return toi; // 0.9f * toi
-        // return 1.0f;
-    };
-
     auto update_contact_set = [&]()
     {
         stream 
@@ -1129,6 +993,20 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_cgB.copy_to(sa_cgB.data())
             << sim_data->sa_cgA_diag.copy_to(sa_cgA_diag.data())
             << luisa::compute::synchronize();
+    };
+    auto ccd_get_toi = [&]() -> float
+    {
+        stream 
+            << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
+            << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
+            // << luisa::compute::synchronize()
+            ;
+        
+        device_ccd_line_search(stream);
+        
+        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        return toi; // 0.9f * toi
+        // return 1.0f;
     };
     auto compute_contact_energy = [&]() -> float
     {
@@ -1186,7 +1064,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     auto compute_energy_interface = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
     {
         // luisa::log_info(".   Start comput energy");
-        auto material_energy = host_compute_elastic_energy(curr_x, curr_x_tilde);
+        auto material_energy = host_compute_elastic_energy(curr_x);
         // auto barrier_energy = On2_compute_barrier_energy();;
         // auto barrier_energy = compute_barrier_energy();;
         auto barrier_energy = compute_contact_energy();;
@@ -1214,7 +1092,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     const float substep_dt = lcsv::get_scene_params().get_substep_dt();
     const bool use_energy_linesearch = get_scene_params().use_energy_linesearch;
-    const bool use_ccd_linesearch = get_scene_params().use_ccd_linesearch && use_energy_linesearch;
+    const bool use_ccd_linesearch = get_scene_params().use_ccd_linesearch;
     
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
@@ -1249,16 +1127,17 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             linear_solver_interface(); // Solve Ax=b
 
             float alpha = 1.0f; float ccd_toi = 1.0f;
-            host_apply_dx(alpha);            
+            host_apply_dx(alpha);
+            
+            if (use_ccd_linesearch)
+            {
+                ccd_toi = ccd_get_toi();
+                alpha = ccd_toi;
+                host_apply_dx(alpha);   
+            }
+
             if (use_energy_linesearch)
             { 
-                if (use_ccd_linesearch)
-                {
-                    ccd_toi = ccd_line_search();
-                    alpha = ccd_toi;
-                    host_apply_dx(alpha);   
-                }
-
                 // Energy after CCD or just solving Axb
                 auto curr_energy = compute_energy_interface(sa_x, sa_x_tilde); 
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
@@ -1410,7 +1289,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto host_compute_barrier_energy = []() { return 0.0f; };
     auto compute_energy_with_barrier = [&](const luisa::compute::Buffer<float3>& curr_x, const luisa::compute::Buffer<float3>& curr_x_tilde)
     {
-        auto material_energy = host_compute_elastic_energy(host_x, host_x_tilde);
+        auto material_energy = host_compute_elastic_energy(host_x);
         auto barrier_energy = host_compute_barrier_energy();;
         return material_energy + barrier_energy;
     };
@@ -1423,7 +1302,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
             << luisa::compute::synchronize();
         
-        auto prev_state_energy = host_compute_elastic_energy(host_x_step_start, host_x_tilde);
+        auto prev_state_energy = host_compute_elastic_energy(host_x_step_start);
         luisa::log_info("In frame {} : ", get_scene_params().current_frame);
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
@@ -1458,7 +1337,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 // alpha = ccd_line_search();
                 // apply_dx(alpha);   
 
-                auto curr_energy = host_compute_elastic_energy(host_x, host_x_tilde);
+                auto curr_energy = host_compute_elastic_energy(host_x);
                 uint line_search_count = 0;
                 while (line_search_count < 20)
                 {
@@ -1471,7 +1350,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     alpha /= 2; host_apply_dx(alpha);
                     line_search_count++;
 
-                    curr_energy = host_compute_elastic_energy(host_x, host_x_tilde);
+                    curr_energy = host_compute_elastic_energy(host_x);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                 }

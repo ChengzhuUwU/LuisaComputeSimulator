@@ -192,6 +192,7 @@ int main(int argc, char** argv)
             &narrow_phase_detector,
             &pcg_solver
         );
+        solver.lcsv::SolverInterface::compile(device);
         solver.compile(device);
     }
 

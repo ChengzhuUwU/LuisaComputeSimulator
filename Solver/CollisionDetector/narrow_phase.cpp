@@ -158,7 +158,6 @@ float NarrowPhasesDetector::get_global_toi(Stream& stream)
         luisa::log_error("  small toi : {}", host_toi);
     }
     return host_toi;
-    // 
 }
 
 } // namespace lcsv // Data IO
