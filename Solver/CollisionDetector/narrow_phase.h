@@ -127,6 +127,7 @@ public:
         Buffer<float3>& sa_cgB, Buffer<float3x3>& sa_cgA_diag);
 
     void host_spmv_repulsion(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+    void device_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
 
 public:
     // Compute barrier energy
@@ -230,6 +231,11 @@ private:
     // Assemble
     luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_vf;
     luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>, float, float, BufferView<float3>, BufferView<float3x3>> fn_assemble_repulsion_hessian_gradient_ee;
+    
+    // AtomicAdd SpMV
+    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>> fn_atomic_add_spmv_vf;
+    luisa::compute::Shader<1, BufferView<float3>, BufferView<float3>> fn_atomic_add_spmv_ee;
+    
 };
 
 

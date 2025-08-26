@@ -54,11 +54,16 @@ void NewtonSolver::compile(luisa::compute::Device& device)
     auto& sa_cgR = sim_data->sa_cgR;
     auto& sa_cgZ = sim_data->sa_cgZ;
 
-    fn_reset_vector = device.compile<1>([](Var<BufferView<float3>> buffer, Float3 target)
+    fn_reset_vector = device.compile<1>([](Var<BufferView<float3>> buffer)
     {
         const UInt vid = dispatch_id().x;
         // buffer->write(vid, target);
         buffer->write(vid, make_float3(0.0f));
+    });
+    fn_reset_float3x3 = device.compile<1>([](Var<BufferView<float3x3>> buffer)
+    {
+        const UInt vid = dispatch_id().x;
+        buffer->write(vid, make_float3x3(0.0f));
     });
 
     fn_reset_offdiag = device.compile<1>(
@@ -154,6 +159,47 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         sa_cgA_diag->write(vid, hessian);
     }, default_option);
 
+    fn_evaluate_ground_collision = device.compile<1>(
+        [
+            sa_x = sim_data->sa_x.view(),
+            sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
+            sa_cgB = sim_data->sa_cgB.view(),
+            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+            sa_is_fixed = mesh_data->sa_is_fixed.view(),
+            sa_vert_mass = mesh_data->sa_vert_mass.view()
+        ](
+            Float floor_y,
+            Bool use_ground_collision,
+            Float stiffness,
+            Float d_hat,
+            Float thickness
+        )
+    {
+        const UInt vid = dispatch_id().x;
+        $if (use_ground_collision)
+        {
+            $if (!sa_is_fixed->read(vid))
+            {
+                Float3 x_k = sa_x->read(vid);
+                Float diff = x_k.y - floor_y;
+        
+                Float3 force = sa_cgB->read(vid);
+                Float3x3 hessian = sa_cgA_diag->read(vid);
+                $if (diff < d_hat + thickness)
+                {
+                    Float C = d_hat + thickness - diff;
+                    float3 normal = makeFloat3(0, 1, 0);
+                    Float area = sa_rest_vert_area->read(vid);
+                    Float stiff = stiffness * area;
+                    force += stiff * C * normal;
+                    hessian += stiff * outer_product(normal, normal);
+                };
+                sa_cgB->write(vid, force);
+                sa_cgA_diag->write(vid, hessian);
+            };
+        };
+    }, default_option);
+    
     fn_evaluate_spring = device.compile<1>(
         [
             sa_x = sim_data->sa_x.view(),
@@ -361,6 +407,32 @@ void NewtonSolver::host_update_velocity()
         sa_x_step_start[vid] = x_step_end;
     });
 }
+void NewtonSolver::host_reset_off_diag()
+{
+    // if constexpr (use_eigen)
+    // {
+    //     eigen_springA.setZero();
+    // }
+    // else 
+    {
+        CpuParallel::parallel_set(host_sim_data->sa_cgA_offdiag, luisa::make_float3x3(0.0f));
+    }
+}
+void NewtonSolver::host_reset_cgB_cgX_diagA()
+{
+    // if constexpr (use_eigen)
+    // {
+    //     eigen_cgA.setZero();
+    //     eigen_cgB.setZero();
+    //     eigen_cgX.setZero();
+    // }
+    // else 
+    {
+        CpuParallel::parallel_set(host_sim_data->sa_cgA_diag, luisa::make_float3x3(0.0f));
+        CpuParallel::parallel_set(host_sim_data->sa_cgB, luisa::make_float3(0.0f));
+        CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
+    }
+}
 void NewtonSolver::host_evaluate_inertia()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts,
@@ -427,24 +499,27 @@ void NewtonSolver::host_evaluate_ground_collision()
         ](const uint vid)
     {
         if (sa_is_fixed[vid]) return;
-        float3 x_k = sa_x[vid];
-        float diff = x_k.y - get_scene_params().floor.y;
-
-        float3 force = makeFloat3(0.0f);
-        float3x3 hessian = makeFloat3x3(0.0f);
-        if (diff < d_hat + thickness)
+        if (get_scene_params().use_floor)
         {
-            float C = d_hat + thickness - diff;
-            float3 normal = makeFloat3(0, 1, 0);
-            float area = sa_rest_vert_area[vid];
-            float stiff = stiffness_ground * area;
-            force = stiff * C * normal;
-            hessian = stiff * outer_product(normal, normal);
-        }
-        {  
-            // sa_cgX[vid] = dx_0;
-            sa_cgB[vid] = sa_cgB[vid] + force;
-            sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+            float3 x_k = sa_x[vid];
+            float diff = x_k.y - get_scene_params().floor.y;
+    
+            float3 force = makeFloat3(0.0f);
+            float3x3 hessian = makeFloat3x3(0.0f);
+            if (diff < d_hat + thickness)
+            {
+                float C = d_hat + thickness - diff;
+                float3 normal = makeFloat3(0, 1, 0);
+                float area = sa_rest_vert_area[vid];
+                float stiff = stiffness_ground * area;
+                force = stiff * C * normal;
+                hessian = stiff * outer_product(normal, normal);
+            }
+            {  
+                // sa_cgX[vid] = dx_0;
+                sa_cgB[vid] = sa_cgB[vid] + force;
+                sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+            }
         }
     });
     // if constexpr (use_eigen) 
@@ -463,32 +538,6 @@ void NewtonSolver::host_evaluate_ground_collision()
     // }
     // else 
     // if constexpr (use_eigen) { eigen_groundA.setFromTriplets(triplets_groundA.begin(), triplets_groundA.end()); eigen_cgA += eigen_groundA; }
-}
-void NewtonSolver::host_reset_off_diag()
-{
-    // if constexpr (use_eigen)
-    // {
-    //     eigen_springA.setZero();
-    // }
-    // else 
-    {
-        CpuParallel::parallel_set(host_sim_data->sa_cgA_offdiag, luisa::make_float3x3(0.0f));
-    }
-}
-void NewtonSolver::host_reset_cgB_cgX_diagA()
-{
-    // if constexpr (use_eigen)
-    // {
-    //     eigen_cgA.setZero();
-    //     eigen_cgB.setZero();
-    //     eigen_cgX.setZero();
-    // }
-    // else 
-    {
-        CpuParallel::parallel_set(host_sim_data->sa_cgA_diag, luisa::make_float3x3(0.0f));
-        CpuParallel::parallel_set(host_sim_data->sa_cgB, luisa::make_float3(0.0f));
-        CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
-    }
 }
 void NewtonSolver::host_evaluete_spring()
 {
@@ -806,7 +855,10 @@ float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream
     return mp_narrowphase_detector->download_energy(stream);
     // return 0.0f;
 }
-
+void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
+{
+    
+}
 static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min value in array
 {
     return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
@@ -962,15 +1014,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     const float d_hat = get_scene_params().d_hat;
     const float kappa = 1e5;
 
-    // Init LBVH
-    {
-        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
-        mp_lbvh_face->construct_tree(stream);
-        mp_lbvh_edge->construct_tree(stream);
-        stream << luisa::compute::synchronize();
-    }
     auto update_contact_set = [&]()
     {
         stream 
@@ -1012,31 +1055,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         stream << sim_data->sa_x.copy_from(sa_x.data());
 
-        mp_narrowphase_detector->reset_energy(stream);
-
-        mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_vert_area,
-            mesh_data->sa_rest_face_area,
-            mesh_data->sa_faces, 
-            d_hat, thickness, kappa);
-
-        mp_narrowphase_detector->compute_penalty_energy_from_ee(stream, 
-            sim_data->sa_x, 
-            sim_data->sa_x, 
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_x,
-            mesh_data->sa_rest_edge_area,
-            mesh_data->sa_rest_edge_area,
-            mesh_data->sa_edges, 
-            mesh_data->sa_edges, 
-            d_hat, thickness, kappa);
-
-        return mp_narrowphase_detector->download_energy(stream);
-        // return 0.0f;
+        return device_compute_contact_energy(stream);
     };
 
     // Solve
@@ -1061,7 +1080,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     
     
-    auto compute_energy_interface = [&](const std::vector<float3> &curr_x, const std::vector<float3> &curr_x_tilde)
+    auto compute_energy_interface = [&](const std::vector<float3> &curr_x)
     {
         // luisa::log_info(".   Start comput energy");
         auto material_energy = host_compute_elastic_energy(curr_x);
@@ -1069,7 +1088,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // auto barrier_energy = compute_barrier_energy();;
         auto barrier_energy = compute_contact_energy();;
         // auto barrier_energy = 0.0f;
-        // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
         if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
         if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
@@ -1094,6 +1113,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     const bool use_energy_linesearch = get_scene_params().use_energy_linesearch;
     const bool use_ccd_linesearch = get_scene_params().use_ccd_linesearch;
     
+    // Init LBVH
+    {
+        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_face->construct_tree(stream);
+        mp_lbvh_edge->construct_tree(stream);
+        stream << luisa::compute::synchronize();
+    }
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
         host_predict_position();
@@ -1121,7 +1149,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 evaluate_contact();
 
                 // if (iter == 0) // Always refresh for collision count is variant 
-                { prev_state_energy = compute_energy_interface(sa_x, sa_x_tilde); }
+                { prev_state_energy = compute_energy_interface(sa_x); }
             }
 
             linear_solver_interface(); // Solve Ax=b
@@ -1139,7 +1167,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             if (use_energy_linesearch)
             { 
                 // Energy after CCD or just solving Axb
-                auto curr_energy = compute_energy_interface(sa_x, sa_x_tilde); 
+                auto curr_energy = compute_energy_interface(sa_x); 
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
                 
                 uint line_search_count = 0;
@@ -1163,7 +1191,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     }
                     alpha /= 2; host_apply_dx(alpha); 
 
-                    curr_energy = compute_energy_interface(sa_x, sa_x_tilde);
+                    curr_energy = compute_energy_interface(sa_x);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                     
@@ -1241,6 +1269,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             host_x[vid] = host_x_iter_start[vid] + alpha * host_cgX[vid];
         });
     };
+    auto device_apply_dx = [&](const float alpha)
+    {
+        stream << fn_apply_dx(alpha).dispatch(mesh_data->num_verts);
+    };
     auto host_dot = [](const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) -> float
     {
         return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
@@ -1264,6 +1296,28 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
     };
     
+    const float thickness = get_scene_params().thickness;
+    const float d_hat = get_scene_params().d_hat;
+    auto update_contact_set = [&]()
+    {
+        device_update_contact_list(stream);
+        mp_narrowphase_detector->download_narrowphase_list(stream);
+    };
+    auto evaluate_contact = [&]()
+    {
+        mp_narrowphase_detector->compute_repulsion_gradiant_hessian_and_assemble(stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+    };
+    auto ccd_get_toi = [&]() -> float
+    {
+        device_ccd_line_search(stream);
+        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        return toi; // 0.9f * toi
+    };
+    auto compute_contact_energy = [&]() -> float
+    {
+        // stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        return device_compute_contact_energy(stream);
+    };
 
     const bool use_ipc = true;
     const uint num_verts = host_mesh_data->num_verts;
@@ -1271,7 +1325,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     const uint num_faces = host_mesh_data->num_faces;
     const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
 
-    
     auto pcg_spmv = [&](const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr) -> void
     {   
         stream 
@@ -1285,36 +1338,56 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             const uint num_elements_clustered = next_prefix - curr_prefix;
             stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr, curr_prefix).dispatch(num_elements_clustered);
         }
+        mp_narrowphase_detector->device_spmv(stream, input_ptr, output_ptr);
     };
-    auto host_compute_barrier_energy = []() { return 0.0f; };
-    auto compute_energy_with_barrier = [&](const luisa::compute::Buffer<float3>& curr_x, const luisa::compute::Buffer<float3>& curr_x_tilde)
+    auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
-        auto material_energy = host_compute_elastic_energy(host_x);
-        auto barrier_energy = host_compute_barrier_energy();;
-        return material_energy + barrier_energy;
-    };
+        auto material_energy = device_compute_elastic_energy(stream, curr_x);
+        auto barrier_energy = device_compute_contact_energy(stream);;
+        luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        auto total_energy = material_energy + barrier_energy;
+        if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
+        if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
 
+        return total_energy;
+    };
+    // Init LBVH
+    {
+        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
+        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
+        mp_lbvh_face->construct_tree(stream);
+        mp_lbvh_edge->construct_tree(stream);
+        stream << luisa::compute::synchronize();
+    }
     for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
+        // host_predict_position();
         stream 
             << fn_predict_position(substep_dt).dispatch(num_verts)
             << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
             << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
             << luisa::compute::synchronize();
         
-        auto prev_state_energy = host_compute_elastic_energy(host_x_step_start);
-        luisa::log_info("In frame {} : ", get_scene_params().current_frame);
+        double prev_state_energy = Float_max;
+
+        luisa::log_info("In frame {}:", get_scene_params().current_frame); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
             
             stream 
                 << sim_data->sa_x_iter_start.copy_to(host_x_iter_start.data())
-                << fn_reset_vector(sim_data->sa_cgX, makeFloat3(0.0f)).dispatch(num_verts)
-                << fn_reset_offdiag().dispatch(sim_data->sa_cgA_offdiag.size())
-                << fn_evaluate_inertia(substep_dt).dispatch(num_verts);
-
+                << fn_reset_vector(sim_data->sa_cgX).dispatch(num_verts)
+                << fn_reset_vector(sim_data->sa_cgB).dispatch(num_verts)
+                << fn_reset_float3x3(sim_data->sa_cgA_diag).dispatch(num_verts)
+                << fn_reset_float3x3(sim_data->sa_cgA_offdiag).dispatch(sim_data->sa_cgA_offdiag.size());
+            
             {
+                stream << fn_evaluate_inertia(substep_dt).dispatch(num_verts);
+                
+                stream << fn_evaluate_ground_collision(get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(num_verts);
+    
                 auto& culster = host_sim_data->sa_prefix_merged_springs;
                 for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
                 {
@@ -1323,62 +1396,87 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     const uint num_elements_clustered = next_prefix - curr_prefix;
                     stream << fn_evaluate_spring(1e4, curr_prefix).dispatch(num_elements_clustered);
                 }
-            }
                 
-            // device_pcg();
-            pcg_solver->device_solve(stream, pcg_spmv, compute_energy_with_barrier);
+                update_contact_set();
 
-            // Do line search on the host
-            float alpha = 1.0f;
+                evaluate_contact();
+
+                prev_state_energy = compute_energy_interface(sim_data->sa_x);
+            }
+
+            pcg_solver->device_solve(stream, pcg_spmv, compute_energy_interface);
+
+            float alpha = 1.0f; float ccd_toi = 1.0f;
             host_apply_dx(alpha);
+            device_apply_dx(alpha);
+            
+            if (get_scene_params().use_ccd_linesearch)
+            {
+                ccd_toi = ccd_get_toi();
+                alpha = ccd_toi;
+                host_apply_dx(alpha);
+                device_apply_dx(alpha);
+            }
 
-            if constexpr (use_ipc)
+            if (get_scene_params().use_energy_linesearch)
             { 
-                // alpha = ccd_line_search();
-                // apply_dx(alpha);   
-
-                auto curr_energy = host_compute_elastic_energy(host_x);
+                // Energy after CCD or just solving Axb
+                auto curr_energy = compute_energy_interface(sim_data->sa_x); 
+                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
+                
                 uint line_search_count = 0;
-                while (line_search_count < 20)
+                while (line_search_count < 20) // Compare energy
                 {
-                    if (curr_energy < prev_state_energy) { break; }
+                    if (curr_energy < prev_state_energy + Epsilon) 
+                    { 
+                        // if (alpha != 1.0f)
+                        {
+                            luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
+                                line_search_count, alpha, curr_energy, prev_state_energy, 
+                                ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
+                        }
+                        break; 
+                    }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f}", 
-                            line_search_count, alpha, curr_energy, prev_state_energy);
+                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
+                            line_search_count, alpha, curr_energy, prev_state_energy, 
+                            ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
                     }
-                    alpha /= 2; host_apply_dx(alpha);
-                    line_search_count++;
+                    alpha /= 2; host_apply_dx(alpha); device_apply_dx(alpha);
 
-                    curr_energy = host_compute_elastic_energy(host_x);
+                    curr_energy = compute_energy_interface(sim_data->sa_x);
                     luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
+                    
+                    if (alpha < 1e-4) 
+                    {
+                        luisa::log_error("  Line search failed, energy = {}, prev state energy = {}", 
+                            curr_energy, prev_state_energy);
+                    }
+                    line_search_count++;
                 }
-                prev_state_energy = curr_energy;
+                prev_state_energy = curr_energy; // E_prev = E
             }
 
             // Non-linear iteration break condition
             {
                 float max_move = 1e-2;
-                float curr_max_step = host_infinity_norm(host_cgX); 
+                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
                 if (curr_max_step < max_move * substep_dt) 
                 {
                     luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
                     break;
                 }
             }
-
-            CpuParallel::parallel_copy(host_x, host_x_iter_start);
-
+            
             stream
                 << sim_data->sa_x.copy_from(host_x.data())
                 << sim_data->sa_x_iter_start.copy_from(host_x_iter_start.data());
-        }
 
-        stream
-            << fn_update_velocity(substep_dt, false, lcsv::get_scene_params().damping_cloth).dispatch(num_verts)
-            // << luisa::compute::synchronize();
-            ;
+            stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start) << luisa::compute::synchronize();
+        }
+        host_update_velocity();
     }
 
     stream << luisa::compute::synchronize();

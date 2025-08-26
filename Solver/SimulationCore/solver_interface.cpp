@@ -336,6 +336,7 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
     {
         buffer->write(dispatch_x(), 0.0f);
     });
+
     fn_calc_energy_inertia = device.compile<1>(
         [
             sa_x_tilde = sim_data->sa_x_tilde.view(),
@@ -368,7 +369,8 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
     fn_calc_energy_ground_collision = device.compile<1>(
         [
             sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
-            sa_block_result = sim_data->sa_block_result.view()      
+            sa_is_fixed = mesh_data->sa_is_fixed.view(),
+            sa_block_result = sim_data->sa_block_result.view()
         ](
             Var<BufferView<float3>> sa_x, 
             Float floor_y,
@@ -381,8 +383,8 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
         const Uint vid = dispatch_id().x;
 
         Float energy = 0.0f;
-
-        $if (use_ground_collision)
+        Bool is_fixed = sa_is_fixed->read(vid) != 0;
+        $if (use_ground_collision & is_fixed)
         {
             Float3 x_k = sa_x->read(vid);
             Float diff = x_k.y - floor_y;

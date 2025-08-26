@@ -4,6 +4,7 @@
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
+#include "luisa/core/logging.h"
 
 namespace lcsv 
 {
@@ -312,10 +313,36 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
         }
     );
 }
+
+
+
+static inline float fast_dot(const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) 
+{
+    return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
+    {
+        return luisa::dot(left_ptr[vid], right_ptr[vid]);
+    });
+};
+static inline float fast_norm(const std::vector<float3>& ptr)
+{
+    float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
+    {
+        return luisa::dot(ptr[vid], ptr[vid]);
+    });
+    return sqrt(tmp);
+};
+static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min value in array
+{
+    return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
+    {
+        return luisa::length(ptr[vid]);
+    }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+};
+
 void ConjugateGradientSolver::host_solve(
     luisa::compute::Stream& stream, 
     std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
-    std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
+    std::function<double(const std::vector<float3>&)> func_compute_energy
 )
 {
     std::vector<float3>& sa_cgX = host_sim_data->sa_cgX;
@@ -332,6 +359,7 @@ void ConjugateGradientSolver::host_solve(
     std::vector<float3>& sa_x = host_sim_data->sa_x;
     std::vector<float3>& sa_x_iter_start = host_sim_data->sa_x_iter_start;
     std::vector<float3>& sa_x_tilde = host_sim_data->sa_x_tilde;
+    
     auto host_apply_dx = [&](const float alpha)
     {
         CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
@@ -339,30 +367,7 @@ void ConjugateGradientSolver::host_solve(
             sa_x[vid] = sa_x_iter_start[vid] + alpha * sa_cgX[vid];
         });
     };
-    
-    auto fast_dot = [](const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) -> float
-    {
-        return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(left_ptr[vid], right_ptr[vid]);
-        });
-    };
-    auto fast_norm = [](const std::vector<float3>& ptr) -> float
-    {
-        float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(ptr[vid], ptr[vid]);
-        });
-        return sqrt(tmp);
-    };
-    auto fast_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
-    {
-        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::length(ptr[vid]);
-        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
-    };
-    
+
     auto get_dot_rz_rr = [&]() -> float2 // [0] = r^T z, [1] = r^T r
     {
         return CpuParallel::parallel_for_and_reduce_sum<float2>(0, sa_cgR.size(), [&](const uint vid) -> float2
@@ -534,7 +539,7 @@ void ConjugateGradientSolver::host_solve(
     if constexpr (print_energy)
     {
         host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(sa_x, sa_x_iter_start);
+        curr_energy = func_compute_energy(sa_x);
     }
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
@@ -570,7 +575,7 @@ void ConjugateGradientSolver::host_solve(
 void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     luisa::compute::Stream& stream, 
     std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
-    std::function<double(const luisa::compute::Buffer<float3>&, const luisa::compute::Buffer<float3>&)> func_compute_energy
+    std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy
 )
 {
     auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
@@ -633,6 +638,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
 
     float normR_0 = 0.0f;
     float normR = 0.0f; float beta = 0.0f; float alpha = 0.0f;
+    float dot_rz = 0.0f;
 
     uint iter = 0;
     for (iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
@@ -642,8 +648,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
         stream 
             << fn_pcg_apply_preconditioner().dispatch(num_verts)
             << fn_pcg_apply_preconditioner_second_pass().dispatch(num_blocks_verts) // Compute beta
-            << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
-            << luisa::compute::synchronize();
+            ;
 
         // 0 : old_dot_rr
         // 1 : new_dot_rz
@@ -654,10 +659,28 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
         // 6 : init energy
         // 7 : new energy
 
-        if (iter == 0) normR_0 = normR;
-        if (normR < 5e-3 * normR_0) 
+        if (iter % 25 == 0)
         {
-            break;
+            // stream
+            //     << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+            //     << luisa::compute::synchronize();
+            // luisa::log_info("rTr = {}", normR);
+            // if (iter == 0) normR_0 = normR;
+            // if (normR == 0.0f) 
+            // {
+            //     break;
+            // }
+
+            if (iter == 0) stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR_0);
+            stream
+                << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz)
+                << luisa::compute::synchronize();
+            // luisa::log_info("dot_rz = {}", dot_rz);
+            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
+            if (dot_rz == 0.0f) 
+            {
+                break;
+            }
         }
 
         stream 
@@ -690,18 +713,24 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     }
 
     stream 
+        << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
         << sim_data->sa_cgX.copy_to(host_sim_data->sa_cgX.data())
         << luisa::compute::synchronize();
 
-    constexpr bool print_energy = true; double curr_energy = 0.0;
+    constexpr bool print_energy = false; double curr_energy = 0.0;
     if constexpr (print_energy)
     {
         host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(sim_data->sa_x, sim_data->sa_x_tilde);
+        curr_energy = func_compute_energy(sim_data->sa_x);
     }
-    luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {}", 
+    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
+    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
+    {
+        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+    }
+    luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, host_infinity_norm(host_sim_data->sa_cgX), print_energy ? luisa::format("{:6.5f}", curr_energy) : ""
+        iter, normR / normR_0, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
     );
 }
 
@@ -709,7 +738,7 @@ void ConjugateGradientSolver::eigen_solve(
     const Eigen::SparseMatrix<float>& eigen_cgA, 
     Eigen::VectorXf& eigen_cgX,
     const Eigen::VectorXf& eigen_cgB, 
-    std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
+    std::function<double(const std::vector<float3>&)> func_compute_energy
 )
 {
     std::vector<float3>& host_x = host_sim_data->sa_x;
@@ -723,14 +752,6 @@ void ConjugateGradientSolver::eigen_solve(
             host_x[vid] = host_x_iter_start[vid] + alpha * host_cgX[vid];
         });
     };
-    auto fast_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
-    {
-        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::length(ptr[vid]);
-        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
-    };
-
     constexpr bool print_energy = true; double curr_energy = 0.0;
 
     auto eigen_iter_solve = [&]()
@@ -765,7 +786,7 @@ void ConjugateGradientSolver::eigen_solve(
             if constexpr (print_energy)
             {
                 host_apply_dx(1.0f);
-                curr_energy = func_compute_energy(host_sim_data->sa_x, host_sim_data->sa_x_tilde);
+                curr_energy = func_compute_energy(host_sim_data->sa_x);
             }
 
             luisa::log_info("  In non-linear iter {:2}, Eigen-PCG : iter-count = {}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
@@ -799,7 +820,7 @@ void ConjugateGradientSolver::eigen_solve(
             if constexpr (print_energy)
             {
                 host_apply_dx(1.0f);
-                curr_energy = func_compute_energy(host_sim_data->sa_x, host_sim_data->sa_x_tilde);
+                curr_energy = func_compute_energy(host_sim_data->sa_x);
             }
 
             luisa::log_info("  In non-linear iter {:2}, Eigen-Decompose : rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 

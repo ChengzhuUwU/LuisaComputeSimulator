@@ -9,6 +9,7 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include "Utils/reduce_helper.h"
+#include "luisa/core/basic_types.h"
 
 namespace lcsv // Data IO
 {
@@ -874,6 +875,104 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
             }
         };
     });
+
+    // SpMV
+    fn_atomic_add_spmv_vf = device.compile<1>(
+    [
+        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+    , &atomic_add_float3](
+        Var<BufferView<float3>> input_array, 
+        Var<BufferView<float3>> output_array
+    )
+    {
+        const Uint pair_idx = dispatch_x();
+        const auto& pair = narrowphase_list_vf->read(pair_idx);
+        const auto indices = CollisionPair::get_indices(pair);
+
+        Float3 input_vec[4] = {
+            input_array.read(indices[0]),
+            input_array.read(indices[1]),
+            input_array.read(indices[2]),
+            input_array.read(indices[3]),
+        }; 
+        Float3 output_vec[4] = {
+            make_float3(0.0f),
+            make_float3(0.0f),
+            make_float3(0.0f),
+            make_float3(0.0f),
+        }; 
+
+        const Float stiff = CollisionPair::get_vf_k2(pair);
+        const Float3 normal = CollisionPair::get_direction(pair);
+        const Float4 weight = CollisionPair::get_vf_weight(pair);
+        const Float3x3 xxT = stiff * outer_product(normal, normal);
+
+        for (uint j = 0; j < 4; j++)
+        {
+            for (uint jj = 0; jj < 4; jj++)
+            {
+                if (j != jj)
+                {
+                    Float3x3 hessian = weight[j] * weight[jj] * xxT;
+                    output_vec[j] += hessian * input_vec[jj];
+                }
+            }
+        }
+
+        atomic_add_float3(output_array, indices[0], output_vec[0]);
+        atomic_add_float3(output_array, indices[1], output_vec[1]);
+        atomic_add_float3(output_array, indices[2], output_vec[2]);
+        atomic_add_float3(output_array, indices[3], output_vec[3]); 
+    });
+
+    fn_atomic_add_spmv_ee = device.compile<1>(
+    [
+        narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
+    , &atomic_add_float3](
+        Var<BufferView<float3>> input_array, 
+        Var<BufferView<float3>> output_array
+    )
+    {
+        const Uint pair_idx = dispatch_x();
+        const auto& pair = narrowphase_list_ee->read(pair_idx);
+        const auto indices = CollisionPair::get_indices(pair);
+
+        Float3 input_vec[4] = {
+            input_array.read(indices[0]),
+            input_array.read(indices[1]),
+            input_array.read(indices[2]),
+            input_array.read(indices[3]),
+        }; 
+        Float3 output_vec[4] = {
+            make_float3(0.0f),
+            make_float3(0.0f),
+            make_float3(0.0f),
+            make_float3(0.0f),
+        }; 
+
+        const Float stiff = CollisionPair::get_vf_k2(pair);
+        const Float3 normal = CollisionPair::get_direction(pair);
+        const Float4 weight = CollisionPair::get_ee_weight(pair);
+        const Float3x3 xxT = stiff * outer_product(normal, normal);
+
+        for (uint j = 0; j < 4; j++)
+        {
+            for (uint jj = 0; jj < 4; jj++)
+            {
+                if (j != jj)
+                {
+                    Float3x3 hessian = weight[j] * weight[jj] * xxT;
+                    output_vec[j] += hessian * input_vec[jj];
+                }
+            }
+        }
+
+        atomic_add_float3(output_array, indices[0], output_vec[0]);
+        atomic_add_float3(output_array, indices[1], output_vec[1]);
+        atomic_add_float3(output_array, indices[2], output_vec[2]);
+        atomic_add_float3(output_array, indices[3], output_vec[3]); 
+    });
+    
 }
 
 void NarrowPhasesDetector::compute_repulsion_gradiant_hessian_and_assemble(luisa::compute::Stream& stream, 
@@ -981,6 +1080,18 @@ void NarrowPhasesDetector::host_spmv_repulsion(Stream& stream, const std::vector
         output_array[indices[2]] += output_vec[2];
         output_array[indices[3]] += output_vec[3];
     });
+}
+void NarrowPhasesDetector::device_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array)
+{
+    // Off-diag: Collision hessian
+    auto narrowphase_count = collision_data->narrow_phase_collision_count.view();
+    auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+    const uint num_vf = host_count[collision_data->get_vf_count_offset()];
+    const uint num_ee = host_count[collision_data->get_ee_count_offset()];
+
+    if (num_vf != 0) stream << fn_atomic_add_spmv_vf(input_array, output_array).dispatch(num_vf);
+    if (num_ee != 0) stream << fn_atomic_add_spmv_ee(input_array, output_array).dispatch(num_ee);
 }
 
 } // namespace lcsv

@@ -39,18 +39,18 @@ public:
     void host_solve(
         luisa::compute::Stream& stream, 
         std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
-        std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
+        std::function<double(const std::vector<float3>&)> func_compute_energy
     );
     void device_solve(
         luisa::compute::Stream& stream, 
         std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
-        std::function<double(const luisa::compute::Buffer<float3>&, const luisa::compute::Buffer<float3>&)> func_compute_energy
+        std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy
     );
     void eigen_solve(
         const Eigen::SparseMatrix<float>& eigen_cgA, 
         Eigen::VectorXf& eigen_cgX,
         const Eigen::VectorXf& eigen_cgB,
-        std::function<double(const std::vector<float3>&, const std::vector<float3>&)> func_compute_energy
+        std::function<double(const std::vector<float3>&)> func_compute_energy
     );
 
 private:
