@@ -25,6 +25,7 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_iter_start;
 
     // Energy
+    BufferType<float> sa_system_energy;
     BufferType<uint2> sa_stretch_springs;
     BufferType<float> sa_stretch_spring_rest_state_length;
     BufferType<uint3> sa_stretch_faces;

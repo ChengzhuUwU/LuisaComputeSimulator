@@ -3,6 +3,7 @@
 #include "Core/float_n.h"
 #include "SimulationCore/solver_interface.h"
 #include "LinearSolver/precond_cg.h"
+#include "luisa/runtime/buffer.h"
 #include "luisa/runtime/device.h"
 #include "luisa/runtime/stream.h"
 
@@ -45,14 +46,13 @@ private:
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
     void device_update_contact_list(luisa::compute::Stream& stream) ;
     void device_ccd_line_search(luisa::compute::Stream& stream);
-    float device_compute_contact_energy(luisa::compute::Stream& stream);
+    float device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
     // void device_line_search(luisa::compute::Stream& stream);
 
 private:
     void collision_detection(luisa::compute::Stream& stream);
     void predict_position(luisa::compute::Stream& stream);
     void update_velocity(luisa::compute::Stream& stream);
-    float device_compute_energy(luisa::compute::Stream& stream, const luisa::compute::BufferView<float3>& curr_x);
 
 private:
     template<typename... Args>

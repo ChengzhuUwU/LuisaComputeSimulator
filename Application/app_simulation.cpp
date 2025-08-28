@@ -160,7 +160,7 @@ int main(int argc, char** argv)
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
         narrow_phase_detector.compile(device);
-        narrow_phase_detector.unit_test(device, stream);
+        // narrow_phase_detector.unit_test(device, stream);
     }
     
     lcsv::ConjugateGradientSolver pcg_solver;

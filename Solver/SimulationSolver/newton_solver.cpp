@@ -12,6 +12,7 @@
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 #include "luisa/backends/ext/pinned_memory_ext.hpp"
+#include "luisa/runtime/buffer.h"
 #include "luisa/runtime/stream.h"
 #include <luisa/dsl/sugar.h>
 
@@ -823,7 +824,7 @@ void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
     
     device_narrowphase_ccd(stream);
 }
-float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream)
+float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x)
 {
     // stream << sim_data->sa_x.copy_from(sa_x.data());
     const float thickness = get_scene_params().thickness;
@@ -832,8 +833,8 @@ float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream
 
     mp_narrowphase_detector->reset_energy(stream);
     mp_narrowphase_detector->compute_penalty_energy_from_vf(stream, 
-        sim_data->sa_x, 
-        sim_data->sa_x, 
+        curr_x, 
+        curr_x, 
         mesh_data->sa_rest_x,
         mesh_data->sa_rest_x,
         mesh_data->sa_rest_vert_area,
@@ -842,8 +843,8 @@ float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream
         d_hat, thickness, kappa);
 
     mp_narrowphase_detector->compute_penalty_energy_from_ee(stream, 
-        sim_data->sa_x, 
-        sim_data->sa_x, 
+        curr_x, 
+        curr_x, 
         mesh_data->sa_rest_x,
         mesh_data->sa_rest_x,
         mesh_data->sa_rest_edge_area,
@@ -886,19 +887,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
             sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
         });
-        std::fill(host_mesh_data->sa_system_energy.begin(), host_mesh_data->sa_system_energy.end(), 0.0f);
     }
     
     std::vector<float3>& sa_cgX = host_sim_data->sa_cgX;
     std::vector<float3>& sa_cgB = host_sim_data->sa_cgB;
     std::vector<float3x3>& sa_cgA_diag = host_sim_data->sa_cgA_diag;
     std::vector<float3x3>& sa_cgA_offdiag = host_sim_data->sa_cgA_offdiag; // Row-major for simplier SpMV
- 
-    std::vector<float3x3>& sa_cgMinv = host_sim_data->sa_cgMinv;
-    std::vector<float3>& sa_cgP = host_sim_data->sa_cgP;
-    std::vector<float3>& sa_cgQ = host_sim_data->sa_cgQ;
-    std::vector<float3>& sa_cgR = host_sim_data->sa_cgR;
-    std::vector<float3>& sa_cgZ = host_sim_data->sa_cgZ;
 
     constexpr bool use_eigen = ConjugateGradientSolver::use_eigen;
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
@@ -1051,12 +1045,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         return toi; // 0.9f * toi
         // return 1.0f;
     };
-    auto compute_contact_energy = [&]() -> float
-    {
-        stream << sim_data->sa_x.copy_from(sa_x.data());
-
-        return device_compute_contact_energy(stream);
-    };
 
     // Solve
     auto simple_solve = [&]() 
@@ -1082,17 +1070,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     auto compute_energy_interface = [&](const std::vector<float3> &curr_x)
     {
-        // luisa::log_info(".   Start comput energy");
-        auto material_energy = host_compute_elastic_energy(curr_x);
-        // auto barrier_energy = On2_compute_barrier_energy();;
-        // auto barrier_energy = compute_barrier_energy();;
-        auto barrier_energy = compute_contact_energy();;
-        // auto barrier_energy = 0.0f;
-        luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        stream << sim_data->sa_x_tilde.copy_from(sa_x_tilde.data());
+        stream << sim_data->sa_x.copy_from(curr_x.data());
+        // auto material_energy = host_compute_elastic_energy(curr_x);
+        auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
+        auto barrier_energy = device_compute_contact_energy(stream, sim_data->sa_x);
+        // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
         if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
         if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
-
         return total_energy;
     };
     auto linear_solver_interface = [&]()
@@ -1115,14 +1101,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     
     // Init LBVH
     {
-        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
+        stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
+        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
         mp_lbvh_face->construct_tree(stream);
         mp_lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
-    for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
+    // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
         host_predict_position();
         
@@ -1247,7 +1233,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
            << sim_data->sa_x.copy_from(host_sim_data->sa_x_step_start.data())
            << sim_data->sa_v.copy_from(host_sim_data->sa_v_step_start.data())
         
-           << mp_buffer_filler->fill(device, mesh_data->sa_system_energy, 0.0f)
            << luisa::compute::synchronize();
     
     // const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
@@ -1273,29 +1258,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         stream << fn_apply_dx(alpha).dispatch(mesh_data->num_verts);
     };
-    auto host_dot = [](const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) -> float
-    {
-        return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(left_ptr[vid], right_ptr[vid]);
-        });
-    };
-    auto host_norm = [](const std::vector<float3>& ptr) -> float
-    {
-        float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::dot(ptr[vid], ptr[vid]);
-        });
-        return sqrt(tmp);
-    };
-    auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
-    {
-        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::length(ptr[vid]);
-        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
-    };
-    
+
     const float thickness = get_scene_params().thickness;
     const float d_hat = get_scene_params().d_hat;
     auto update_contact_set = [&]()
@@ -1312,11 +1275,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         device_ccd_line_search(stream);
         float toi = mp_narrowphase_detector->get_global_toi(stream);
         return toi; // 0.9f * toi
-    };
-    auto compute_contact_energy = [&]() -> float
-    {
-        // stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        return device_compute_contact_energy(stream);
     };
 
     const bool use_ipc = true;
@@ -1343,8 +1301,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
         auto material_energy = device_compute_elastic_energy(stream, curr_x);
-        auto barrier_energy = device_compute_contact_energy(stream);;
-        luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        auto barrier_energy = device_compute_contact_energy(stream, curr_x);;
+        // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
         if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
         if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
@@ -1353,19 +1311,19 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     // Init LBVH
     {
-        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x, mesh_data->sa_edges);
+        stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
+        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
         mp_lbvh_face->construct_tree(stream);
         mp_lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
-    for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
+    // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
         // host_predict_position();
         stream 
             << fn_predict_position(substep_dt).dispatch(num_verts)
-            << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
+            // << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
             << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
             << luisa::compute::synchronize();
         
@@ -1496,13 +1454,5 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     });
     lcsv::SolverInterface::physics_step_post_operation(); 
 }
-
-float NewtonSolver::device_compute_energy(luisa::compute::Stream& stream, const luisa::compute::BufferView<float3>& curr_x)
-{
-    
-    // luisa::log_info("    Energy {} = inertia {} + stretch {}", energy_inertia + energy_spring, energy_inertia, energy_spring);
-    // return energy_inertia + energy_spring;
-    return 0.0f;
-};
 
 } // namespace lcsv

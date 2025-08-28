@@ -511,7 +511,6 @@ void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::comp
            << sim_data->sa_v.copy_from(host_sim_data->sa_v.data())
            << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x.data())
            << sim_data->sa_v_step_start.copy_from(host_sim_data->sa_v.data())
-           << mp_buffer_filler->fill(device, mesh_data->sa_system_energy, 0.0f)
            << luisa::compute::synchronize();
     
     // const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
@@ -564,7 +563,6 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
         host_sim_data->sa_v_step_start[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
-    std::fill(host_mesh_data->sa_system_energy.begin(), host_mesh_data->sa_system_energy.end(), 0.0f);
     
     const uint num_substep = lcsv::get_scene_params().num_substep;
     const uint nonlinear_iter_count = lcsv::get_scene_params().nonlinear_iter_count;

@@ -481,7 +481,7 @@ void ConjugateGradientSolver::host_solve(
         });
     };
 
-    auto& sa_convergence = host_mesh_data->sa_pcg_convergence;
+    auto& sa_convergence = host_sim_data->sa_convergence;
     std::fill(sa_convergence.begin(), sa_convergence.end(), 0.0f);
 
     // func_spmv(sa_cgX, sa_cgQ);

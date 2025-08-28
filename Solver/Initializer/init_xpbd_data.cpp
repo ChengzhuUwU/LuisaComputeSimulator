@@ -35,6 +35,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
 
     // Init energy
     {
+        xpbd_data->sa_system_energy.resize(10240);
         // Rest spring length
         xpbd_data->sa_stretch_springs.resize(num_stretch_springs);
         xpbd_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
@@ -344,6 +345,7 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_x_step_start, input_data->sa_x_step_start)
         << upload_buffer(device, output_data->sa_x_iter_start, input_data->sa_x_iter_start)
 
+        << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy)
         << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
         << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
         << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)

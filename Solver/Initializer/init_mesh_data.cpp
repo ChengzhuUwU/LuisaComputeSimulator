@@ -451,9 +451,6 @@ void init_mesh_data(
 
         mesh_data->sa_x_frame_saved.resize(num_verts); mesh_data->sa_x_frame_saved = mesh_data->sa_rest_x;
         mesh_data->sa_v_frame_saved.resize(num_verts); mesh_data->sa_v_frame_saved = mesh_data->sa_rest_v;
-
-        mesh_data->sa_system_energy.resize(10240);
-        mesh_data->sa_pcg_convergence.resize(10240);
     }
     
 }
@@ -507,8 +504,6 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->edge_adj_faces, input_data->edge_adj_faces) 
         << upload_buffer(device, output_data->face_adj_edges, input_data->face_adj_edges) 
         << upload_buffer(device, output_data->face_adj_faces, input_data->face_adj_faces) 
-        << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy) 
-        << upload_buffer(device, output_data->sa_pcg_convergence, input_data->sa_pcg_convergence) 
         << luisa::compute::synchronize();
 }
 

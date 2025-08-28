@@ -87,8 +87,6 @@ struct MeshData : SimulationType
     BufferType<uint3> face_adj_faces;
 
     // Other
-    BufferType<float> sa_system_energy;
-    BufferType<float> sa_pcg_convergence;
 
     // Host only
     std::vector<float3> sa_x_frame_saved;
