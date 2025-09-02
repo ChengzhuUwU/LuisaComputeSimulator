@@ -66,10 +66,10 @@ private:
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity; // const Float substep_dt, const Bool fix_scene, const Float damping
     luisa::compute::Shader<1, float> fn_evaluate_inertia; // Float substep_dt
     luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision; // Float substep_dt
-    luisa::compute::Shader<1, float, uint> fn_evaluate_spring; // Float stiffness_stretch, Uint cluster_idx
+    luisa::compute::Shader<1, float> fn_evaluate_spring; // Float stiffness_stretch
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag ;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, uint> fn_pcg_spmv_offdiag;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag;
 
     luisa::compute::Shader<1, float> fn_apply_dx;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;;

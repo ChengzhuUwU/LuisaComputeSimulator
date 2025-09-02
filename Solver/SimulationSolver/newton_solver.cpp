@@ -19,15 +19,33 @@
 namespace lcsv 
 {
 
-template<typename T>
-void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
-{
-    buffer->write(dest, buffer->read(dest) + value);
-}
+// template<typename T>
+// void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
+// {
+//     buffer->write(dest, buffer->read(dest) + value);
+// }
 template<typename T>
 void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
+}
+void atomic_buffer_add(Var<luisa::compute::BufferView<float3>>& buffer, const Var<uint> dest, const Var<float3>& value)
+{
+    buffer->atomic(dest)[0].fetch_add(value[0]);
+    buffer->atomic(dest)[1].fetch_add(value[1]);
+    buffer->atomic(dest)[2].fetch_add(value[2]);
+}
+void atomic_buffer_add(Var<luisa::compute::BufferView<float3x3>>& buffer, const Var<uint> dest, const Var<float3x3>& value)
+{
+    buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
+    buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
+    buffer->atomic(dest)[0][2].fetch_add(value[0][2]);
+    buffer->atomic(dest)[1][0].fetch_add(value[1][0]);
+    buffer->atomic(dest)[1][1].fetch_add(value[1][1]);
+    buffer->atomic(dest)[1][2].fetch_add(value[1][2]);
+    buffer->atomic(dest)[2][0].fetch_add(value[2][0]);
+    buffer->atomic(dest)[2][1].fetch_add(value[2][1]);
+    buffer->atomic(dest)[2][2].fetch_add(value[2][2]);
 }
 
 void NewtonSolver::compile(luisa::compute::Device& device)
@@ -208,14 +226,16 @@ void NewtonSolver::compile(luisa::compute::Device& device)
             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
             sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
             culster = sim_data->sa_prefix_merged_springs.view(),
-            sa_edges = sim_data->sa_merged_stretch_springs.view(),
-            sa_rest_length = sim_data->sa_merged_stretch_spring_rest_length.view()
-        ](const Float stiffness_stretch, const Uint curr_prefix)
+            sa_edges = sim_data->sa_stretch_springs.view(),
+            sa_rest_length = sim_data->sa_stretch_spring_rest_state_length.view()
+            // sa_edges = sim_data->sa_merged_stretch_springs.view(),
+            // sa_rest_length = sim_data->sa_merged_stretch_spring_rest_length.view()
+        ](const Float stiffness_stretch)
     {
         // const Uint curr_prefix = culster->read(cluster_idx);
-        const UInt eid = curr_prefix + dispatch_id().x;
+        // const UInt eid = curr_prefix + dispatch_id().x;
 
-        // const UInt eid = dispatch_id().x;
+        const UInt eid = dispatch_id().x;
         UInt2 edge = sa_edges->read(eid);
 
         Float3 vert_pos[2] = { sa_x->read(edge.x), sa_x->read(edge.y) };
@@ -239,12 +259,36 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         force[1] = -force[0];
         He = stiffness_spring * x_squared_inv * xxT + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
 
-        buffer_add(sa_cgB, edge[0], force[0]);
-        buffer_add(sa_cgB, edge[1], force[1]);
-        buffer_add(sa_cgA_diag, edge[0], He);
-        buffer_add(sa_cgA_diag, edge[1], He);
-        buffer_add(sa_cgA_offdiag, eid * 2 + 0, -1.0f * He);
-        buffer_add(sa_cgA_offdiag, eid * 2 + 1, -1.0f * He);
+        #pragma unroll
+        for (uint j = 0; j < 2; j++)
+        {
+            #pragma unroll
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
+            }
+        }
+
+        #pragma unroll
+        for (uint j = 0; j < 2; j++)
+        {
+            #pragma unroll
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                #pragma unroll
+                for (uint jj = 0; jj < 3; jj++)
+                {
+                    sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(He[ii][jj]);
+                    // sa_cgB->atomic(edge[ii])[jj].fetch_add(force[ii][jj]);
+                }
+            }
+        }
+        // atomic_buffer_add(sa_cgB, edge[0], force[0]);
+        // atomic_buffer_add(sa_cgB, edge[1], force[1]);
+        // atomic_buffer_add(sa_cgA_diag, edge[0], He);
+        // atomic_buffer_add(sa_cgA_diag, edge[1], He);
+        sa_cgA_offdiag->write(eid * 2 + 0, -1.0f * He); // eid * 2 + 0, -1.0f * He);
+        sa_cgA_offdiag->write(eid * 2 + 1, -1.0f * He); // eid * 2 + 1, -1.0f * He);
     }, default_option);
 
     // SpMV
@@ -266,20 +310,16 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
     fn_pcg_spmv_offdiag = device.compile<1>(
         [
-            sa_edges = sim_data->sa_merged_stretch_springs.view(),
+            sa_stretch_springs = sim_data->sa_stretch_springs.view(),
             sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view(),
             culster = sim_data->sa_prefix_merged_springs.view()
         ](
             Var<luisa::compute::BufferView<float3>> sa_input_vec, 
-            Var<luisa::compute::BufferView<float3>> sa_output_vec,
-            const Uint curr_prefix
+            Var<luisa::compute::BufferView<float3>> sa_output_vec
         )
     {
-        // const Uint curr_prefix = culster->read(cluster_idx);
-        const UInt eid = curr_prefix + dispatch_id().x;
-
-        // const UInt eid = dispatch_id().x;
-        UInt2 edge = sa_edges->read(eid);
+        const UInt eid = dispatch_id().x;
+        UInt2 edge = sa_stretch_springs->read(eid);
         Float3x3 offdiag_hessian1 = sa_cgA_offdiag->read(2 * eid + 0);
         Float3x3 offdiag_hessian2 = sa_cgA_offdiag->read(2 * eid + 1);
 
@@ -289,8 +329,10 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         Float3 output1 = offdiag_hessian1 * input1;
         Float3 output2 = offdiag_hessian2 * input2;
 
-        buffer_add(sa_output_vec, edge[0], output1);
-        buffer_add(sa_output_vec, edge[1], output2);
+        atomic_buffer_add(sa_output_vec, edge[0], output1);
+        atomic_buffer_add(sa_output_vec, edge[1], output2);
+        // buffer_add(sa_output_vec, edge[0], output1);
+        // buffer_add(sa_output_vec, edge[1], output2);
     }, default_option);
 
     // Line search
@@ -309,7 +351,8 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
             $if (index == 0)
             {
-                buffer_add(sa_convergence, 7, energy);
+                sa_convergence->atomic(7).fetch_add(energy);
+                // buffer_add(sa_convergence, 7, energy);
             };
         }
     );
@@ -1288,14 +1331,9 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         stream 
             << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(num_verts);
 
-        auto& culster = host_sim_data->sa_prefix_merged_springs;
-        for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
-        {
-            const uint curr_prefix = culster[cluster_idx];
-            const uint next_prefix = culster[cluster_idx + 1];
-            const uint num_elements_clustered = next_prefix - curr_prefix;
-            stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr, curr_prefix).dispatch(num_elements_clustered);
-        }
+        
+        stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr).dispatch(host_sim_data->sa_stretch_springs.size());
+        
         mp_narrowphase_detector->device_spmv(stream, input_ptr, output_ptr);
     };
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
@@ -1346,13 +1384,13 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 
                 stream << fn_evaluate_ground_collision(get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(num_verts);
     
-                auto& culster = host_sim_data->sa_prefix_merged_springs;
-                for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+                // auto& culster = host_sim_data->sa_prefix_merged_springs;
+                // for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
                 {
-                    const uint curr_prefix = culster[cluster_idx];
-                    const uint next_prefix = culster[cluster_idx + 1];
-                    const uint num_elements_clustered = next_prefix - curr_prefix;
-                    stream << fn_evaluate_spring(1e4, curr_prefix).dispatch(num_elements_clustered);
+                    // const uint curr_prefix = culster[cluster_idx];
+                    // const uint next_prefix = culster[cluster_idx + 1];
+                    // const uint num_elements_clustered = next_prefix - curr_prefix;
+                    stream << fn_evaluate_spring(1e4).dispatch(host_sim_data->sa_stretch_springs.size());
                 }
                 
                 update_contact_set();
@@ -1434,7 +1472,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start) << luisa::compute::synchronize();
         }
-        host_update_velocity();
+        stream << fn_update_velocity(substep_dt, get_scene_params().fix_scene, get_scene_params().damping_cloth).dispatch(num_verts);
     }
 
     stream << luisa::compute::synchronize();
