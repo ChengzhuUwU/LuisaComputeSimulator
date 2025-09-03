@@ -515,7 +515,8 @@ void ConjugateGradientSolver::host_solve(
 
         if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
         // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
-        if (dot_rz == 0.0f) 
+        // if (dot_rz == 0.0f) 
+        if (dot_rz < 1e-8) 
         {
             break;
         }
@@ -571,6 +572,39 @@ void ConjugateGradientSolver::host_solve(
         pcg_step(alpha);   
     }
     */
+
+    /*
+    auto eigen_pcg = [&](const EigenFloat12x12& A, const EigenFloat12& b)
+    {
+        uint n = A.cols();
+        EigenFloat12 x = EigenFloat12::Zero();
+        EigenFloat12 r = b - A * x;
+        EigenFloat12x12 diagA = EigenFloat12x12::Zero(); diagA.diagonal() = A.diagonal();
+        EigenFloat12x12 M_inv = diagA.inverse();
+        EigenFloat12 z = M_inv * r;
+        EigenFloat12 p = z;
+        float rz_old = r.dot(z);
+        for (uint iter = 0; iter < 100; iter++)
+        {
+            EigenFloat12 Ap = A * p;
+            float alpha = rz_old / (p.dot(Ap));
+            x += alpha * p;
+            r -= alpha * Ap; 
+            if (r.norm() < 1e-8)
+            {
+                break;
+            }
+            auto z = M_inv * r;
+            auto rz_new = (r.dot(z)); std::cout << rz_new << " ";
+            auto beta = rz_new / rz_old;
+            p = z + beta * p;
+            rz_old = rz_new;
+        }
+        std::cout << std::endl;
+        return x;
+    };
+    */
+
 }
 void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     luisa::compute::Stream& stream, 
@@ -677,7 +711,8 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
                 << luisa::compute::synchronize();
             // luisa::log_info("dot_rz = {}", dot_rz);
             if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
-            if (dot_rz == 0.0f) 
+            // if (dot_rz == 0.0f) 
+            if (dot_rz < 1e-8) 
             {
                 break;
             }
