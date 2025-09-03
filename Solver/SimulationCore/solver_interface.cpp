@@ -246,12 +246,25 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         const std::vector<float3>& sa_x, 
         const std::vector<float3>& sa_x_tilde,
         const std::vector<float> sa_vert_mass, 
-        const float substep_dt)
+        const std::vector<uint> sa_is_fixed, 
+        const float substep_dt, const float stiffness_dirichlet)
     {
+        const float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
         float3 x_new = sa_x[vid];
         float3 x_tilde = sa_x_tilde[vid];
         float mass = sa_vert_mass[vid];
-        return length_squared_vec(x_new - x_tilde) * mass / (2 * substep_dt * substep_dt);
+        bool is_fixed = sa_is_fixed[vid];
+        float energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);;
+        if (is_fixed)
+        {
+            // Dirichlet boundary
+            // return squared_inv_dt * stiffness_dirichlet * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+            // energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
+        }
+        else 
+        {
+        }
+        return energy;
     };
     auto compute_energy_goundcollision = [](
         const uint vid, 
@@ -305,7 +318,10 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             curr_x, 
             host_sim_data->sa_x_tilde, 
             host_mesh_data->sa_vert_mass, 
-            get_scene_params().get_substep_dt());
+            host_mesh_data->sa_is_fixed,
+            get_scene_params().get_substep_dt(),
+            get_scene_params().stiffness_dirichlet
+        );
     });
     double energy_goundcollision = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
     {
@@ -348,10 +364,12 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
         [
             sa_x_tilde = sim_data->sa_x_tilde.view(),
             sa_vert_mass = mesh_data->sa_vert_mass.view(),
+            sa_is_fixed = mesh_data->sa_is_fixed.view(),
             sa_system_energy = sim_data->sa_system_energy.view()
         ](
             Var<BufferView<float3>> sa_x, 
-            Float substep_dt
+            Float substep_dt,
+            Float stiffness_dirichlet
         )
     {
         const Uint vid = dispatch_id().x;
@@ -362,7 +380,18 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             Float3 x_new = sa_x->read(vid);
             Float3 x_tilde = sa_x_tilde->read(vid);
             Float mass = sa_vert_mass->read(vid);
-            energy = length_squared_vec(x_new - x_tilde) * mass / (2.0f * substep_dt * substep_dt);
+            Bool is_fixed = sa_is_fixed->read(vid);
+            const Float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
+            energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+            $if (is_fixed)
+            {
+                // energy = squared_inv_dt * stiffness_dirichlet * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+                // energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
+            }
+            $else
+            {
+                
+            };
         };
 
         energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -447,7 +476,7 @@ double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& st
 {
     stream 
         << fn_reset_float(sim_data->sa_system_energy).dispatch(8)
-        << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt()).dispatch(mesh_data->num_verts)
+        << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet).dispatch(mesh_data->num_verts)
         << fn_calc_energy_ground_collision(curr_x, get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(mesh_data->num_verts)
         << fn_calc_energy_spring(curr_x, 1e4f).dispatch(host_sim_data->sa_stretch_springs.size())
         ;

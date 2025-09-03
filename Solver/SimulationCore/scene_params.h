@@ -123,6 +123,7 @@ struct SceneParams
     float stiffness_quadratic_bending = 0.05f;
     float stiffness_DAB_bending = stiffness_quadratic_bending;
     float stiffness_collision = 1e7;
+    float stiffness_dirichlet = 1e9;
 
     // Balloon constraint
     float balloon_scale_rate = 1.0f; 

@@ -34,6 +34,7 @@ private:
     void host_update_velocity();
     void host_evaluate_inertia() ;
     void host_evaluate_ground_collision();
+    void host_evaluate_dirichlet();
     void host_reset_off_diag();
     void host_reset_cgB_cgX_diagA();
     void host_evaluete_spring();
@@ -65,6 +66,7 @@ private:
     luisa::compute::Shader<1, float> fn_predict_position ; // const Float substep_dt
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity; // const Float substep_dt, const Bool fix_scene, const Float damping
     luisa::compute::Shader<1, float> fn_evaluate_inertia; // Float substep_dt
+    luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet; // Float substep_dt, stiffness_dirichlet
     luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision; // Float substep_dt
     luisa::compute::Shader<1, float> fn_evaluate_spring; // Float stiffness_stretch
 

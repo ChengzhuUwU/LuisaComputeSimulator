@@ -104,7 +104,8 @@ private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, // sa_x
-        float // substep_dt
+        float, // substep_dt
+        float // stiffness_dirichlet
         > fn_calc_energy_inertia; 
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, // sa_x
