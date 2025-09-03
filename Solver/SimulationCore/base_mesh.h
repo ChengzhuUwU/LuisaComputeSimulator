@@ -92,6 +92,7 @@ struct MeshData : SimulationType
     std::vector<float3> sa_x_frame_saved;
     std::vector<float3> sa_v_frame_saved;
     std::vector<float3> sa_x_frame_outer;
+    std::vector<float3> sa_x_frame_outer_next;
     std::vector<float3> sa_v_frame_outer;
 
     std::vector<uint> prefix_num_verts;

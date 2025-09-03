@@ -20,6 +20,7 @@
 #include "Initializer/init_mesh_data.h"
 #include "Initializer/init_xpbd_data.h"
 #include "app_simulation_demo_config.h"
+#include "luisa/core/basic_types.h"
 #include "polyscope/volume_grid.h"
 
 #include <polyscope/polyscope.h>
@@ -204,8 +205,43 @@ int main(int argc, char** argv)
 
     auto fn_physics_step = [&]()
     {
+        auto fn_rotate = [](const lcsv::Initializer::FixedPointInfo& fixed_point, const float time, const lcsv::float3& pos)
+        {
+            const float rotAngRad = time * fixed_point.rotAngVelDeg / 180.0f * float(lcsv::Pi);
+            const Eigen::Vector3f rotAxis(
+                fixed_point.rotAxis[0],
+                fixed_point.rotAxis[1],
+                fixed_point.rotAxis[2]);
+            const Eigen::Vector3f rotCenter(
+                fixed_point.rotCenter[0],
+                fixed_point.rotCenter[1],
+                fixed_point.rotCenter[2]);
+            const Eigen::Matrix3f rotMtr = Eigen::AngleAxisf(rotAngRad, rotAxis.normalized()).toRotationMatrix();
+            Eigen::Vector3f relative_vec(
+                pos[0] - rotCenter[0],
+                pos[1] - rotCenter[1],
+                pos[2] - rotCenter[2]);
+            Eigen::Vector3f rotx = rotMtr * relative_vec;
+            return lcsv::float3{
+                rotx[0] + rotCenter[0],
+                rotx[1] + rotCenter[1],
+                rotx[2] + rotCenter[2],
+            };
+        };
         auto fn_fixed_point_animation = [&](const uint curr_frame)
         {
+            const float h = lcsv::get_scene_params().implicit_dt;
+
+            CpuParallel::parallel_for(0, host_mesh_data.num_verts, [&](const uint vid)
+            {
+                if (host_mesh_data.sa_is_fixed[vid])
+                {
+                    host_mesh_data.sa_x_frame_outer[vid] = host_mesh_data.sa_rest_x[vid];
+                    host_mesh_data.sa_x_frame_outer_next[vid] = host_mesh_data.sa_rest_x[vid];
+                    host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
+                }
+            });
+
             // Animation for fixed points
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
@@ -220,29 +256,21 @@ int main(int argc, char** argv)
                         CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
                         {
                             const uint vid = fixed_point_verts[index];
-                            auto& pos = host_mesh_data.sa_x_frame_outer[vid];
+                            auto& orig_pos = host_mesh_data.sa_x_frame_outer[vid];
                             {
                                 // Rotate
-                                const float h = lcsv::get_scene_params().implicit_dt;
-                                const float rotAngRad = curr_frame * fixed_point.rotAngVelDeg / 180.0f * float(lcsv::Pi) * h;
-                                const Eigen::Vector3d rotAxis(
-                                    fixed_point.rotAxis[0],
-                                    fixed_point.rotAxis[1],
-                                    fixed_point.rotAxis[2]);
-                                const Eigen::Vector3d rotCenter(
-                                    fixed_point.rotCenter[0],
-                                    fixed_point.rotCenter[1],
-                                    fixed_point.rotCenter[2]);
-                                const Eigen::Matrix3d rotMtr = Eigen::AngleAxisd(rotAngRad, rotAxis.normalized()).toRotationMatrix();
-                                Eigen::Vector3d relative_vec(
-                                    pos[0] - rotCenter[0],
-                                    pos[1] - rotCenter[1],
-                                    pos[2] - rotCenter[2]);
-                                Eigen::Vector3d rotx = rotMtr * relative_vec;
-                                pos[0] = rotx[0] + rotCenter[0];
-                                pos[1] = rotx[1] + rotCenter[1];
-                                pos[2] = rotx[2] + rotCenter[2];
-                            }
+                                const float rotAngRad = curr_frame * h;
+                                const float start_time = curr_frame == 0 ? 0 : (curr_frame - 1) * h;
+                                const float end_time = curr_frame * h;
+                                auto bg = fn_rotate(fixed_point, start_time, orig_pos);
+                                auto ed = fn_rotate(fixed_point, end_time, orig_pos);
+                                // host_mesh_data.sa_x_frame_outer[vid] = bg;
+                                // host_mesh_data.sa_x_frame_outer_next[vid] = ed;
+                                // host_mesh_data.sa_v_frame_outer[vid] = (ed - bg) / h;
+                                host_mesh_data.sa_x_frame_outer[vid] = ed;
+                                host_mesh_data.sa_x_frame_outer_next[vid] = ed;
+                                host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
+                            }                            
                         });
                     }
                 }

@@ -2,6 +2,7 @@
 #include "Core/constant_value.h"
 #include "Core/float_n.h"
 #include "SimulationCore/scene_params.h"
+#include "luisa/core/basic_types.h"
 
 namespace Demo::Simulation
 {
@@ -28,7 +29,10 @@ void ccd_vf_unit_case(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
             },
         }
     });
-    lcsv::get_scene_params().load_state_frame = 6;
+
+    
+    lcsv::get_scene_params().use_floor = false;
+    lcsv::get_scene_params().load_state_frame = 165;
     lcsv::get_scene_params().implicit_dt = 0.05;;
     lcsv::get_scene_params().num_substep = 1;
     lcsv::get_scene_params().nonlinear_iter_count = 1;
@@ -139,6 +143,7 @@ void ccd_cloth_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
         }
     });
     lcsv::get_scene_params().load_state_frame = 4;
+    lcsv::get_scene_params().use_floor = false;
 
     // lcsv::get_scene_params().implicit_dt = 1.0/500.0;
     lcsv::get_scene_params().num_substep = 1;
@@ -295,15 +300,17 @@ void ccd_rotation_cylinder(std::vector<lcsv::Initializer::ShellInfo>& shell_list
             }
         }
     });
-    lcsv::get_scene_params().nonlinear_iter_count = 100;
+    lcsv::get_scene_params().pcg_iter_count = 500;;
+    lcsv::get_scene_params().nonlinear_iter_count = 6;
     lcsv::get_scene_params().use_ccd_linesearch = true;
     lcsv::get_scene_params().use_energy_linesearch = true;
-    
+    lcsv::get_scene_params().gravity = luisa::make_float3(0.0f);
+    lcsv::get_scene_params().use_floor = false;
 }
 void load_scene(std::vector<lcsv::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
-        9
+        3
     ;
 
     switch (case_number)

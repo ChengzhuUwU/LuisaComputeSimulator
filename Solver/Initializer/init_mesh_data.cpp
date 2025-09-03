@@ -4,6 +4,7 @@
 #include "Energy/bending_energy.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
+#include "Utils/cpu_parallel.h"
 #include <algorithm>
 #include <numeric>
 
@@ -446,11 +447,24 @@ void init_mesh_data(
 
     // Init vert status
     {
-        mesh_data->sa_x_frame_outer.resize(num_verts); mesh_data->sa_x_frame_outer = mesh_data->sa_rest_x;
-        mesh_data->sa_v_frame_outer.resize(num_verts); mesh_data->sa_v_frame_outer = mesh_data->sa_rest_v;
-
+        mesh_data->sa_x_frame_outer_next.resize(num_verts);
+        mesh_data->sa_x_frame_outer.resize(num_verts);
+        mesh_data->sa_v_frame_outer.resize(num_verts);
+        
         mesh_data->sa_x_frame_saved.resize(num_verts); mesh_data->sa_x_frame_saved = mesh_data->sa_rest_x;
         mesh_data->sa_v_frame_saved.resize(num_verts); mesh_data->sa_v_frame_saved = mesh_data->sa_rest_v;
+
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            const float3 rest_x = mesh_data->sa_rest_x[vid];
+            const float3 rest_v = mesh_data->sa_rest_v[vid];
+
+            mesh_data->sa_x_frame_outer_next[vid] = rest_x;
+            mesh_data->sa_x_frame_outer[vid] = rest_x;
+            mesh_data->sa_v_frame_outer[vid] = rest_v;
+            mesh_data->sa_x_frame_saved[vid] = rest_x;
+            mesh_data->sa_v_frame_saved[vid] = rest_v;
+        });
     }
     
 }
