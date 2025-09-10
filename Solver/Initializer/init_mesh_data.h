@@ -13,13 +13,13 @@ struct FixedPointInfo
 {
     IsFixedPointFunc is_fixed_point_func;
     bool use_translate = false;
-    float3 translate;
+    float3 translate = luisa::make_float3(0.0f);
     bool use_scale = false;
-    float3 scale;
+    float3 scale = luisa::make_float3(1.0f);
     bool use_rotate = false;
     float3 rotCenter;
     float3 rotAxis;
-    float rotAngVelDeg;
+    float rotAngVelDeg = 0.0f;
     std::vector<uint> fixed_point_verts; 
 };
 enum ShellType
