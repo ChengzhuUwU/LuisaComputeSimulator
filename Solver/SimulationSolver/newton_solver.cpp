@@ -212,12 +212,12 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 
             Float3 x_k = sa_x->read(vid);
             Float3 x_tilde = sa_x_tilde->read(vid);
-            Float3 gradient = stiffness_dirichlet * (x_k - x_tilde);
-            Float3x3 hessian = stiffness_dirichlet * make_float3x3(1.0f);
-            // Float mass = sa_vert_mass->read(vid);
-            // Float3 gradient = h_2_inv * stiffness_dirichlet * mass * (x_k - x_tilde);
-            // Float3x3 hessian = h_2_inv * stiffness_dirichlet * mass * make_float3x3(1.0f);
-            sa_cgB->write(vid, sa_cgB->read(vid) + gradient); 
+            // Float3 gradient = stiffness_dirichlet * (x_k - x_tilde);
+            // Float3x3 hessian = stiffness_dirichlet * make_float3x3(1.0f);
+            Float mass = sa_vert_mass->read(vid);
+            Float3 gradient  = stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
+            Float3x3 hessian = stiffness_dirichlet * h_2_inv * mass * make_float3x3(1.0f);
+            sa_cgB->write(vid, sa_cgB->read(vid) - gradient); 
             sa_cgA_diag->write(vid, sa_cgA_diag->read(vid) + hessian);
         };
     }, default_option);
@@ -303,23 +303,18 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         force[1] = -force[0];
         He = stiffness_spring * x_squared_inv * xxT + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
 
-        #pragma unroll
         for (uint j = 0; j < 2; j++)
         {
-            #pragma unroll
             for (uint ii = 0; ii < 3; ii++)
             {
                 sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
             }
         }
 
-        #pragma unroll
         for (uint j = 0; j < 2; j++)
         {
-            #pragma unroll
             for (uint ii = 0; ii < 3; ii++)
             {
-                #pragma unroll
                 for (uint jj = 0; jj < 3; jj++)
                 {
                     sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(He[ii][jj]);
@@ -428,6 +423,11 @@ void NewtonSolver::compile(luisa::compute::Device& device)
 }
 
 // Host functions
+// Outputs:
+//          sa_x_iter_start
+//          sa_x_tilde
+//          sa_x
+//          sa_cgX
 void NewtonSolver::host_predict_position()
 {
     CpuParallel::parallel_for(0, host_mesh_data->num_verts, 
@@ -547,7 +547,7 @@ void NewtonSolver::host_evaluate_inertia()
         // float3 v_0 = sa_v[vid];
 
         float mass = sa_vert_mass[vid];
-        float3 gradient = -mass * h_2_inv * (x_k - x_tilde) ; // !should not add gravity
+        float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
         float3x3 hessian = luisa::make_float3x3(1.0f) * mass * h_2_inv;
 
         // if (sa_is_fixed[vid])
@@ -584,14 +584,15 @@ void NewtonSolver::host_evaluate_dirichlet()
 
             float3 x_k = sa_x[vid];
             float3 x_tilde = sa_x_tilde[vid];
-            float3 gradient = stiffness_dirichlet * (x_k - x_tilde);
-            float3x3 hessian = stiffness_dirichlet * luisa::make_float3x3(1.0f);
-            // float mass = sa_vert_mass[vid];
-            // float3 gradient = h_2_inv * stiffness_dirichlet * mass * (x_k - x_tilde);
-            // float3x3 hessian = h_2_inv * stiffness_dirichlet * mass * luisa::make_float3x3(1.0f);
-            sa_cgB[vid] += gradient;
-            sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
-            // sa_cgA_diag[vid] = sa_cgA_diag[vid] + 1e9f * luisa::make_float3x3(1.0f);
+            // float3 gradient = -stiffness_dirichlet * (x_k - x_tilde);
+            // float3x3 hessian = stiffness_dirichlet * luisa::make_float3x3(1.0f);
+            float mass = sa_vert_mass[vid];
+            float3 gradient =  stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
+            float3x3 hessian = stiffness_dirichlet * h_2_inv * mass * luisa::make_float3x3(1.0f);
+            sa_cgB[vid] = -gradient;
+            sa_cgA_diag[vid] = hessian;
+            // sa_cgB[vid] = sa_cgB[vid] + gradient;
+            // sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
         };
     });
 }
@@ -689,7 +690,8 @@ void NewtonSolver::host_evaluete_spring()
                 sa_cgB = host_sim_data->sa_cgB.data(),
                 sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
                 sa_cgA_offdiag = host_sim_data->sa_cgA_offdiag.data(),
-            curr_prefix, stiffness_stretch = 1e4f](const uint index)
+                curr_prefix, stiffness_stretch = 1e4f
+            ](const uint index)
         {
             // const uint eid = culster[curr_prefix + index];
             const uint eid = curr_prefix + index;
@@ -977,6 +979,88 @@ float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream
     return mp_narrowphase_detector->download_energy(stream);
     // return 0.0f;
 }
+void NewtonSolver::device_SpMV(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr)
+{
+    stream 
+        << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(input_ptr.size());
+
+    stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr).dispatch(host_sim_data->sa_stretch_springs.size());
+    
+    mp_narrowphase_detector->device_spmv(stream, input_ptr, output_ptr);
+}
+
+void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr)
+{
+    constexpr bool use_eigen = ConjugateGradientSolver::use_eigen;
+    constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
+
+    // Diag
+    CpuParallel::parallel_for(0, input_ptr.size(), [&](const uint vid)
+    {
+        float3x3 A_diag = host_sim_data->sa_cgA_diag[vid];
+        float3 input_vec = input_ptr[vid];
+        float3 diag_output = A_diag * input_vec;
+        output_ptr[vid] = diag_output;
+    });
+    // Off-diag: Material energy hessian
+    if constexpr (use_upper_triangle)
+    {
+        auto& cluster = host_sim_data->sa_clusterd_hessian_pairs;
+        auto& sa_hessian_set = host_sim_data->sa_hessian_pairs;
+        
+        for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_hessian_pairs; cluster_idx++) 
+        {
+            const uint curr_prefix = cluster[cluster_idx];
+            const uint next_prefix = cluster[cluster_idx + 1];
+            const uint num_elements_clustered = next_prefix - curr_prefix;
+
+            CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
+            {
+                const uint pair_idx = cluster[curr_prefix + index];
+                const uint2 pair = sa_hessian_set[pair_idx];
+                float3x3 offdiag_hessian = host_sim_data->sa_cgA_offdiag[pair_idx];
+                float3 output_vec0 = offdiag_hessian * input_ptr[pair[1]];
+                float3 output_vec1 = luisa::transpose(offdiag_hessian) * input_ptr[pair[0]];
+                output_ptr[pair[0]] += output_vec0;
+                output_ptr[pair[1]] += output_vec1;
+            });
+        }
+    }
+    else
+    {
+        // Hessian free
+        // auto& sa_edges = host_mesh_data->sa_edges;
+        // auto& cluster = host_xpbd_data->sa_clusterd_springs;
+
+        auto& sa_edges = host_sim_data->sa_merged_stretch_springs;
+        auto& cluster = host_sim_data->sa_prefix_merged_springs;
+        
+        for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+        {
+            const uint curr_prefix = cluster[cluster_idx];
+            const uint next_prefix = cluster[cluster_idx + 1];
+            const uint num_elements_clustered = next_prefix - curr_prefix;
+
+            CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
+            {
+                // const uint eid = cluster[curr_prefix + index];
+                const uint eid = curr_prefix + index;
+                const uint2 edge = sa_edges[eid];
+
+                float3x3 offdiag_hessian1 = host_sim_data->sa_cgA_offdiag[2 * eid + 0];
+                float3x3 offdiag_hessian2 = host_sim_data->sa_cgA_offdiag[2 * eid + 1];
+                float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
+                float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
+                output_ptr[edge[0]] += output_vec0;
+                output_ptr[edge[1]] += output_vec1;
+            });
+        }
+    }
+
+    // Off-diag: Collision hessian
+    mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
+
+}
 void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
 {
     
@@ -1056,71 +1140,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto pcg_spmv = [&](const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr) -> void
     {   
-        // Diag
-        CpuParallel::parallel_for(0, input_ptr.size(), [&](const uint vid)
-        {
-            float3x3 A_diag = sa_cgA_diag[vid];
-            float3 input_vec = input_ptr[vid];
-            float3 diag_output = A_diag * input_vec;
-            output_ptr[vid] = diag_output;
-        });
-        // Off-diag: Material energy hessian
-        if constexpr (use_upper_triangle)
-        {
-            auto& cluster = host_sim_data->sa_clusterd_hessian_pairs;
-            auto& sa_hessian_set = host_sim_data->sa_hessian_pairs;
-            
-            for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_hessian_pairs; cluster_idx++) 
-            {
-                const uint curr_prefix = cluster[cluster_idx];
-                const uint next_prefix = cluster[cluster_idx + 1];
-                const uint num_elements_clustered = next_prefix - curr_prefix;
-
-                CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
-                {
-                    const uint pair_idx = cluster[curr_prefix + index];
-                    const uint2 pair = sa_hessian_set[pair_idx];
-                    float3x3 offdiag_hessian = sa_cgA_offdiag[pair_idx];
-                    float3 output_vec0 = offdiag_hessian * input_ptr[pair[1]];
-                    float3 output_vec1 = luisa::transpose(offdiag_hessian) * input_ptr[pair[0]];
-                    output_ptr[pair[0]] += output_vec0;
-                    output_ptr[pair[1]] += output_vec1;
-                });
-            }
-        }
-        else
-        {
-            // Hessian free
-            // auto& sa_edges = host_mesh_data->sa_edges;
-            // auto& cluster = host_xpbd_data->sa_clusterd_springs;
-
-            auto& sa_edges = host_sim_data->sa_merged_stretch_springs;
-            auto& cluster = host_sim_data->sa_prefix_merged_springs;
-            
-            for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
-            {
-                const uint curr_prefix = cluster[cluster_idx];
-                const uint next_prefix = cluster[cluster_idx + 1];
-                const uint num_elements_clustered = next_prefix - curr_prefix;
-
-                CpuParallel::parallel_for(0, num_elements_clustered, [&](const uint index)
-                {
-                    // const uint eid = cluster[curr_prefix + index];
-                    const uint eid = curr_prefix + index;
-                    const uint2 edge = sa_edges[eid];
-
-                    float3x3 offdiag_hessian1 = sa_cgA_offdiag[2 * eid + 0];
-                    float3x3 offdiag_hessian2 = sa_cgA_offdiag[2 * eid + 1];
-                    float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
-                    float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
-                    output_ptr[edge[0]] += output_vec0;
-                    output_ptr[edge[1]] += output_vec1;
-                });
-            }
-        }
-
-        // Off-diag: Collision hessian
-        mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
+        host_SpMV(stream, input_ptr, output_ptr);
 
     };
 
@@ -1254,7 +1274,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 update_contact_set();
                 
                 evaluate_contact();
-                
+
                 host_evaluate_dirichlet();
                 
                 // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++) luisa::log_info("Post Vert {}'s force = {}", vid, host_sim_data->sa_cgB[vid]);
@@ -1325,7 +1345,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 {
                     if (curr_energy < prev_state_energy + Epsilon) 
                     { 
-                        // if (alpha != 1.0f)
+                        if (alpha != 1.0f)
                         {
                             luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
                                 line_search_count, alpha, curr_energy, prev_state_energy, 
@@ -1449,12 +1469,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     auto pcg_spmv = [&](const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr) -> void
     {   
-        stream 
-            << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(num_verts);
-
-        stream << fn_pcg_spmv_offdiag(input_ptr, output_ptr).dispatch(host_sim_data->sa_stretch_springs.size());
-        
-        mp_narrowphase_detector->device_spmv(stream, input_ptr, output_ptr);
+        device_SpMV(stream, input_ptr, output_ptr);
     };
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
@@ -1547,7 +1562,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 {
                     if (curr_energy < prev_state_energy + Epsilon) 
                     { 
-                        // if (alpha != 1.0f)
+                        if (alpha != 1.0f)
                         {
                             luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
                                 line_search_count, alpha, curr_energy, prev_state_energy, 

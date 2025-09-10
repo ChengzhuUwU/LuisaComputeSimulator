@@ -107,6 +107,11 @@ private:
         float, // substep_dt
         float // stiffness_dirichlet
         > fn_calc_energy_inertia; 
+    // luisa::compute::Shader<1, 
+    //     luisa::compute::BufferView<float3>, // sa_x
+    //     float, // substep_dt
+    //     float // stiffness_dirichlet
+    //     > fn_calc_energy_dirichlet;
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, // sa_x
         float // stiffness_spring

@@ -69,7 +69,7 @@ struct SceneParams
 
     // Iteration info
     uint num_iteration = 96;   
-    uint num_substep = 8;
+    uint num_substep = 1;
     uint nonlinear_iter_count = 8;
     uint pcg_iter_count = 50;
 

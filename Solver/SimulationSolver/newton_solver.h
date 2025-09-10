@@ -6,6 +6,7 @@
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/device.h"
 #include "luisa/runtime/stream.h"
+#include <vector>
 
 namespace lcsv
 {
@@ -38,6 +39,7 @@ private:
     void host_reset_off_diag();
     void host_reset_cgB_cgX_diagA();
     void host_evaluete_spring();
+    void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_line_search(luisa::compute::Stream& stream);
     
     // Device functions
@@ -47,6 +49,7 @@ private:
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
     void device_update_contact_list(luisa::compute::Stream& stream) ;
     void device_ccd_line_search(luisa::compute::Stream& stream);
+    void device_SpMV(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& input_array, luisa::compute::Buffer<float3>& output_array);
     float device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
     // void device_line_search(luisa::compute::Stream& stream);
 
