@@ -257,9 +257,9 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         float energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);;
         if (is_fixed)
         {
-            // Dirichlet boundary
-            energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-            // energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
+            // Dirichlet boundary energy
+            // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+            energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
         }
         else 
         {
@@ -385,8 +385,9 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
             $if (is_fixed)
             {
-                energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-                // energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
+                // Dirichlet boundary energy
+                // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+                energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
             }
             $else
             {

@@ -169,7 +169,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view(),
             sa_vert_mass = mesh_data->sa_vert_mass.view()
-        ](const Float substep_dt)
+        ](const Float substep_dt, const Float stiffness_dirichlet)
     {
         const UInt vid = dispatch_id().x;
         const Float h = substep_dt;
@@ -182,11 +182,13 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         Float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
         Float3x3 hessian = make_float3x3(1.0f) * mass * h_2_inv;
 
-        // $if (sa_is_fixed->read(vid) != 0) 
-        // {
-        //     hessian = make_float3x3(1.0f) * 1e9f;
-        //     gradient = make_float3(0.0f);
-        // };
+        $if (sa_is_fixed->read(vid) != 0) 
+        {
+            gradient = gradient + stiffness_dirichlet * gradient;
+            hessian = hessian + stiffness_dirichlet * hessian;
+            // hessian = make_float3x3(1.0f) * 1e9f;
+            // gradient = make_float3(0.0f);
+        };
 
         sa_cgB->write(vid, gradient); 
         sa_cgA_diag->write(vid, hessian);
@@ -203,6 +205,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         ](const Float substep_dt, const Float stiffness_dirichlet)
     {
         const UInt vid = dispatch_id().x;
+        return;
 
         Bool is_fixed = sa_is_fixed->read(vid);
         $if (is_fixed) 
@@ -527,6 +530,8 @@ void NewtonSolver::host_reset_cgB_cgX_diagA()
 }
 void NewtonSolver::host_evaluate_inertia()
 {
+    const float stiffness_dirichlet = get_scene_params().stiffness_dirichlet;
+
     CpuParallel::parallel_for(0, host_mesh_data->num_verts,
         [
             sa_cgB = host_sim_data->sa_cgB.data(),
@@ -536,7 +541,7 @@ void NewtonSolver::host_evaluate_inertia()
             sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
             sa_vert_mass = host_mesh_data->sa_vert_mass.data(),
             substep_dt = get_scene_params().get_substep_dt()
-        ](const uint vid)
+        , stiffness_dirichlet](const uint vid)
     {
         const float3 gravity(0, -9.8f, 0);
         const float h = substep_dt;
@@ -550,10 +555,11 @@ void NewtonSolver::host_evaluate_inertia()
         float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
         float3x3 hessian = luisa::make_float3x3(1.0f) * mass * h_2_inv;
 
-        // if (sa_is_fixed[vid])
-        // {
-        //     hessian = hessian + luisa::make_float3x3(1.0f) * float(1E9);
-        // }
+        if (sa_is_fixed[vid])
+        {
+            gradient  = stiffness_dirichlet * gradient;
+            hessian = stiffness_dirichlet * hessian;
+        }
         {  
             // sa_cgX[vid] = dx_0;
             sa_cgB[vid] = gradient;
@@ -563,6 +569,8 @@ void NewtonSolver::host_evaluate_inertia()
 }
 void NewtonSolver::host_evaluate_dirichlet()
 {
+    return;
+
     const float stiffness_dirichlet = get_scene_params().stiffness_dirichlet;
     const float substep_dt = get_scene_params().get_substep_dt();
     CpuParallel::parallel_for(0, host_mesh_data->num_verts,
@@ -587,12 +595,12 @@ void NewtonSolver::host_evaluate_dirichlet()
             // float3 gradient = -stiffness_dirichlet * (x_k - x_tilde);
             // float3x3 hessian = stiffness_dirichlet * luisa::make_float3x3(1.0f);
             float mass = sa_vert_mass[vid];
-            float3 gradient =  stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
+            float3 gradient  = stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
             float3x3 hessian = stiffness_dirichlet * h_2_inv * mass * luisa::make_float3x3(1.0f);
-            sa_cgB[vid] = -gradient;
-            sa_cgA_diag[vid] = hessian;
-            // sa_cgB[vid] = sa_cgB[vid] + gradient;
-            // sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+            // sa_cgB[vid] = -gradient;
+            // sa_cgA_diag[vid] = hessian;
+            sa_cgB[vid] = sa_cgB[vid] - gradient;
+            sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
         };
     });
 }
@@ -1275,7 +1283,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 
                 evaluate_contact();
 
-                host_evaluate_dirichlet();
+                // host_evaluate_dirichlet();
                 
                 // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++) luisa::log_info("Post Vert {}'s force = {}", vid, host_sim_data->sa_cgB[vid]);
                 // if (iter == 0) // Always refresh for collision count is variant 
@@ -1515,7 +1523,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 << fn_reset_float3x3(sim_data->sa_cgA_offdiag).dispatch(sim_data->sa_cgA_offdiag.size());
             
             {
-                stream << fn_evaluate_inertia(substep_dt).dispatch(num_verts);
+                stream << fn_evaluate_inertia(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
                 
                 stream << fn_evaluate_ground_collision(get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(num_verts);
     
@@ -1532,7 +1540,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
                 evaluate_contact();
 
-                stream << fn_evaluate_dirichlet(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
+                // stream << fn_evaluate_dirichlet(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
 
                 if (get_scene_params().use_energy_linesearch) prev_state_energy = compute_energy_interface(sim_data->sa_x);
             }
