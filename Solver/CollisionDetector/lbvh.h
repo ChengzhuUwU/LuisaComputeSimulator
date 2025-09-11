@@ -44,8 +44,7 @@ struct LbvhData
     BufferType<uint> sa_sorted_get_original;
     BufferType<uint> sa_parrent;
     BufferType<uint2> sa_children;
-    BufferType<uint> sa_escape_index;
-    BufferType<uint2> sa_left_and_escape;
+    BufferType<uint> sa_object_idx;
     BufferType<aabbData> sa_node_aabb;
     BufferType<uint> sa_is_healthy; 
     BufferType<uint> sa_apply_flag;
@@ -96,8 +95,7 @@ struct LbvhData
         resize_buffer(device, this->sa_sorted_get_original, num_leaves);
         resize_buffer(device, this->sa_parrent, num_nodes);
         resize_buffer(device, this->sa_children, num_nodes);
-        resize_buffer(device, this->sa_escape_index, num_nodes);
-        resize_buffer(device, this->sa_left_and_escape, num_nodes);
+        resize_buffer(device, this->sa_object_idx, num_nodes);
         resize_buffer(device, this->sa_node_aabb, num_nodes);
         resize_buffer(device, this->sa_apply_flag, num_nodes);
         resize_buffer(device, this->sa_is_healthy, 1);
@@ -172,8 +170,6 @@ private:
     luisa::compute::Shader<1> fn_apply_sorted;
     luisa::compute::Shader<1> fn_build_inner_nodes ;
     luisa::compute::Shader<1> fn_check_construction ;
-    luisa::compute::Shader<1> fn_set_escape_index;
-    luisa::compute::Shader<1> fn_set_left_and_escape;
 
     // Refit
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float> fn_update_vert_tree_leave_aabb;
