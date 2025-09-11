@@ -8,10 +8,10 @@
 #include "luisa/core/mathematics.h"
 
 
-namespace lcsv::Initializer
+namespace lcs::Initializer
 {
 
-void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData<std::vector>* xpbd_data)
+void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* xpbd_data)
 {
     xpbd_data->sa_x_tilde.resize(mesh_data->num_verts); 
     xpbd_data->sa_x.resize(mesh_data->num_verts);
@@ -45,7 +45,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
             float3 x1 = mesh_data->sa_rest_x[edge[0]];
             float3 x2 = mesh_data->sa_rest_x[edge[1]];
             xpbd_data->sa_stretch_springs[eid] = edge; /// 
-            xpbd_data->sa_stretch_spring_rest_state_length[eid] = lcsv::length_vec(x1 - x2); /// 
+            xpbd_data->sa_stretch_spring_rest_state_length[eid] = lcs::length_vec(x1 - x2); /// 
         });
 
         // Rest stretch face length
@@ -97,7 +97,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
                 const float3& x4 = vert_pos[1];
         
                 float3 tmp;
-                const float angle = lcsv::BendingEnergy::CalcGradientsAndAngle(x1, x2, x3, x4, tmp, tmp, tmp, tmp);
+                const float angle = lcs::BendingEnergy::CalcGradientsAndAngle(x1, x2, x3, x4, tmp, tmp, tmp, tmp);
                 if (luisa::isnan(angle)) luisa::log_error("is nan rest angle {}", eid);
                 
                 xpbd_data->sa_bending_edges[eid] = edge;
@@ -132,7 +132,7 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
                 const float A_0 = 0.5f * luisa::length(luisa::cross(e0, e1));
                 const float A_1 = 0.5f * luisa::length(luisa::cross(e0, e2));
                 // if (is_nan_vec<float4>(K) || is_inf_vec<float4>(K)) fast_print_err("Q of Bending is Illigal");
-                const float4x4 m_Q = (3.f / (A_0 + A_1)) * lcsv::outer_product(K, K); // Q = 3 qq^T / (A0+A1) ==> Q is symmetric
+                const float4x4 m_Q = (3.f / (A_0 + A_1)) * lcs::outer_product(K, K); // Q = 3 qq^T / (A0+A1) ==> Q is symmetric
                 xpbd_data->sa_bending_edges_Q[eid] = m_Q; // See : A quadratic bending model for inextensible surfaces.
             }
         });
@@ -329,8 +329,8 @@ void init_xpbd_data(lcsv::MeshData<std::vector>* mesh_data, lcsv::SimulationData
 void upload_xpbd_buffers(
     luisa::compute::Device& device, 
     luisa::compute::Stream& stream, 
-    lcsv::SimulationData<std::vector>* input_data, 
-    lcsv::SimulationData<luisa::compute::Buffer>* output_data)
+    lcs::SimulationData<std::vector>* input_data, 
+    lcs::SimulationData<luisa::compute::Buffer>* output_data)
 {
     output_data->num_clusters_springs = input_data->num_clusters_springs;
     output_data->num_clusters_bending_edges = input_data->num_clusters_bending_edges;
@@ -385,9 +385,9 @@ void upload_xpbd_buffers(
 void resize_pcg_data(
     luisa::compute::Device& device, 
     luisa::compute::Stream& stream, 
-    lcsv::MeshData<std::vector>* mesh_data, 
-    lcsv::SimulationData<std::vector>* host_data, 
-    lcsv::SimulationData<luisa::compute::Buffer>* device_data
+    lcs::MeshData<std::vector>* mesh_data, 
+    lcs::SimulationData<std::vector>* host_data, 
+    lcs::SimulationData<luisa::compute::Buffer>* device_data
 )
 {
     const uint num_verts = mesh_data->num_verts;
@@ -423,4 +423,4 @@ void resize_pcg_data(
 
 } 
 
-} // namespace lcsv::Initializer
+} // namespace lcs::Initializer

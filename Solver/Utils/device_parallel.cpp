@@ -10,7 +10,7 @@
 
 // API
 
-namespace lcsv
+namespace lcs
 {
 using namespace luisa;
 using namespace luisa::compute;

@@ -11,7 +11,7 @@
 #include "Utils/runtime.h"
 #include "Core/xbasic_types.h"
 
-namespace lcsv
+namespace lcs
 {
 
 class __attribute__((visibility("default"))) BufferFiller
@@ -33,8 +33,8 @@ class __attribute__((visibility("default"))) BufferFiller
     using uint3       = luisa::uint3;
     using uint4       = luisa::uint4;
     using float3x3      = luisa::float3x3;
-    using float3x4      = lcsv::float3x4;
-    using float4x3      = lcsv::float4x3;
+    using float3x4      = lcs::float3x4;
+    using float4x3      = lcs::float4x3;
 
 public:
     uint block_size = 256u;
@@ -77,4 +77,4 @@ protected:\
     filler_shader(float4x3);
 }; // namespace inno
 
-} // namespace lcsv
+} // namespace lcs

@@ -22,8 +22,8 @@ LUISA_STRUCT(TestTypeAAA, a, b, c) {};
     return left.a * right.a + left.b * right.b + left.c * right.c; 
 }
 
-namespace lcsv {
-using lcsv::get_scene_params;
+namespace lcs {
+using lcs::get_scene_params;
 
 void DescentSolver::test_luisa()
 {
@@ -306,7 +306,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
                 // He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT) ;
                 He = stiffness_stretch_spring * ddT + stiffness_stretch_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - ddT) ;
 
-                force += lcsv::select(vid == edge[0], force_0, -force_0);
+                force += lcs::select(vid == edge[0], force_0, -force_0);
                 hessian += He;
 
             };
@@ -419,7 +419,7 @@ void DescentSolver::update_velocity(luisa::compute::Stream& stream)
 // void CpuSolver::compute_energy(const Buffer<float3>& curr_position)
 void compute_energy()
 {
-    if (!lcsv::get_scene_params().print_system_energy) return;
+    if (!lcs::get_scene_params().print_system_energy) return;
     // // luisa::log_info("buffer size = {}", curr_position.size());
 
     // double energy = 0.0;
@@ -431,7 +431,7 @@ void compute_energy()
     //     {
     //         return Constrains::Energy::compute_energy_inertia(vid, 
     //             curr_position.data(), 
-    //             &lcsv::get_scene_params(), 
+    //             &lcs::get_scene_params(), 
     //             mesh_data->sa_is_fixed.data(), 
     //             mesh_data->sa_vert_mass.data(), 
     //             xpbd_data->sa_x_start.data(), 
@@ -441,7 +441,7 @@ void compute_energy()
     
     // // Stretch 
     // {
-    //     const float stiffness = lcsv::get_scene_params().stiffness_stretch_spring;
+    //     const float stiffness = lcs::get_scene_params().stiffness_stretch_spring;
     //     energy_stretch = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_edges, [&](const uint eid)
     //     {
     //         return Constrains::Energy::compute_energy_stretch_mass_spring(
@@ -453,16 +453,16 @@ void compute_energy()
     // }
 
     // // Bending
-    // if (lcsv::get_scene_params().use_bending)
+    // if (lcs::get_scene_params().use_bending)
     // {   
     //     const auto bending_type = 
-    //         (lcsv::get_scene_params().use_vbd_solver // Our VBD solver only add quadratic bending implementation
-    //         || lcsv::get_scene_params().use_quadratic_bending_model) ?  
+    //         (lcs::get_scene_params().use_vbd_solver // Our VBD solver only add quadratic bending implementation
+    //         || lcs::get_scene_params().use_quadratic_bending_model) ?  
     //         Constrains::BendingTypeQuadratic : Constrains::BendingTypeDAB;
-    //     const bool use_xpbd_solver = lcsv::get_scene_params().use_xpbd_solver;
+    //     const bool use_xpbd_solver = lcs::get_scene_params().use_xpbd_solver;
 
-    //     const float stiffness_bending_quadratic = lcsv::get_scene_params().get_stiffness_quadratic_bending();
-    //     const float stiffness_bending_DAB = lcsv::get_scene_params().get_stiffness_DAB_bending();
+    //     const float stiffness_bending_quadratic = lcs::get_scene_params().get_stiffness_quadratic_bending();
+    //     const float stiffness_bending_DAB = lcs::get_scene_params().get_stiffness_DAB_bending();
 
     //     energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_bending_edges, [&](const uint eid)
     //     {
@@ -494,11 +494,11 @@ void compute_energy()
 
 void DescentSolver::physics_step_xpbd(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    lcsv::SolverInterface::physics_step_prev_operation();
+    lcs::SolverInterface::physics_step_prev_operation();
 }
 void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    lcsv::SolverInterface::physics_step_prev_operation(); 
+    lcs::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
@@ -513,10 +513,10 @@ void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::comp
            << sim_data->sa_v_step_start.copy_from(host_sim_data->sa_v.data())
            << luisa::compute::synchronize();
     
-    // const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
-    const uint num_substep = lcsv::get_scene_params().num_substep;
-    const uint nonlinear_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
-    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
+    // const uint num_substep = lcs::get_scene_params().print_xpbd_convergence ? 1 : lcs::get_scene_params().num_substep;
+    const uint num_substep = lcs::get_scene_params().num_substep;
+    const uint nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
+    const float substep_dt = lcs::get_scene_params().get_substep_dt();
 
     // energy_idx = 0;
     for (uint substep = 0; substep < num_substep; substep++)
@@ -531,7 +531,7 @@ void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::comp
                 << fn_step().dispatch(mesh_data->num_verts) << luisa::compute::synchronize();
         }
         // const Float substep_dt, const Bool fix_scene, const Float damping
-        stream << fn_update_velocity(lcsv::get_scene_params().get_substep_dt(), false, lcsv::get_scene_params().damping_cloth).dispatch(mesh_data->num_verts) << luisa::compute::synchronize();
+        stream << fn_update_velocity(lcs::get_scene_params().get_substep_dt(), false, lcs::get_scene_params().damping_cloth).dispatch(mesh_data->num_verts) << luisa::compute::synchronize();
     }
     
     stream << luisa::compute::synchronize();
@@ -549,11 +549,11 @@ void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::comp
         host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
         host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
     });
-    lcsv::SolverInterface::physics_step_post_operation(); 
+    lcs::SolverInterface::physics_step_post_operation(); 
 }
 void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    lcsv::SolverInterface::physics_step_prev_operation(); 
+    lcs::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
@@ -564,10 +564,10 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         host_sim_data->sa_v_step_start[vid] = host_mesh_data->sa_v_frame_outer[vid];
     });
     
-    const uint num_substep = lcsv::get_scene_params().num_substep;
-    const uint nonlinear_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
-    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
-    const bool print_energy = lcsv::get_scene_params().print_system_energy;
+    const uint num_substep = lcs::get_scene_params().num_substep;
+    const uint nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
+    const float substep_dt = lcs::get_scene_params().get_substep_dt();
+    const bool print_energy = lcs::get_scene_params().print_system_energy;
 
     auto predict_position = [&](const float substep_dt)
     {
@@ -754,8 +754,8 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     {
         predict_position(substep_dt);
 
-        if (print_energy) luisa::log_info("Frame {} start   position energy = {}", lcsv::get_scene_params().current_frame, host_compute_elastic_energy(host_sim_data->sa_x_step_start));
-        if (print_energy) luisa::log_info("Frame {} predict position energy = {}", lcsv::get_scene_params().current_frame ,host_compute_elastic_energy(host_sim_data->sa_x));
+        if (print_energy) luisa::log_info("Frame {} start   position energy = {}", lcs::get_scene_params().current_frame, host_compute_elastic_energy(host_sim_data->sa_x_step_start));
+        if (print_energy) luisa::log_info("Frame {} predict position energy = {}", lcs::get_scene_params().current_frame ,host_compute_elastic_energy(host_sim_data->sa_x));
 
         for (uint iter = 0; iter < nonlinear_iter_count; iter++)
         {
@@ -767,7 +767,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
 
             if (print_energy) luisa::log_info("    Non-linear iter {:2} energy = {}", iter, host_compute_elastic_energy(host_sim_data->sa_x));
         }
-        update_velocity(substep_dt, false, lcsv::get_scene_params().damping_cloth);
+        update_velocity(substep_dt, false, lcs::get_scene_params().damping_cloth);
     }
 
     // Return frame end position and velocity
@@ -776,13 +776,13 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
         host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
     });
-    lcsv::SolverInterface::physics_step_post_operation(); 
+    lcs::SolverInterface::physics_step_post_operation(); 
 }
 void DescentSolver::solve_constraints_VBD(luisa::compute::Stream& stream)
 {
     // auto& iter_position = xpbd_data->sa_x;
 
-    // if (lcsv::get_scene_params().print_xpbd_convergence && lcsv::get_scene_params().current_it == 0) 
+    // if (lcs::get_scene_params().print_xpbd_convergence && lcs::get_scene_params().current_it == 0) 
     // { 
     //     compute_energy(iter_position); 
     // }
@@ -802,7 +802,7 @@ void DescentSolver::solve_constraints_VBD(luisa::compute::Stream& stream)
     //     vbd_step(iter_position, cluster);
     // }
 
-    // if (lcsv::get_scene_params().print_xpbd_convergence) 
+    // if (lcs::get_scene_params().print_xpbd_convergence) 
     // { 
     //     compute_energy(iter_position); 
     // }
@@ -816,7 +816,7 @@ auto shader_predict_position = device.compile<1>([&]
     Float3 x_prev = xpbd_data->sa_x_start->read(vid);
     Float3 v_prev = xpbd_data->sa_v->read(vid);
     Float3 outer_acceleration = gravity; 
-    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
+    const float substep_dt = lcs::get_scene_params().get_substep_dt();
     Float3 v_pred = v_prev + substep_dt * outer_acceleration; 
     $if(mesh_data->sa_is_fixed->read(vid) != 0) { outer_acceleration = Zero3; v_pred = Zero3; };
     const Float3 x_pred = x_prev + substep_dt * v_pred;
@@ -852,4 +852,4 @@ fn_predict_position = device.compile<1>([&](
 });
 */
 
-} // namespace lcsv
+} // namespace lcs

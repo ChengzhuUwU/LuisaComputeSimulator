@@ -1,7 +1,7 @@
 #include <vector>
 #include "scene_params.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 // std::vector<SceneParams> scene_params;

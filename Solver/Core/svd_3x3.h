@@ -4,7 +4,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 namespace Local

@@ -7,7 +7,7 @@
 #include <string>
 #include <luisa/luisa-compute.h>
 
-namespace lcsv
+namespace lcs
 {
 
 using morton32 = unsigned int;

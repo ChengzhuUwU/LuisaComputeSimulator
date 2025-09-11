@@ -3,7 +3,7 @@
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
-namespace lcsv
+namespace lcs
 {
 
 // void LBVH::init(luisa::compute::Device& device, luisa::compute::Stream& stream, 

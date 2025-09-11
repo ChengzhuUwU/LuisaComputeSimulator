@@ -10,7 +10,7 @@
 
 #define PTR(T) luisa::compute::BufferVar<T>
 
-namespace lcsv {
+namespace lcs {
 
 using uint = unsigned int;
 /*
@@ -228,7 +228,7 @@ private:
 //     return result;
 // }
 
-namespace lcsv {
+namespace lcs {
 
 using float2x3 = XMatrix<2, 3>;
 using float2x4 = XMatrix<2, 4>;
@@ -367,29 +367,29 @@ using MATRIX3x12 = LargeMatrix<3, 12>;
 
 } // namespace luisa::compute
 
-LUISA_STRUCT(lcsv::float2x3, cols) {};
-LUISA_STRUCT(lcsv::float2x4, cols) {};
-LUISA_STRUCT(lcsv::float3x2, cols) {};
-LUISA_STRUCT(lcsv::float3x4, cols) {};
-LUISA_STRUCT(lcsv::float4x2, cols) {};
-LUISA_STRUCT(lcsv::float4x3, cols) {};
+LUISA_STRUCT(lcs::float2x3, cols) {};
+LUISA_STRUCT(lcs::float2x4, cols) {};
+LUISA_STRUCT(lcs::float3x2, cols) {};
+LUISA_STRUCT(lcs::float3x4, cols) {};
+LUISA_STRUCT(lcs::float4x2, cols) {};
+LUISA_STRUCT(lcs::float4x3, cols) {};
 
-LUISA_STRUCT(lcsv::VECTOR3, vec) {};
-LUISA_STRUCT(lcsv::VECTOR6, vec) {};
-LUISA_STRUCT(lcsv::VECTOR9, vec) {};
-LUISA_STRUCT(lcsv::VECTOR12, vec) {};
+LUISA_STRUCT(lcs::VECTOR3, vec) {};
+LUISA_STRUCT(lcs::VECTOR6, vec) {};
+LUISA_STRUCT(lcs::VECTOR9, vec) {};
+LUISA_STRUCT(lcs::VECTOR12, vec) {};
 
-LUISA_STRUCT(lcsv::MATRIX3, mat) {};
-LUISA_STRUCT(lcsv::MATRIX6, mat) {};
-LUISA_STRUCT(lcsv::MATRIX9, mat) {};
-LUISA_STRUCT(lcsv::MATRIX12, mat) {};
-LUISA_STRUCT(lcsv::MATRIX12x3, mat) {};
-LUISA_STRUCT(lcsv::MATRIX3x12, mat) {};
+LUISA_STRUCT(lcs::MATRIX3, mat) {};
+LUISA_STRUCT(lcs::MATRIX6, mat) {};
+LUISA_STRUCT(lcs::MATRIX9, mat) {};
+LUISA_STRUCT(lcs::MATRIX12, mat) {};
+LUISA_STRUCT(lcs::MATRIX12x3, mat) {};
+LUISA_STRUCT(lcs::MATRIX3x12, mat) {};
 
 // #define REGIRSTER_XMATRIX_TO_STRUCT(M, N) \
-//     LUISA_STRUCT(lcsv::float##M##x##N, cols) {  \
+//     LUISA_STRUCT(lcs::float##M##x##N, cols) {  \
 //         [[nodiscard]] auto mult(const luisa::compute::Expr<float> alpha) const noexcept {   \
-//             luisa::compute::Var<lcsv::float##M##x##N> result;  \
+//             luisa::compute::Var<lcs::float##M##x##N> result;  \
 //             for (size_t i = 0; i < M; i++) {  \
 //                 result.cols[i] = alpha * cols[i];  \
 //             }  \
@@ -415,7 +415,7 @@ LUISA_STRUCT(lcsv::MATRIX3x12, mat) {};
 // REGIRSTER_XMATRIX_TO_STRUCT(4, 2);
 // REGIRSTER_XMATRIX_TO_STRUCT(4, 3);
 
-// auto operator=(const luisa::compute::Expr<lcsv::float##M##x##N> right) noexcept {   \
+// auto operator=(const luisa::compute::Expr<lcs::float##M##x##N> right) noexcept {   \
 //     for (size_t i = 0; i < M; i++) {  \
 //         cols[i] = right.cols[i];  \
 //     }  \
@@ -434,7 +434,7 @@ LUISA_STRUCT(lcsv::MATRIX3x12, mat) {};
 //     return output;
 // }
 
-namespace lcsv {
+namespace lcs {
 
 template<typename T>
 using Var = luisa::compute::Var<T>;

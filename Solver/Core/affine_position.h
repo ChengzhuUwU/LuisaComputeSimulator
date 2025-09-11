@@ -2,7 +2,7 @@
 
 #include <luisa/luisa-compute.h>
 
-namespace lcsv 
+namespace lcs 
 {
 
 static inline luisa::float4x4 scale(const luisa::float3& v) 

@@ -7,7 +7,7 @@
 #include <luisa/luisa-compute.h>
 // #include <glm/glm.hpp>
 
-namespace lcsv
+namespace lcs
 {
 
 struct BaseClothMeshData
@@ -175,4 +175,4 @@ public:
 */
 
 
-} // namespace lcsv
+} // namespace lcs

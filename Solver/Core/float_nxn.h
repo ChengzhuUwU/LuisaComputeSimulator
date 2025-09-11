@@ -3,7 +3,7 @@
 #include "Core/float_n.h"
 #include "Core/xbasic_types.h"
 
-namespace lcsv
+namespace lcs
 {
 
 #define Identity2x2 make_float2x2(1.0f)
@@ -526,4 +526,4 @@ inline auto outer_product(const Var<float4>& left, const Var<float4>& right)
 }
 
 
-}; // namespace lcsv
+}; // namespace lcs

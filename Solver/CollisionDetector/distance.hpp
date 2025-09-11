@@ -16,7 +16,7 @@
 #include <luisa/luisa-compute.h>
 #include <Eigen/Cholesky>
 
-namespace lcsv {
+namespace lcs {
 
 namespace distance {
 
@@ -654,6 +654,6 @@ inline uint2 edge_edge_type(
 
 } // namespace host_distance
 
-} // namespace lcsv
+} // namespace lcs
 
 #endif

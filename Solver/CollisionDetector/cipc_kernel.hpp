@@ -6,7 +6,7 @@
 #include <Eigen/Dense>
 #include <iostream>
 
-namespace lcsv
+namespace lcs
 {
 
 namespace ipc 
@@ -129,21 +129,21 @@ namespace details
 {
 
 template <uint idx, typename LargeVector>
-constexpr lcsv::Float& getVec(LargeVector& G)
+constexpr lcs::Float& getVec(LargeVector& G)
 {
     constexpr uint outer_row_idx = idx / 3;
     constexpr uint inner_row_idx = idx % 3;
     return G.vec[outer_row_idx][inner_row_idx];
 }
 template <uint idx, typename LargeVector>
-constexpr void setVec(LargeVector& G, const lcsv::Float& value)
+constexpr void setVec(LargeVector& G, const lcs::Float& value)
 {
     constexpr uint outer_row_idx = idx / 3;
     constexpr uint inner_row_idx = idx % 3;
     G.vec[outer_row_idx][inner_row_idx] = value;
 }
 template <uint idx, typename LargeMatrix>
-constexpr lcsv::Float& getMat9x9(LargeMatrix& H)
+constexpr lcs::Float& getMat9x9(LargeMatrix& H)
 {
     constexpr uint col_idx = idx % 9;
     constexpr uint row_idx = idx / 9;
@@ -154,7 +154,7 @@ constexpr lcsv::Float& getMat9x9(LargeMatrix& H)
     return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
 }
 template <uint idx, typename LargeMatrix>
-constexpr lcsv::Float& getMat12x12(LargeMatrix& H)
+constexpr lcs::Float& getMat12x12(LargeMatrix& H)
 {
     constexpr uint col_idx = idx % 12;
     constexpr uint row_idx = idx / 12;
@@ -165,7 +165,7 @@ constexpr lcsv::Float& getMat12x12(LargeMatrix& H)
     return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
 }
 template <uint idx, typename LargeMatrix>
-constexpr void setMat9x9(LargeMatrix& H, const lcsv::Float& value)
+constexpr void setMat9x9(LargeMatrix& H, const lcs::Float& value)
 {
     constexpr uint col_idx = idx % 9;
     constexpr uint row_idx = idx / 9;
@@ -176,7 +176,7 @@ constexpr void setMat9x9(LargeMatrix& H, const lcsv::Float& value)
     H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
 }
 template <uint idx, typename LargeMatrix>
-constexpr void setMat12x12(LargeMatrix& H, const lcsv::Float& value)
+constexpr void setMat12x12(LargeMatrix& H, const lcs::Float& value)
 {
     constexpr uint col_idx = idx % 12;
     constexpr uint row_idx = idx / 12;
@@ -386,7 +386,7 @@ namespace details
 {
 
 // template <uint idx, typename Mat>
-// constexpr void setMat9x9(Mat H[3][3], const lcsv::Float& value)
+// constexpr void setMat9x9(Mat H[3][3], const lcs::Float& value)
 // {
 //     constexpr uint col_idx = idx % 9;
 //     constexpr uint row_idx = idx / 9;
@@ -397,7 +397,7 @@ namespace details
 //     H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
 // }
 // template <uint idx, typename Mat>
-// constexpr void setMat12x12(Mat H[4][4], const lcsv::Float& value)
+// constexpr void setMat12x12(Mat H[4][4], const lcs::Float& value)
 // {
 //     constexpr uint col_idx = idx % 16;
 //     constexpr uint row_idx = idx / 16;
@@ -2393,8 +2393,8 @@ inline void edge_edge_mollifier_hessian(const Float3& ea0,
 
         // H *= q_g;
         // H += (q_H * g) * g.transpose();
-        lcsv::mult_largemat_scalar(H, H, q_g);
-        H = lcsv::add_largemat(H, lcsv::outer_product_largevec(lcsv::mult_largevec_scalar(g, q_g), g));
+        lcs::mult_largemat_scalar(H, H, q_g);
+        H = lcs::add_largemat(H, lcs::outer_product_largevec(lcs::mult_largevec_scalar(g, q_g), g));
 
     // #pragma unroll
     //     for (uint i = 0; i < 4; i++)
@@ -2409,7 +2409,7 @@ inline void edge_edge_mollifier_hessian(const Float3& ea0,
     $else
     {
         // H.setZero();
-        lcsv::set_largemat_zero(H);
+        lcs::set_largemat_zero(H);
     };
 }
 

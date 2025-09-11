@@ -2,7 +2,7 @@
 
 // #include <float.h>
 
-namespace lcsv 
+namespace lcs 
 {
 
 constexpr float Sqrt_2 =  1.4142135623730951f;

@@ -11,7 +11,7 @@
 #include "Utils/reduce_helper.h"
 #include "luisa/core/basic_types.h"
 
-namespace lcsv // Data IO
+namespace lcs // Data IO
 {
 
 void NarrowPhasesDetector::compile(luisa::compute::Device& device)
@@ -161,11 +161,11 @@ float NarrowPhasesDetector::get_global_toi(Stream& stream)
     return host_toi;
 }
 
-} // namespace lcsv // Data IO
+} // namespace lcs // Data IO
 
 
 
-namespace lcsv // CCD
+namespace lcs // CCD
 {
 
 void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
@@ -437,12 +437,12 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
     ;
 }
 
-} // namespace lcsv // CCD
+} // namespace lcs // CCD
 
 
 
 
-namespace lcsv // DCD
+namespace lcs // DCD
 {
 
 constexpr float stiffness_repulsion = 1e9;
@@ -736,9 +736,9 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     }
 }
 
-} // namespace lcsv 
+} // namespace lcs 
 
-namespace lcsv // Compute Barrier Gradient & Hessian & Assemble
+namespace lcs // Compute Barrier Gradient & Hessian & Assemble
 {
 
 void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
@@ -1094,11 +1094,11 @@ void NarrowPhasesDetector::device_spmv(Stream& stream, const Buffer<float3>& inp
     if (num_ee != 0) stream << fn_atomic_add_spmv_ee(input_array, output_array).dispatch(num_ee);
 }
 
-} // namespace lcsv
+} // namespace lcs
 
 
 
-namespace lcsv // Compute barrier energy
+namespace lcs // Compute barrier energy
 {
 
 void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
@@ -1279,9 +1279,9 @@ void NarrowPhasesDetector::compute_penalty_energy_from_ee(Stream& stream,
     
 }
 
-} // namespace lcsv 
+} // namespace lcs 
 
-namespace lcsv // Host Methods
+namespace lcs // Host Methods
 {
 
 void NarrowPhasesDetector::host_vf_ccd_query(Stream& stream, 
@@ -1306,7 +1306,7 @@ void NarrowPhasesDetector::host_vf_ccd_query(Stream& stream,
     // luisa::log_info("num_vf_broadphase = {}", num_vf_broadphase);
     // luisa::log_info("num_ee_broadphase = {}", num_ee_broadphase);
 
-    uint2* pair_view = (lcsv::uint2*)host_list.data();
+    uint2* pair_view = (lcs::uint2*)host_list.data();
     // CpuParallel::parallel_sort(pair_view, pair_view + num_vf_broadphase, [](const uint2& left, const uint2& right)
     // {
     //     if (left[0] == right[0]) { return left[1] < right[1]; }
@@ -1395,7 +1395,7 @@ void NarrowPhasesDetector::host_ee_ccd_query(Stream& stream,
 
     // luisa::log_info("num_ee_broadphase = {}", num_ee_broadphase);
 
-    uint2* pair_view = (lcsv::uint2*)host_list.data();
+    uint2* pair_view = (lcs::uint2*)host_list.data();
     // CpuParallel::parallel_sort(pair_view, pair_view + num_ee_broadphase, [](const uint2& left, const uint2& right)
     // {
     //     if (left[0] == right[0]) { return left[1] < right[1]; }

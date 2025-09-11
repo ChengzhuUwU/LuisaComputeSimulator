@@ -25,24 +25,24 @@ int main(int argc, char** argv)
     // Outer product
     if (false)
     {
-        lcsv::VECTOR12 vec1;
-        lcsv::VECTOR12 vec2;
-        lcsv::set_largevec(vec1, 1.0f);
-        lcsv::set_largevec(vec2, 1.0f);
+        lcs::VECTOR12 vec1;
+        lcs::VECTOR12 vec2;
+        lcs::set_largevec(vec1, 1.0f);
+        lcs::set_largevec(vec2, 1.0f);
         vec1[1] = luisa::make_float3(0);
 
-        auto large_mat = lcsv::outer_product_largevec(vec1, vec2);
-        lcsv::print_largemat(large_mat);
+        auto large_mat = lcs::outer_product_largevec(vec1, vec2);
+        lcs::print_largemat(large_mat);
     }
     // if (false)
     {
-        lcsv::VECTOR12 vec1; lcsv::set_largevec(vec1, 1.0f);
-        lcsv::MATRIX12 mat1; lcsv::set_largemat_identity(mat1); lcsv::set_colomn_largemat(mat1, 0, vec1);
-        lcsv::MATRIX12 mat2; lcsv::set_largemat_identity(mat2);
+        lcs::VECTOR12 vec1; lcs::set_largevec(vec1, 1.0f);
+        lcs::MATRIX12 mat1; lcs::set_largemat_identity(mat1); lcs::set_colomn_largemat(mat1, 0, vec1);
+        lcs::MATRIX12 mat2; lcs::set_largemat_identity(mat2);
 
-        lcsv::mult_largemat_scalar(mat1, mat1, 2.0f);
-        auto result = lcsv::add_largemat(mat1, mat2);
-        lcsv::print_largemat(result);
+        lcs::mult_largemat_scalar(mat1, mat1, 2.0f);
+        auto result = lcs::add_largemat(mat1, mat2);
+        lcs::print_largemat(result);
     }
     if (false)
     {
@@ -58,30 +58,30 @@ int main(int argc, char** argv)
             std::cout << result1 << std::endl;
             std::cout << result2 << std::endl;
         }
-        lcsv::VECTOR12 vec1; lcsv::set_largevec(vec1, 1.0f); vec1.vec[0] = luisa::make_float3(1,2,3); vec1.vec[1] = luisa::make_float3(4,5,6); vec1.vec[2] = luisa::make_float3(7,8,9); vec1.vec[3] = luisa::make_float3(10,11,12);
-        lcsv::VECTOR12 vec2; lcsv::set_largevec(vec2, 2.0f);
-        lcsv::MATRIX12 mat1; lcsv::set_largemat_identity(mat1); lcsv::set_colomn_largemat(mat1, 0, vec1);
-        lcsv::MATRIX12 mat2; lcsv::set_largemat_identity(mat2); lcsv::set_row_largemat(mat2, 0, vec2);
+        lcs::VECTOR12 vec1; lcs::set_largevec(vec1, 1.0f); vec1.vec[0] = luisa::make_float3(1,2,3); vec1.vec[1] = luisa::make_float3(4,5,6); vec1.vec[2] = luisa::make_float3(7,8,9); vec1.vec[3] = luisa::make_float3(10,11,12);
+        lcs::VECTOR12 vec2; lcs::set_largevec(vec2, 2.0f);
+        lcs::MATRIX12 mat1; lcs::set_largemat_identity(mat1); lcs::set_colomn_largemat(mat1, 0, vec1);
+        lcs::MATRIX12 mat2; lcs::set_largemat_identity(mat2); lcs::set_row_largemat(mat2, 0, vec2);
 
-        auto result1 = lcsv::mult_largemat_mat(mat1, mat2);
-        auto result2 = lcsv::mult_largemat_vec(result1, vec1);
-        // lcsv::print_largemat(mat1);
+        auto result1 = lcs::mult_largemat_mat(mat1, mat2);
+        auto result2 = lcs::mult_largemat_vec(result1, vec1);
+        // lcs::print_largemat(mat1);
         // luisa::log_info("");
-        // lcsv::print_largemat(mat2);
-        lcsv::print_largemat(result1);
-        lcsv::print_largevec(result2);
+        // lcs::print_largemat(mat2);
+        lcs::print_largemat(result1);
+        lcs::print_largevec(result2);
 
 
     }
 
-    // lcsv::set_colomn_largemat(mat, 0, vec);
-    // lcsv::set_row_largemat(mat, 0, vec);
+    // lcs::set_colomn_largemat(mat, 0, vec);
+    // lcs::set_row_largemat(mat, 0, vec);
     
-    // lcsv::mult_largemat(mat, mat, 3.0f);
-    // // lcsv::print_largemat(mat); 
+    // lcs::mult_largemat(mat, mat, 3.0f);
+    // // lcs::print_largemat(mat); 
     
-    // mat = lcsv::mult_largemat(mat, 1.25f);
-    // lcsv::print_largemat(mat);
+    // mat = lcs::mult_largemat(mat, 1.25f);
+    // lcs::print_largemat(mat);
 
     return 0;
 }

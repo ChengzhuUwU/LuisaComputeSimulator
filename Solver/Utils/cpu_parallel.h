@@ -290,4 +290,4 @@ inline void parallel_sort(Ptr begin, Ptr end, _Comp comp = default_compate)
 // [](const float& x, const float& y) -> float{ return x + y; }
 
 
-} // namespace lcsv
+} // namespace lcs

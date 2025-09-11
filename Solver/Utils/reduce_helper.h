@@ -24,7 +24,7 @@
 //             };
 
         
-namespace lcsv 
+namespace lcs 
 {
 
 namespace ParallelIntrinsic

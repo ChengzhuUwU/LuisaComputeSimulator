@@ -9,7 +9,7 @@
 #include "luisa/runtime/stream.h"
 #include <numeric>
 
-namespace lcsv 
+namespace lcs 
 {
 
 void SolverInterface::physics_step_prev_operation()
@@ -168,7 +168,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 }
 void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
 {
-    // , lcsv::get_scene_params().current_frame
+    // , lcs::get_scene_params().current_frame
     const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
@@ -201,7 +201,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
         uint glocal_mesh_id_prefix = 0;
         
         // Cloth Part
-        // if (lcsv::get_scene_params().draw_cloth)
+        // if (lcs::get_scene_params().draw_cloth)
         {
             const uint num_clothes = host_mesh_data->prefix_num_verts.size() - 1;
             for (uint clothIdx = 0; clothIdx < num_clothes; clothIdx++) 
@@ -491,4 +491,4 @@ double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& st
     // return energy_inertia + energy_goundcollision + energy_spring;
 };
 
-} // namespace lcsv
+} // namespace lcs

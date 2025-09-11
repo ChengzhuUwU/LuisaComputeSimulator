@@ -6,7 +6,7 @@
 #include "Utils/reduce_helper.h"
 #include "luisa/core/logging.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 template<typename T>
@@ -495,9 +495,9 @@ void ConjugateGradientSolver::host_solve(
     float normR = 0.0f;
 
     uint iter = 0;
-    for (iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+    for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
     {
-        lcsv::get_scene_params().current_pcg_it = iter;
+        lcs::get_scene_params().current_pcg_it = iter;
 
         // if (get_scene_params().print_system_energy)
         // {
@@ -553,9 +553,9 @@ void ConjugateGradientSolver::host_solve(
     );
             
     /*
-    for (uint iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+    for (uint iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
     {
-        lcsv::get_scene_params().current_pcg_it = iter;
+        lcs::get_scene_params().current_pcg_it = iter;
         pcg_apply_preconditioner_jacobi();
         delta_old = delta;
         float2 dot_rr_rz = get_dot_rz_rr(); delta = dot_rr_rz[0];
@@ -675,9 +675,9 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     float dot_rz = 0.0f;
 
     uint iter = 0;
-    for (iter = 0; iter < lcsv::get_scene_params().pcg_iter_count; iter++)
+    for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
     {
-        lcsv::get_scene_params().current_pcg_it = iter;
+        lcs::get_scene_params().current_pcg_it = iter;
 
         stream 
             << fn_pcg_apply_preconditioner().dispatch(num_verts)
@@ -869,4 +869,4 @@ void ConjugateGradientSolver::eigen_solve(
 }
 
 
-} // namespace lcsv 
+} // namespace lcs 

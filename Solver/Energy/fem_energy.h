@@ -9,17 +9,17 @@ namespace FEM
 {
     // /// \brief Extract the rotational part of the given square matrix by performing polar decomposion.
     // ///
-    // /// \details This implementation is based on SVD. It checks the lcsv::determinant to avoid any reflection.
+    // /// \details This implementation is based on SVD. It checks the lcs::determinant to avoid any reflection.
     // template <typename Derived>
-    // inline lcsv::Float3x3 extractRotation(const lcsv::Float3x3& F)
+    // inline lcs::Float3x3 extractRotation(const lcs::Float3x3& F)
     // {
-    //     lcsv::Float3x3 U, V;
-    //     lcsv::Float3 Sigma;
+    //     lcs::Float3x3 U, V;
+    //     lcs::Float3 Sigma;
     //     // sim::svd(F, U, Sigma, V);
-    //     lcsv::svd(F, U, Sigma, V);
-    //     const lcsv::Float3x3 R = (U * lcsv::transpose_mat(V));
-    //     // assert(std::abs(std::abs(R.lcsv::determinant()) - 1.0) < 1e-04);
-    //     return (lcsv::determinant_mat(R) > 0) ? R : -1.f * R;
+    //     lcs::svd(F, U, Sigma, V);
+    //     const lcs::Float3x3 R = (U * lcs::transpose_mat(V));
+    //     // assert(std::abs(std::abs(R.lcs::determinant()) - 1.0) < 1e-04);
+    //     return (lcs::determinant_mat(R) > 0) ? R : -1.f * R;
 
     //     // if constexpr (Derived::RowsAtCompileTime == 2)
     //     // {
@@ -63,14 +63,14 @@ namespace FEM
     // /// \param x_2 A 2D vector.
     // ///
     // /// \details Reference: [1]
-    // inline lcsv::Float2x3
-    // calc2dShapeMatrix(const lcsv::Float3& x_0,
-    //                   const lcsv::Float3& x_1,
-    //                   const lcsv::Float3& x_2)
+    // inline lcs::Float2x3
+    // calc2dShapeMatrix(const lcs::Float3& x_0,
+    //                   const lcs::Float3& x_1,
+    //                   const lcs::Float3& x_2)
     // {
     //     // using Mat = Eigen::Matrix<typename Derived::Scalar, 2, 2>;
 
-    //     lcsv::Float2x3 shape_matrix;
+    //     lcs::Float2x3 shape_matrix;
     //     shape_matrix[0] = x_1 - x_0;
     //     shape_matrix[1] = x_2 - x_0;
     //     return shape_matrix;
@@ -83,19 +83,19 @@ namespace FEM
     // ///
     // /// \param deform_grad The deformation gradient matrix, which should be either 2-by-2 (2D element in 2D), 3-by-3 (3D
     // /// element in 3D), or 3-by-2 (2D element in 3D).
-    // inline lcsv::Float2x2 calcGreenStrain(const lcsv::Float2x3& deform_grad)
+    // inline lcs::Float2x2 calcGreenStrain(const lcs::Float2x3& deform_grad)
     // {
     //     // 1/2 * (F^T - I)
-    //     return 0.5f * (lcsv::transpose_mat(deform_grad) * deform_grad - Identity2x2);
+    //     return 0.5f * (lcs::transpose_mat(deform_grad) * deform_grad - Identity2x2);
     // }
     // /// \brief Calculate the Green strain tensor for a finite element.
     // ///
     // /// \param deform_grad The deformation gradient matrix, which should be either 2-by-2 (2D element in 2D), 3-by-3 (3D
     // /// element in 3D), or 3-by-2 (2D element in 3D).
-    // inline lcsv::Float3x3 calcGreenStrain(const lcsv::Float3x3& deform_grad)
+    // inline lcs::Float3x3 calcGreenStrain(const lcs::Float3x3& deform_grad)
     // {
     //     // 1/2 * (F^T - I)
-    //     return 0.5f * (lcsv::transpose_mat(deform_grad) * deform_grad - Identity3x3);
+    //     return 0.5f * (lcs::transpose_mat(deform_grad) * deform_grad - Identity3x3);
     // }
 
 
@@ -106,7 +106,7 @@ namespace FEM
 
 
     /// \details Eq. 3.4 in [1]
-    // inline float calcCoRotationalEnergyDensity(const lcsv::Float3x3& deform_grad,
+    // inline float calcCoRotationalEnergyDensity(const lcs::Float3x3& deform_grad,
     //                                            const float     first_lame,
     //                                            const float     second_lame)
     // {
@@ -142,7 +142,7 @@ namespace FEM
 
     // /// \details The first equation in Sec. 3.3 in [1]
     // inline float 
-    // calcStVenantKirchhoffEnergyDensity(const lcsv::Float2x3& deform_grad, 
+    // calcStVenantKirchhoffEnergyDensity(const lcs::Float2x3& deform_grad, 
     //                                    const float first_lame, // lambda
     //                                    const float second_lame) // mu
     // {
@@ -150,29 +150,29 @@ namespace FEM
     //     // Isotropic Saint Venant-Kirchhoff
     //     // \Psi_{StVK} = \frac{1}{2} tr(\epsilon)^2 + \mu tr(\epsilon)^2
     //     //
-    //     const lcsv::Float2x2 E  = calcGreenStrain(deform_grad); // epsilon
-    //     const float trace = lcsv::trace_mat(E);
-    //     const float squaredNorm_E = lcsv::length_squared_vec(E[0]) + lcsv::length_squared_vec(E[1]);
+    //     const lcs::Float2x2 E  = calcGreenStrain(deform_grad); // epsilon
+    //     const float trace = lcs::trace_mat(E);
+    //     const float squaredNorm_E = lcs::length_squared_vec(E[0]) + lcs::length_squared_vec(E[1]);
     //     return 0.5f * first_lame * trace * trace + second_lame * squaredNorm_E;
     // }
 
     // /// \details Eq. 3.3 in [1]
-    // inline lcsv::Float2x3 
-    // calcStVenantKirchhoffPiolaStress(const lcsv::Float2x3& deform_grad, 
+    // inline lcs::Float2x3 
+    // calcStVenantKirchhoffPiolaStress(const lcs::Float2x3& deform_grad, 
     //                                  const float first_lame, 
     //                                  const float second_lame)
     // {
     //     // Piola-Kirchhoff stress tensor 
     //     // P = lambda * tr(epsilon) + 2 * mu * F * epsilon
-    //     const lcsv::Float2x2 E = calcGreenStrain(deform_grad);
-    //     return  first_lame * lcsv::trace_mat(E) * deform_grad + 2.f * second_lame * deform_grad * E;
+    //     const lcs::Float2x2 E = calcGreenStrain(deform_grad);
+    //     return  first_lame * lcs::trace_mat(E) * deform_grad + 2.f * second_lame * deform_grad * E;
     // }
 
-    // inline lcsv::Float2x3
-    // calc2dTriangleDeformGrad(const lcsv::Float3& x_0,
-    //                          const lcsv::Float3& x_1,
-    //                          const lcsv::Float3& x_2,
-    //                          const lcsv::Float2x2& rest_shape_mat_inv)
+    // inline lcs::Float2x3
+    // calc2dTriangleDeformGrad(const lcs::Float3& x_0,
+    //                          const lcs::Float3& x_1,
+    //                          const lcs::Float3& x_2,
+    //                          const lcs::Float2x2& rest_shape_mat_inv)
     // {
     //     const auto D_s = calc2dShapeMatrix(x_0, x_1, x_2);
     //     const auto F   = D_s * rest_shape_mat_inv;
@@ -198,12 +198,12 @@ namespace FEM
 // /// \param x_3 A 3D vector.
 // ///
 // /// \details Reference: [1]
-// inline lcsv::Float3x3 calc3dShapeMatrix(const lcsv::Float3& x_0,
-//                                   const lcsv::Float3& x_1,
-//                                   const lcsv::Float3& x_2,
-//                                   const lcsv::Float3& x_3)
+// inline lcs::Float3x3 calc3dShapeMatrix(const lcs::Float3& x_0,
+//                                   const lcs::Float3& x_1,
+//                                   const lcs::Float3& x_2,
+//                                   const lcs::Float3& x_3)
 // {
-//     lcsv::Float3x3 shape_matrix;
+//     lcs::Float3x3 shape_matrix;
 //     set(shape_matrix, 0, x_1 - x_0);
 //     set(shape_matrix, 1, x_2 - x_0);
 //     set(shape_matrix, 2, x_3 - x_0);

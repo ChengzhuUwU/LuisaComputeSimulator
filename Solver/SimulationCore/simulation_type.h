@@ -15,9 +15,9 @@ protected:
     using float2      = luisa::float2;
     using float3      = luisa::float3;
     using float4      = luisa::float4;
-    // using float3x3    = lcsv::float3x3;
-    // using float4x4    = lcsv::float4x4;
-    // using float4x3    = lcsv::float4x3;
+    // using float3x3    = lcs::float3x3;
+    // using float4x4    = lcs::float4x4;
+    // using float4x3    = lcs::float4x3;
     using uint        = luisa::uint;
     using uint2       = luisa::uint2;
     using uint3       = luisa::uint3;

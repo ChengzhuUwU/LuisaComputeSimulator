@@ -8,7 +8,7 @@
 
 #include <luisa/luisa-compute.h>
 
-namespace lcsv
+namespace lcs
 {
 
 template <typename T>
@@ -73,4 +73,4 @@ protected:
     using Type        = luisa::compute::Type;
 };
 
-} // namespace lcsv
+} // namespace lcs

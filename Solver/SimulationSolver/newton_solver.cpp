@@ -22,7 +22,7 @@
 #include <luisa/dsl/sugar.h>
 #include <vector>
 
-namespace lcsv 
+namespace lcs 
 {
 
 // template<typename T>
@@ -128,7 +128,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         Float3 x_pred = x_prev + substep_dt * v_pred;
         sa_x_tilde->write(vid, x_pred);
         sa_x->write(vid, x_prev);
-        sa_cgX->write(vid, make_float3(0.0f));
+        // sa_cgX->write(vid, make_float3(0.0f));
     }, default_option);
 
     fn_update_velocity = device.compile<1>(
@@ -464,7 +464,7 @@ void NewtonSolver::host_predict_position()
         // sa_x[vid] = x_pred;
         // sa_cgX[vid] = v_prev * substep_dt;
         sa_x[vid] = x_prev;
-        sa_cgX[vid] = luisa::make_float3(0.0f);
+        // sa_cgX[vid] = luisa::make_float3(0.0f);
     });
 }
 void NewtonSolver::host_update_velocity()
@@ -1092,7 +1092,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     // Input
     {
-        lcsv::SolverInterface::physics_step_prev_operation(); 
+        lcs::SolverInterface::physics_step_prev_operation(); 
         CpuParallel::parallel_for(0, sa_x.size(), [&](const uint vid)
         {
             sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
@@ -1209,7 +1209,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             {
                 float3x3 H_inv = luisa::inverse(hessian);
                 float3 dx = H_inv * f;
-                float dt = lcsv::get_scene_params().get_substep_dt();
+                float dt = lcs::get_scene_params().get_substep_dt();
                 float3 vel =  dx / dt;
                 sa_x[vid] += dx;
             };
@@ -1244,7 +1244,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         }
     };
 
-    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
+    const float substep_dt = lcs::get_scene_params().get_substep_dt();
     const bool use_energy_linesearch = get_scene_params().use_energy_linesearch;
     const bool use_ccd_linesearch = get_scene_params().use_ccd_linesearch;
     
@@ -1406,12 +1406,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             host_mesh_data->sa_x_frame_outer[vid] = sa_x[vid];
             host_mesh_data->sa_v_frame_outer[vid] = sa_v[vid];
         });
-        lcsv::SolverInterface::physics_step_post_operation(); 
+        lcs::SolverInterface::physics_step_post_operation(); 
     }
 }
 void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    lcsv::SolverInterface::physics_step_prev_operation(); 
+    lcs::SolverInterface::physics_step_prev_operation(); 
     // Get frame start position and velocity
     CpuParallel::parallel_for(0, host_sim_data->sa_x.size(), [&](const uint vid)
     {
@@ -1427,10 +1427,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         
            << luisa::compute::synchronize();
     
-    // const uint num_substep = lcsv::get_scene_params().print_xpbd_convergence ? 1 : lcsv::get_scene_params().num_substep;
-    const uint num_substep = lcsv::get_scene_params().num_substep;
-    const uint nonlinear_iter_count = lcsv::get_scene_params().nonlinear_iter_count;
-    const float substep_dt = lcsv::get_scene_params().get_substep_dt();
+    // const uint num_substep = lcs::get_scene_params().print_xpbd_convergence ? 1 : lcs::get_scene_params().num_substep;
+    const uint num_substep = lcs::get_scene_params().num_substep;
+    const uint nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
+    const float substep_dt = lcs::get_scene_params().get_substep_dt();
 
     auto& host_x_step_start = host_sim_data->sa_x_step_start;
     auto& host_x_iter_start = host_sim_data->sa_x_iter_start;
@@ -1505,7 +1505,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         stream 
             << fn_predict_position(substep_dt).dispatch(num_verts)
             // << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
-            << sim_data->sa_x_tilde.copy_to(host_x_tilde.data())
+            << sim_data->sa_x_tilde.copy_to(host_x_tilde.data()) // For calculate inertia energy
             << luisa::compute::synchronize();
         
         double prev_state_energy = Float_max;
@@ -1527,15 +1527,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 
                 stream << fn_evaluate_ground_collision(get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(num_verts);
     
-                // auto& culster = host_sim_data->sa_prefix_merged_springs;
-                // for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
-                {
-                    // const uint curr_prefix = culster[cluster_idx];
-                    // const uint next_prefix = culster[cluster_idx + 1];
-                    // const uint num_elements_clustered = next_prefix - curr_prefix;
-                    stream << fn_evaluate_spring(1e4).dispatch(host_sim_data->sa_stretch_springs.size());
-                }
-                
+                stream << fn_evaluate_spring(1e4).dispatch(host_sim_data->sa_stretch_springs.size());
+                     
                 update_contact_set();
 
                 evaluate_contact();
@@ -1635,7 +1628,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
         host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
     });
-    lcsv::SolverInterface::physics_step_post_operation(); 
+    lcs::SolverInterface::physics_step_post_operation(); 
 }
 
-} // namespace lcsv
+} // namespace lcs

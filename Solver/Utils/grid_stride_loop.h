@@ -8,7 +8,7 @@
 
 #include <luisa/dsl/sugar.h>
 
-namespace lcsv
+namespace lcs
 {
 
 template <typename F>

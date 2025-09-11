@@ -2,7 +2,7 @@
 
 #include "luisa/runtime/device.h"
 
-namespace lcsv::Initializer 
+namespace lcs::Initializer 
 {
 
 template<typename T>
@@ -78,4 +78,4 @@ inline auto resize_buffer(std::vector<T>& dest, const uint size)
 //             luisa::compute::BufferView<Element>> }
 
 
-} // namespace lcsv::Initializer 
+} // namespace lcs::Initializer 

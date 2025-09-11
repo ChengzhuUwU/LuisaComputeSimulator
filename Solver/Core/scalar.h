@@ -5,7 +5,7 @@
 #include "luisa/dsl/var.h"
 #include "luisa/dsl/builtin.h"
 
-namespace lcsv
+namespace lcs
 {
 
 
@@ -145,4 +145,4 @@ template<typename T1, typename T2> inline constexpr T1 pow_scalar(const T1& x, c
 */
 
 
-} // namespace lcsv
+} // namespace lcs

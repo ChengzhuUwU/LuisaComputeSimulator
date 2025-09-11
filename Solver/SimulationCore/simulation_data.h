@@ -9,7 +9,7 @@
 // #include <glm/glm.hpp>
 
 
-namespace lcsv 
+namespace lcs 
 {
 
 template<template<typename...> typename BufferType>
@@ -90,12 +90,12 @@ struct SimulationData : SimulationType
     BufferType<float> sa_convergence;
 };
 
-} // namespace lcsv 
+} // namespace lcs 
 
 
 
 
-namespace lcsv 
+namespace lcs 
 {
 
 // struct CollisionPairVV
@@ -169,18 +169,18 @@ struct CollisionPairEE
 
 }
 
-LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1) {};
-LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1) {};
-LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2) {};
-LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2) {};
+LUISA_STRUCT(lcs::CollisionPairVV, indices, vec1) {};
+LUISA_STRUCT(lcs::CollisionPairVE, edge, vid, bary, vec1) {};
+LUISA_STRUCT(lcs::CollisionPairVF, indices, vec1, bary, vec2) {};
+LUISA_STRUCT(lcs::CollisionPairEE, indices, vec1, bary, vec2) {};
 
-// LUISA_STRUCT(lcsv::CollisionPairVV, indices, vec1, gradient, hessian) {};
-// LUISA_STRUCT(lcsv::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
-// LUISA_STRUCT(lcsv::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
-// LUISA_STRUCT(lcsv::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
+// LUISA_STRUCT(lcs::CollisionPairVV, indices, vec1, gradient, hessian) {};
+// LUISA_STRUCT(lcs::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
+// LUISA_STRUCT(lcs::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
+// LUISA_STRUCT(lcs::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
 
 
-namespace lcsv 
+namespace lcs 
 {
 namespace CollisionPair
 {
@@ -388,10 +388,10 @@ inline void extract_upper_hessian(float3x3 hessian[10], float12x12& H)
 
 
 } // namespace CollisionPair
-} // namespace lcsv 
+} // namespace lcs 
 
 
-namespace lcsv {
+namespace lcs {
 
 
 template<template<typename...> typename BufferType>
@@ -443,30 +443,30 @@ struct CollisionData : SimulationType
         const uint per_element_count_NP = 96;
         
         constexpr bool use_vv_ve = false;
-        lcsv::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4); 
-        lcsv::Initializer::resize_buffer(device, this->contact_energy, 4); 
-        lcsv::Initializer::resize_buffer(device, this->toi_per_vert, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
-        // lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
-        // lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
-        if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
-        if (use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
-        if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1); 
-        if (!use_vv_ve) lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ve, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vf, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ee, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts); 
-        lcsv::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4); 
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4); 
+        lcs::Initializer::resize_buffer(device, this->contact_energy, 4); 
+        lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts); 
+        lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges); 
+        // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        if (use_vv_ve) lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts); 
+        if (use_vv_ve) lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts); 
+        if (!use_vv_ve) lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1); 
+        if (!use_vv_ve) lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ve, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vf, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ee, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts); 
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts); 
         this->collision_indirect_cmd_buffer_broad_phase = device.create_indirect_dispatch_buffer(2); 
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4); 
 

@@ -5,7 +5,7 @@
 #include "luisa/runtime/device.h"
 #include "Utils/buffer_allocator.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 namespace Initializer
@@ -156,4 +156,4 @@ inline void fn_get_prefix(auto& prefix_buffer, const std::vector< std::vector<ui
 } // namespace Initializer
 
 
-} // namespace lcsv
+} // namespace lcs

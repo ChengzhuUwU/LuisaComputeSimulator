@@ -30,25 +30,25 @@
 template<typename T>
 using Buffer = luisa::compute::Buffer<T>;
 
-namespace lcsv::Initializer
+namespace lcs::Initializer
 {
 
 
 void init_simulation_params()
 {
-    // if (lcsv::get_scene_params().use_small_timestep) { lcsv::get_scene_params().implicit_dt = 0.001f; }
+    // if (lcs::get_scene_params().use_small_timestep) { lcs::get_scene_params().implicit_dt = 0.001f; }
     
-    // lcsv::get_scene_params().num_iteration = lcsv::get_scene_params().num_substep * lcsv::get_scene_params().nonlinear_iter_count;
-    // lcsv::get_scene_params().collision_detection_frequece = 1;    
+    // lcs::get_scene_params().num_iteration = lcs::get_scene_params().num_substep * lcs::get_scene_params().nonlinear_iter_count;
+    // lcs::get_scene_params().collision_detection_frequece = 1;    
 
-    // lcsv::get_scene_params().stiffness_stretch_spring = FEM::calcSecondLame(lcsv::get_scene_params().youngs_modulus_cloth, lcsv::get_scene_params().poisson_ratio_cloth); // mu;
-    // lcsv::get_scene_params().stiffness_pressure = 1e6;
+    // lcs::get_scene_params().stiffness_stretch_spring = FEM::calcSecondLame(lcs::get_scene_params().youngs_modulus_cloth, lcs::get_scene_params().poisson_ratio_cloth); // mu;
+    // lcs::get_scene_params().stiffness_pressure = 1e6;
     
     {
-        // lcsv::get_scene_params().stiffness_stretch_spring = 1e4;
-        // lcsv::get_scene_params().xpbd_stiffness_collision = 1e7;
-        // lcsv::get_scene_params().stiffness_quadratic_bending = 5e-3;
-        // lcsv::get_scene_params().stiffness_DAB_bending = 5e-3;
+        // lcs::get_scene_params().stiffness_stretch_spring = 1e4;
+        // lcs::get_scene_params().xpbd_stiffness_collision = 1e7;
+        // lcs::get_scene_params().stiffness_quadratic_bending = 5e-3;
+        // lcs::get_scene_params().stiffness_DAB_bending = 5e-3;
     }
 
 }
@@ -91,65 +91,65 @@ int main(int argc, char** argv)
     luisa::compute::Device device = context.create_device(backend);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
-    lcsv::get_scene_params().solver_type = lcsv::SolverTypeNewton;
+    lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
     // Some params
     {
-        lcsv::get_scene_params().implicit_dt = 1.0f/ 120.f;
-        lcsv::get_scene_params().num_substep = 1;
-        lcsv::get_scene_params().nonlinear_iter_count = 50;
-        lcsv::get_scene_params().pcg_iter_count = 2000;
-        // lcsv::get_scene_params().use_bending = false;
-        // lcsv::get_scene_params().use_quadratic_bending_model = true;
-        // lcsv::get_scene_params().use_xpbd_solver = false;
-        // lcsv::get_scene_params().use_vbd_solver = false;
-        // lcsv::get_scene_params().use_newton_solver = true;
-        lcsv::get_scene_params().use_gpu = false; // true
+        lcs::get_scene_params().implicit_dt = 1.0f/ 120.f;
+        lcs::get_scene_params().num_substep = 1;
+        lcs::get_scene_params().nonlinear_iter_count = 50;
+        lcs::get_scene_params().pcg_iter_count = 2000;
+        // lcs::get_scene_params().use_bending = false;
+        // lcs::get_scene_params().use_quadratic_bending_model = true;
+        // lcs::get_scene_params().use_xpbd_solver = false;
+        // lcs::get_scene_params().use_vbd_solver = false;
+        // lcs::get_scene_params().use_newton_solver = true;
+        lcs::get_scene_params().use_gpu = false; // true
     }
 
     // Read Mesh
-    std::vector<lcsv::Initializer::ShellInfo> shell_list;
+    std::vector<lcs::Initializer::ShellInfo> shell_list;
     Demo::Simulation::load_scene(shell_list);
     
 
     // Init data
-    lcsv::MeshData<std::vector>             host_mesh_data;
-    lcsv::MeshData<luisa::compute::Buffer>  mesh_data;
+    lcs::MeshData<std::vector>             host_mesh_data;
+    lcs::MeshData<luisa::compute::Buffer>  mesh_data;
     {
-        lcsv::Initializer::init_mesh_data(shell_list, &host_mesh_data);
-        lcsv::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
+        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);
+        lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
-    lcsv::SimulationData<std::vector>               host_xpbd_data;
-    lcsv::SimulationData<luisa::compute::Buffer>    xpbd_data;
+    lcs::SimulationData<std::vector>               host_xpbd_data;
+    lcs::SimulationData<luisa::compute::Buffer>    xpbd_data;
     {
-        lcsv::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
-        lcsv::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
-        lcsv::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
-        lcsv::Initializer::init_simulation_params();
+        lcs::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
+        lcs::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
+        lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
+        lcs::Initializer::init_simulation_params();
     }
 
-    lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
-    lcsv::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
+    lcs::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
+    lcs::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
     {
-        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcsv::LBVHTreeTypeFace, lcsv::LBVHUpdateTypeCloth);
-        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcsv::LBVHTreeTypeEdge, lcsv::LBVHUpdateTypeCloth);
+        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace, lcs::LBVHUpdateTypeCloth);
+        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge, lcs::LBVHUpdateTypeCloth);
         // lbvh_cloth_vert.unit_test(device, stream);
     }
     
-    lcsv::CollisionData<std::vector>             host_collision_data;
-    lcsv::CollisionData<luisa::compute::Buffer>  collision_data;
+    lcs::CollisionData<std::vector>             host_collision_data;
+    lcs::CollisionData<luisa::compute::Buffer>  collision_data;
     {
         host_collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
         collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
     }
 
     // Init solver class
-    lcsv::BufferFiller   buffer_filler;
-    lcsv::DeviceParallel device_parallel;
+    lcs::BufferFiller   buffer_filler;
+    lcs::DeviceParallel device_parallel;
 
-    lcsv::LBVH           lbvh_face;
-    lcsv::LBVH           lbvh_edge;
+    lcs::LBVH           lbvh_face;
+    lcs::LBVH           lbvh_edge;
     {
         lbvh_face.set_lbvh_data(&lbvh_data_face);
         lbvh_edge.set_lbvh_data(&lbvh_data_edge);
@@ -157,14 +157,14 @@ int main(int argc, char** argv)
         lbvh_edge.compile(device);
     }
 
-    lcsv::NarrowPhasesDetector narrow_phase_detector;
+    lcs::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
         narrow_phase_detector.compile(device);
         // narrow_phase_detector.unit_test(device, stream);
     }
     
-    lcsv::ConjugateGradientSolver pcg_solver;
+    lcs::ConjugateGradientSolver pcg_solver;
     {
         pcg_solver.set_data(
             &host_mesh_data, 
@@ -175,11 +175,11 @@ int main(int argc, char** argv)
         pcg_solver.compile(device);
     }
 
-    // lcsv::DescentSolver  solver;
-    lcsv::NewtonSolver      solver;
+    // lcs::DescentSolver  solver;
+    lcs::NewtonSolver      solver;
     {
         // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
-        solver.lcsv::SolverInterface::set_data_pointer(
+        solver.lcs::SolverInterface::set_data_pointer(
             &host_mesh_data, 
             &mesh_data, 
             &host_xpbd_data, 
@@ -193,33 +193,33 @@ int main(int argc, char** argv)
             &narrow_phase_detector,
             &pcg_solver
         );
-        solver.lcsv::SolverInterface::compile(device);
+        solver.lcs::SolverInterface::compile(device);
         solver.compile(device);
     }
 
     // Define Simulation
     {
-        solver.lcsv::SolverInterface::restart_system();
+        solver.lcs::SolverInterface::restart_system();
         luisa::log_info("Simulation begin...");
     }
 
     auto fn_physics_step = [&]()
     {
-        auto fn_affine_position = [](const lcsv::Initializer::FixedPointInfo& fixed_point, const float time, const lcsv::float3& pos)
+        auto fn_affine_position = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
         {
-            auto fn_scale = [](const lcsv::Initializer::FixedPointInfo& fixed_point, const float time, const lcsv::float3& pos)
+            auto fn_scale = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
             {
                 return (luisa::scaling(fixed_point.scale * time) * luisa::make_float4(pos, 1.0f)).xyz();
             };
-            auto fn_rotate = [](const lcsv::Initializer::FixedPointInfo& fixed_point, const float time, const lcsv::float3& pos)
+            auto fn_rotate = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
             {
-                const float rotAngRad = time * fixed_point.rotAngVelDeg / 180.0f * float(lcsv::Pi);
+                const float rotAngRad = time * fixed_point.rotAngVelDeg / 180.0f * float(lcs::Pi);
                 const auto relative_vec = pos - fixed_point.rotCenter;
                 auto matrix = luisa::rotation(fixed_point.rotAxis, rotAngRad);
                 const auto rotated_pos = matrix * luisa::make_float4(relative_vec, 1.0f);
                 return fixed_point.rotCenter + rotated_pos.xyz();
             };
-            auto fn_translate = [](const lcsv::Initializer::FixedPointInfo& fixed_point, const float time, const lcsv::float3& pos)
+            auto fn_translate = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
             {
                 return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
             };
@@ -232,7 +232,7 @@ int main(int argc, char** argv)
         
         auto fn_fixed_point_animation = [&](const uint curr_frame)
         {
-            const float h = lcsv::get_scene_params().implicit_dt;
+            const float h = lcs::get_scene_params().implicit_dt;
 
             CpuParallel::parallel_for(0, host_mesh_data.num_verts, [&](const uint vid)
             {
@@ -279,9 +279,9 @@ int main(int argc, char** argv)
                 }
             }
         };
-        fn_fixed_point_animation(lcsv::get_scene_params().current_frame);
+        fn_fixed_point_animation(lcs::get_scene_params().current_frame);
 
-        if (lcsv::get_scene_params().use_gpu)
+        if (lcs::get_scene_params().use_gpu)
             solver.physics_step_GPU(device, stream);
         else
             solver.physics_step_CPU(device, stream);
@@ -294,7 +294,7 @@ int main(int argc, char** argv)
             }
         });
 
-        lcsv::get_scene_params().current_frame += 1; 
+        lcs::get_scene_params().current_frame += 1; 
     };
 
 
@@ -352,7 +352,7 @@ int main(int argc, char** argv)
         }
         if constexpr (draw_bounding_box)
         {
-            lcsv::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
+            lcs::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
             // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
             // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
             global_aabb = lbvh_data_face.host_node_aabb[0];
@@ -368,20 +368,20 @@ int main(int argc, char** argv)
     {
         auto fn_single_step_without_ui = [&]()
         {
-            luisa::log_info("     Newton solver frame {}", lcsv::get_scene_params().current_frame);   
+            luisa::log_info("     Newton solver frame {}", lcs::get_scene_params().current_frame);   
 
             fn_physics_step();
         };
 
-        // solver.lcsv::SolverInterface::restart_system();
+        // solver.lcs::SolverInterface::restart_system();
 
         // for (uint frame = 0; frame < max_frame; frame++)
         {
             fn_single_step_without_ui();
         }
         fn_update_rendering_vertices();
-        SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcsv::get_scene_params().current_frame);
-        // solver.lcsv::SolverInterface::save_mesh_to_obj(lcsv::get_scene_params().current_frame, ""); 
+        SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
+        // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, ""); 
     }
     else
     {
@@ -427,7 +427,7 @@ int main(int argc, char** argv)
         };
         auto fn_single_step_with_ui = [&]()
         {
-            // luisa::log_info("     Sync frame {}", lcsv::get_scene_params().current_frame);   
+            // luisa::log_info("     Sync frame {}", lcs::get_scene_params().current_frame);   
             fn_physics_step();
 
             fn_update_rendering_vertices();
@@ -484,20 +484,20 @@ int main(int argc, char** argv)
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
                 ImGui::InputScalar("Optimize Frames", ImGuiDataType_U32, &optimize_frames);
-                ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcsv::get_scene_params().num_substep);
-                ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().nonlinear_iter_count);
-                ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcsv::get_scene_params().pcg_iter_count);
-                ImGui::SliderFloat("Implicit Timestep", &lcsv::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
-                ImGui::Checkbox("Use Energy LineSearch", &lcsv::get_scene_params().use_energy_linesearch);
-                ImGui::Checkbox("Use CCD LineSearch", &lcsv::get_scene_params().use_ccd_linesearch);
+                ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcs::get_scene_params().num_substep);
+                ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().nonlinear_iter_count);
+                ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().pcg_iter_count);
+                ImGui::SliderFloat("Implicit Timestep", &lcs::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
+                ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
+                ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
                 
-                // ImGui::Checkbox("Use Bending", &lcsv::get_scene_params().use_bending);
-                // ImGui::Checkbox("Use Quadratic Bending", &lcsv::get_scene_params().use_quadratic_bending_model);
-                // ImGui::SliderFloat("Bending Stiffness", &lcsv::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
-                // ImGui::Checkbox("Print Convergence", &lcsv::get_scene_params().print_xpbd_convergence);
-                ImGui::Checkbox("Print Energy", &lcsv::get_scene_params().print_system_energy);
-                ImGui::Checkbox("Use GPU Solver", &lcsv::get_scene_params().use_gpu);
-                // ImGui::Checkbox("Print PCG Convergence", &lcsv::get_scene_params().print_pcg_convergence);
+                // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
+                // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);
+                // ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+                // ImGui::Checkbox("Print Convergence", &lcs::get_scene_params().print_xpbd_convergence);
+                ImGui::Checkbox("Print Energy", &lcs::get_scene_params().print_system_energy);
+                ImGui::Checkbox("Use GPU Solver", &lcs::get_scene_params().use_gpu);
+                // ImGui::Checkbox("Print PCG Convergence", &lcs::get_scene_params().print_pcg_convergence);
 
                 // static const char* items[] = { "A", "B", "C" };
                 // static int current_item = 0;
@@ -506,12 +506,12 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
-                ImGui::Text("Frame %d", lcsv::get_scene_params().current_frame);
+                ImGui::Text("Frame %d", lcs::get_scene_params().current_frame);
                 if (ImGui::Button("Reset", ImVec2(-1, 0))) 
                 {
-                    lcsv::get_scene_params().current_frame = 0;
+                    lcs::get_scene_params().current_frame = 0;
                     max_frame = 0;
-                    solver.lcsv::SolverInterface::restart_system();
+                    solver.lcs::SolverInterface::restart_system();
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
                 }
@@ -522,7 +522,7 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
-                    max_frame = lcsv::get_scene_params().current_frame + optimize_frames;
+                    max_frame = lcs::get_scene_params().current_frame + optimize_frames;
                 }
                 if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
                 {
@@ -532,14 +532,14 @@ int main(int argc, char** argv)
                 if (ImGui::Button("End Simulation", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = false;
-                    max_frame = lcsv::get_scene_params().current_frame;
+                    max_frame = lcs::get_scene_params().current_frame;
                 }
             }
 
             if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen)) 
             {
-                ImGui::Checkbox("Use Ground Collision", &lcsv::get_scene_params().use_floor);
-                ImGui::SliderFloat("Floor Y", &lcsv::get_scene_params().floor.y, -1.0f, 1.0f); 
+                ImGui::Checkbox("Use Ground Collision", &lcs::get_scene_params().use_floor);
+                ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f); 
                 constexpr uint offset_vf = host_collision_data.get_vf_count_offset();
                 constexpr uint offset_ee = host_collision_data.get_ee_count_offset();
                 ImGui::Text("Num VF = %d EE = %d", host_collision_data.narrow_phase_collision_count[offset_vf], host_collision_data.narrow_phase_collision_count[offset_ee]);
@@ -549,18 +549,18 @@ int main(int argc, char** argv)
             {
                 if (ImGui::Button("Save mesh", ImVec2(-1, 0)))
                 {
-                    SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcsv::get_scene_params().current_frame);
+                    SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
                 }
                 if (ImGui::Button("Save State", ImVec2(-1, 0)))
                 {
-                    solver.lcsv::SolverInterface::save_current_frame_state_to_host(lcsv::get_scene_params().current_frame, "");
+                    solver.lcs::SolverInterface::save_current_frame_state_to_host(lcs::get_scene_params().current_frame, "");
                 }
-                uint& state_frame = lcsv::get_scene_params().load_state_frame;
+                uint& state_frame = lcs::get_scene_params().load_state_frame;
                 ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
                 if (ImGui::Button("Load State", ImVec2(-1, 0)))
                 {
-                    solver.lcsv::SolverInterface::load_saved_state_from_host(state_frame, "");
-                    lcsv::get_scene_params().current_frame = state_frame;;
+                    solver.lcs::SolverInterface::load_saved_state_from_host(state_frame, "");
+                    lcs::get_scene_params().current_frame = state_frame;;
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
                 }
@@ -569,10 +569,10 @@ int main(int argc, char** argv)
             if (is_simulate_frame)
             {
                 fn_single_step_with_ui();
-                if (lcsv::get_scene_params().current_frame >= max_frame)
+                if (lcs::get_scene_params().current_frame >= max_frame)
                 {
                     is_simulate_frame = false;
-                    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcsv::get_scene_params().current_frame);
+                    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
                 }
             }
         };

@@ -11,7 +11,7 @@
 #include <Eigen/Eigenvalues>
 
 
-namespace lcsv 
+namespace lcs 
 {
 
 class NarrowPhasesDetector

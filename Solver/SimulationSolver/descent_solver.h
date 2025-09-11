@@ -3,10 +3,10 @@
 #include "Core/float_n.h"
 #include "SimulationCore/solver_interface.h"
 
-namespace lcsv
+namespace lcs
 {
 
-class DescentSolver : public lcsv::SolverInterface
+class DescentSolver : public lcs::SolverInterface
 {
 
 template<typename T>
@@ -14,7 +14,7 @@ using Buffer = luisa::compute::Buffer<T>;
 
 
 public:
-    DescentSolver() : lcsv::SolverInterface() {}
+    DescentSolver() : lcs::SolverInterface() {}
     ~DescentSolver() {}
 
 public:    
@@ -40,10 +40,10 @@ private:
 
 private:
     void solve_constraints_VBD(luisa::compute::Stream& stream);
-    void vbd_evaluate_inertia(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_evaluate_stretch_spring(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_evaluate_bending(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
-    void vbd_step(luisa::compute::Stream& stream, Buffer<lcsv::float3>& curr_cloth_position, const uint cluster_idx);
+    void vbd_evaluate_inertia(luisa::compute::Stream& stream, Buffer<lcs::float3>& curr_cloth_position, const uint cluster_idx);
+    void vbd_evaluate_stretch_spring(luisa::compute::Stream& stream, Buffer<lcs::float3>& curr_cloth_position, const uint cluster_idx);
+    void vbd_evaluate_bending(luisa::compute::Stream& stream, Buffer<lcs::float3>& curr_cloth_position, const uint cluster_idx);
+    void vbd_step(luisa::compute::Stream& stream, Buffer<lcs::float3>& curr_cloth_position, const uint cluster_idx);
 
 private:
     

@@ -4,7 +4,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 
-namespace lcsv
+namespace lcs
 {
 
 namespace AABB
@@ -110,5 +110,5 @@ inline auto is_overlap_aabb(const AabbType& left, const AabbType& right)
 
 
 } // namespace AABB
-} // namespace lcsv
+} // namespace lcs
 

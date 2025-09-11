@@ -8,7 +8,7 @@
 
 #include <luisa/dsl/sugar.h>
 
-namespace lcsv
+namespace lcs
 {
 
 inline luisa::compute::Float2 read_float2(luisa::compute::BufferVar<float>& buffer, luisa::compute::Int idx) noexcept
@@ -70,4 +70,4 @@ luisa::compute::BufferView<T> soa_element_buf_view(luisa::compute::SOAView<T> vi
         .template as<T>();
 }
 
-} // namespace lcsv
+} // namespace lcs

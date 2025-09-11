@@ -19,12 +19,12 @@ using Uint = luisa::compute::Var<uint>;
 using Uint2 = luisa::compute::Var<uint2>;
 using Uint3 = luisa::compute::Var<uint3>;
 using Uint4 = luisa::compute::Var<uint4>;
-using Float2x3 = luisa::compute::Var<lcsv::float2x3>;
-using Float2x4 = luisa::compute::Var<lcsv::float2x4>;
-using Float3x2 = luisa::compute::Var<lcsv::float3x2>;
-using Float3x4 = luisa::compute::Var<lcsv::float3x4>;
-using Float4x2 = luisa::compute::Var<lcsv::float4x2>;
-using Float4x3 = luisa::compute::Var<lcsv::float4x3>;
+using Float2x3 = luisa::compute::Var<lcs::float2x3>;
+using Float2x4 = luisa::compute::Var<lcs::float2x4>;
+using Float3x2 = luisa::compute::Var<lcs::float3x2>;
+using Float3x4 = luisa::compute::Var<lcs::float3x4>;
+using Float4x2 = luisa::compute::Var<lcs::float4x2>;
+using Float4x3 = luisa::compute::Var<lcs::float4x3>;
 
 /*
 
@@ -130,7 +130,7 @@ struct struct_member_tuple<luisa::XMatrix<4, 3>> {
 } // namespace luisa::compute
 
 
-namespace lcsv
+namespace lcs
 {
 
 using float2 = luisa::float2;
@@ -331,7 +331,7 @@ template<typename Vec> inline auto all_vec(const Var<Vec>& vec) { return luisa::
 template<typename Vec> inline auto any_vec(const Var<Vec>& vec) { return luisa::compute::any(vec); }
 
 template<typename Vec> inline Vec reverse_vec(const Vec& vec) { return 1.f / vec;}
-template<typename Vec> inline auto safe_length_vec(const Vec& vec) { return length_vec(vec) + lcsv::Epsilon; }
+template<typename Vec> inline auto safe_length_vec(const Vec& vec) { return length_vec(vec) + lcs::Epsilon; }
 
 
 
@@ -428,4 +428,4 @@ inline float3 compute_face_normal(const float3& p1, const float3& p2, const floa
 	return n;
 }
 
-}; // namespace lcsv
+}; // namespace lcs

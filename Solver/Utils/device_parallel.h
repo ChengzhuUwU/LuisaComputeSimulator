@@ -12,7 +12,20 @@
 // #include "lcgs/util/misc.hpp" // for is_power_of_two
 #include <luisa/luisa-compute.h>
 
-namespace lcsv
+
+
+#ifdef _MSC_VER
+#ifdef LCGS_DLL_EXPORTS
+    #define LCGS_API __declspec(dllexport)
+#else
+    #define LCGS_API __declspec(dllimport)
+#endif
+#else
+    #define LCGS_API __attribute__((visibility("default")))
+#endif
+
+
+namespace lcs
 {
 
 template <typename T>
@@ -38,7 +51,7 @@ static inline int   floor_pow_2(int n)
 }
 
 
-class __attribute__((visibility("default"))) DeviceParallel : public LuisaModule
+class LCGS_API DeviceParallel : public LuisaModule
 {
     using IntType   = int;   // 4 byte
     using FloatType = float; // 4 byte
@@ -904,4 +917,4 @@ private:
     luisa::unordered_map<luisa::string, luisa::shared_ptr<luisa::compute::Resource>> ms_radix_sort_assign_map;
 };
 
-} // namespace lcsv
+} // namespace lcs

@@ -6,7 +6,7 @@
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
 
-namespace lcsv 
+namespace lcs 
 {
 
 // struct PcgData
@@ -81,4 +81,4 @@ private:
 
 
 
-} // namespace lcsv 
+} // namespace lcs 

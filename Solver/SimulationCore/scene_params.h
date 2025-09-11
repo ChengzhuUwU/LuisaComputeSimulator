@@ -2,7 +2,7 @@
 
 #include "Core/float_n.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 enum SolverType
@@ -146,14 +146,14 @@ struct SceneParams
     // float friction_cross = 0.1;
     // float friction_obstacle_cloth = 0.25;
     // float friction_obstacle_tet = 0.1;
-    float collision_query_range_rate = lcsv::Sqrt_2;
+    float collision_query_range_rate = lcs::Sqrt_2;
     // float collision_query_range_vv = thickness_vv * Sqrt_2;
 
     
     float chebyshev_omega = 1.0f;
     
-    lcsv::float3 gravity{0, -9.8f, 0};
-    lcsv::float3 floor{0, 0, 0};
+    lcs::float3 gravity{0, -9.8f, 0};
+    lcs::float3 floor{0, 0, 0};
 
     // constant
     bool use_fixed_verts = false;
@@ -184,4 +184,4 @@ SceneParams& get_scene_params();
 #endif
 
 
-} // namespace lcsv
+} // namespace lcs

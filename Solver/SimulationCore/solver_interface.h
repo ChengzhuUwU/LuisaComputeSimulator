@@ -15,7 +15,7 @@
 #include "luisa/runtime/shader.h"
 #include "luisa/runtime/stream.h"
 
-namespace lcsv 
+namespace lcs 
 {
 
 class SolverInterface
@@ -98,7 +98,7 @@ protected:
     LBVH* mp_lbvh_edge;
     NarrowPhasesDetector* mp_narrowphase_detector;
     ConjugateGradientSolver* pcg_solver;
-    // lcsv::LBVH* collision_detector_narrow_phase;
+    // lcs::LBVH* collision_detector_narrow_phase;
 
 private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;

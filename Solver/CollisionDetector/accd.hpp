@@ -10,7 +10,7 @@
 #include <string>
 
 
-namespace lcsv {
+namespace lcs {
 
 namespace accd {
 
@@ -309,4 +309,4 @@ inline float edge_edge_ccd(const Vec3f &ea00, const Vec3f &ea01,
 
 } // namespace host_accd
 
-} // namespace lcsv
+} // namespace lcs

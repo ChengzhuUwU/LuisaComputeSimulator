@@ -2,7 +2,7 @@
 
 #include <luisa/luisa-compute.h>
 
-namespace lcsv
+namespace lcs
 {
 
 namespace BendingEnergy

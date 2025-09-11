@@ -8,10 +8,10 @@
 #include "luisa/runtime/stream.h"
 #include <vector>
 
-namespace lcsv
+namespace lcs
 {
 
-class NewtonSolver : public lcsv::SolverInterface
+class NewtonSolver : public lcs::SolverInterface
 {
 
 template<typename T>
@@ -19,7 +19,7 @@ using Buffer = luisa::compute::Buffer<T>;
 
 
 public:
-    NewtonSolver() : lcsv::SolverInterface() {}
+    NewtonSolver() : lcs::SolverInterface() {}
     ~NewtonSolver() {}
 
 public:    
@@ -84,4 +84,4 @@ private:
 };
 
 
-} // namespace lcsv 
+} // namespace lcs 
