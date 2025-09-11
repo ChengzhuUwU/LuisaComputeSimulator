@@ -485,7 +485,7 @@ void ConjugateGradientSolver::host_solve(
     std::fill(sa_convergence.begin(), sa_convergence.end(), 0.0f);
 
     // func_spmv(sa_cgX, sa_cgQ);
-    CpuParallel::parallel_set(sa_cgQ, makeFloat3(0.0f));
+    CpuParallel::parallel_set(sa_cgQ, luisa::make_float3(0.0f));
 
     pcg_init();
     
@@ -651,7 +651,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
 
     stream 
         // << sim_data->sa_cgR.copy_from(sim_data->sa_cgB) // Cause cgX is set to zero...
-        // << mp_buffer_filler->fill(device, sim_data->sa_cgQ, makeFloat3(0.0f))
+        // << mp_buffer_filler->fill(device, sim_data->sa_cgQ, luisa::make_float3(0.0f))
         << fn_reset_float3(sim_data->sa_cgQ).dispatch(num_verts)
         << fn_pcg_init().dispatch(num_verts) 
         << fn_pcg_init_second_pass().dispatch(num_blocks_verts)

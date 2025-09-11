@@ -371,7 +371,7 @@ void LBVH::compile(luisa::compute::Device& device)
         Int num_inners = num_inner_nodes;
         Int num_leaves = num_inner_nodes + 1;
 
-        Uint2 ranges = makeUint2(0, num_inner_nodes);
+        Uint2 ranges = luisa::compute::make_uint2(0, num_inner_nodes);
         $if (nid != 0) 
         {
             ranges = determineRange(nid, sa_morton_sorted, num_leaves);
@@ -412,7 +412,7 @@ void LBVH::compile(luisa::compute::Device& device)
         // Should be [0, 2, 4, 4, 0, 0, 5, 1, 1, 2, 3, 3, 6, 6, 5, ]
         sa_parrent->write(child_left, nid); // 
         sa_parrent->write(child_right, nid);
-        sa_children->write(nid, makeUint2(child_left, child_right));
+        sa_children->write(nid, make_uint2(Uint(child_left), Uint(child_right)));
     });
 
     fn_check_construction = device.compile<1>([

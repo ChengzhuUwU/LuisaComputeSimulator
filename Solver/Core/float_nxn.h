@@ -181,31 +181,31 @@ inline Var<float4x4> makeFloat4x4(const Var<float> x, const Var<float4> diag)  {
 [[nodiscard]] inline float2x3 transpose_3x2(const float3x2& mat) noexcept 
 {
     return makeFloat2x3(
-        makeFloat3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
-        makeFloat3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
+        luisa::make_float3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
+        luisa::make_float3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
     );
 }
 [[nodiscard]] inline float3x2 transpose_2x3(const float2x3& mat) noexcept 
 {
     return makeFloat3x2(
-        makeFloat2(mat.cols[0][0], mat.cols[1][0]),
-        makeFloat2(mat.cols[0][1], mat.cols[1][1]),
-        makeFloat2(mat.cols[0][2], mat.cols[1][2])
+        luisa::make_float2(mat.cols[0][0], mat.cols[1][0]),
+        luisa::make_float2(mat.cols[0][1], mat.cols[1][1]),
+        luisa::make_float2(mat.cols[0][2], mat.cols[1][2])
     );
 }
 [[nodiscard]] inline Var<float2x3> transpose_3x2(const Var<float3x2>& mat) noexcept 
 {
     return makeFloat2x3(
-        makeFloat3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
-        makeFloat3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
+        luisa::compute::make_float3(mat.cols[0][0], mat.cols[1][0], mat.cols[2][0]),
+        luisa::compute::make_float3(mat.cols[0][1], mat.cols[1][1], mat.cols[2][1])
     );
 }
 [[nodiscard]] inline Var<float3x2> transpose_2x3(const Var<float2x3>& mat) noexcept 
 {
     return makeFloat3x2(
-        makeFloat2(mat.cols[0][0], mat.cols[1][0]),
-        makeFloat2(mat.cols[0][1], mat.cols[1][1]),
-        makeFloat2(mat.cols[0][2], mat.cols[1][2])
+        luisa::compute::make_float2(mat.cols[0][0], mat.cols[1][0]),
+        luisa::compute::make_float2(mat.cols[0][1], mat.cols[1][1]),
+        luisa::compute::make_float2(mat.cols[0][2], mat.cols[1][2])
     );
 }
 

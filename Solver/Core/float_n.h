@@ -224,21 +224,16 @@ using Float12x12 = luisa::compute::Var<MATRIX12>;
 template<typename T>
 using Var = luisa::compute::Var<T>;
 
-#define Float3_zero makeFloat3(0)
-#define Float3_one  makeFloat3(1)
-#define FLOAT3_MAX  makeFloat3(Float_max)
-#define FLOAT3_EPSILON makeFloat3(EPSILON)
-
-#define Color_Rre    makeFloat4(0.9f, 0.1f, 0.1f, 1.f)
-#define Color_Green  makeFloat4(0.1f, 0.9f, 0.1f, 1.f)
-#define Color_Blue   makeFloat4(0.1f, 0.1f, 0.9f, 1.f)
-#define Color_Yellow makeFloat4(0.9f, 0.9f, 0.1f, 1.f)
-#define Color_Orange makeFloat4(0.9f, 0.5f, 0.1f, 1.f)
-#define Color_Purple makeFloat4(0.5f, 0.1f, 0.9f, 1.f)
-#define Color_Cyan   makeFloat4(0.1f, 0.9f, 0.9f, 1.f)
-#define Zero2        makeFloat2(0.f, 0.f)
-#define Zero3        makeFloat3(0.f, 0.f, 0.f)
-#define Zero4        makeFloat4(0.f, 0.f, 0.f, 0.f)
+#define Color_Rre    luisa::make_float4(0.9f, 0.1f, 0.1f, 1.f)
+#define Color_Green  luisa::make_float4(0.1f, 0.9f, 0.1f, 1.f)
+#define Color_Blue   luisa::make_float4(0.1f, 0.1f, 0.9f, 1.f)
+#define Color_Yellow luisa::make_float4(0.9f, 0.9f, 0.1f, 1.f)
+#define Color_Orange luisa::make_float4(0.9f, 0.5f, 0.1f, 1.f)
+#define Color_Purple luisa::make_float4(0.5f, 0.1f, 0.9f, 1.f)
+#define Color_Cyan   luisa::make_float4(0.1f, 0.9f, 0.9f, 1.f)
+#define Zero2        luisa::make_float2(0.f, 0.f)
+#define Zero3        luisa::make_float3(0.f, 0.f, 0.f)
+#define Zero4        luisa::make_float4(0.f, 0.f, 0.f, 0.f)
 
 
 constexpr inline float2 makeFloat2(const float x = 0.0f) { return luisa::make_float2(x, x); }

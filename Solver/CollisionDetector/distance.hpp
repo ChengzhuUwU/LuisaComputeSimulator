@@ -42,8 +42,8 @@ inline Var<bool> solve(const Mat2x2f &a, const Vec2f &b, Vec2f &x) {
     $if (det != 0.0f) {
         // a_inv << a(1, 1) / det, -a(0, 1) / det, -a(1, 0) / det, a(0, 0) / det;
         Mat2x2f a_inv = makeFloat2x2(
-            makeFloat2( a[1][1] / det, -a[0][1] / det),
-            makeFloat2(-a[1][0] / det,  a[0][0] / det)
+            luisa::compute::make_float2( a[1][1] / det, -a[0][1] / det),
+            luisa::compute::make_float2(-a[1][0] / det,  a[0][0] / det)
         );
         x = a_inv * b;
         is_safe = (true);
@@ -649,7 +649,7 @@ inline uint2 edge_edge_type(
     $if (bary[1] != 0.0f) { valid_indices1[valid_count1] = 1; valid_count1 += 1; };
     $if (bary[2] != 0.0f) { valid_indices2[valid_count2] = 0; valid_count2 += 1; };
     $if (bary[3] != 0.0f) { valid_indices2[valid_count2] = 1; valid_count2 += 1; };
-    return makeUint2(valid_count1, valid_count2);
+    return luisa::compute::make_uint2(valid_count1, valid_count2);
 }
 
 } // namespace host_distance

@@ -254,7 +254,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
                 $if (diff < d_hat + thickness)
                 {
                     Float C = d_hat + thickness - diff;
-                    float3 normal = makeFloat3(0, 1, 0);
+                    float3 normal = luisa::make_float3(0, 1, 0);
                     Float area = sa_rest_vert_area->read(vid);
                     Float stiff = stiffness * area;
                     force += stiff * C * normal;
@@ -635,12 +635,12 @@ void NewtonSolver::host_evaluate_ground_collision()
             float3 x_k = sa_x[vid];
             float diff = x_k.y - get_scene_params().floor.y;
     
-            float3 force = makeFloat3(0.0f);
+            float3 force = luisa::make_float3(0.0f);
             float3x3 hessian = makeFloat3x3(0.0f);
             if (diff < d_hat + thickness)
             {
                 float C = d_hat + thickness - diff;
-                float3 normal = makeFloat3(0, 1, 0);
+                float3 normal = luisa::make_float3(0, 1, 0);
                 float area = sa_rest_vert_area[vid];
                 float stiff = stiffness_ground * area;
                 force = stiff * C * normal;

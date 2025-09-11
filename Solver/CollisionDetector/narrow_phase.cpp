@@ -570,8 +570,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     {
                         Uint idx = narrowphase_count_vf->atomic(0).fetch_add(1u);
                         Var<CollisionPairVF> vf_pair;
-                        vf_pair.indices = makeUint4(vid, face[0], face[1], face[2]);
-                        vf_pair.vec1 = makeFloat4(normal.x, normal.y, normal.z, avg_area);
+                        vf_pair.indices = make_uint4(vid, face[0], face[1], face[2]);
+                        vf_pair.vec1 = make_float4(normal.x, normal.y, normal.z, avg_area);
                         CollisionPair::write_vf_weight(vf_pair, bary);
                         CollisionPair::write_vf_stiff(vf_pair, k1, k2);;
                         narrowphase_list_vf->write(idx, vf_pair);
@@ -678,8 +678,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                     {
                         Uint idx = narrowphase_count_ee->atomic(0).fetch_add(1u);
                         Var<CollisionPairEE> ee_pair;
-                        ee_pair.indices = makeUint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
-                        ee_pair.vec1 = makeFloat4(normal.x, normal.y, normal.z, avg_area);
+                        ee_pair.indices = make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
+                        ee_pair.vec1 = make_float4(normal.x, normal.y, normal.z, avg_area);
                         CollisionPair::write_ee_weight(ee_pair, bary);
                         CollisionPair::write_ee_stiff(ee_pair, k1, k2);
                         narrowphase_list_ee->write(idx, ee_pair);
@@ -1476,14 +1476,14 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
         const uint vid = 1;
         const uint fid = 2;
         const uint3 face = uint3(4, 7, 5);
-        float3 case_t0_p  = makeFloat3(0.48159984, -0.26639974, -0.48159984);
-        float3 case_t1_p  = makeFloat3(0.47421163, -0.3129394, -0.47421163);
-        float3 case_t0_f0 = makeFloat3(-0.4, -0.3, -0.5);
-        float3 case_t0_f1 = makeFloat3(0.6, -0.3, 0.5);
-        float3 case_t0_f2 = makeFloat3(0.6, -0.3, -0.5);
-        float3 case_t1_f0 = makeFloat3(-0.4, -0.3, -0.5);
-        float3 case_t1_f1 = makeFloat3(0.6, -0.3, 0.5);
-        float3 case_t1_f2 = makeFloat3(0.6, -0.3, -0.5);
+        float3 case_t0_p  = luisa::make_float3(0.48159984, -0.26639974, -0.48159984);
+        float3 case_t1_p  = luisa::make_float3(0.47421163, -0.3129394, -0.47421163);
+        float3 case_t0_f0 = luisa::make_float3(-0.4, -0.3, -0.5);
+        float3 case_t0_f1 = luisa::make_float3(0.6, -0.3, 0.5);
+        float3 case_t0_f2 = luisa::make_float3(0.6, -0.3, -0.5);
+        float3 case_t1_f0 = luisa::make_float3(-0.4, -0.3, -0.5);
+        float3 case_t1_f1 = luisa::make_float3(0.6, -0.3, 0.5);
+        float3 case_t1_f2 = luisa::make_float3(0.6, -0.3, -0.5);
 
         {
             const auto t0_p  = float3_to_eigen3(case_t0_p ); 
@@ -1544,24 +1544,24 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
         const uint2 left_edge = uint2(2, 3);
         const uint2 right_edge = uint2(4, 6);
         
-        float3 case_ea_t0_p0 = makeFloat3(-0.402716, -0.290011, 0.452109);
-        float3 case_ea_t0_p1 = makeFloat3(0.50008, 0.138455, 0.490343);
-        float3 case_eb_t0_p0 = makeFloat3(-0.4, -0.300001, -0.5);
-        float3 case_eb_t0_p1 = makeFloat3(-0.399998, -0.300016, 0.5);
-        float3 case_ea_t1_p0 = makeFloat3(-0.40609047, -0.30418798, 0.4480959);
-        float3 case_ea_t1_p1 = makeFloat3(0.500001, 0.11660194, 0.4934225);
-        float3 case_eb_t1_p0 = makeFloat3(-0.4, -0.300001, -0.5);
-        float3 case_eb_t1_p1 = makeFloat3(-0.399998, -0.300016, 0.5);
+        float3 case_ea_t0_p0 = luisa::make_float3(-0.402716, -0.290011, 0.452109);
+        float3 case_ea_t0_p1 = luisa::make_float3(0.50008, 0.138455, 0.490343);
+        float3 case_eb_t0_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
+        float3 case_eb_t0_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
+        float3 case_ea_t1_p0 = luisa::make_float3(-0.40609047, -0.30418798, 0.4480959);
+        float3 case_ea_t1_p1 = luisa::make_float3(0.500001, 0.11660194, 0.4934225);
+        float3 case_eb_t1_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
+        float3 case_eb_t1_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
         const float thickenss = 0;
 
-        // float3 case_ea_t0_p0 = makeFloat3(-0.499492, -0.279657, 0.460444);
-        // float3 case_ea_t0_p1 = makeFloat3(0.499997, -0.248673, 0.468853);
-        // float3 case_eb_t0_p0 = makeFloat3(-0.4, -0.3, -0.5);
-        // float3 case_eb_t0_p1 = makeFloat3(-0.4, -0.3, 0.5);
-        // float3 case_ea_t1_p0 = makeFloat3(-0.49939114, -0.30410385, 0.4529846);
-        // float3 case_ea_t1_p1 = makeFloat3(0.4999971, -0.27044764, 0.4630015);
-        // float3 case_eb_t1_p0 = makeFloat3(-0.4, -0.3, -0.5);
-        // float3 case_eb_t1_p1 = makeFloat3(-0.4, -0.3, 0.5);
+        // float3 case_ea_t0_p0 = luisa::make_float3(-0.499492, -0.279657, 0.460444);
+        // float3 case_ea_t0_p1 = luisa::make_float3(0.499997, -0.248673, 0.468853);
+        // float3 case_eb_t0_p0 = luisa::make_float3(-0.4, -0.3, -0.5);
+        // float3 case_eb_t0_p1 = luisa::make_float3(-0.4, -0.3, 0.5);
+        // float3 case_ea_t1_p0 = luisa::make_float3(-0.49939114, -0.30410385, 0.4529846);
+        // float3 case_ea_t1_p1 = luisa::make_float3(0.4999971, -0.27044764, 0.4630015);
+        // float3 case_eb_t1_p0 = luisa::make_float3(-0.4, -0.3, -0.5);
+        // float3 case_eb_t1_p1 = luisa::make_float3(-0.4, -0.3, 0.5);
         // const float thickness = 1e-3;
     
         {

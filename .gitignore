@@ -12,7 +12,6 @@ config.json
 vsxmake2022
 compile_commands.json
 /screenshot.png 
-/imgui.ini
 *.egg-info
 .env
 lc_options.generated.lua
@@ -20,3 +19,5 @@ lc_options.generated.lua
 .scripts
 /Resources/OutputMesh/*.obj
 /Resources/SimulationState/
+.polyscope.ini
+imgui.ini

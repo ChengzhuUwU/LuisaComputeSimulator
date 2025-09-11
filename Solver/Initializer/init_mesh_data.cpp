@@ -331,7 +331,7 @@ void init_mesh_data(
         // Face adj edges
         mesh_data->face_adj_edges.resize(num_faces);
         mesh_data->face_adj_faces.resize(num_faces);
-        mesh_data->edge_adj_faces.resize(num_edges, makeUint2(-1u));
+        mesh_data->edge_adj_faces.resize(num_edges, luisa::make_uint2(-1u));
         auto fn_vert_in_face = [](const uint& vid, const uint3& face) { return vid == face[0] || vid == face[1] || vid == face[2]; };
         CpuParallel::parallel_for(0, num_faces, [&](const uint fid)
         {

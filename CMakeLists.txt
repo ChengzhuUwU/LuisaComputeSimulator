@@ -102,8 +102,6 @@ target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::to
 
 if(WIN32)
 set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
-# set(CMAKE_BUILD_TYPE Release)
-# set(TBB_DIR "C:/Applications/vcpkg/packages/tbb_x64-windows/share/tbb")
 endif()
 
 find_package(Eigen3 REQUIRED)
