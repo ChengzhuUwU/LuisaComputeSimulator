@@ -79,7 +79,8 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_cgX;
     BufferType<float3> sa_cgB;
     BufferType<float3x3> sa_cgA_diag;
-    BufferType<float3x3> sa_cgA_offdiag; // Row-major for simplier SpMV
+    BufferType<float3x3> sa_cgA_offdiag_stretch_spring;
+    BufferType<float3x3> sa_cgA_offdiag_bending; 
  
     BufferType<float3x3> sa_cgMinv;
     BufferType<float3> sa_cgP;

@@ -32,6 +32,25 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     const uint num_stretch_faces = range_faces_cloth[1] - range_faces_cloth[0];
     const uint num_bending_edges = range_bending_edges_cloth[1] - range_bending_edges_cloth[0];
 
+    // const uint num_stretch_springs = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_edges, [&](const uint eid)
+    // {
+    //     uint2 edge = mesh_data->sa_edges[eid];
+    //     bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+    //     // bool is_dynamic = !mesh_data->sa_is_fixed[edge[0]] && !mesh_data->sa_is_fixed[edge[1]];
+    //     return (is_cloth ) ? 1 : 0;
+    // });
+    // const uint num_stretch_faces = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_faces, [&](const uint fid)
+    // {
+    //     uint3 face = mesh_data->sa_faces[fid];
+    //     bool is_cloth = mesh_data->sa_vert_mesh_id[face[0]] == uint(ShellTypeCloth);
+    //     return (is_cloth) ? 1 : 0;
+    // });
+    // const uint num_bending_edges = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_bending_edges, [&](const uint eid)
+    // {
+    //     uint4 edge = mesh_data->sa_bending_edges[eid];
+    //     bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+    //     return (is_cloth) ? 1 : 0;
+    // });
 
     // Init energy
     {
@@ -392,6 +411,7 @@ void resize_pcg_data(
 {
     const uint num_verts = mesh_data->num_verts;
     const uint num_edges = mesh_data->num_edges;
+    const uint num_bending_edges = mesh_data->num_bending_edges;
     const uint num_faces = mesh_data->num_faces;
 
     const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_edges * 2);
@@ -399,7 +419,8 @@ void resize_pcg_data(
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    resize_buffer(host_data->sa_cgA_offdiag, off_diag_count);
+    resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_edges * 1);
+    resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
     resize_buffer(host_data->sa_cgQ, num_verts);
@@ -411,7 +432,8 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    resize_buffer(device, device_data->sa_cgA_offdiag, off_diag_count);
+    resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_edges * 1);
+    resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);
     resize_buffer(device, device_data->sa_cgQ, num_verts);

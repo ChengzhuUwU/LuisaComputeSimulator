@@ -28,7 +28,6 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
     // auto& sa_cgX = sim_data->sa_cgX;
     // auto& sa_cgB = sim_data->sa_cgB;
     // auto& sa_cgA_diag = sim_data->sa_cgA_diag;
-    // auto& sa_cgA_offdiag = sim_data->sa_cgA_offdiag;
     
     // auto& sa_cgMinv = sim_data->sa_cgMinv;
     // auto& sa_cgP = sim_data->sa_cgP;
@@ -348,7 +347,6 @@ void ConjugateGradientSolver::host_solve(
     std::vector<float3>& sa_cgX = host_sim_data->sa_cgX;
     std::vector<float3>& sa_cgB = host_sim_data->sa_cgB;
     std::vector<float3x3>& sa_cgA_diag = host_sim_data->sa_cgA_diag;
-    std::vector<float3x3>& sa_cgA_offdiag = host_sim_data->sa_cgA_offdiag; // Row-major for simplier SpMV
  
     std::vector<float3x3>& sa_cgMinv = host_sim_data->sa_cgMinv;
     std::vector<float3>& sa_cgP = host_sim_data->sa_cgP;

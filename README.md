@@ -39,16 +39,28 @@ Dirichlet boundary energy: solid-sim-toturial
 
 GPU Intrinsic: [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting)
 
-## Methods
+<!-- ## Methods
 
-Stretch: Mass-spring
+### Stretch: Mass-spring
+
+$$ l = ||x_0 - x_1|| $$
+
+$$ E = \frac{1}{2} k (l - L) $$
+
+Where $k \approx 10^4$, $l$ is the current distance, $L$ is the initial distance.
+
+$$ \frac{\partial E}{\partial x} = k \frac{x_0 - x_1}{||x_0 - x_1||}^T \frac{\partial x_0 - x_1}{\partial x} = k \frac{x_0 - x_1}{l}^T [\mathbf{I_{3\times 3}}, -\mathbf{I_{3\times 3}}] $$
+
+$$ 
+\frac{\partial^2 E}{\partial x^2} = 
+$$
 
 Bending: Not implement yet lol
 
 Collision: Proximity penalty, Codimentional-IPC
 - Full hessian of $\frac{\partial d}{\partial x}$ is toooooo hard to debug, so we choose the simplified version from (PNCG-IPC)(https://github.com/Xingbaji/PNCG_IPC), which considering barycentric coordinate as constant value.
 
-Friction: Not implement yet lol
+Friction: Not implement yet lol -->
 
 ## 其他
 

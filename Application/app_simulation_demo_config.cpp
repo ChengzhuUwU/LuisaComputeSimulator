@@ -89,63 +89,6 @@ void ccd_ee_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().nonlinear_iter_count = 1;
     lcs::get_scene_params().pcg_iter_count = 200;
 }
-void dcd_proximity_repulsion_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
-{
-    
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "square8K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001; },
-            },
-        }
-    });
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-            },
-        }
-    });
-    lcs::get_scene_params().load_state_frame = 89;
-    // lcs::get_scene_params().implicit_dt = 1.0/240.0;
-    lcs::get_scene_params().implicit_dt = 0.003f;
-    lcs::get_scene_params().num_substep = 1;
-    lcs::get_scene_params().nonlinear_iter_count = 1;
-    lcs::get_scene_params().pcg_iter_count = 200;
-}
-void ccd_ipc_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
-{
-    
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "square8K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z < 0.001; },
-            },
-        }
-    });
-    shell_list.push_back({
-        // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-            },
-        }
-    });
-    lcs::get_scene_params().load_state_frame = 6;
-    lcs::get_scene_params().implicit_dt = 0.05;
-    lcs::get_scene_params().num_substep = 1;
-    lcs::get_scene_params().nonlinear_iter_count = 20;
-    lcs::get_scene_params().pcg_iter_count = 1000;
-}
 void dcd_cloth_cylinder_repulsion(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({
@@ -303,34 +246,6 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().gravity = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_floor = false;
 }
-void dcd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
-{
-    shell_list.push_back({
-        .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x < 0.001f ); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = -72, 
-            },
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return (norm_pos.x > 0.999f); },
-                .use_rotate = true,
-                .rotCenter = luisa::make_float3(-0.005, 0, 0),
-                .rotAxis = luisa::make_float3(1, 0, 0),
-                .rotAngVelDeg = 72, 
-            }
-        }
-    });
-    lcs::get_scene_params().pcg_iter_count = 75;
-    lcs::get_scene_params().nonlinear_iter_count = 1;
-    lcs::get_scene_params().use_ccd_linesearch = false;
-    lcs::get_scene_params().use_energy_linesearch = false;
-    lcs::get_scene_params().gravity = luisa::make_float3(0.0f);
-    lcs::get_scene_params().use_floor = false;
-}
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
@@ -343,12 +258,9 @@ void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
         case 1: { ccd_ee_unit_case(shell_list); break; };
         case 2: { moving_vf_unit(shell_list); break; };
         case 3: { ccd_rotation_cylinder(shell_list); break; };
-        case 6: { dcd_proximity_repulsion_unit_case(shell_list); break; };
         case 8: { dcd_cloth_ball(shell_list); break; };
         case 9: { cloth_bottle4(shell_list); break; };
 
-        case 10: { dcd_rotation_cylinder(shell_list); break; };
-        case 11: { dcd_rotation_cylinder(shell_list); break; };
         default: ccd_vf_unit_case(shell_list); break;
     };
 

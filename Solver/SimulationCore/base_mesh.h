@@ -71,6 +71,8 @@ struct MeshData : SimulationType
     BufferType<float> sa_vert_mass;
     BufferType<float> sa_vert_mass_inv;
     BufferType<uint> sa_is_fixed; // TODO: uchar
+    BufferType<uint> sa_vert_mesh_id;
+    BufferType<uint> sa_vert_mesh_type;
     
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;

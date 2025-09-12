@@ -21,3 +21,4 @@ lc_options.generated.lua
 /Resources/SimulationState/
 .polyscope.ini
 imgui.ini
+.VSCodeCounter

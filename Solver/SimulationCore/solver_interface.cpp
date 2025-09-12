@@ -311,6 +311,33 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             energy = 0.5f * stiffness_spring * C * C;
         return energy;
     };
+    auto compute_energy_bending = [](
+        const uint eid, 
+        const std::vector<float3>& sa_x, 
+        const std::vector<uint4>& sa_bending_edges,
+        const std::vector<float4x4> sa_bending_edges_Q, 
+        const float stiffness_bending)
+    {
+        const uint4 edge = sa_bending_edges[eid];
+        const float4x4 m_Q = sa_bending_edges_Q[eid];
+        float3 vert_pos[4] = {
+            sa_x[edge[0]],
+            sa_x[edge[1]],
+            sa_x[edge[2]],
+            sa_x[edge[3]],
+        };
+        float energy = 0.f;
+        for (uint ii = 0; ii < 4; ii++) 
+        {
+            for (uint jj = 0; jj < 4; jj++) 
+            {
+                // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+                energy += m_Q[ii][jj] * luisa::dot(vert_pos[ii], vert_pos[jj]); 
+            }
+        }
+        energy = 0.5f * stiffness_bending * energy;
+        return energy;
+    };
 
     double energy_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_verts, [&](const uint vid)
     {
@@ -338,10 +365,18 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             curr_x, 
             host_sim_data->sa_stretch_springs, 
             host_sim_data->sa_stretch_spring_rest_state_length, 
-            1e4);
+            get_scene_params().stiffness_spring);
+    });
+    double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_bending_edges, [&](const uint eid)
+    {
+        return compute_energy_bending(eid, 
+            curr_x, 
+            host_sim_data->sa_bending_edges, 
+            host_sim_data->sa_bending_edges_Q, 
+            get_scene_params().get_stiffness_quadratic_bending());
     });
     // luisa::log_info("    Energy = inertia {} + ground {} + stretch {}", energy_inertia, energy_goundcollision, energy_spring);
-    return energy_inertia + energy_goundcollision + energy_spring;
+    return energy_inertia + energy_goundcollision + energy_spring + energy_bending;
 };
 
 constexpr uint offset_inertia = 0;
@@ -472,6 +507,44 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);
         };
     }, default_option);
+
+    fn_calc_energy_bending = device.compile<1>(
+        [
+            sa_edges = sim_data->sa_bending_edges.view(),
+            sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),
+            sa_system_energy = sim_data->sa_system_energy.view()
+        ](
+            Var<BufferView<float3>> sa_x,
+            Float stiffness_bending
+        )
+    {
+        const Uint eid = dispatch_id().x;
+        Float energy = 0.0f;
+        {
+            const Uint4 edge = sa_edges->read(eid);
+            const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
+            Float3 vert_pos[4] = {
+                sa_x.read(edge[0]),
+                sa_x.read(edge[1]),
+                sa_x.read(edge[2]),
+                sa_x.read(edge[3]),
+            };
+            for (uint ii = 0; ii < 4; ii++) 
+            {
+                for (uint jj = 0; jj < 4; jj++) 
+                {
+                    // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+                    energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]); 
+                }
+            }
+            energy = 0.5f * stiffness_bending * energy;
+        };
+        energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+        $if (eid % 256 == 0)
+        {
+            sa_system_energy->atomic(offset_bending).fetch_add(energy);
+        };
+    }, default_option);
 }
 double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x)
 {
@@ -479,15 +552,26 @@ double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& st
         << fn_reset_float(sim_data->sa_system_energy).dispatch(8)
         << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet).dispatch(mesh_data->num_verts)
         << fn_calc_energy_ground_collision(curr_x, get_scene_params().floor.y, get_scene_params().use_floor, 1e7f, get_scene_params().d_hat, get_scene_params().thickness).dispatch(mesh_data->num_verts)
-        << fn_calc_energy_spring(curr_x, 1e4f).dispatch(host_sim_data->sa_stretch_springs.size())
+        << fn_calc_energy_spring(curr_x, get_scene_params().stiffness_spring).dispatch(host_sim_data->sa_stretch_springs.size())
+        << fn_calc_energy_bending(curr_x, get_scene_params().get_stiffness_quadratic_bending()).dispatch(host_sim_data->sa_bending_edges.size())
         ;
 
     auto& host_energy = host_sim_data->sa_system_energy;
     stream 
         << sim_data->sa_system_energy.view(0, 8).copy_to(host_energy.data())
         << luisa::compute::synchronize();
-    // luisa::log_info("    Energy = inertia {} + ground {} + stretch {}", host_energy[offset_inertia], host_energy[offset_ground_collision], host_energy[offset_stretch_spring]);
-    return std::reduce(&host_energy[0], &host_energy[8], 0.0f);
+
+    float total_energy = std::reduce(&host_energy[0], &host_energy[8], 0.0f);
+    if (get_scene_params().print_system_energy)
+    {
+        luisa::log_info("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", 
+            total_energy,
+            host_energy[offset_inertia], 
+            host_energy[offset_ground_collision], 
+            host_energy[offset_stretch_spring], 
+            host_energy[offset_bending]);
+    }
+    return total_energy;
     // return energy_inertia + energy_goundcollision + energy_spring;
 };
 

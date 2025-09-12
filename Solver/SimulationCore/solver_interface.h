@@ -118,6 +118,10 @@ private:
         > fn_calc_energy_spring;
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, // sa_x
+        float // stiffness_bending
+        > fn_calc_energy_bending;
+    luisa::compute::Shader<1, 
+        luisa::compute::BufferView<float3>, // sa_x
         float, // floor_y
         bool, // use_ground_collision
         float, // stiffness

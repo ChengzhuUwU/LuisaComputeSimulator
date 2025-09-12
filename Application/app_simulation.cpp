@@ -497,7 +497,7 @@ int main(int argc, char** argv)
                 
                 // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
                 // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);
-                // ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+                ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
                 // ImGui::Checkbox("Print Convergence", &lcs::get_scene_params().print_xpbd_convergence);
                 ImGui::Checkbox("Print Energy", &lcs::get_scene_params().print_system_energy);
                 ImGui::Checkbox("Use GPU Solver", &lcs::get_scene_params().use_gpu);

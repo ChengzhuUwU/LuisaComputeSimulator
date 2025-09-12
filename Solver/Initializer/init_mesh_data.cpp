@@ -141,6 +141,8 @@ void init_mesh_data(
 
         mesh_data->sa_rest_v.resize(num_verts);
         mesh_data->sa_is_fixed.resize(num_verts);
+        mesh_data->sa_vert_mesh_id.resize(num_verts);
+        mesh_data->sa_vert_mesh_type.resize(num_verts);
 
         uint prefix_num_verts = 0;
         uint prefix_num_faces = 0;
@@ -166,6 +168,8 @@ void init_mesh_data(
                 float3 world_position = lcs::affine_position(model_matrix, model_position);
                 mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
                 mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
+                mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
+                mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.shell_type);
             });
             // Read triangle face
             CpuParallel::parallel_for(0, curr_num_faces, [&](const uint fid)
@@ -504,6 +508,8 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_vert_mass, input_data->sa_vert_mass)
         << upload_buffer(device, output_data->sa_vert_mass_inv, input_data->sa_vert_mass_inv)
         << upload_buffer(device, output_data->sa_is_fixed, input_data->sa_is_fixed)
+        << upload_buffer(device, output_data->sa_vert_mesh_id, input_data->sa_vert_mesh_id)
+        << upload_buffer(device, output_data->sa_vert_mesh_type, input_data->sa_vert_mesh_type)
 
         << upload_buffer(device, output_data->sa_rest_vert_area, input_data->sa_rest_vert_area)
         << upload_buffer(device, output_data->sa_rest_edge_area, input_data->sa_rest_edge_area)
