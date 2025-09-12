@@ -87,17 +87,7 @@ endif()
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
 add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
-# set_target_properties(luisa-compute-solver-lib PROPERTIES PUBLIC_HEADER "${LUISA_COMPUTE_SOLVER_LIB_HEADERS}")
-# target_compile_definitions(luisa-compute-solver-lib PRIVATE LS_DLL_EXPORTS=1)
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Core>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Energy>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Initializer>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/LinearSolver>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/MeshOperation>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationCore>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/SimulationSolver>)
-# target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver/Utils>)
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
 if(WIN32)
@@ -112,10 +102,6 @@ set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
 # test
-# file(GLOB_RECURSE LUISA_SOLVER_TEST_SOURCES CONFIGURE_DEPENDS test/*.cpp)
-# add_executable(luisa-solver-test ${LUISA_SOLVER_TEST_SOURCES})
-# target_include_directories(luisa-solver-test PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/test/_framework>)
-# target_link_libraries(luisa-solver-test PRIVATE luisa::compute luisa-compute-solver-lib)
 add_executable(test-xtypes UnitTest/test_xtypes.cpp)
 target_link_libraries(test-xtypes PRIVATE luisa::compute luisa-compute-solver-lib)
 

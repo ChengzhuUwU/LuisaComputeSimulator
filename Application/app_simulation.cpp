@@ -112,6 +112,7 @@ int main(int argc, char** argv)
     Demo::Simulation::load_scene(shell_list);
     
 
+    luisa::log_info("Init mesh data...");
     // Init data
     lcs::MeshData<std::vector>             host_mesh_data;
     lcs::MeshData<luisa::compute::Buffer>  mesh_data;
@@ -145,6 +146,7 @@ int main(int argc, char** argv)
     }
 
     // Init solver class
+    luisa::log_info("JIT Compiling LBVH...");
     lcs::BufferFiller   buffer_filler;
     lcs::DeviceParallel device_parallel;
 
@@ -157,6 +159,7 @@ int main(int argc, char** argv)
         lbvh_edge.compile(device);
     }
 
+    luisa::log_info("JIT Compiling Narrow Phase Detector...");
     lcs::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
@@ -164,6 +167,7 @@ int main(int argc, char** argv)
         // narrow_phase_detector.unit_test(device, stream);
     }
     
+    luisa::log_info("JIT Compiling Solver...");
     lcs::ConjugateGradientSolver pcg_solver;
     {
         pcg_solver.set_data(
