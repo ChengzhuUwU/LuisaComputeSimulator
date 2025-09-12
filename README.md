@@ -1,4 +1,4 @@
-# LuisaComputeSolver
+# LuisaComputeSolver: Physics Simulation Based-on LuisaCompute
 
 ![Teasor](Resources/OutputImage/README1.png)
 
@@ -23,21 +23,29 @@
 
 ## Reference
 
-IPC: libuipc、solid-sim-toturial
+IPC: (PNCG-IPC)(https://github.com/Xingbaji/PNCG_IPC), [libuipc](https://github.com/spiriMirror/libuipc), [solid-sim-toturial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
 
-PCG: MAS
+DCD & CCD: [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver)
 
-LBVH: Document by suika, libuipc
+PCG (Linear Equation Solver): [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/)
 
-Device Intrinsic: LuisaComputeGaussSplatting
+Framework: [libshell](https://github.com/legionus/libshell)
+
+LBVH: libuipc
+
+GPU Intrinsic: [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting)
 
 
 ## 其他
 
-项目还是非常早期的阶段，仅供学习与玩一玩，更完整、严谨的仿真管线可以参考 [libuipc](https://github.com/spiriMirror/libuipc) 与 minchen 的 [Totorial](https://github.com/phys-sim-book/solid-sim-tutorial)，希望下一个工作早点中 TT，就能补一些东西了
+纠结了一下还是先开源一版了
 
 为什么想做这个：狗蛋、minchen、mike、anka、suika、zihang、kemeng、yupeng、xinlei、chenjiong 等老师的开源之光太耀眼了
 
-LuisaCompute 的优势：写起来很方便，不用天天bind了，slang也难逃此劫。。虽然默认是jit，但感觉改成aot问题也不大，可以用于生产中。
+项目还是非常早期的阶段，仅供学习参考，更完整、严谨的 IPC 仿真框架可以参考 [libuipc](https://github.com/spiriMirror/libuipc) 
 
-LuisaCompute 的劣势：什么都得自己写，特别是线性代数部分
+- LuisaCompute 的优势：写起来很方便，不用天天手动绑定 Buffer 了（我永远忘不了上个项目写 Metal 的时候绑定参数的痛，即使是bindless 也很难确保不出错）。slang 本质上没有什么区别，调用起来仍然得走传统 API 的范式。LuisCompute 虽然默认是jit，但感觉改成aot问题也不大，是可以用于生产中
+
+- LuisaCompute 的劣势：线性代数部分得自己写，还是有点麻烦的（比如 12x12 的矩阵乘法，稀疏线性系统求解器等），不知道有没有人想一起写 lcm （不过短期内还是还得先忙论文，毕业压力好大 T T ）
+
+下次更新可能是明年了，希望下一篇工作不会又拖得太久
