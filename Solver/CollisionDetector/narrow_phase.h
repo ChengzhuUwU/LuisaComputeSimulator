@@ -196,7 +196,7 @@ private:
         float, 
         float,
         float
-        > fn_narrow_phase_vf_dcd_query_penalty;
+        > fn_narrow_phase_vf_dcd_query;
     
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>,
@@ -210,7 +210,7 @@ private:
         float, 
         float,
         float
-        > fn_narrow_phase_ee_dcd_query_penalty;
+        > fn_narrow_phase_ee_dcd_query;
 
     luisa::compute::Shader<1, 
         luisa::compute::BufferView<float3>, 

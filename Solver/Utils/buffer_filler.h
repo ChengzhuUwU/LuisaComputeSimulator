@@ -14,7 +14,7 @@
 namespace lcs
 {
 
-class __attribute__((visibility("default"))) BufferFiller
+class LCGS_API BufferFiller
 {
     template <typename T>
     using Buffer = luisa::compute::Buffer<T>;

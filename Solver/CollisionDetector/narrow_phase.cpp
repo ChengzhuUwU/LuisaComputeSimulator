@@ -465,7 +465,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
 
-    fn_narrow_phase_vf_dcd_query_penalty = device.compile<1>(
+    fn_narrow_phase_vf_dcd_query = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
         broadphase_list = collision_data->broad_phase_list_vf.view(),
@@ -581,7 +581,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         };
     });
 
-    fn_narrow_phase_ee_dcd_query_penalty = device.compile<1>(
+    fn_narrow_phase_ee_dcd_query = device.compile<1>(
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
         broadphase_list = collision_data->broad_phase_list_ee.view(),
@@ -709,7 +709,7 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     if (num_vf_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_vf_dcd_query_penalty(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+            fn_narrow_phase_vf_dcd_query(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
     }
 
 }
@@ -732,7 +732,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     if (num_ee_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_ee_dcd_query_penalty(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+            fn_narrow_phase_ee_dcd_query(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
     }
 }
 
@@ -1263,7 +1263,7 @@ void NarrowPhasesDetector::compute_penalty_energy_from_ee(Stream& stream,
     const Buffer<uint2>& sa_edges_right,
     const float d_hat,
     const float thickness,
-        const float kappa)
+    const float kappa)
 {
     auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint num_ee_narrowphase = host_count[collision_data->get_ee_count_offset()];

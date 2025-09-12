@@ -343,10 +343,7 @@ void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
         case 1: { ccd_ee_unit_case(shell_list); break; };
         case 2: { moving_vf_unit(shell_list); break; };
         case 3: { ccd_rotation_cylinder(shell_list); break; };
-        case 4: { load_scene(shell_list); break; };
-        case 5: { ccd_ipc_unit_case(shell_list); break; };
         case 6: { dcd_proximity_repulsion_unit_case(shell_list); break; };
-        case 7: { dcd_cloth_cylinder_repulsion(shell_list); break; };
         case 8: { dcd_cloth_ball(shell_list); break; };
         case 9: { cloth_bottle4(shell_list); break; };
 
