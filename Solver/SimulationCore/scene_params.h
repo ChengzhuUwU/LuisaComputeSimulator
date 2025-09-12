@@ -83,6 +83,8 @@ struct SceneParams
     uint collision_detection_frequece = 1;
     uint animation_start_frame = 9999;
 
+    uint contact_energy_type = 0;
+
     // uint max_vv_per_vert_broad_self_collision = 32;
     // uint max_vf_per_vert_broad_self_collision = 32;
     // uint max_vv_per_vert_narrow_self_collision = 16;
@@ -122,7 +124,7 @@ struct SceneParams
     float stiffness_bending_ui = 0.5f;
     float stiffness_quadratic_bending = 0.05f;
     float stiffness_DAB_bending = stiffness_quadratic_bending;
-    float stiffness_collision = 1e7;
+    float stiffness_collision = 1e9;
     float stiffness_dirichlet = 1e9;
 
     // Balloon constraint

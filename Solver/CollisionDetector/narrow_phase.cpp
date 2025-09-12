@@ -23,9 +23,14 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
     
+    ContactEnergyType contact_energy_type = 
+        get_scene_params().contact_energy_type == 0 ? 
+        ContactEnergyType::Quadratic : 
+        ContactEnergyType::Barrier; // Quadratic or Barrier
+
     compile_ccd(device);
-    compile_dcd(device);
-    compile_energy(device);
+    compile_dcd(device, contact_energy_type);
+    compile_energy(device, contact_energy_type);
     compile_assemble(device);
 }
 
@@ -445,18 +450,12 @@ void NarrowPhasesDetector::ee_ccd_query(Stream& stream,
 namespace lcs // DCD
 {
 
-constexpr float stiffness_repulsion = 1e9;
+// constexpr float stiffness_repulsion = 1e9;
 constexpr bool use_area_weighting = true;
 constexpr float rest_distance_culling_rate = 1.0f;
 
-enum class ContactEnergyType
-{
-    Penalty,
-    Barrier,
-};
-constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Penalty; // Penalty or Barrier
 
-void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type)
 {
     using namespace luisa::compute;
 
@@ -475,7 +474,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         narrowphase_list_vv = collision_data->narrow_phase_list_vv.view(),
         narrowphase_list_ve = collision_data->narrow_phase_list_ve.view(),
         narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    ](
+    , contact_energy_type](
         Var<BufferView<float3>> sa_x_left, 
         Var<BufferView<float3>> sa_x_right,
         Var<BufferView<float3>> sa_rest_x_a, 
@@ -549,14 +548,14 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                         // luisa::compute::device_log("VF pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
                     } 
 
-                    if constexpr (contact_energy_type == ContactEnergyType::Penalty)
+                    if (contact_energy_type == ContactEnergyType::Quadratic)
                     {
                         Float C = thickness + d_hat - d;
-                        Float stiff = avg_area * stiffness_repulsion;
+                        Float stiff = avg_area * kappa;
                         k1 = stiff * C;
                         k2 = stiff;
                     }
-                    else if constexpr (contact_energy_type == ContactEnergyType::Barrier)
+                    else if (contact_energy_type == ContactEnergyType::Barrier)
                     {
                         Float dBdD; Float ddBddD;
                         // dBdD = kappa * ipc::barrier_first_derivative(d2 - square_scalar(thickness), square_scalar(d_hat));
@@ -587,7 +586,7 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
         broadphase_list = collision_data->broad_phase_list_ee.view(),
         narrowphase_count_ee = collision_data->narrow_phase_collision_count.view(offset_ee, 1),
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
-    ](
+    , contact_energy_type](
         Var<BufferView<float3>> sa_x_a, 
         Var<BufferView<float3>> sa_x_b,
         Var<BufferView<float3>> sa_rest_x_a, 
@@ -660,13 +659,13 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device)
                         // luisa::compute::device_log("EE pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
                     }
 
-                    if constexpr (contact_energy_type == ContactEnergyType::Penalty)
+                    if (contact_energy_type == ContactEnergyType::Quadratic)
                     {
-                        Float stiff = stiffness_repulsion * avg_area;
+                        Float stiff = kappa * avg_area;
                         k1 = stiff * C;
                         k2 = stiff;
                     }
-                    else if constexpr (contact_energy_type == ContactEnergyType::Barrier)
+                    else if (contact_energy_type == ContactEnergyType::Barrier)
                     {
                         Float dBdD; Float ddBddD;
                         cipc::dKappaBarrierdD(dBdD, avg_area * kappa, d2, d_hat, thickness);
@@ -1101,7 +1100,7 @@ void NarrowPhasesDetector::device_spmv(Stream& stream, const Buffer<float3>& inp
 namespace lcs // Compute barrier energy
 {
 
-void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device, const ContactEnergyType contact_energy_type)
 {
     using namespace luisa::compute;
 
@@ -1114,7 +1113,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
     [
         contact_energy = collision_data->contact_energy.view(offset_vf, 1),
         narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    ]( 
+    , contact_energy_type]( 
         Var<BufferView<float3>> sa_x_left, 
         Var<BufferView<float3>> sa_x_right,
         Float d_hat,
@@ -1141,16 +1140,16 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
 
         $if (d < thickness + d_hat)
         {
-            if constexpr (contact_energy_type == ContactEnergyType::Penalty)
+            const Float area = CollisionPair::get_area(pair);
+            if (contact_energy_type == ContactEnergyType::Quadratic)
             {
                 Float C = thickness + d_hat - d;
-                const Float stiff = CollisionPair::get_vf_k2(pair); // k2 = stiffness * area
+                const Float stiff = kappa * area; // k2 = stiffness * area
                 energy = 0.5f * stiff * C * C;
                 // device_log("VF energy : Pair {} , weight = {}, diff = {}, normal = {} d = {}, proj = {}, C = {}, E = {} ", pair_idx, weight, diff, normal, length_vec(diff), d, C, energy);
             }
-            else if constexpr (contact_energy_type == ContactEnergyType::Barrier)
+            else if (contact_energy_type == ContactEnergyType::Barrier)
             {
-                const Float area = CollisionPair::get_area(pair);
                 cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
             }
         };
@@ -1170,7 +1169,7 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
     [
         contact_energy = collision_data->contact_energy.view(offset_ee, 1),
         narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
-    ](
+    , contact_energy_type](
         Var<BufferView<float3>> sa_x_left, 
         Var<BufferView<float3>> sa_x_right,
         Float d_hat,
@@ -1197,15 +1196,15 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device)
 
         $if (d < thickness + d_hat)
         {
-            if constexpr (contact_energy_type == ContactEnergyType::Penalty)
+            const Float area = CollisionPair::get_area(pair);
+            if (contact_energy_type == ContactEnergyType::Quadratic)
             {
                 Float C = thickness + d_hat - d;
-                const Float stiff = CollisionPair::get_ee_k2(pair); // k2 = stiffness * area
+                const Float stiff = kappa * area; // k2 = stiffness * area
                 energy = 0.5f * stiff * C * C;
             }
-            else if constexpr (contact_energy_type == ContactEnergyType::Barrier)
+            else if (contact_energy_type == ContactEnergyType::Barrier)
             {
-                const Float area = CollisionPair::get_area(pair);
                 cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
             }    
         };

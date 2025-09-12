@@ -14,6 +14,13 @@
 namespace lcs 
 {
 
+enum class ContactEnergyType
+{
+    Quadratic,
+    Barrier,
+};
+// constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Quadratic; // Quadratic or Barrier
+
 class NarrowPhasesDetector
 {
     template<typename T>
@@ -25,9 +32,9 @@ class NarrowPhasesDetector
 
 private:
     void compile_ccd(luisa::compute::Device& device);
-    void compile_dcd(luisa::compute::Device& device);
+    void compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
+    void compile_energy(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
     void compile_assemble(luisa::compute::Device& device);
-    void compile_energy(luisa::compute::Device& device);
     
 public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
