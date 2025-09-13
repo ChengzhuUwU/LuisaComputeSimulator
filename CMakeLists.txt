@@ -74,9 +74,9 @@ endif()
 #     add_subdirectory(${EXT_PATH}/ipc-toolkit)
 # endif()
 
-# if (NOT TARGET amgcl)
-#     add_subdirectory(${EXT_PATH}/amgcl)
-# endif()
+if (NOT TARGET amgcl::amgcl)
+    add_subdirectory(${EXT_PATH}/amgcl)
+endif()
 
 # if (NOT TARGET TBB::tbb)
 #     set(TBB_TEST OFF CACHE BOOL "" FORCE)
@@ -96,7 +96,7 @@ endif()
 
 find_package(Eigen3 REQUIRED)
 find_package(TBB CONFIG REQUIRED)
-target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen)
+target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen amgcl::amgcl)
 
 set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
@@ -107,12 +107,14 @@ target_link_libraries(test-xtypes PRIVATE luisa::compute luisa-compute-solver-li
 
 # app
 add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
-# add_executable(app-simulation Application/app_simulation_v2.cpp)
 target_link_libraries(app-simulation PRIVATE 
-    luisa::compute polyscope 
+    luisa::compute 
+    polyscope 
     luisa-compute-solver-lib)
 
-# T
 
-# file(GLOB_RECURSE SIMULATION CONFIGURE_DEPENDS Application/app_simulation.cpp)
-# add_executable(app-simulation ${LUISA_SOLVER_APP_SOURCES})
+
+add_executable(app-test-features Application/app_test_features.cpp)
+target_link_libraries(app-test-features PRIVATE 
+    luisa::compute 
+    luisa-compute-solver-lib)
