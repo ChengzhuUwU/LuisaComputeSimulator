@@ -187,7 +187,7 @@ inline T single_thread_for_and_reduce(uint start_pos, uint end_pos, ParallelFunc
     return std::reduce(thread_values.begin(), thread_values.end(), zero, func_binary);
 }
 
-// inclusive : 包含第一个元素
+// inclusive : 包含第一个元素, func_output(index, block_prefix, parallel_result);
 template<typename T, typename ParallelFunc, typename OutputFunc>
 inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc func_parallel, OutputFunc func_output, const T& zero)
 {

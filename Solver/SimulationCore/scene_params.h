@@ -122,7 +122,7 @@ struct SceneParams
     float poisson_ratio_tet = 0.2f;
 
     float stiffness_bending_ui = 0.5f;
-    float stiffness_quadratic_bending = 0.05f;
+    float stiffness_quadratic_bending = 1e-2f;
     float stiffness_DAB_bending = stiffness_quadratic_bending;
     float stiffness_collision = 1e9;
     float stiffness_dirichlet = 1e9;

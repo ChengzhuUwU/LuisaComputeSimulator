@@ -104,6 +104,7 @@ struct MeshData : SimulationType
 
     std::vector< std::vector<uint> > vert_adj_verts;
     std::vector< std::vector<uint> > vert_adj_verts_with_material_constraints;
+    std::vector< std::vector<uint> > vert_adj_verts_with_material_constraints_with_self;
     std::vector< std::vector<uint> > vert_adj_faces;
     std::vector< std::vector<uint> > vert_adj_edges;
     std::vector< std::vector<uint> > vert_adj_bending_edges;

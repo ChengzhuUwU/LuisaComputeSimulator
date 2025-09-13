@@ -31,6 +31,7 @@ private:
     
 private:
     // Host functions
+    void host_apply_dx(const float alpha);
     void host_predict_position();
     void host_update_velocity();
     void host_evaluate_inertia() ;
@@ -40,6 +41,7 @@ private:
     void host_reset_cgB_cgX_diagA();
     void host_evaluete_spring();
     void host_evaluete_bending();
+    void host_solve_amgcl(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_line_search(luisa::compute::Stream& stream);
     

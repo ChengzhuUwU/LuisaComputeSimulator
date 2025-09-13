@@ -422,7 +422,7 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             {
                 // Dirichlet boundary energy
                 // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-                energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
+                energy = stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
             }
             $else
             {

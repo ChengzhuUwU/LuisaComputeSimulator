@@ -498,9 +498,14 @@ int main(int argc, char** argv)
                 // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
                 // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);
                 ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+
+                static uint stiffness_spring_exp = 4;
+                ImGui::InputScalar("Stretch Stiffness's Exp", ImGuiDataType_U32, &stiffness_spring_exp);
+                lcs::get_scene_params().stiffness_spring = pow(10.0f, (float)stiffness_spring_exp);
                 // ImGui::Checkbox("Print Convergence", &lcs::get_scene_params().print_xpbd_convergence);
                 ImGui::Checkbox("Print Energy", &lcs::get_scene_params().print_system_energy);
                 ImGui::Checkbox("Use GPU Solver", &lcs::get_scene_params().use_gpu);
+                ImGui::Checkbox("Use Self-Collision", &lcs::get_scene_params().use_self_collision);
                 // ImGui::Checkbox("Print PCG Convergence", &lcs::get_scene_params().print_pcg_convergence);
 
                 // static const char* items[] = { "A", "B", "C" };

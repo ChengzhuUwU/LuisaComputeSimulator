@@ -329,7 +329,20 @@ void init_mesh_data(
                 }
             }
         }
+
+        mesh_data->vert_adj_verts_with_material_constraints_with_self = mesh_data->vert_adj_verts_with_material_constraints;
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            std::vector<uint>& adj_list = mesh_data->vert_adj_verts_with_material_constraints[vid];
+            std::sort(adj_list.begin(), adj_list.end());
+            
+            std::vector<uint>& adj_list_with_self = mesh_data->vert_adj_verts_with_material_constraints_with_self[vid];;
+            adj_list_with_self.push_back(vid);
+            std::sort(adj_list_with_self.begin(), adj_list_with_self.end());
+        });
         upload_2d_csr_from(mesh_data->sa_vert_adj_verts_with_material_constraints_csr, mesh_data->vert_adj_verts_with_material_constraints);
+
+
 
         // face_adj_edges
         // Face adj edges
