@@ -207,6 +207,23 @@ int main(int argc, char** argv)
         luisa::log_info("Simulation begin...");
     }
 
+    // for (auto edge : host_mesh_data.sa_edges)
+    // {
+    //     luisa::log_info("edge = {}", edge);
+    // }
+    // for (auto bendingedge : host_mesh_data.sa_bending_edges)
+    // {
+    //     luisa::log_info("edge = {}", bendingedge);
+    // }
+    // for (auto face : host_mesh_data.sa_faces)
+    // {
+    //     luisa::log_info("face = {}", face);
+    // }
+    // for (auto mass : host_mesh_data.sa_vert_mass)
+    // {
+    //     luisa::log_info("mass = {}", mass);
+    // }
+
     auto fn_physics_step = [&]()
     {
         auto fn_affine_position = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)

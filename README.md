@@ -29,7 +29,7 @@ Contact energy: (PNCG-IPC)(https://github.com/Xingbaji/PNCG_IPC), [libuipc](http
 
 DCD & CCD: [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver)
 
-PCG (Linear equation solver): [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/)
+PCG (Linear equation solver): [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl)
 
 Framework: [libshell](https://github.com/legionus/libshell)
 

@@ -259,11 +259,11 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         {
             // Dirichlet boundary energy
             // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-            energy += stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
         }
         else 
         {
         }
+        // luisa::log_info("    vid {} inertia energy {} (|dx| = {})", vid, energy, sqrt_scalar(length_squared_vec(x_new - x_tilde)));
         return energy;
     };
     auto compute_energy_goundcollision = [](
@@ -375,8 +375,12 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             host_sim_data->sa_bending_edges_Q, 
             get_scene_params().get_stiffness_quadratic_bending());
     });
-    // luisa::log_info("    Energy = inertia {} + ground {} + stretch {}", energy_inertia, energy_goundcollision, energy_spring);
-    return energy_inertia + energy_goundcollision + energy_spring + energy_bending;
+    double energy_total = energy_inertia + energy_goundcollision + energy_spring + energy_bending;
+    if (get_scene_params().print_system_energy)
+    {
+        luisa::log_info("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", energy_total, energy_inertia, energy_goundcollision, energy_spring, energy_bending);
+    }
+    return energy_total;
 };
 
 constexpr uint offset_inertia = 0;
@@ -422,7 +426,6 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             {
                 // Dirichlet boundary energy
                 // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-                energy = stiffness_dirichlet * length_squared_vec(x_new - x_tilde) / (2.0f);
             }
             $else
             {

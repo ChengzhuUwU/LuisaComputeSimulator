@@ -1251,6 +1251,8 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
                     // const uint eid = cluster[curr_prefix + index];
                     const uint eid = curr_prefix + index;
                     const uint2 edge = sa_edges[eid];
+                    
+                    // if (host_mesh_data->sa_is_fixed[edge[0]] || host_mesh_data->sa_is_fixed[edge[1]]) return;
 
                     float3x3 offdiag_hessian1 = off_diag_hessian_ptr[eid];
                     float3x3 offdiag_hessian2 = luisa::transpose(offdiag_hessian1);
@@ -1277,6 +1279,14 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
                 {
                     const uint eid = curr_prefix + index;
                     const uint4 edge = sa_bending_edges[eid];
+
+                    // if (
+                    //     host_mesh_data->sa_is_fixed[edge[0]] || 
+                    //     host_mesh_data->sa_is_fixed[edge[1]] ||
+                    //     host_mesh_data->sa_is_fixed[edge[2]] ||
+                    //     host_mesh_data->sa_is_fixed[edge[3]] 
+                    // ) return;
+
                     const float4x4 m_Q = sa_bending_edges_Q[eid];
 
                     float3 input_vec[4] = {
@@ -1765,8 +1775,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
         stream << sim_data->sa_x.copy_from(curr_x.data());
-        // auto material_energy = host_compute_elastic_energy(curr_x);
-        auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
+        auto material_energy = host_compute_elastic_energy(curr_x);
+        // auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
         auto barrier_energy = device_compute_contact_energy(stream, sim_data->sa_x);
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
@@ -1979,7 +1989,12 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
-        auto material_energy = device_compute_elastic_energy(stream, curr_x);
+        stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
+        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        stream << luisa::compute::synchronize();
+
+        auto material_energy = host_compute_elastic_energy(host_sim_data->sa_x);
+        // auto material_energy = device_compute_elastic_energy(stream, curr_x);
         auto barrier_energy = device_compute_contact_energy(stream, curr_x);;
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
