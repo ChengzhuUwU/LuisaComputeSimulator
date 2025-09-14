@@ -545,7 +545,7 @@ void ConjugateGradientSolver::host_solve(
     {
         luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         iter, normR / normR_0, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
     );
@@ -761,7 +761,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     {
         luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         iter, normR / normR_0, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
     );
@@ -822,7 +822,7 @@ void ConjugateGradientSolver::eigen_solve(
                 curr_energy = func_compute_energy(host_sim_data->sa_x);
             }
 
-            luisa::log_info("  In non-linear iter {:2}, Eigen-PCG : iter-count = {}, rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
+            luisa::log_info("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, solver.iterations(),
                 solver.error(), fast_infinity_norm(host_cgX), curr_energy); // from normR_0 -> normR
         }
@@ -856,7 +856,7 @@ void ConjugateGradientSolver::eigen_solve(
                 curr_energy = func_compute_energy(host_sim_data->sa_x);
             }
 
-            luisa::log_info("  In non-linear iter {:2}, Eigen-Decompose : rTr error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
+            luisa::log_info("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, 
                 error, fast_infinity_norm(host_cgX), curr_energy); // from normR_0 -> normR
         }

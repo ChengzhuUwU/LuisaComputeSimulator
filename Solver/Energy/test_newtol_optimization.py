@@ -138,9 +138,6 @@ def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_leng
     return total_energy
 
 
-# -------------------------
-# 小例子：3个点的链条测试
-# -------------------------
 if __name__ == "__main__":
     # simple chain of 3 vertices in a line
     
@@ -224,7 +221,7 @@ if __name__ == "__main__":
 
             return dx
             
-        num_newton_iters = 5
+        num_newton_iters = 10
         for iter in range(num_newton_iters):
 
             init_energy = compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)            
@@ -246,13 +243,13 @@ if __name__ == "__main__":
                     break
                 
             max_move = np.linalg.norm(dx, np.inf)
-            print(f'   In iter {iter} Infinity norm = {max_move}')
+            print(f'   In iter {iter} Infinity norm = {max_move:.3e}, energy = {curr_energy:.6e}, step length {alpha:.3e} after {line_search_iter} linesearch')
 
             x = x_iter_start + dx
             x_iter_start = x.copy()
 
-            if np.linalg.norm(dx, np.inf) < 1e-2 * substep_dt * substep_dt:
-                print("   Newton converged (inf norm of step < 1e-6).")
+            if np.linalg.norm(dx, np.inf) < 1e-2 * substep_dt:
+                print(f"   Newton converged (inf norm of step < {1e-2 * substep_dt}).")
                 return
             
         update_velocity(x, v, x_step_start, v_step_start, substep_dt, fix_scene=False, damping=0.0)
@@ -264,7 +261,7 @@ if __name__ == "__main__":
 
 
 
-    for frame in range(12):
+    for frame in range(75):
         print(f"\n=== Frame {frame} ===")
         single_frame()
         # print("Vertex positions:\n", x)
@@ -281,4 +278,4 @@ if __name__ == "__main__":
                     f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
                 print(f'Saved {filename}')
         # x.T 是 (4,3) 顶点，faces 是 (2,3)
-        save_obj(f'Resources/OutputMesh/frame_{frame}.obj', x, faces)
+        # save_obj(f'Resources/OutputMesh/frame_{frame}.obj', x, faces)

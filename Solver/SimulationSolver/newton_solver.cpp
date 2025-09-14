@@ -1817,7 +1817,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         double prev_state_energy = Float_max;
 
-        luisa::log_info("In frame {}:", get_scene_params().current_frame); 
+        luisa::log_info("=== In frame {} ===", get_scene_params().current_frame); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -2023,7 +2023,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         
         double prev_state_energy = Float_max;
 
-        luisa::log_info("In frame {}:", get_scene_params().current_frame); 
+        luisa::log_info("=== In frame {} ===", get_scene_params().current_frame); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
