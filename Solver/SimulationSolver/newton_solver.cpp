@@ -23,6 +23,7 @@
 #include <vector>
 
 // AMGCL
+#if defined(USE_AMGCL_FOR_SIM) && USE_AMGCL_FOR_SIM
 #include <amgcl/backend/builtin.hpp>
 #include <amgcl/adapter/block_matrix.hpp>
 #include <amgcl/value_type/static_matrix.hpp>
@@ -32,6 +33,7 @@
 #include <amgcl/coarsening/smoothed_aggregation.hpp>
 #include <amgcl/adapter/crs_tuple.hpp>
 #include <amgcl/relaxation/spai0.hpp>
+#endif
 
 namespace lcs 
 {
@@ -1662,6 +1664,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
         std::vector<float>& lhs
     )
     {
+    #if defined (USE_AMGCL_FOR_SIM)  && USE_AMGCL_FOR_SIM
         const uint num_verts = host_mesh_data->num_verts;
         const uint num_dof = 3 * num_verts;
         lhs.resize(num_dof, 0.0f);
@@ -1678,6 +1681,10 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
         Solver solver(std::tie(num_dof, ptr, col, val), prm );
         return solver(rhs, lhs);
         // std::cout << "CG finished in " << iters << " iterations, resid = " << error << std::endl;
+    #else
+        luisa::log_error("AMGCL is not enabled in this build");
+        return std::make_tuple(0u, 0.0f);
+    #endif
     };
     std::vector<EigenFloat3> rhs;
     std::vector<uint> ptr;

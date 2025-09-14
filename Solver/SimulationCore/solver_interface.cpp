@@ -363,7 +363,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             get_scene_params().floor, get_scene_params().use_floor, 
             get_scene_params().d_hat, get_scene_params().thickness);;
     });
-    double energy_spring = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_edges, [&](const uint eid)
+    double energy_spring = CpuParallel::parallel_for_and_reduce_sum<double>(0, host_sim_data->sa_stretch_springs.size(), [&](const uint eid)
     {
         return compute_energy_spring(eid, 
             curr_x, 
@@ -371,7 +371,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             host_sim_data->sa_stretch_spring_rest_state_length, 
             get_scene_params().stiffness_spring);
     });
-    double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_dihedral_edges, [&](const uint eid)
+    double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, host_sim_data->sa_bending_edges.size(), [&](const uint eid)
     {
         return compute_energy_bending(eid, 
             curr_x, 

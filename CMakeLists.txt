@@ -74,7 +74,8 @@ endif()
 #     add_subdirectory(${EXT_PATH}/ipc-toolkit)
 # endif()
 
-if (NOT TARGET amgcl::amgcl)
+set(USE_AMGCL_FOR_SIM OFF CACHE BOOL "" FORCE)
+if (USE_AMGCL_FOR_SIM AND NOT TARGET amgcl::amgcl)
     add_subdirectory(${EXT_PATH}/amgcl)
 endif()
 
@@ -96,7 +97,11 @@ endif()
 
 find_package(Eigen3 REQUIRED)
 find_package(TBB CONFIG REQUIRED)
-target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen amgcl::amgcl)
+target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen)
+if (USE_AMGCL_FOR_SIM)
+    target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_AMGCL_FOR_SIM)
+    target_link_libraries(luisa-compute-solver-lib PUBLIC amgcl::amgcl)
+endif()
 
 set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")

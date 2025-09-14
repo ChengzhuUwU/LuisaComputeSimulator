@@ -67,11 +67,11 @@ void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_lis
 {
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2.obj",
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
-            },
-        },
+        // .fixed_point_list = {
+        //     lcs::Initializer::FixedPointInfo{
+        //         .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
+        //     },
+        // },
         .shell_type = lcs::Initializer::ShellTypeRigid
     });
     shell_list.push_back({
@@ -306,7 +306,7 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
-        5
+        3
     ;
 
     switch (case_number)
