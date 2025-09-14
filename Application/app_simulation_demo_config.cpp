@@ -31,8 +31,9 @@ void ccd_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     // });
 
     
+    // lcs::get_scene_params().stiffness_bending_ui = 0;
     lcs::get_scene_params().use_floor = false;
-    lcs::get_scene_params().load_state_frame = 10;
+    lcs::get_scene_params().load_state_frame = 2;
     lcs::get_scene_params().implicit_dt = 0.05;;
     lcs::get_scene_params().num_substep = 1;
     lcs::get_scene_params().nonlinear_iter_count = 10;

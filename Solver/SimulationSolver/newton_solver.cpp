@@ -684,6 +684,7 @@ void NewtonSolver::host_reset_cgB_cgX_diagA()
         CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
     }
 }
+constexpr bool print_detail = false;
 void NewtonSolver::host_evaluate_inertia()
 {
     const float stiffness_dirichlet = get_scene_params().stiffness_dirichlet;
@@ -717,6 +718,7 @@ void NewtonSolver::host_evaluate_inertia()
             hessian = stiffness_dirichlet * hessian;
         }
         {  
+            if constexpr (print_detail) luisa::log_info("vid {}, mass: {}, move = {}, gradient: {}, hessian: {}", vid, mass, length_vec(x_k - x_tilde), gradient, hessian);
             // sa_cgX[vid] = dx_0;
             sa_cgB[vid] = gradient;
             sa_cgA_diag[vid] = hessian;
@@ -835,12 +837,12 @@ void NewtonSolver::host_evaluete_spring()
     // auto& sa_edges = host_mesh_data->sa_edges;
     // auto& sa_rest_length = host_mesh_data->sa_stretch_spring_rest_state_length;
     
-    auto& culster = host_sim_data->sa_prefix_merged_springs;
+    auto& cluster = host_sim_data->sa_prefix_merged_springs;
 
     for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
     {
-        const uint curr_prefix = culster[cluster_idx];
-        const uint next_prefix = culster[cluster_idx + 1];
+        const uint curr_prefix = cluster[cluster_idx];
+        const uint next_prefix = cluster[cluster_idx + 1];
         const uint num_elements_clustered = next_prefix - curr_prefix;
 
         // CpuParallel::single_thread_for(0, mesh_data->num_edges, [&](const uint eid)
@@ -852,6 +854,7 @@ void NewtonSolver::host_evaluete_spring()
                 sa_cgB = host_sim_data->sa_cgB.data(),
                 sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
                 sa_cgA_offdiag_stretch_spring = host_sim_data->sa_cgA_offdiag_stretch_spring.data(),
+                cluster = host_sim_data->sa_clusterd_springs.data() + host_sim_data->num_clusters_springs + 1,
                 curr_prefix, stiffness_stretch = get_scene_params().stiffness_spring
             ](const uint index)
         {
@@ -873,14 +876,17 @@ void NewtonSolver::host_evaluete_spring()
             float C = l - l0;
 
             float3 dir = diff / l;
-            float3x3 xxT = outer_product(diff, diff);
+            // float3 dir = normalize_vec(diff);
+            float3x3 nnT = outer_product(dir, dir);
             float x_inv = 1.f / l;
             float x_squared_inv = x_inv * x_inv;
 
             force[0] = stiffness_stretch_spring * dir * C;
             force[1] = -force[0];
-            He = stiffness_stretch_spring * x_squared_inv * xxT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - x_squared_inv * xxT);
+            He = stiffness_stretch_spring * nnT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - nnT);
             
+            if constexpr (print_detail) luisa::log_info("eid {} (orig = {}), edge ({}, {}), L {}, l {}, C {}, force0 {}, He {}", eid, cluster[curr_prefix + index], edge[0], edge[1], L, l, C, force[0], He);
+
             // Stable but Responsive Cloth
             // if (C > 0.0f)
             // {
@@ -1333,6 +1339,52 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
 
     // Off-diag: Collision hessian
     mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
+
+}
+void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy)
+{
+    
+    EigenFloat12 eigen_b; eigen_b.setZero();
+    EigenFloat12x12 eigen_A; eigen_A.setZero();
+    for (uint vid = 0; vid < 4; vid++)
+    {
+        eigen_b.block<3, 1>( vid * 3, 0) = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
+        eigen_A.block<3, 3>( vid * 3, vid * 3) = float3x3_to_eigen3x3(host_sim_data->sa_cgA_diag[vid]);
+    }
+    for (uint eid = 0; eid < 5; eid++)
+    {
+        float3x3 offdiag1 = host_sim_data->sa_cgA_offdiag_stretch_spring[eid];
+        float3x3 offdiag2 = luisa::transpose(offdiag1);
+        uint2 edge = host_sim_data->sa_merged_stretch_springs[eid];
+        eigen_A.block<3, 3>( edge[0] * 3, edge[1] * 3) += float3x3_to_eigen3x3(offdiag1);
+        eigen_A.block<3, 3>( edge[1] * 3, edge[0] * 3) += float3x3_to_eigen3x3(offdiag2);
+    }
+
+    auto eigen_dx = eigen_A.inverse() * eigen_b;
+    // auto eigen_dx = eigen_pcg(eigen_A, eigen_b);
+
+    // std::cout << "Eigen A = \n" << eigen_A << std::endl;
+    // std::cout << "Eigen b = \n" << eigen_b.transpose() << std::endl;
+    // std::cout << "Eigen result = " << eigen_dx.transpose() << std::endl;
+    for (uint vid = 0; vid < 4; vid++)
+    {
+        host_sim_data->sa_cgX[vid] = eigen3_to_float3(eigen_dx.block<3, 1>(vid * 3, 0));
+    }
+    constexpr bool print_energy = false; double curr_energy = 0.0;
+    if constexpr (print_energy)
+    {
+        host_apply_dx(1.0f);
+        curr_energy = func_compute_energy(host_sim_data->sa_x);
+    }
+    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
+    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
+    {
+        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+    }
+    luisa::log_info("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+        get_scene_params().current_nonlinear_iter,
+        (eigen_b - eigen_A * eigen_dx).norm(), infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
+    );
 
 }
 void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy)
@@ -1788,7 +1840,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         if constexpr (false) 
         {
-            host_solve_amgcl(stream, compute_energy_interface);
+            host_solve_eigen(stream, compute_energy_interface);
+            // host_solve_amgcl(stream, compute_energy_interface);
         } 
         else 
         {
@@ -1863,6 +1916,17 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 alpha = ccd_toi;
                 host_apply_dx(alpha);   
             }
+            
+            // Non-linear iteration break condition
+            {
+                float max_move = 1e-2;
+                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
+                if (curr_max_step < max_move * substep_dt) 
+                {
+                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    break;
+                }
+            } // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
 
             if (use_energy_linesearch)
             { 
@@ -1903,17 +1967,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     line_search_count++;
                 }
                 prev_state_energy = curr_energy; // E_prev = E
-            }
-
-            // Non-linear iteration break condition
-            {
-                float max_move = 1e-2;
-                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
-                if (curr_max_step < max_move * substep_dt) 
-                {
-                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
-                    break;
-                }
             }
 
             CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start); // x_prev = x
@@ -2069,6 +2122,17 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 device_apply_dx(alpha);
             }
 
+            // Non-linear iteration break condition
+            {
+                float max_move = 1e-2;
+                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
+                if (curr_max_step < max_move * substep_dt) 
+                {
+                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    break;
+                }
+            } // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
+
             if (get_scene_params().use_energy_linesearch)
             { 
                 // Energy after CCD or just solving Axb
@@ -2108,17 +2172,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     line_search_count++;
                 }
                 prev_state_energy = curr_energy; // E_prev = E
-            }
-
-            // Non-linear iteration break condition
-            {
-                float max_move = 1e-2;
-                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
-                if (curr_max_step < max_move * substep_dt) 
-                {
-                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
-                    break;
-                }
             }
             
             stream

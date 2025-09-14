@@ -42,6 +42,7 @@ private:
     void host_evaluete_spring();
     void host_evaluete_bending();
     void host_solve_amgcl(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
+    void host_solve_eigen(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_line_search(luisa::compute::Stream& stream);
     

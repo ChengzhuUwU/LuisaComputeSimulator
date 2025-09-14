@@ -7,6 +7,8 @@ import scipy
 EPS = 1e-12
 GRAVITY = np.array([0.0, -9.8, 0.0], dtype=float)
 
+pring_detail = False
+
 def predict_position(x, x_step_start, x_iter_start, x_tilde, v, cgX, is_fixed, substep_dt):
     N = x.shape[0]
     # gravity applied to all non-fixed vertices
@@ -45,13 +47,15 @@ def evaluate_inertia(x, x_tilde, cgB, cgA, is_fixed, vert_mass, substep_dt, stif
     for vid in range(N):
         x_k = x[vid]
         x_t = x_tilde[vid]
-        mass = float(vert_mass[vid])
+        mass = vert_mass[vid]
         gradient = -mass * h2_inv * (x_k - x_t)   # shape (3,)
         hessian = np.eye(3) * (mass * h2_inv)    # shape (3,3)
 
         if is_fixed[vid]:
-            gradient = gradient * (1.0 + stiffness_dirichlet)
-            hessian = hessian * (1.0 + stiffness_dirichlet)
+            gradient = gradient * (stiffness_dirichlet)
+            hessian = hessian * (stiffness_dirichlet)
+        
+        if pring_detail: print(f'    vid {vid} mass = {mass} inertia move = {np.linalg.norm(x_k - x_t)} gradient {gradient}, hessian diag {np.diag(hessian)}')
 
         cgB[vid] += gradient
         cgA[vid] += hessian
@@ -80,6 +84,8 @@ def evaluate_springs(x, cgB, cgA_diag, cgA_offdiag_stretch_spring, edges, rest_l
 
         # He as in C++
         He = k * x_squared_inv * xxT + k * max(1.0 - L0 * x_inv, 0.0) * (np.eye(3) - x_squared_inv * xxT)
+
+        if pring_detail: print(f'    eid {eid} spring l={l:.6e}, L0={L0:.6e}, C={C:.6e}, force_i={f_i}, He_diag={np.diag(He)}')
 
         # accumulate forces into cgB (note C++ used atomic add per component)
         cgB[i] += f_i
@@ -123,6 +129,7 @@ def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_leng
         mass = vert_mass[vid]
         diff = x_k - x_t
         energy_inertia += 0.5 * mass * h2_inv * np.dot(diff, diff)
+        if pring_detail: print(f'    vid {vid} inertia energy {0.5 * mass * h2_inv * np.dot(diff, diff):.6e} (|dx| = {np.linalg.norm(diff):.6e})')
 
     energy_spring = 0.0
     for eid in range(M):
@@ -133,24 +140,40 @@ def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_leng
         C = l - L0
         k = stiffness_stretch
         energy_spring += 0.5 * k * C * C
+        if pring_detail: print(f'    eid {eid} spring energy {0.5 * k * C * C:.6e} (l={l:.6e}, L0={L0:.6e})')
 
+    if pring_detail: print(f'      Energy: inertia {energy_inertia:.6e}, spring {energy_spring:.6e}, total {energy_inertia + energy_spring:.6e}')
     total_energy = energy_inertia + energy_spring
-    return total_energy
+    return total_energy, [energy_inertia, energy_spring]
 
 
 if __name__ == "__main__":
     # simple chain of 3 vertices in a line
     
-    x = np.array([[-0.5, 0, -0.5,],
-                  [0.5, 0, -0.5,],
-                  [-0.5, 0, 0.5,],
-                  [0.5, 0, 0.5,]], dtype=float)
-    v = np.zeros_like(x)
+    init_x  = np.array([[-0.5, 0, -0.5,],
+                        [ 0.5, 0, -0.5,],
+                        [-0.5, 0,  0.5,],
+                        [ 0.5, 0,  0.5,]], dtype=float)
+    init_v = np.array([[-0.5, 0, -0.5,],
+                       [ 0.5, 0, -0.5,],
+                       [-0.5, 0,  0.5,],
+                       [ 0.5, 0,  0.5,]], dtype=float)
+    
+    # x = init_x.copy()
+    # v = init_x.copy()
+    x  = np.array([[-0.501755, -0.0708859, -0.497971],
+                   [0.498333, -0.0711678, -0.498333],
+                   [-0.5, 0, 0.5],
+                   [0.497971, -0.0708859, 0.501755]], dtype=float)
+    v = np.array([[ -0.0282639, -0.839662, 0.0325353,],
+                  [ -0.0268902, -0.844535, 0.0268902,],
+                  [ 0, -1.87321e-11, 0,],
+                  [ -0.0325353, -0.839662, 0.0282639,]], dtype=float)
 
     num_verts = x.shape[0]
 
     is_fixed = np.array([False, False, True, False], dtype=bool)
-    vert_mass = np.array([10/3, 10/6, 10.6, 10/3], dtype=float)
+    vert_mass = np.array([10/3, 10/6, 10/6, 10/3], dtype=float)
 
     edges = np.array([
         [0, 1],
@@ -167,11 +190,11 @@ if __name__ == "__main__":
         [0, 2, 3]
     ], dtype=int)
     rest_lengths = np.array([
-        np.linalg.norm(x[1] - x[0]),
-        np.linalg.norm(x[2] - x[0]),
-        np.linalg.norm(x[3] - x[0]),
-        np.linalg.norm(x[3] - x[1]),
-        np.linalg.norm(x[3] - x[2]),
+        np.linalg.norm(init_x[1] - init_x[0]),
+        np.linalg.norm(init_x[2] - init_x[0]),
+        np.linalg.norm(init_x[3] - init_x[0]),
+        np.linalg.norm(init_x[3] - init_x[1]),
+        np.linalg.norm(init_x[3] - init_x[2]),
     ], dtype=float)
     num_edges = edges.shape[0]
 
@@ -203,7 +226,7 @@ if __name__ == "__main__":
             cgA_offdiag = np.zeros((num_edges,3,3), dtype=float)
 
             # 2) evaluate inertia (fills cgB, cgA_diag)
-            evaluate_inertia(x, x_tilde, cgB, cgA_diag, is_fixed, vert_mass, substep_dt, stiffness_dirichlet=0.0)
+            evaluate_inertia(x, x_tilde, cgB, cgA_diag, is_fixed, vert_mass, substep_dt, stiffness_dirichlet)
 
             # 3) evaluate springs (adds contributions)
             evaluate_springs(x, cgB, cgA_diag, cgA_offdiag, edges, rest_lengths, stiffness_stretch)
@@ -214,8 +237,18 @@ if __name__ == "__main__":
             reg = 1e-8
             rhs = b.copy()  # step direction depends on your sign convention
             try:
+                # dx_flat = scipy.sparse.linalg.spsolve(scipy.sparse.csc_matrix(A + np.eye(3*num_verts)*reg), rhs)
                 dx_flat = np.linalg.solve(A, rhs)
                 dx = dx_flat.reshape(num_verts,3)
+
+                if pring_detail:
+                    np.set_printoptions(linewidth=200)
+                    print(f'    Assembled system A:')
+                    for row in A:
+                        print(" ".join(f"{x:10.2f}" for x in row))
+                    print(f'    Assembled system b: {b}')
+                    print(f'    Assembled system x: {dx}')
+
             except np.linalg.LinAlgError:
                 print("\nMatrix singular or ill-conditioned; cannot solve directly.")
 
@@ -224,26 +257,28 @@ if __name__ == "__main__":
         num_newton_iters = 10
         for iter in range(num_newton_iters):
 
-            init_energy = compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)            
+            init_energy, _ = compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)            
 
             dx = single_newton()
-
 
             alpha = 1.0
             line_search_iter = 0
             while True:
-                curr_energy = compute_energy(x + alpha * dx, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)
+                curr_energy, energy_list = compute_energy(x + alpha * dx, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)
+                print(f'  In linesearch {line_search_iter} : alpha {alpha:.3e} energy {curr_energy:.6e} = {energy_list} (init {init_energy:.6e})')
                 if curr_energy > init_energy and alpha > 1e-6:
-                    print(f'  In linesearch {line_search_iter} : alpha {alpha:.3e} gives energy {curr_energy:.6e} (init {init_energy:.6e})')
                     alpha *= 0.5
                     line_search_iter += 1
                 else:
+                    if alpha < 1e-6:
+                        RuntimeError(f'  Linesearch failed to find descent direction, stopping Newton.')
+                        exit(1)
                     # if line_search_iter == 0:
                     #     print(f'  No linesearch needed')
                     break
                 
             max_move = np.linalg.norm(dx, np.inf)
-            print(f'   In iter {iter} Infinity norm = {max_move:.3e}, energy = {curr_energy:.6e}, step length {alpha:.3e} after {line_search_iter} linesearch')
+            print(f'   In iter {iter}, Infinity norm = {max_move:.6e}, energy = {curr_energy:.6e}, step length {alpha:.3e} after {line_search_iter} linesearch')
 
             x = x_iter_start + dx
             x_iter_start = x.copy()
@@ -261,7 +296,7 @@ if __name__ == "__main__":
 
 
 
-    for frame in range(75):
+    for frame in range(1):
         print(f"\n=== Frame {frame} ===")
         single_frame()
         # print("Vertex positions:\n", x)
@@ -277,5 +312,6 @@ if __name__ == "__main__":
                     # OBJ 索引从1开始
                     f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
                 print(f'Saved {filename}')
+                
         # x.T 是 (4,3) 顶点，faces 是 (2,3)
         # save_obj(f'Resources/OutputMesh/frame_{frame}.obj', x, faces)

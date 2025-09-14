@@ -241,6 +241,8 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 // Evaluate Energy
 double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x)
 {
+    constexpr bool print_detail = false;
+
     auto compute_energy_inertia = [](
         const uint vid, 
         const std::vector<float3>& sa_x, 
@@ -263,7 +265,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         else 
         {
         }
-        // luisa::log_info("    vid {} inertia energy {} (|dx| = {})", vid, energy, sqrt_scalar(length_squared_vec(x_new - x_tilde)));
+        if constexpr (print_detail) luisa::log_info("    vid {} inertia energy {} (|dx| = {})", vid, energy, sqrt_scalar(length_squared_vec(x_new - x_tilde)));
         return energy;
     };
     auto compute_energy_goundcollision = [](
@@ -309,6 +311,8 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         float energy = 0.0f;
         // if (C > 0.0f)
             energy = 0.5f * stiffness_spring * C * C;
+
+        if constexpr (print_detail) luisa::log_info("    eid {} edge ({}, {}), L {}, l {}, C {}, spring energy {}", eid, edge[0], edge[1], rest_edge_length, l, C, energy);
         return energy;
     };
     auto compute_energy_bending = [](
