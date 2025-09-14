@@ -43,21 +43,8 @@ struct MeshData : SimulationType
     uint num_faces = 0;
     uint num_edges = 0;
     
-    uint num_bending_edges = 0;
+    uint num_dihedral_edges = 0;
     uint num_tets = 0;
-
-    uint2 range_verts_cloth;
-    uint2 range_faces_cloth;
-    uint2 range_edges_cloth;
-    uint2 range_bending_edges_cloth;
-    uint2 range_verts_tetrahedral;
-    uint2 range_faces_tetrahedral;
-    uint2 range_edges_tetrahedral;
-    uint2 range_bending_edges_tetrahedral;
-    uint2 range_verts_obstacle;
-    uint2 range_faces_obstacle;
-    uint2 range_edges_obstacle;
-    uint2 range_bending_edges_obstacle;
 
     // Input 
     BufferType<float3> sa_rest_x;
@@ -65,7 +52,7 @@ struct MeshData : SimulationType
 
     BufferType<uint3> sa_faces;
     BufferType<uint2> sa_edges;
-    BufferType<uint4> sa_bending_edges;
+    BufferType<uint4> sa_dihedral_edges;
 
     // Mesh attrubution
     BufferType<float> sa_vert_mass;
@@ -80,10 +67,9 @@ struct MeshData : SimulationType
 
     // Adjacent
     BufferType<uint> sa_vert_adj_verts_csr; 
-    BufferType<uint> sa_vert_adj_verts_with_material_constraints_csr; 
     BufferType<uint> sa_vert_adj_faces_csr; 
     BufferType<uint> sa_vert_adj_edges_csr; 
-    BufferType<uint> sa_vert_adj_bending_edges_csr; 
+    BufferType<uint> sa_vert_adj_dihedral_edges_csr; 
     BufferType<uint2> edge_adj_faces;
     BufferType<uint3> face_adj_edges;
     BufferType<uint3> face_adj_faces;
@@ -100,14 +86,12 @@ struct MeshData : SimulationType
     std::vector<uint> prefix_num_verts;
     std::vector<uint> prefix_num_faces;
     std::vector<uint> prefix_num_edges;
-    std::vector<uint> prefix_num_bending_edges;
+    std::vector<uint> prefix_num_dihedral_edges;
 
     std::vector< std::vector<uint> > vert_adj_verts;
-    std::vector< std::vector<uint> > vert_adj_verts_with_material_constraints;
-    std::vector< std::vector<uint> > vert_adj_verts_with_material_constraints_with_self;
     std::vector< std::vector<uint> > vert_adj_faces;
     std::vector< std::vector<uint> > vert_adj_edges;
-    std::vector< std::vector<uint> > vert_adj_bending_edges;
+    std::vector< std::vector<uint> > vert_adj_dihedral_edges;
 };
 
 

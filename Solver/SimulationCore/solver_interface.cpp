@@ -371,7 +371,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             host_sim_data->sa_stretch_spring_rest_state_length, 
             get_scene_params().stiffness_spring);
     });
-    double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_bending_edges, [&](const uint eid)
+    double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(0, mesh_data->num_dihedral_edges, [&](const uint eid)
     {
         return compute_energy_bending(eid, 
             curr_x, 

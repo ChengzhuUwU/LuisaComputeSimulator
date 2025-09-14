@@ -834,10 +834,7 @@ void NewtonSolver::host_evaluate_ground_collision()
     // if constexpr (use_eigen) { eigen_groundA.setFromTriplets(triplets_groundA.begin(), triplets_groundA.end()); eigen_cgA += eigen_groundA; }
 }
 void NewtonSolver::host_evaluete_spring()
-{
-    const uint num_verts = host_mesh_data->num_verts;
-    const uint num_edges = host_mesh_data->num_edges;
-    
+{  
     // auto& culster = host_xpbd_data->sa_clusterd_springs;
     // auto& sa_edges = host_mesh_data->sa_edges;
     // auto& sa_rest_length = host_mesh_data->sa_stretch_spring_rest_state_length;
@@ -975,9 +972,6 @@ void NewtonSolver::host_evaluete_spring()
 }
 void NewtonSolver::host_evaluete_bending()
 {
-    const uint num_verts = host_mesh_data->num_verts;
-    const uint num_edges = host_mesh_data->num_edges;
-    
     auto& culster = host_sim_data->sa_prefix_merged_bending_edges;
     for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_bending_edges; cluster_idx++) 
     {
@@ -1411,7 +1405,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
         ptr.resize(num_verts + 1); ptr[0] = 0;
 
         // Init with material constraints adjacency
-        std::vector<std::vector<uint>> adjacency(host_mesh_data->vert_adj_verts_with_material_constraints_with_self);
+        std::vector<std::vector<uint>> adjacency(host_sim_data->vert_adj_material_force_verts);
         {
             // Add collision adjacency
             for (uint pair_idx = 0; pair_idx < num_vf + num_ee; pair_idx++)
@@ -1444,6 +1438,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 auto& adj_list = adjacency[vid];
                 std::sort(adj_list.begin(), adj_list.end());
                 adj_list.erase(unique(adj_list.begin(), adj_list.end()), adj_list.end());
+                adj_list.insert(adj_list.begin(), vid); // Add diag entry
                 // std::cout << "Vert " << vid << " has " << adj_list.size() << " adjacency: "; for (auto v : adj_list) std::cout << v << ", "; std::cout << std::endl;
             });
     
@@ -1480,6 +1475,10 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 const uint prefix = ptr[vid];
                 const auto& adj_list = adjacency[vid];
                 const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), vid));
+                if (offset != 0)
+                {
+                    luisa::log_error("Vert {} diag not found in adjacency list", vid);
+                }
                 const auto diag_hessian = host_sim_data->sa_cgA_diag[vid];
                 val[prefix + offset] = float3x3_to_eigen3x3(diag_hessian);
                 rhs[vid] = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
@@ -1487,7 +1486,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
             });
     
             // Off-diag part
-            CpuParallel::single_thread_for(0, host_mesh_data->num_edges, 
+            CpuParallel::single_thread_for(0, host_sim_data->sa_merged_stretch_springs.size(), 
                 [
                     sa_edges = host_sim_data->sa_merged_stretch_springs.data(),
                     off_diag_hessian_ptr = host_sim_data->sa_cgA_offdiag_stretch_spring.data(),
@@ -1517,7 +1516,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 }
             });
     
-            CpuParallel::single_thread_for(0, host_mesh_data->num_bending_edges, 
+            CpuParallel::single_thread_for(0, host_sim_data->sa_merged_bending_edges.size(), 
                 [
                     sa_edges = host_sim_data->sa_merged_bending_edges.data(),
                     sa_bending_edges_Q = host_sim_data->sa_merged_bending_edges_Q.data(),
@@ -2030,9 +2029,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     const bool use_ipc = true;
     const uint num_verts = host_mesh_data->num_verts;
-    const uint num_edges = host_mesh_data->num_edges;
-    const uint num_faces = host_mesh_data->num_faces;
-    const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
 
     auto pcg_spmv = [&](const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr) -> void
     {   

@@ -89,6 +89,17 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_cgZ;
     BufferType<float> sa_block_result;
     BufferType<float> sa_convergence;
+
+
+    std::vector< std::vector<uint> > vert_adj_material_force_verts;
+    std::vector< std::vector<uint> > vert_adj_stretch_springs;
+    std::vector< std::vector<uint> > vert_adj_stretch_faces;
+    std::vector< std::vector<uint> > vert_adj_bending_edges;
+
+    BufferType<uint> sa_vert_adj_material_force_verts_csr;
+    BufferType<uint> sa_vert_adj_stretch_springs_csr;
+    BufferType<uint> sa_vert_adj_stretch_faces_csr;
+    BufferType<uint> sa_vert_adj_bending_edges_csr;
 };
 
 } // namespace lcs 

@@ -38,7 +38,7 @@ struct TriangleMeshData
     std::vector<Int3> invalid_texcoord_faces;
     std::vector<uint> uv_to_vert_map;
     std::vector<Int2> edges;
-    std::vector<Int4> bending_edges;
+    std::vector<Int4> dihedral_edges;
     std::vector<Int2> boundary_edges;
     std::vector<Int2> edge_adj_faces;
     std::vector<Int2> bending_edge_adj_faces;
@@ -61,7 +61,7 @@ struct TriangleMeshData
         invalid_texcoord_faces(input.invalid_texcoord_faces),
         uv_to_vert_map(input.uv_to_vert_map),
         edges(input.edges),
-        bending_edges(input.bending_edges),
+        dihedral_edges(input.dihedral_edges),
         has_uv(input.has_uv),
         boundary_edges(input.boundary_edges),
         edge_adj_faces(input.edge_adj_faces),

@@ -3,6 +3,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 #include "Energy/bending_energy.h"
+#include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
 #include "luisa/core/mathematics.h"
@@ -20,37 +21,59 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     xpbd_data->sa_x_step_start.resize(mesh_data->num_verts);
     xpbd_data->sa_x_iter_start.resize(mesh_data->num_verts);
 
-    const uint2 range_verts_cloth = mesh_data->range_verts_cloth;
-    const uint2 range_verts_tetrahedral = mesh_data->range_verts_tetrahedral;
-    const uint2 range_edges_cloth = mesh_data->range_edges_cloth;
-    const uint2 range_faces_cloth = mesh_data->range_faces_cloth;
-    const uint2 range_bending_edges_cloth = mesh_data->range_bending_edges_cloth;
+    // Count for stretch springs, stretch faces, bending edges
+    std::vector<uint> stretch_spring_indices(mesh_data->num_edges, -1u); uint num_stretch_springs = 0;
+    std::vector<uint> stretch_face_indices(mesh_data->num_faces, -1u); uint num_stretch_faces = 0;
+    std::vector<uint> bending_edge_indices(mesh_data->num_dihedral_edges, -1u); uint num_bending_edges = 0;
 
-    const uint num_verts_cloth = range_verts_cloth[1] - range_verts_cloth[0];
-    const uint num_verts_tet = range_verts_tetrahedral[1] - range_verts_tetrahedral[0];
-    const uint num_stretch_springs = range_edges_cloth[1] - range_edges_cloth[0];
-    const uint num_stretch_faces = range_faces_cloth[1] - range_faces_cloth[0];
-    const uint num_bending_edges = range_bending_edges_cloth[1] - range_bending_edges_cloth[0];
+    // Calculate number of energy element
+    constexpr bool cull_unused_constraints = true;
+    CpuParallel::parallel_for_and_scan(0, mesh_data->num_edges, [&](const uint eid)
+    {
+        uint2 edge = mesh_data->sa_edges[eid];
+        bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+        bool is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[edge[0]] || !mesh_data->sa_is_fixed[edge[1]] : true;
+        return (is_cloth && is_dynamic) ? 1 : 0;
+    }, [&](const uint eid, const uint global_prefix, const uint parallel_result)
+    {
+        if (parallel_result == 1) stretch_spring_indices[global_prefix - 1] = eid;
+        if (eid == mesh_data->num_edges - 1) num_stretch_springs = global_prefix;
+    }, 0);
 
-    // const uint num_stretch_springs = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_edges, [&](const uint eid)
-    // {
-    //     uint2 edge = mesh_data->sa_edges[eid];
-    //     bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
-    //     // bool is_dynamic = !mesh_data->sa_is_fixed[edge[0]] && !mesh_data->sa_is_fixed[edge[1]];
-    //     return (is_cloth ) ? 1 : 0;
-    // });
-    // const uint num_stretch_faces = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_faces, [&](const uint fid)
-    // {
-    //     uint3 face = mesh_data->sa_faces[fid];
-    //     bool is_cloth = mesh_data->sa_vert_mesh_id[face[0]] == uint(ShellTypeCloth);
-    //     return (is_cloth) ? 1 : 0;
-    // });
-    // const uint num_bending_edges = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_bending_edges, [&](const uint eid)
-    // {
-    //     uint4 edge = mesh_data->sa_bending_edges[eid];
-    //     bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
-    //     return (is_cloth) ? 1 : 0;
-    // });
+    CpuParallel::parallel_for_and_scan(0, mesh_data->num_faces, [&](const uint fid)
+    {
+        uint3 face = mesh_data->sa_faces[fid];
+        bool is_cloth = mesh_data->sa_vert_mesh_id[face[0]] == uint(ShellTypeCloth);
+        bool is_dynamic = cull_unused_constraints ? 
+            !mesh_data->sa_is_fixed[face[0]] || 
+            !mesh_data->sa_is_fixed[face[1]] || 
+            !mesh_data->sa_is_fixed[face[2]] : true;
+        return (is_cloth && is_dynamic) ? 1 : 0;
+    }, [&](const uint fid, const uint global_prefix, const uint parallel_result)
+    {
+        if (parallel_result == 1) stretch_face_indices[global_prefix - 1] = fid;
+        if (fid == mesh_data->num_faces - 1) num_stretch_faces = global_prefix;
+    }, 0);
+
+    CpuParallel::parallel_for_and_scan(0, mesh_data->num_dihedral_edges, [&](const uint eid)
+    {
+        uint4 edge = mesh_data->sa_dihedral_edges[eid];
+        bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+        bool is_dynamic = cull_unused_constraints ?
+            !mesh_data->sa_is_fixed[edge[0]] || 
+            !mesh_data->sa_is_fixed[edge[1]] || 
+            !mesh_data->sa_is_fixed[edge[2]] || 
+            !mesh_data->sa_is_fixed[edge[3]] : true;
+        return (is_cloth && is_dynamic) ? 1 : 0;
+    }, [&](const uint eid, const uint global_prefix, const uint parallel_result)
+    {
+        if (parallel_result == 1) bending_edge_indices[global_prefix - 1] = eid;
+        if (eid == mesh_data->num_dihedral_edges - 1) num_bending_edges = global_prefix;
+    }, 0);
+
+    luisa::log_info("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})", 
+        num_stretch_springs, mesh_data->num_edges, num_stretch_faces, mesh_data->num_faces, num_bending_edges, mesh_data->num_dihedral_edges);
+
 
     // Init energy
     {
@@ -60,7 +83,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         xpbd_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
         CpuParallel::parallel_for(0, num_stretch_springs, [&](const uint eid)
         {
-            uint2 edge = mesh_data->sa_edges[range_edges_cloth[0] + eid];
+            const uint orig_eid = stretch_spring_indices[eid];
+            uint2 edge = mesh_data->sa_edges[orig_eid];
             float3 x1 = mesh_data->sa_rest_x[edge[0]];
             float3 x2 = mesh_data->sa_rest_x[edge[1]];
             xpbd_data->sa_stretch_springs[eid] = edge; /// 
@@ -72,7 +96,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         xpbd_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
         CpuParallel::parallel_for(0, num_stretch_faces, [&](const uint fid)
         {
-            uint3 face = mesh_data->sa_faces[range_faces_cloth[0] + fid];
+            const uint orig_fid = stretch_face_indices[fid];
+            uint3 face = mesh_data->sa_faces[orig_fid];
             const float3 vert_pos[3] = {
                 mesh_data->sa_rest_x[face[0]], 
                 mesh_data->sa_rest_x[face[1]], 
@@ -101,7 +126,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         xpbd_data->sa_bending_edges_Q.resize(num_bending_edges);
         CpuParallel::parallel_for(0, num_bending_edges, [&](const uint eid)
         {
-            const uint4 edge = mesh_data->sa_bending_edges[range_bending_edges_cloth[0] + eid];
+            const uint orig_eid = bending_edge_indices[eid];
+            const uint4 edge = mesh_data->sa_dihedral_edges[orig_eid];
             const float3 vert_pos[4] = {
                 mesh_data->sa_rest_x[edge[0]], 
                 mesh_data->sa_rest_x[edge[1]], 
@@ -157,6 +183,91 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         });
     }
 
+    // Init Energy Adjacent List
+    {
+        xpbd_data->vert_adj_material_force_verts.resize(mesh_data->num_verts);
+        xpbd_data->vert_adj_stretch_springs.resize(mesh_data->num_verts);
+        xpbd_data->vert_adj_stretch_faces.resize(mesh_data->num_verts);
+        xpbd_data->vert_adj_bending_edges.resize(mesh_data->num_verts);
+
+        auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2) 
+        {
+            if (vid1 == vid2) std::cerr << "Try to build connection with self vertex";
+            auto& inner_list = adj_map[vid1];
+            auto find_result = std::find(inner_list.begin(), inner_list.end(), vid2);
+            if (find_result == inner_list.end())
+            {
+                inner_list.push_back(vid2);
+            }
+        };
+
+        // Vert adj faces
+        for (uint fid = 0; fid < xpbd_data->sa_stretch_faces.size(); fid++)
+        {
+            auto face = xpbd_data->sa_stretch_faces[fid];
+
+            for (uint j = 0; j < 3; j++)
+            {
+                xpbd_data->vert_adj_stretch_faces[face[j]].push_back(fid);
+            }
+
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                for (uint jj = 0; jj < 3; jj++)
+                {
+                    if (ii != jj) { insert_adj_vert(xpbd_data->vert_adj_material_force_verts, face[ii], face[jj]); }
+                }
+            }
+        } 
+        upload_2d_csr_from(xpbd_data->sa_vert_adj_stretch_faces_csr, xpbd_data->vert_adj_stretch_faces); 
+
+        // Vert adj stretch springs
+        for (uint eid = 0; eid < xpbd_data->sa_stretch_springs.size(); eid++)
+        {
+            auto edge = xpbd_data->sa_stretch_springs[eid];
+            for (uint j = 0; j < 2; j++)
+            {
+                xpbd_data->vert_adj_stretch_springs[edge[j]].push_back(eid);
+            }
+
+            for (uint ii = 0; ii < 2; ii++)
+            {
+                for (uint jj = 0; jj < 2; jj++)
+                {
+                    if (ii != jj) { insert_adj_vert(xpbd_data->vert_adj_material_force_verts, edge[ii], edge[jj]); }
+                }
+            }
+        } 
+        upload_2d_csr_from(xpbd_data->sa_vert_adj_stretch_springs_csr, xpbd_data->vert_adj_stretch_springs);
+
+        // Vert adj bending edges
+        for (uint eid = 0; eid < xpbd_data->sa_bending_edges.size(); eid++)
+        {
+            auto edge = xpbd_data->sa_bending_edges[eid];
+            for (uint j = 0; j < 4; j++)
+            {
+                xpbd_data->vert_adj_bending_edges[edge[j]].push_back(eid);
+            }
+
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj) { insert_adj_vert(xpbd_data->vert_adj_material_force_verts, edge[ii], edge[jj]); }
+                }
+            }
+        }  
+        upload_2d_csr_from(xpbd_data->sa_vert_adj_bending_edges_csr, xpbd_data->vert_adj_bending_edges);
+
+        // Vert adj material-force-verts
+        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+        {
+            std::vector<uint>& adj_list = xpbd_data->vert_adj_material_force_verts[vid];
+            std::sort(adj_list.begin(), adj_list.end());
+        });
+        upload_2d_csr_from(xpbd_data->sa_vert_adj_material_force_verts_csr, xpbd_data->vert_adj_material_force_verts);
+    }
+
     // Constraint Graph Coloring
     std::vector< std::vector<uint> > tmp_clusterd_constraint_stretch_mass_spring;
     std::vector< std::vector<uint> > tmp_clusterd_constraint_bending;
@@ -164,12 +275,12 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         fn_graph_coloring_per_constraint(
             "Distance  Spring Constraint", 
             tmp_clusterd_constraint_stretch_mass_spring, 
-            mesh_data->vert_adj_edges, xpbd_data->sa_stretch_springs, 2);
+            xpbd_data->vert_adj_stretch_springs, xpbd_data->sa_stretch_springs, 2);
 
         fn_graph_coloring_per_constraint(
             "Bending   Angle  Constraint", 
             tmp_clusterd_constraint_bending, 
-            mesh_data->vert_adj_bending_edges, xpbd_data->sa_bending_edges, 4);
+            xpbd_data->vert_adj_bending_edges, xpbd_data->sa_bending_edges, 4);
             
         xpbd_data->num_clusters_springs = tmp_clusterd_constraint_stretch_mass_spring.size();
         xpbd_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
@@ -181,10 +292,10 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         upload_2d_csr_from(xpbd_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
     }
 
-    // Init newton coloring
+    // Init Newton Coloring
     {
-        const uint num_verts = num_verts_cloth + num_verts_tet;
-        const auto& vert_adj_verts = mesh_data->vert_adj_verts_with_material_constraints; // Not considering Obstacle
+        const uint num_verts = mesh_data->num_verts;
+        const auto& vert_adj_verts = xpbd_data->vert_adj_material_force_verts; // Not considering Obstacle
         std::vector<uint2> upper_matrix_elements; // 
         upper_matrix_elements.reserve(num_verts * 10);
         std::vector<std::vector<uint>> vert_adj_upper_verts(num_verts);
@@ -270,7 +381,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         xpbd_data->sa_Hf.resize(mesh_data->num_verts * 12);
         xpbd_data->sa_Hf1.resize(mesh_data->num_verts);
 
-        const std::vector< std::vector<uint> >& vert_adj_verts = mesh_data->vert_adj_verts_with_material_constraints;
+        const std::vector< std::vector<uint> >& vert_adj_verts = xpbd_data->vert_adj_material_force_verts;
         std::vector<std::vector<uint>> clusterd_vertices_bending; std::vector<uint> prefix_vertices_bending;
 
         fn_graph_coloring_per_vertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
@@ -315,7 +426,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     }
                 });
                 prefix += curr_cluster.size();
-            } if (prefix != mesh_data->num_edges) luisa::log_error("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
+            } if (prefix != xpbd_data->sa_stretch_springs.size()) luisa::log_error("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
         }
 
         // Bending Constraint
@@ -339,7 +450,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     }
                 });
                 prefix += curr_cluster.size();
-            } if (prefix != mesh_data->num_bending_edges) luisa::log_error("Sum of Bending Cluster Is Not Equal Than Orig");
+            } if (prefix != xpbd_data->sa_bending_edges.size()) luisa::log_error("Sum of Bending Cluster Is Not Equal Than Orig");
         }
     }
 
@@ -372,6 +483,11 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
         << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
         << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
+
+        << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
+        << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
+        << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
+        << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr)
 
         << upload_buffer(device, output_data->sa_merged_stretch_springs, input_data->sa_merged_stretch_springs)
         << upload_buffer(device, output_data->sa_merged_stretch_spring_rest_length, input_data->sa_merged_stretch_spring_rest_length)
@@ -410,16 +526,16 @@ void resize_pcg_data(
 )
 {
     const uint num_verts = mesh_data->num_verts;
-    const uint num_edges = mesh_data->num_edges;
-    const uint num_bending_edges = mesh_data->num_bending_edges;
-    const uint num_faces = mesh_data->num_faces;
+    const uint num_springs = host_data->sa_stretch_springs.size();
+    const uint num_bending_edges = host_data->sa_bending_edges.size();
+    const uint num_faces = host_data->sa_stretch_faces.size();
 
-    const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_edges * 2);
+    const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
 
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_edges * 1);
+    resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
     resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
@@ -432,7 +548,7 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_edges * 1);
+    resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
     resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);

@@ -197,7 +197,7 @@ bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data)
         }
     }
 
-    extract_edges_from_surface<true>(mesh_data.faces, mesh_data.edges, mesh_data.bending_edges);
+    extract_edges_from_surface<true>(mesh_data.faces, mesh_data.edges, mesh_data.dihedral_edges);
     
     // fast_format("   Readed Mesh Data {} : numSubMesh = {}, numVerts = {}, numFaces = {}, numEdges = {}, numBendingEdges = {}", 
     //     mesh_name, mesh_shape.size(), num_verts, num_faces, mesh_data.edges.size(), mesh_data.bending_edges.size());

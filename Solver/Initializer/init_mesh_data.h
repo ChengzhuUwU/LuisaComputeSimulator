@@ -26,7 +26,7 @@ enum ShellType
 {
     ShellTypeCloth,
     ShellTypeTetrahedral,
-    ShellTypeObstacle,
+    ShellTypeRigid,
 };
 struct ShellInfo
 {
