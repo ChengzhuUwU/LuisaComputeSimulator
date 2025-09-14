@@ -514,7 +514,7 @@ int main(int argc, char** argv)
                 
                 // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
                 // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);
-                ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 1.0f); 
+                ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 100.0f); 
 
                 static uint stiffness_spring_exp = 4;
                 ImGui::InputScalar("Stretch Stiffness's Exp", ImGuiDataType_U32, &stiffness_spring_exp);

@@ -116,7 +116,7 @@ def assemble_dense_system(cgB, cgA_diag, edges, cgA_offdiag):
 
     return A, b
 
-def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch):
+def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch, stiffness_dirichlet):
     N = x.shape[0]
     M = edges.shape[0]
     h = substep_dt
@@ -128,8 +128,12 @@ def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_leng
         x_t = x_tilde[vid]
         mass = vert_mass[vid]
         diff = x_k - x_t
-        energy_inertia += 0.5 * mass * h2_inv * np.dot(diff, diff)
-        if pring_detail: print(f'    vid {vid} inertia energy {0.5 * mass * h2_inv * np.dot(diff, diff):.6e} (|dx| = {np.linalg.norm(diff):.6e})')
+        vert_energy = 0.5 * mass * h2_inv * np.dot(diff, diff)
+        if is_fixed[vid]:
+            vert_energy *= stiffness_stretch
+        energy_inertia += vert_energy
+
+        # print(f'    vid {vid} inertia energy {vert_energy:8.4f} (|dx|2 = {np.dot(diff, diff):8.4f}) , mass {mass}, diff = {diff}')
 
     energy_spring = 0.0
     for eid in range(M):
@@ -142,7 +146,7 @@ def compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_leng
         energy_spring += 0.5 * k * C * C
         if pring_detail: print(f'    eid {eid} spring energy {0.5 * k * C * C:.6e} (l={l:.6e}, L0={L0:.6e})')
 
-    if pring_detail: print(f'      Energy: inertia {energy_inertia:.6e}, spring {energy_spring:.6e}, total {energy_inertia + energy_spring:.6e}')
+    # print(f'      Energy: inertia {energy_inertia:.6e}, spring {energy_spring:.6e}, total {energy_inertia + energy_spring:.6e}')
     total_energy = energy_inertia + energy_spring
     return total_energy, [energy_inertia, energy_spring]
 
@@ -154,21 +158,26 @@ if __name__ == "__main__":
                         [ 0.5, 0, -0.5,],
                         [-0.5, 0,  0.5,],
                         [ 0.5, 0,  0.5,]], dtype=float)
-    init_v = np.array([[-0.5, 0, -0.5,],
-                       [ 0.5, 0, -0.5,],
-                       [-0.5, 0,  0.5,],
-                       [ 0.5, 0,  0.5,]], dtype=float)
+    init_v = np.zeros_like(init_x, dtype=float)
     
     # x = init_x.copy()
-    # v = init_x.copy()
-    x  = np.array([[-0.501755, -0.0708859, -0.497971],
-                   [0.498333, -0.0711678, -0.498333],
+    # v = init_v.copy()
+    # x  = np.array([[-0.501755, -0.0708859, -0.497971],
+    #                [0.498333, -0.0711678, -0.498333],
+    #                [-0.5, 0, 0.5],
+    #                [0.497971, -0.0708859, 0.501755]], dtype=float)
+    # v = np.array([[ -0.0282639, -0.839662, 0.0325353,],
+    #               [ -0.0268902, -0.844535, 0.0268902,],
+    #               [ 0, -1.87321e-11, 0,],
+    #               [ -0.0325353, -0.839662, 0.0282639,]], dtype=float)
+    x  = np.array([[-0.725245, -0.603615, -0.271723],
+                   [0.224665, -0.915204, -0.224665],
                    [-0.5, 0, 0.5],
-                   [0.497971, -0.0708859, 0.501755]], dtype=float)
-    v = np.array([[ -0.0282639, -0.839662, 0.0325353,],
-                  [ -0.0268902, -0.844535, 0.0268902,],
-                  [ 0, -1.87321e-11, 0,],
-                  [ -0.0325353, -0.839662, 0.0282639,]], dtype=float)
+                   [0.271723 ,-0.603615 ,0.725246]], dtype=float)
+    v = np.array([[ -0.56004, -0.892253 ,0.56748],
+                  [ -0.724749 ,-1.77293 ,0.724751],
+                  [ 0 ,-5.12722e-09 ,0],
+                  [ -0.567482 ,-0.892256, 0.560042]], dtype=float)
 
     num_verts = x.shape[0]
 
@@ -199,7 +208,7 @@ if __name__ == "__main__":
     num_edges = edges.shape[0]
 
 
-    substep_dt = 0.05
+    substep_dt = 0.2
     stiffness_dirichlet = 1e9   # if you want to strongly pin fixed vertices
     stiffness_stretch = 1e4
 
@@ -257,15 +266,18 @@ if __name__ == "__main__":
         num_newton_iters = 10
         for iter in range(num_newton_iters):
 
-            init_energy, _ = compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)            
+            init_energy, _ = compute_energy(x, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch, stiffness_dirichlet)            
 
             dx = single_newton()
 
             alpha = 1.0
             line_search_iter = 0
             while True:
-                curr_energy, energy_list = compute_energy(x + alpha * dx, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch)
-                print(f'  In linesearch {line_search_iter} : alpha {alpha:.3e} energy {curr_energy:.6e} = {energy_list} (init {init_energy:.6e})')
+                curr_energy, energy_list = compute_energy(x + alpha * dx, x_tilde, is_fixed, vert_mass, substep_dt, edges, rest_lengths, stiffness_stretch, stiffness_dirichlet)
+                
+                if curr_energy < init_energy and line_search_iter == 0: break
+
+                print(f'     In newton iter {iter}, linesearch {line_search_iter} : alpha {alpha:.3e} energy {curr_energy:.6e} = {energy_list} (init {init_energy:.6e})')
                 if curr_energy > init_energy and alpha > 1e-6:
                     alpha *= 0.5
                     line_search_iter += 1
@@ -296,7 +308,7 @@ if __name__ == "__main__":
 
 
 
-    for frame in range(1):
+    for frame in range(3):
         print(f"\n=== Frame {frame} ===")
         single_frame()
         # print("Vertex positions:\n", x)

@@ -101,10 +101,10 @@ void NewtonSolver::compile(luisa::compute::Device& device)
             sa_v = sim_data->sa_v.view(),
             sa_cgX = sim_data->sa_cgX.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view()
-        ](const Float substep_dt)
+        ](const Float substep_dt, const Float3 gravity)
     {
         const UInt vid = dispatch_id().x;
-        const Float3 gravity = make_float3(0.0f, -9.8f, 0.0f);
+        // const Float3 gravity = make_float3(0.0f, -9.8f, 0.0f);
         Float3 x_prev = sa_x_step_start->read(vid);
         Float3 v_prev = sa_v->read(vid);
         Float3 outer_acceleration = gravity;
@@ -461,15 +461,20 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         UInt2 edge = sa_stretch_springs->read(eid);
         Float3x3 offdiag_hessian1 = sa_cgA_offdiag_stretch_spring->read(eid);
         Float3x3 offdiag_hessian2 = luisa::compute::transpose(offdiag_hessian1);
+        Float3 input_vec[2] = {
+            sa_input_vec->read(edge[0]),
+            sa_input_vec->read(edge[1])
+        };
+        Float3 output_vec[2] = {
+            make_float3(0.0f),
+            make_float3(0.0f)
+        };
 
-        Float3 input1 = sa_input_vec->read(edge[1]);
-        Float3 input2 = sa_input_vec->read(edge[0]);
-        
-        Float3 output1 = offdiag_hessian1 * input1;
-        Float3 output2 = offdiag_hessian2 * input2;
+        output_vec[0] = offdiag_hessian1 * input_vec[1];
+        output_vec[1] = offdiag_hessian2 * input_vec[0];
 
-        atomic_buffer_add(sa_output_vec, edge[0], output1);
-        atomic_buffer_add(sa_output_vec, edge[1], output2);
+        atomic_buffer_add(sa_output_vec, edge[0], output_vec[0]);
+        atomic_buffer_add(sa_output_vec, edge[1], output_vec[1]);
         // buffer_add(sa_output_vec, edge[0], output1);
         // buffer_add(sa_output_vec, edge[1], output2);
     }, default_option);
@@ -597,10 +602,11 @@ void NewtonSolver::host_predict_position()
             sa_x_iter_start = host_sim_data->sa_x_iter_start.data(),
             sa_x_tilde = host_sim_data->sa_x_tilde.data(),
             sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
-            substep_dt = get_scene_params().get_substep_dt()
+            substep_dt = get_scene_params().get_substep_dt(),
+            gravity = get_scene_params().gravity
         ](const uint vid)
     {   
-        const float3 gravity(0, -9.8f, 0);
+        // const float3 gravity(0, -9.8f, 0);
         float3 x_prev = sa_x_step_start[vid];
         float3 v_prev = sa_v[vid];
         float3 outer_acceleration = gravity;
@@ -700,7 +706,6 @@ void NewtonSolver::host_evaluate_inertia()
             substep_dt = get_scene_params().get_substep_dt()
         , stiffness_dirichlet](const uint vid)
     {
-        const float3 gravity(0, -9.8f, 0);
         const float h = substep_dt;
         const float h_2_inv = 1.f / (h * h);
 
@@ -1827,8 +1832,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
         stream << sim_data->sa_x.copy_from(curr_x.data());
-        auto material_energy = host_compute_elastic_energy(curr_x);
-        // auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
+        // auto material_energy = host_compute_elastic_energy(curr_x);
+        auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
         auto barrier_energy = device_compute_contact_energy(stream, sim_data->sa_x);
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
@@ -1899,13 +1904,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             }
 
             linear_solver_interface(); // Solve Ax=b
-
-            // EigenFloat12 eigen_x; 
-            // for (uint vid = 0; vid < 4; vid++)
-            // {
-            //     eigen_x.block<3, 1>( vid * 3, 0) = float3_to_eigen3(sa_cgX[vid]);
-            // }
-            // std::cout << "PCG   result = " << eigen_x.transpose() << std::endl;
 
             float alpha = 1.0f; float ccd_toi = 1.0f;
             host_apply_dx(alpha);
@@ -2042,12 +2040,13 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
-        stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
-        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        stream << luisa::compute::synchronize();
+        // stream << sim_data->sa_x_tilde.copy_to(host_sim_data->sa_x_tilde.data());
+        // auto material_energy = host_compute_elastic_energy(host_sim_data->sa_x);
 
-        auto material_energy = host_compute_elastic_energy(host_sim_data->sa_x);
-        // auto material_energy = device_compute_elastic_energy(stream, curr_x);
+        // stream << sim_data->sa_x.copy_to(host_sim_data->sa_x.data());
+        // stream << luisa::compute::synchronize();
+
+        auto material_energy = device_compute_elastic_energy(stream, curr_x);
         auto barrier_energy = device_compute_contact_energy(stream, curr_x);;
         // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
@@ -2069,7 +2068,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         // host_predict_position();
         stream 
-            << fn_predict_position(substep_dt).dispatch(num_verts)
+            << fn_predict_position(substep_dt, get_scene_params().gravity).dispatch(num_verts)
             // << sim_data->sa_x_step_start.copy_to(host_x_step_start.data())
             << sim_data->sa_x_tilde.copy_to(host_sim_data->sa_x_tilde.data()) // For calculate inertia energy
             << luisa::compute::synchronize();

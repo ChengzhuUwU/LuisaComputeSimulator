@@ -238,11 +238,11 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
     }
 }
 
+constexpr bool print_detail = false;
+
 // Evaluate Energy
 double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x)
 {
-    constexpr bool print_detail = false;
-
     auto compute_energy_inertia = [](
         const uint vid, 
         const std::vector<float3>& sa_x, 
@@ -260,7 +260,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         if (is_fixed)
         {
             // Dirichlet boundary energy
-            // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+            energy = stiffness_dirichlet * energy;
         }
         else 
         {
@@ -429,14 +429,15 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             $if (is_fixed)
             {
                 // Dirichlet boundary energy
-                // energy = stiffness_dirichlet * squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+                energy = stiffness_dirichlet * energy;
             }
             $else
             {
-                
             };
+            if constexpr (print_detail) device_log("vid {}, inertia energy {} (invdt2 = {}, |dx|2 = {}, diff = {}) mass = {}", vid, energy, squared_inv_dt, (length_squared_vec(x_new - x_tilde)), x_new - x_tilde, mass);
         };
-
+        
+        
         energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
         $if(vid % 256 == 0)
         {
