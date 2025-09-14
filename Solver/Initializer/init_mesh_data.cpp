@@ -39,21 +39,6 @@ void init_mesh_data(
     mesh_data->prefix_num_edges.resize(1 + num_meshes, 0);
     mesh_data->prefix_num_dihedral_edges.resize(1 + num_meshes, 0);
 
-    uint num_verts_cloth = 0;
-    uint num_faces_cloth = 0;
-    uint num_edges_cloth = 0;
-    uint num_dihedral_edges_cloth = 0;
-
-    uint num_verts_tetrahedral = 0;
-    uint num_faces_tetrahedral = 0;
-    uint num_edges_tetrahedral = 0;
-    uint num_dihedral_edges_tetrahedral = 0;
-
-    uint num_verts_obstacle = 0;
-    uint num_faces_obstacle = 0;
-    uint num_edges_obstacle = 0;
-    uint num_dihedral_edges_obstacle = 0;
-
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
     for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
@@ -77,28 +62,6 @@ void init_mesh_data(
         const uint curr_num_faces = input_mesh.faces.size();
         const uint curr_num_edges = input_mesh.edges.size();
         const uint curr_num_dihedral_edges = input_mesh.dihedral_edges.size();
-        
-        if (shell_info.shell_type == ShellTypeCloth)
-        {
-            num_verts_cloth += curr_num_verts;
-            num_faces_cloth += curr_num_faces;
-            num_edges_cloth += curr_num_edges;
-            num_dihedral_edges_cloth += curr_num_dihedral_edges;   
-        }
-        else if (shell_info.shell_type == ShellTypeTetrahedral)
-        {
-            num_verts_tetrahedral += curr_num_verts;
-            num_faces_tetrahedral += curr_num_faces;
-            num_edges_tetrahedral += curr_num_edges;
-            num_dihedral_edges_tetrahedral += curr_num_dihedral_edges;
-        }
-        else if (shell_info.shell_type == ShellTypeRigid)
-        {
-            num_verts_obstacle += curr_num_verts;
-            num_faces_obstacle += curr_num_faces;
-            num_edges_obstacle += curr_num_edges;
-            num_dihedral_edges_obstacle += curr_num_dihedral_edges;
-        }
 
         mesh_data->num_verts += curr_num_verts;
         mesh_data->num_faces += curr_num_faces;
@@ -462,7 +425,12 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)
         << upload_buffer(device, output_data->sa_faces, input_data->sa_faces)
         << upload_buffer(device, output_data->sa_edges, input_data->sa_edges)
-        << upload_buffer(device, output_data->sa_dihedral_edges, input_data->sa_dihedral_edges)
+        ;
+        
+    if (input_data->num_dihedral_edges > 0)
+        stream << upload_buffer(device, output_data->sa_dihedral_edges, input_data->sa_dihedral_edges);
+
+    stream
         << upload_buffer(device, output_data->sa_vert_mass, input_data->sa_vert_mass)
         << upload_buffer(device, output_data->sa_vert_mass_inv, input_data->sa_vert_mass_inv)
         << upload_buffer(device, output_data->sa_is_fixed, input_data->sa_is_fixed)

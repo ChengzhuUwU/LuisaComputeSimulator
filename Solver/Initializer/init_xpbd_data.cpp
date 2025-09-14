@@ -476,37 +476,58 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_x_iter_start, input_data->sa_x_iter_start)
 
         << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy)
-        << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
-        << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
-        << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
-        << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
-        << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
-        << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
-        << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
+        ;
+    if (input_data->sa_stretch_springs.size() > 0)
+    {
+        stream 
+            << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
+            << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
 
+            << upload_buffer(device, output_data->sa_merged_stretch_springs, input_data->sa_merged_stretch_springs)
+            << upload_buffer(device, output_data->sa_merged_stretch_spring_rest_length, input_data->sa_merged_stretch_spring_rest_length)
+            ;
+    }
+    if (input_data->sa_stretch_faces.size() > 0)
+    {
+        stream 
+            << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
+            << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
+
+            << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
+            << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
+            << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
+
+            << upload_buffer(device, output_data->sa_clusterd_springs, input_data->sa_clusterd_springs)
+            << upload_buffer(device, output_data->sa_prefix_merged_springs, input_data->sa_prefix_merged_springs)
+            << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
+            ;
+    }
+    if (input_data->sa_bending_edges.size() > 0)
+    {
+        stream 
+            << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
+            << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
+            << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
+
+            << upload_buffer(device, output_data->sa_clusterd_bending_edges, input_data->sa_clusterd_bending_edges)
+            << upload_buffer(device, output_data->sa_prefix_merged_bending_edges, input_data->sa_prefix_merged_bending_edges)
+            << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
+            ;
+    }
+    if (input_data->sa_hessian_pairs.size() > 0)
+    {
+        stream 
+            << upload_buffer(device, output_data->sa_prefix_merged_hessian_pairs, input_data->sa_prefix_merged_hessian_pairs)
+            << upload_buffer(device, output_data->sa_clusterd_hessian_pairs, input_data->sa_clusterd_hessian_pairs)
+            << upload_buffer(device, output_data->sa_hessian_pairs, input_data->sa_hessian_pairs)
+            << upload_buffer(device, output_data->sa_hessian_slot_per_edge, input_data->sa_hessian_slot_per_edge)
+        ;
+    }
+    stream
         << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr)
-
-        << upload_buffer(device, output_data->sa_merged_stretch_springs, input_data->sa_merged_stretch_springs)
-        << upload_buffer(device, output_data->sa_merged_stretch_spring_rest_length, input_data->sa_merged_stretch_spring_rest_length)
-        << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
-        << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
-        << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
-
-        << upload_buffer(device, output_data->sa_clusterd_springs, input_data->sa_clusterd_springs)
-        << upload_buffer(device, output_data->sa_prefix_merged_springs, input_data->sa_prefix_merged_springs)
-        << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
-
-        << upload_buffer(device, output_data->sa_clusterd_bending_edges, input_data->sa_clusterd_bending_edges)
-        << upload_buffer(device, output_data->sa_prefix_merged_bending_edges, input_data->sa_prefix_merged_bending_edges)
-        << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
-        
-        << upload_buffer(device, output_data->sa_prefix_merged_hessian_pairs, input_data->sa_prefix_merged_hessian_pairs)
-        << upload_buffer(device, output_data->sa_clusterd_hessian_pairs, input_data->sa_clusterd_hessian_pairs)
-        << upload_buffer(device, output_data->sa_hessian_pairs, input_data->sa_hessian_pairs)
-        << upload_buffer(device, output_data->sa_hessian_slot_per_edge, input_data->sa_hessian_slot_per_edge)
 
         << upload_buffer(device, output_data->prefix_per_vertex_with_material_constraints, input_data->prefix_per_vertex_with_material_constraints)
         << upload_buffer(device, output_data->clusterd_per_vertex_with_material_constraints, input_data->clusterd_per_vertex_with_material_constraints)
@@ -530,13 +551,14 @@ void resize_pcg_data(
     const uint num_bending_edges = host_data->sa_bending_edges.size();
     const uint num_faces = host_data->sa_stretch_faces.size();
 
-    const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
+    // const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
 
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    if (num_springs > 0)        resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
+    if (num_bending_edges > 0)  resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
     resize_buffer(host_data->sa_cgQ, num_verts);
@@ -548,8 +570,8 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    if (num_springs > 0)        resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
+    if (num_bending_edges > 0)  resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);
     resize_buffer(device, device_data->sa_cgQ, num_verts);
