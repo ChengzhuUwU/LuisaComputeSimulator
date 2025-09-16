@@ -115,14 +115,42 @@ struct XMatrix {
             cols[i] += right[i];
         }
     }
-    constexpr void operator+(
+    constexpr void operator-=(
         const XMatrix<M, N>& right) noexcept {
-        XMatrix<M, N> result;
         for (size_t i = 0; i < M; i++) {
-            result[i] = cols[i] = right[i];
+            cols[i] -= right[i];
         }
-        return result;
     }
+    constexpr void operator*=(
+        const float& right) noexcept {
+        for (size_t i = 0; i < M; i++) {
+            cols[i] *= right;
+        }
+    }
+    // constexpr auto operator+(
+    //     const XMatrix<M, N>& right) noexcept {
+    //     XMatrix<M, N> result;
+    //     for (size_t i = 0; i < M; i++) {
+    //         result[i] = cols[i] + right[i];
+    //     }
+    //     return result;
+    // }
+    // constexpr auto operator*(
+    //     const float right) noexcept {
+    //     XMatrix<M, N> result;
+    //     for (size_t i = 0; i < M; i++) {
+    //         result[i] = cols[i] * right;
+    //     }
+    //     return result;
+    // }
+    // constexpr auto operator/(
+    //     const float right) noexcept {
+    //     XMatrix<M, N> result;
+    //     for (size_t i = 0; i < M; i++) {
+    //         result[i] = cols[i] / right;
+    //     }
+    //     return result;
+    // }
 };
 
 
@@ -385,6 +413,130 @@ LUISA_STRUCT(lcs::MATRIX9, mat) {};
 LUISA_STRUCT(lcs::MATRIX12, mat) {};
 LUISA_STRUCT(lcs::MATRIX12x3, mat) {};
 LUISA_STRUCT(lcs::MATRIX3x12, mat) {};
+
+
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator+(const lcs::XMatrix<M, N>& lhs, const lcs::XMatrix<M, N>& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] + rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator-(const lcs::XMatrix<M, N>& lhs, const lcs::XMatrix<M, N>& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] - rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator*(const lcs::XMatrix<M, N>& lhs, const float& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = rhs * lhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator*(const float& lhs, const lcs::XMatrix<M, N>& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs * rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator/(const lcs::XMatrix<M, N>& lhs, const float& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] / rhs;
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline lcs::XMatrix<M, N> operator/(const float& lhs, const lcs::XMatrix<M, N>& rhs) noexcept
+{
+    lcs::XMatrix<M, N> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = rhs.cols[ii] / lhs;
+    }
+    return result;
+}
+
+
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator+(const luisa::compute::Var<lcs::XMatrix<M, N>>& lhs, const luisa::compute::Var<lcs::XMatrix<M, N>>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] + rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator-(const luisa::compute::Var<lcs::XMatrix<M, N>>& lhs, const luisa::compute::Var<lcs::XMatrix<M, N>>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] - rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator*(const luisa::compute::Var<lcs::XMatrix<M, N>>& lhs, const luisa::compute::Var<float>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = rhs * lhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator*(const luisa::compute::Var<float>& lhs, const luisa::compute::Var<lcs::XMatrix<M, N>>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs * rhs.cols[ii];
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator/(const luisa::compute::Var<lcs::XMatrix<M, N>>& lhs, const luisa::compute::Var<float>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = lhs.cols[ii] / rhs;
+    }
+    return result;
+}
+template<size_t M, size_t N>
+[[nodiscard]] inline luisa::compute::Var<lcs::XMatrix<M, N>> operator/(const luisa::compute::Var<float>& lhs, const luisa::compute::Var<lcs::XMatrix<M, N>>& rhs) noexcept
+{
+    luisa::compute::Var<lcs::XMatrix<M, N>> result;
+    for (uint ii = 0; ii < M; ii++)
+    {
+        result.cols[ii] = rhs.cols[ii] / lhs;
+    }
+    return result;
+}
 
 // #define REGIRSTER_XMATRIX_TO_STRUCT(M, N) \
 //     LUISA_STRUCT(lcs::float##M##x##N, cols) {  \
