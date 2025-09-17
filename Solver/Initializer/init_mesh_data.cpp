@@ -29,6 +29,7 @@ void init_mesh_data(
     const uint num_meshes = shell_infos.size();
     std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
+    mesh_data->num_meshes = num_meshes;
     mesh_data->num_verts = 0;
     mesh_data->num_faces = 0;
     mesh_data->num_edges = 0;
@@ -38,6 +39,10 @@ void init_mesh_data(
     mesh_data->prefix_num_faces.resize(1 + num_meshes, 0);
     mesh_data->prefix_num_edges.resize(1 + num_meshes, 0);
     mesh_data->prefix_num_dihedral_edges.resize(1 + num_meshes, 0);
+
+    mesh_data->sa_rest_translate.resize(num_meshes);
+    mesh_data->sa_rest_rotation.resize(num_meshes);
+    mesh_data->sa_rest_scale.resize(num_meshes);
 
     // Constant scalar and init MeshData
     // TODO: Identity cloth, tet, rigid-body
@@ -86,6 +91,7 @@ void init_mesh_data(
     // Read information
     {
         mesh_data->sa_rest_x.resize(num_verts);
+        mesh_data->sa_model_x.resize(num_verts);
         mesh_data->sa_faces.resize(num_faces);
         mesh_data->sa_edges.resize(num_edges);
         mesh_data->sa_dihedral_edges.resize(num_dihedral_edges);
@@ -105,6 +111,13 @@ void init_mesh_data(
             auto& curr_shell_info = shell_infos[meshIdx];
             const auto& curr_input_mesh = input_meshes[meshIdx];
 
+            // Model info
+            {
+                mesh_data->sa_rest_translate[meshIdx] = curr_shell_info.translation;
+                mesh_data->sa_rest_rotation[meshIdx] = curr_shell_info.rotation;
+                mesh_data->sa_rest_scale[meshIdx] = curr_shell_info.scale;
+            }
+
             const uint curr_num_verts = curr_input_mesh.model_positions.size();
             const uint curr_num_faces = curr_input_mesh.faces.size();
             const uint curr_num_edges = curr_input_mesh.edges.size();
@@ -115,8 +128,9 @@ void init_mesh_data(
             {
                 std::array<float, 3> read_pos = curr_input_mesh.model_positions[vid];
                 float3 model_position = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
-                float4x4 model_matrix = lcs::make_model_matrix(curr_shell_info.transform, curr_shell_info.rotation, curr_shell_info.scale);
+                float4x4 model_matrix = lcs::make_model_matrix(curr_shell_info.translation, curr_shell_info.rotation, curr_shell_info.scale);
                 float3 world_position = lcs::affine_position(model_matrix, model_position);
+                mesh_data->sa_model_x[prefix_num_verts + vid] = model_position;
                 mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
                 mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
                 mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
@@ -415,12 +429,18 @@ void upload_mesh_buffers(
     lcs::MeshData<std::vector>* input_data, 
     lcs::MeshData<luisa::compute::Buffer>* output_data)
 {
+    output_data->num_meshes = input_data->num_meshes;
     output_data->num_verts = input_data->num_verts;
     output_data->num_faces = input_data->num_faces;
     output_data->num_edges = input_data->num_edges;
     output_data->num_dihedral_edges = input_data->num_dihedral_edges;
 
     stream 
+        << upload_buffer(device, output_data->sa_rest_translate, input_data->sa_rest_translate)
+        << upload_buffer(device, output_data->sa_rest_rotation, input_data->sa_rest_rotation)
+        << upload_buffer(device, output_data->sa_rest_scale, input_data->sa_rest_scale)
+        << upload_buffer(device, output_data->sa_model_x, input_data->sa_model_x)
+        
         << upload_buffer(device, output_data->sa_rest_x, input_data->sa_rest_x)
         << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)
         << upload_buffer(device, output_data->sa_faces, input_data->sa_faces)

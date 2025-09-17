@@ -1,6 +1,7 @@
 #pragma once
 
 #include <luisa/luisa-compute.h>
+#include "Core/xbasic_types.h"
 
 namespace lcs 
 {
@@ -36,12 +37,12 @@ static inline luisa::float4x4 translate(const luisa::float3& v)
     // set(result, 3, 2, v[2]);
     // return result;
 
-    return luisa::make_float4x4(
-        luisa::make_float4(1.0f, 0.0f, 0.0f, 0.0f),
-        luisa::make_float4(0.0f, 1.0f, 0.0f, 0.0f),
-        luisa::make_float4(0.0f, 0.0f, 1.0f, 0.0f),
-        luisa::make_float4(v[0], v[1], v[2], 1.0f)
-    );
+    return luisa::transpose(luisa::make_float4x4(
+        luisa::make_float4(1.0f, 0.0f, 0.0f, v[0]),
+        luisa::make_float4(0.0f, 1.0f, 0.0f, v[1]),
+        luisa::make_float4(0.0f, 0.0f, 1.0f, v[2]),
+        luisa::make_float4(0.0f, 0.0f, 0.0f, 1.0f)
+    ));
 }
 static inline luisa::float4x4 rorateX(float angleX) 
 {
@@ -54,10 +55,10 @@ static inline luisa::float4x4 rorateX(float angleX)
     // |  0     0      0     1 |
 
     return luisa::transpose(luisa::make_float4x4(
-        luisa::make_float4(1.0f, 0.0f, 0.0f,  0.0f),
-        luisa::make_float4(0.0f, cosX, sinX, 0.0f),
-        luisa::make_float4(0.0f, -sinX, cosX,  0.0f),
-        luisa::make_float4(0.0f, 0.0f, 0.0f,  1.0f)
+        luisa::make_float4(1.0f,  0.0f, 0.0f, 0.0f),
+        luisa::make_float4(0.0f,  cosX, sinX, 0.0f),
+        luisa::make_float4(0.0f, -sinX, cosX, 0.0f),
+        luisa::make_float4(0.0f,  0.0f, 0.0f, 1.0f)
     ));
 }
 static inline luisa::float4x4 rorateY(float angleY) 
@@ -70,10 +71,10 @@ static inline luisa::float4x4 rorateY(float angleY)
     // | -sin(θ)  0  cos(θ)  0 |
     // |    0     0    0     1 |
     return luisa::transpose(luisa::make_float4x4(
-        luisa::make_float4(cosY,  0.0f, -sinY, 0.0f),
-        luisa::make_float4(0.0f,  1.0f, 0.0f, 0.0f),
-        luisa::make_float4(sinY, 0.0f, cosY, 0.0f),
-        luisa::make_float4(0.0f,  0.0f, 0.0f, 1.0f)
+        luisa::make_float4(cosY, 0.0f, -sinY, 0.0f),
+        luisa::make_float4(0.0f, 1.0f,  0.0f, 0.0f),
+        luisa::make_float4(sinY, 0.0f,  cosY, 0.0f),
+        luisa::make_float4(0.0f, 0.0f,  0.0f, 1.0f)
     ));
 }
 static inline luisa::float4x4 rorateZ(float angleZ) 
@@ -88,9 +89,9 @@ static inline luisa::float4x4 rorateZ(float angleZ)
 
     return luisa::transpose(luisa::make_float4x4(
         luisa::make_float4(cosZ, -sinZ, 0.0f, 0.0f),
-        luisa::make_float4(sinZ, cosZ,  0.0f, 0.0f),
-        luisa::make_float4(0.0f, 0.0f,  1.0f, 0.0f),
-        luisa::make_float4(0.0f, 0.0f,  0.0f, 1.0f)
+        luisa::make_float4(sinZ,  cosZ, 0.0f, 0.0f),
+        luisa::make_float4(0.0f,  0.0f, 1.0f, 0.0f),
+        luisa::make_float4(0.0f,  0.0f, 0.0f, 1.0f)
     ));
 }
 static inline luisa::float4x4 rotate(const luisa::float3& axis) 
@@ -111,5 +112,33 @@ inline luisa::float3 affine_position(const luisa::float4x4& model_matrix, const 
     return luisa::make_float3(mult_position[0], mult_position[1], mult_position[2]);
 }
 
+inline auto extract_q_from_affine_matrix(const luisa::float4x4& A)
+{
+    float4x3 q;
+    q.cols[0] = A[0].xyz();
+    q.cols[1] = A[1].xyz();
+    q.cols[2] = A[2].xyz();
+    q.cols[3] = A[3].xyz();
+    return q;
+}
+inline auto extract_q_from_affine_matrix(const Var<luisa::float4x4>& A)
+{
+    Var<float4x3> q;
+    q.cols[0] = A[0].xyz();
+    q.cols[1] = A[1].xyz();
+    q.cols[2] = A[2].xyz();
+    q.cols[3] = A[3].xyz();
+    return q;
+}
+template <typename Vec>
+inline auto affine_Jacobian_to_gradient(const Vec& rest_position, const Vec& vertex_force)
+{
+    return makeFloat4x3(
+        vertex_force,
+        vertex_force.x * rest_position,
+        vertex_force.y * rest_position,
+        vertex_force.z * rest_position
+    );
+}
 
 }

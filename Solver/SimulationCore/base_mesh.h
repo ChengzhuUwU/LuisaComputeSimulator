@@ -39,6 +39,7 @@ public:
 template<template<typename...> typename BufferType>
 struct MeshData : SimulationType
 {
+    uint num_meshes = 0;
     uint num_verts = 0;
     uint num_faces = 0;
     uint num_edges = 0;
@@ -49,6 +50,7 @@ struct MeshData : SimulationType
     // Input 
     BufferType<float3> sa_rest_x;
     BufferType<float3> sa_rest_v;
+    BufferType<float3> sa_model_x;
 
     BufferType<uint3> sa_faces;
     BufferType<uint2> sa_edges;
@@ -64,6 +66,11 @@ struct MeshData : SimulationType
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;
     BufferType<float> sa_rest_face_area;
+
+    // Affine
+    BufferType<float3> sa_rest_translate;
+    BufferType<float3> sa_rest_scale;
+    BufferType<float3> sa_rest_rotation;
 
     // Adjacent
     BufferType<uint> sa_vert_adj_verts_csr; 

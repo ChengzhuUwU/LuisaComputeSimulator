@@ -31,7 +31,7 @@ enum ShellType
 struct ShellInfo
 {
     std::string model_name = "square8K.obj";
-    float3 transform = luisa::make_float3(0.0f, 0.0f, 0.0f);
+    float3 translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
     float3 rotation = luisa::make_float3(0.0f * lcs::Pi); // Rotation in x-channel means rotate along with x-axis
     float3 scale = luisa::make_float3(1.0f);
     std::vector<FixedPointInfo> fixed_point_list;
