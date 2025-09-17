@@ -4,7 +4,7 @@
 
 ## How to start
 
-1. Clone the repository: `git clone https://github.com/ChengzhuUwU/libAtsSim.git --recursive`
+1. Clone the repository: `git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git --recursive`
 
 2. Download required packages: (`brew install` or `vcpkg install`) ` Eigen3, tbb, glfw3`
     - (For windows user: You may need to set `CMAKE_PREFIX_PATH` in `CmakeLists.txt` with your cmake path)
