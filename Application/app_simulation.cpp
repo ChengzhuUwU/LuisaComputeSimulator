@@ -440,9 +440,6 @@ int main(int argc, char** argv)
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
-                
-                
-                // surface_meshes[clothIdx]->getFloatingQuantity("Collision Count");
             }
             if constexpr (draw_bounding_box) bounding_boxes.back()->updateVertexPositions(sa_global_aabb_vertices);
         };

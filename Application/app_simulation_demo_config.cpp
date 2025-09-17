@@ -45,7 +45,7 @@ void ccd_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .translation = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
@@ -76,7 +76,7 @@ void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_lis
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .translation = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
@@ -91,7 +91,7 @@ void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_lis
     lcs::get_scene_params().pcg_iter_count = 200;
     lcs::get_scene_params().use_ccd_linesearch = true;
     lcs::get_scene_params().use_self_collision = true;
-    lcs::get_scene_params().use_energy_linesearch = true;
+    lcs::get_scene_params().use_energy_linesearch = false;
 }
 void moving_vf_unit(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
@@ -100,7 +100,7 @@ void moving_vf_unit(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .translation = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
@@ -131,7 +131,7 @@ void ccd_ee_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     shell_list.push_back({
         // .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
         .model_name = obj_mesh_path + "square2.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .translation = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
@@ -156,7 +156,7 @@ void dcd_cloth_cylinder_repulsion(std::vector<lcs::Initializer::ShellInfo>& shel
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-        .transform = luisa::make_float3(0.1, -0.3, 0),
+        .translation = luisa::make_float3(0.1, -0.3, 0),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
                 .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
@@ -174,7 +174,7 @@ void dcd_cloth_ball(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.1, 0),
+        .translation = luisa::make_float3(0.0, 0.1, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
             // lcs::Initializer::FixedPointInfo{
@@ -184,7 +184,7 @@ void dcd_cloth_ball(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.12, 0),
+        .translation = luisa::make_float3(0.0, 0.12, 0),
         .rotation = luisa::make_float3(0, lcs::Pi / 6.0f, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
@@ -192,7 +192,7 @@ void dcd_cloth_ball(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.14, 0),
+        .translation = luisa::make_float3(0.0, 0.14, 0),
         .rotation = luisa::make_float3(0, lcs::Pi / 6.0f * 2, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
@@ -210,7 +210,7 @@ void dcd_cloth_ball(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     // });
     shell_list.push_back({
         .model_name = obj_mesh_path + "bowl/bowl.obj",
-        .transform = luisa::make_float3(0.0, 0.02, 0),
+        .translation = luisa::make_float3(0.0, 0.02, 0),
         .scale = luisa::make_float3(0.3f),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
@@ -230,7 +230,7 @@ void cloth_bottle4(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.1, 0),
+        .translation = luisa::make_float3(0.0, 0.1, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
             // lcs::Initializer::FixedPointInfo{
@@ -240,7 +240,7 @@ void cloth_bottle4(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.12, 0),
+        .translation = luisa::make_float3(0.0, 0.12, 0),
         .rotation = luisa::make_float3(0, lcs::Pi / 6.0f, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
@@ -248,7 +248,7 @@ void cloth_bottle4(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "square2K.obj",
-        .transform = luisa::make_float3(0.0, 0.14, 0),
+        .translation = luisa::make_float3(0.0, 0.14, 0),
         .rotation = luisa::make_float3(0, lcs::Pi / 6.0f * 2, 0),
         .scale = luisa::make_float3(0.2f),
         .fixed_point_list = {
@@ -256,7 +256,7 @@ void cloth_bottle4(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     });
     shell_list.push_back({
         .model_name = obj_mesh_path + "bowl/bottle4.obj",
-        .transform = luisa::make_float3(0.0, -0.4, 0),
+        .translation = luisa::make_float3(0.0, -0.4, 0),
         .scale = luisa::make_float3(0.6f),
         .fixed_point_list = {
             lcs::Initializer::FixedPointInfo{
@@ -299,7 +299,7 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().use_ccd_linesearch = false;
     lcs::get_scene_params().stiffness_bending_ui = 0.0;
     lcs::get_scene_params().use_self_collision = false;
-    lcs::get_scene_params().use_energy_linesearch = true;
+    lcs::get_scene_params().use_energy_linesearch = false;
     lcs::get_scene_params().gravity = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_floor = false;
 }
