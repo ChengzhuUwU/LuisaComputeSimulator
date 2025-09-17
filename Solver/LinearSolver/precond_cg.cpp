@@ -47,12 +47,6 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
     {
         buffer->write(dispatch_id().x, Uint(0u));
     });
-    fn_apply_dx = device.compile<1>([sa_x = sim_data->sa_x.view(), sa_x_iter_start = sim_data->sa_x_iter_start.view(), sa_dx = sim_data->sa_cgX.view()](const Float alpha)
-    {
-        const UInt vid = dispatch_id().x;
-        Float3 x_new = sa_x_iter_start->read(vid) + alpha * sa_dx->read(vid);
-        sa_x->write(vid, x_new);
-    });
 
     // 0 : old_dot_rr
     // 1 : new_dot_rz
@@ -357,15 +351,9 @@ void ConjugateGradientSolver::host_solve(
     std::vector<float3>& sa_x = host_sim_data->sa_x;
     std::vector<float3>& sa_x_iter_start = host_sim_data->sa_x_iter_start;
     std::vector<float3>& sa_x_tilde = host_sim_data->sa_x_tilde;
-    
-    auto host_apply_dx = [&](const float alpha)
-    {
-        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-        {
-            sa_x[vid] = sa_x_iter_start[vid] + alpha * sa_cgX[vid];
-        });
-    };
 
+    const uint num_verts = sa_cgX.size();
+    
     auto get_dot_rz_rr = [&]() -> float2 // [0] = r^T z, [1] = r^T r
     {
         return CpuParallel::parallel_for_and_reduce_sum<float2>(0, sa_cgR.size(), [&](const uint vid) -> float2
@@ -412,8 +400,6 @@ void ConjugateGradientSolver::host_solve(
     {
         sa_converage[2] = dot_rz; /// <= reduce
     };
-
-    const uint num_verts = mesh_data->num_verts;
     
     auto pcg_make_preconditioner_jacobi = [&]()
     {
@@ -534,12 +520,6 @@ void ConjugateGradientSolver::host_solve(
         pcg_step(alpha);
     }
 
-    constexpr bool print_energy = false; double curr_energy = 0.0;
-    if constexpr (print_energy)
-    {
-        host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(sa_x);
-    }
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
@@ -547,7 +527,7 @@ void ConjugateGradientSolver::host_solve(
     }
     luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
+        iter, normR / normR_0, infinity_norm, ""
     );
             
     /*
@@ -623,22 +603,8 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
     std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
 
-    auto host_apply_dx = [&](const float alpha)
-    {
-        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-        {
-            host_x[vid] = host_x_iter_start[vid] + alpha * host_cgX[vid];
-        });
-    };
-    auto device_apply_dx = [&](const float alpha)
-    {
-        stream << fn_apply_dx(alpha).dispatch(mesh_data->num_verts);
-    };
-    
     // auto device_pcg = [&]()
-    const uint num_verts = host_mesh_data->num_verts;
-    const uint num_edges = host_mesh_data->num_edges;
-    const uint num_faces = host_mesh_data->num_faces;
+    const uint num_verts = host_cgX.size();
     const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
 
     stream 
@@ -750,12 +716,6 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
         << sim_data->sa_cgX.copy_to(host_sim_data->sa_cgX.data())
         << luisa::compute::synchronize();
 
-    constexpr bool print_energy = false; double curr_energy = 0.0;
-    if constexpr (print_energy)
-    {
-        host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(sim_data->sa_x);
-    }
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
@@ -763,7 +723,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     }
     luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
+        iter, normR / normR_0, infinity_norm, ""
     );
 }
 
@@ -778,14 +738,8 @@ void ConjugateGradientSolver::eigen_solve(
     std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
     std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
     std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
-    auto host_apply_dx = [&](const float alpha)
-    {
-        CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
-        {
-            host_x[vid] = host_x_iter_start[vid] + alpha * host_cgX[vid];
-        });
-    };
-    constexpr bool print_energy = true; double curr_energy = 0.0;
+
+    const uint num_verts = host_cgX.size();
 
     auto eigen_iter_solve = [&]()
     {
@@ -812,19 +766,14 @@ void ConjugateGradientSolver::eigen_solve(
         if (solver.info() != Eigen::Success) { luisa::log_error("Eigen: Solve failed in {} iterations", solver.iterations()); }
         else 
         {
-            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
             {
                 host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
             });
-            if constexpr (print_energy)
-            {
-                host_apply_dx(1.0f);
-                curr_energy = func_compute_energy(host_sim_data->sa_x);
-            }
 
-            luisa::log_info("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
+            luisa::log_info("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, solver.iterations(),
-                solver.error(), fast_infinity_norm(host_cgX), curr_energy); // from normR_0 -> normR
+                solver.error(), fast_infinity_norm(host_cgX)); // from normR_0 -> normR
         }
     };
     auto eigen_decompose_solve = [&]()
@@ -846,19 +795,13 @@ void ConjugateGradientSolver::eigen_solve(
         else
         {
             float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
-            CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
+            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
             {
                 host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
             });
-            if constexpr (print_energy)
-            {
-                host_apply_dx(1.0f);
-                curr_energy = func_compute_energy(host_sim_data->sa_x);
-            }
-
-            luisa::log_info("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}, energy = {:6.5f}", 
+            luisa::log_info("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, 
-                error, fast_infinity_norm(host_cgX), curr_energy); // from normR_0 -> normR
+                error, fast_infinity_norm(host_cgX)); // from normR_0 -> normR
         }
     };
 

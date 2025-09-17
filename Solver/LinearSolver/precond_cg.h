@@ -70,8 +70,6 @@ private:
     luisa::compute::Shader<1> fn_pcg_apply_preconditioner;
     luisa::compute::Shader<1> fn_pcg_apply_preconditioner_second_pass;
     
-    luisa::compute::Shader<1, float> fn_apply_dx;
-
 private:
     MeshData<std::vector>* host_mesh_data;
     MeshData<luisa::compute::Buffer>* mesh_data;
