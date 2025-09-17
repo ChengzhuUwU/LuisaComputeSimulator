@@ -86,7 +86,9 @@ $$ J_r =
 0 & 0 & 1 & & & & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 \\
 \end{bmatrix} \in R^{3 \times 12} $$
 
-So we can simplify the calculation. For gradient:
+So we can simplify the calculation. 
+
+### For gradient
 
 $$\nabla E_{q_i} = J^T \textcolor{red}{g} = 
 \begin{bmatrix}
@@ -98,27 +100,26 @@ $$\nabla E_{q_i} = J^T \textcolor{red}{g} =
 
 Where $g_{i}$ is the *i*'s element in $g$.
 
-For hessian, $\nabla E_{q_i, q_j}^2 = J_i^T \nabla^2 E J_j$, we have 3 cases:
+### For hessian
+
+For hessian $\nabla E_{q_i, q_j}^2 = J_i^T \nabla^2 E J_j$, we have 4 cases:
+
+> $i,j$ are vertices from VF/EE Pair
 
 ---
 
-(1) **Rigid-Soft**, $J_i = J_r, J_j = I_3$ :
+(1) **Soft Vert - Soft Vert**, $J_i = I_3, J_j = I_3$ :
 
 $$
-\nabla^2 E_{q_i, q_j} = J_i^T \textcolor{red}{H} J_j = 
-\begin{bmatrix}
-H
-\\ \overline{x}_i H_{1,:}
-\\ \overline{x}_i H_{2,:}
-\\ \overline{x}_i H_{3,:}
-\end{bmatrix} \in R^{12 \times 3}
+\nabla^2 E_{q_i, q_j} = J_i^T \textcolor{red}{H} J_j = I_3^T \textcolor{red}{H} I_3
+= H \in R^{3 \times 3}
 $$
 
-Where $H_{i,:}$ is the *i*'th row in $H$.
+This is actullly what we do in full-space simulation.
 
 ---
 
-(2) **Soft-Rigid**, $J_i = I_3 , J_j = J_r$ :
+(2) **Soft Vert - Rigid Vert**, $J_i = I_3 , J_j = J_r$ :
 
 $$
 \nabla^2 E_{q_i, q_j} = J_i^T \textcolor{red}{H} J_j = 
@@ -134,7 +135,23 @@ Where $H_{:,j}$ is the *j*'th column in $H$.
 
 ---
 
-(3) **Rigid-Rigid** (Only between different bodies), $J_i = J_r , J_j = J_r$: 
+(3) **Rigid Vert - Soft Vert**, $J_i = J_r, J_j = I_3$ :
+
+$$
+\nabla^2 E_{q_i, q_j} = J_i^T \textcolor{red}{H} J_j = 
+\begin{bmatrix}
+H
+\\ \overline{x}_i H_{1,:}
+\\ \overline{x}_i H_{2,:}
+\\ \overline{x}_i H_{3,:}
+\end{bmatrix} \in R^{12 \times 3}
+$$
+
+Where $H_{i,:}$ is the *i*'th row in $H$.
+
+---
+
+(4) **Rigid Vert - Rigid Vert**, $J_i = J_r , J_j = J_r$: 
 
 $$
 \nabla^2 E_{q_i, q_j} = J_i^T \textcolor{red}{H} J_j = 
@@ -167,28 +184,61 @@ In summury, convert from hessian $\nabla^2 E_{x_i, x_j}$ to $\nabla^2 E_{q_i, q_
 
 Condition             | Condition 2                     | Expression
 ---------             | ----------                      | ----------
-$\text{row} = 1,     \text{column} = 1$    | Or if $i$ is soft, $j$ is soft  | $H$
-$\text{row} = 1,     \text{column} \neq 1$ | Or if $i$ is soft, $j$ is rigid | $H_{:,c} \overline{x}_j^T$
-$\text{row} \neq 1,  \text{column} = 1$    | Or if $i$ is rigid, $j$ is soft | $\overline{x}_i H_{r,:}$
-$\text{row} \neq 1,  \text{column} \neq 1$ | Only if $i$ is rigid, $j$ is rigid | $H_{r,c} \overline{x}_i \overline{x}_j^T$
+Soft Vert - Soft Vert  | | $H$
+Soft Vert - Rigid Vert  | | $\begin{bmatrix}H & H_{:,1} \overline{x}_j^T & H_{:,2} \overline{x}_j^T & H_{:,3} \overline{x}_j^T \end{bmatrix}$
+Rigid Vert - Soft Vert  | | $\begin{bmatrix}H \\ \overline{x}_i H_{1,:} \\ \overline{x}_i H_{2,:} \\ \overline{x}_i H_{3,:}\end{bmatrix}$
+Rigid Vert - Rigid Vert | $\text{row} = 1,     \text{column} = 1$    | $H$
+Rigid Vert - Rigid Vert | $\text{row} = 1,     \text{column} \neq 1$ | $H_{:,c} \overline{x}_j^T$
+Rigid Vert - Rigid Vert | $\text{row} \neq 1,  \text{column} = 1$    | $\overline{x}_i H_{r,:}$
+Rigid Vert - Rigid Vert | $\text{row} \neq 1,  \text{column} \neq 1$ | $H_{r,c} \overline{x}_i \overline{x}_j^T$
 
-Where $r$ and $c$ in $H_{r,c}$ refers to relative row index and column index in faces ($c = \text{column} - 1, r = \text{row} - 1$)
+Where $r$ and $c$ in $H_{r,c}$ refers to relative **blocked** row index and column index in faces ($c = \text{column} - 1, r = \text{row} - 1$)
+
+> Note that:
+>
+> - "Soft-Rigid" is equal to the first blocked row    in "Rigid-Rigid" hessian
+> 
+> - "Rigid-Soft" is equal to the first blocked column in "Rigid-Rigid" hessian
 
 ---
 
-### Contact of Affine-Body
+## Contact of Affine-Body
 
-If VF/EE pair contains vertex from **rigid-body**, we need to convert the contribution of gradient and hessian of collision pairs, from full-space into reduced-space:
+If VF/EE pair contains vertex from **rigid-body**, we need to convert their contribution (gradient $\nabla E \in R^{12}$ and hessian $\nabla^2 E \in R^{12\times 12}$) from full-space into reduced-space. 
 
-(1) For VF pair:
+### For gradient
 
-For vert $i \in \text{V}$ : If $i$ is from Rigid body, we just need to calculate $\nabla E_{q_i}$ and $\nabla^2 E_{q_i, q_i}$ according to the formulation above, and add to the linear system.
+---
 
-For vert $i \in \text{F}$ : If $i$ is from Rigid body, we need to summurize the contribution of three vertices in face. We set $X$ as the **weighted model position** according to the collision barycentric $w$ :
+(1) For vert in $\text{V}$ (If $\text{V}$ is from Rigid Body)
 
-$$X = \sum_{i \in \text{face}}^3 w_i \overline{x}_i$$
+We just need to calculate $\nabla E_{q_i}$ according to the formulation above.
 
-So we get:
+$$\nabla E_{q_i} 
+= J^T \textcolor{red}{g} 
+= J^T k_1 w_1 n
+= \begin{bmatrix}
+n
+\\ n_{0} \overline{x} 
+\\ n_{1} \overline{x} 
+\\ n_{2} \overline{x} 
+\end{bmatrix} \in R^{12}$$ 
+
+> In VF, weight of vert $w_1 = 1$
+
+---
+
+(2) For vertices in $\text{F}$ (If $\text{F}$ is from Rigid Body)
+
+For vertices $i \in \text{F}$ : We need to summurize the contribution of three vertices in face. 
+
+We set $X$ as the **weighted model position** according to the barycentric coordinate :
+
+$$X = \sum_{i \in \text{face}}^3 |w_i| \overline{x}_i , \quad \text{s.t.} \sum_{i \in \text{face}}^3 w_i = -1$$
+
+> Note that $X = -\sum_{i \in \text{face}}^3 w_i \overline{x}_i $
+
+So we can get:
 
 $$ 
 \begin{aligned}
@@ -203,14 +253,14 @@ k_1 w_i n
 \end{bmatrix}
 = k_1 
 \begin{bmatrix}
-   w_i n
+   \sum_{i} w_i n
 \\ {n}_{0} \sum_{i} w_i \overline{x}_i 
 \\ {n}_{1} \sum_{i} w_i \overline{x}_i 
 \\ {n}_{2} \sum_{i} w_i \overline{x}_i 
 \end{bmatrix}
-= k_1 
+= -k_1 
 \begin{bmatrix}
-   w_i n
+   n
 \\ {n}_{0} X 
 \\ {n}_{1} X 
 \\ {n}_{2} X 
@@ -218,11 +268,92 @@ k_1 w_i n
 \end{aligned}
 $$
 
-And:
+---
+
+Sow we can promote the regularity: both VF (vertex–face) and EE (edge–edge) interactions can be expressed in a unified form.
+
+Each interaction is decomposed into two parts: 
+
+- VF -> vertex $\text{V}$ and face $\text{F}$
+- EE -> edge $\text{E}_1$ and edge $\text{E}_2$
+
+For $\text{element} \in [V,F,E_1,E_2]$, we can set: $$ X = \sum_{i \in \text{element}} |w_i| \overline{x}_i $$
+
+The contribution of each part to the rigid body is written as:
+
+$$ 
+\sum_{i \in \text{element}} \nabla E_{q_i} = (\sum_{i} w_i )k_1 
+\begin{bmatrix}
+   n
+\\ {n}_{0} X 
+\\ {n}_{1} X 
+\\ {n}_{2} X 
+\end{bmatrix}
+$$
+
+Where $\sum_{i} w_i$ is 1 (For $\text{V}, \text{E}_1$) or -1 (For $\text{F}, \text{E}_2$).
+
+### For hessian
+
+---
+
+(1) For vert in $\text{V}$ (If $\text{V}$ is from Rigid Body)
+
+We just need to calculate $\nabla^2 E_{q_i, q_i}$ according to the formulation above, and add to the global hessian matrix. (Calculted as hessian between **Rigid Vert - Rigid Vert**)
+
+$$
+\begin{aligned}
+\nabla^2 E_{q_i, q_i} 
+&= J_i^T k_2 n n^T J_i \\
+&= k_2 \begin{bmatrix}
+nn^T
+& n_1 n \overline{x}_i^T
+& n_2 n \overline{x}_i^T
+& n_3 n \overline{x}_i^T
+\\
+n_1 X n^T
+& n_1 n_1 \overline{x}_i \overline{x}_i^T    
+& n_1 n_2 \overline{x}_i \overline{x}_i^T    
+& n_1 n_3 \overline{x}_i \overline{x}_i^T 
+\\
+n_2 X n^T  
+& n_2 n_1 \overline{x}_i \overline{x}_i^T    
+& n_2 n_2 \overline{x}_i \overline{x}_i^T    
+& n_2 n_3 \overline{x}_i \overline{x}_i^T 
+\\
+n_3 X n^T
+& n_3 n_1 \overline{x}_i \overline{x}_i^T    
+& n_3 n_2 \overline{x}_i \overline{x}_i^T    
+& n_3 n_3 \overline{x}_i \overline{x}_i^T  
+\end{bmatrix}  \in R^{12 \times 12} \\
+&= k2 
+\begin{bmatrix}
+n \\ n_1 \overline{x}_i \\ n_2 \overline{x}_i \\ n_3 \overline{x}_i
+\end{bmatrix}
+\begin{bmatrix}
+n^T & n_1 \overline{x}_i^T & n_2 \overline{x}_i^T & n_3 \overline{x}_i^T
+\end{bmatrix} \\
+&= k2 
+\begin{bmatrix}
+n \\ n_1 \overline{x}_i \\ n_2 \overline{x}_i \\ n_3 \overline{x}_i
+\end{bmatrix}
+\begin{bmatrix}
+n \\ n_1 \overline{x}_i \\ n_2 \overline{x}_i \\ n_3 \overline{x}_i
+\end{bmatrix}^T
+\end{aligned}
+$$
+
+
+
+---
+
+(2) For vert between $\text{F}$ (If $\text{F}$ is from Rigid Body)
+
+We need to summurize the contribution of three vertices in face (9 blocked 3x3 matrix): (Also calculted as hessian between **Rigid Vert - Rigid Vert**)
 
 $$ 
 \begin{aligned}
-\sum_{i,j \in \text{face}}^3 \nabla^2 E_{q_i, q_j} 
+\sum_{i \in \text{face}}^3 \sum_{j \in \text{face}}^3 \nabla^2 E_{q_i, q_j} 
 &= \sum_{i} \sum_{j} J_i^T k_2 w_i w_j n n^T J_j \\
 &= 
 \begin{cases}
@@ -290,5 +421,146 @@ k_2 n_r X n^T & \text{row} \neq 1, \text{column} = 1
 k_2 n_r n_c X X^T & \text{row} \neq 1,  \text{column} \neq 1  
 \\
 \end{cases} \\
+\end{aligned}
+$$
+
+In summary:
+
+$$
+\begin{aligned}
+\sum_{i \in \text{face}}^3 \sum_{j \in \text{face}}^3 \nabla^2 E_{q_i, q_j}  
+&= k_2 \begin{bmatrix}
+nn^T
+& n_1 n X^T
+& n_2 n X^T
+& n_3 n X^T
+\\
+n_1 X n^T
+& n_1 n_1 X X^T    
+& n_1 n_2 X X^T    
+& n_1 n_3 X X^T 
+\\
+n_2 X n^T  
+& n_2 n_1 X X^T    
+& n_2 n_2 X X^T    
+& n_2 n_3 X X^T 
+\\
+n_3 X n^T
+& n_3 n_1 X X^T    
+& n_3 n_2 X X^T    
+& n_3 n_3 X X^T  
+\end{bmatrix} \in R^{12 \times 12} \\
+&= k2 
+\begin{bmatrix}
+n \\ n_1 X \\ n_2 X \\ n_3 X
+\end{bmatrix}
+\begin{bmatrix}
+n^T & n_1 X^T & n_2 X^T & n_3 X^T
+\end{bmatrix} \\
+&= k2 
+\begin{bmatrix}
+n \\ n_1 X \\ n_2 X \\ n_3 X
+\end{bmatrix}
+\begin{bmatrix}
+n \\ n_1 X \\ n_2 X \\ n_3 X
+\end{bmatrix}^T
+\end{aligned}
+$$
+
+Same as the hessian of vertex $\nabla^2 E_{q_1,q_1}$.
+
+---
+
+Sow we can promote the regularity:
+
+For $[\text{element}_1, \text{element}_2] \in [[V,V], [F,F], [E_1,E_1], [E_2,E_2], [V,F], [E_1,E_2]]$, We can set: 
+
+$$ X_1 = \sum_{i \in \text{element}_1} |w_i| \overline{x}_i$$
+
+$$ X_2 = \sum_{i \in \text{element}_2} |w_i| \overline{x}_i$$
+
+(1) If $[\text{element}_1, \text{element}_2]$ are both from rigid body:
+
+We can summurize the contribution of each part:
+
+$$
+\begin{aligned}
+\sum_{i \in \text{element}_1} \sum_{j \in \text{element}_2}  \nabla^2 E_{q_i, q_j}  
+&= k_2 (\sum_{i} w_i )(\sum_{j} w_j) \begin{bmatrix}
+nn^T
+& n_1 n X_2^T
+& n_2 n X_2^T
+& n_3 n X_2^T
+\\
+n_1 X_1 n^T
+& n_1 n_1 X_1 X_2^T    
+& n_1 n_2 X_1 X_2^T    
+& n_1 n_3 X_1 X_2^T 
+\\
+n_2 X_1 n^T  
+& n_2 n_1 X_1 X_2^T    
+& n_2 n_2 X_1 X_2^T    
+& n_2 n_3 X_1 X_2^T 
+\\
+n_3 X_1 n^T
+& n_3 n_1 X_1 X_2^T    
+& n_3 n_2 X_1 X_2^T    
+& n_3 n_3 X_1 X_2^T  
+\end{bmatrix} \in R^{12 \times 12} \\
+&= k_2 (\sum_{i} w_i )(\sum_{j} w_j)
+\begin{bmatrix}
+n \\ n_1 X_1 \\ n_2 X_1 \\ n_3 X_1
+\end{bmatrix}
+\begin{bmatrix}
+n \\ n_1 X_2 \\ n_2 X_2 \\ n_3 X_2
+\end{bmatrix}^T
+\end{aligned}
+$$
+
+Also, $\sum_{i} w_i$ is 1 (For $\text{V}, \text{E}_1$) or -1 (For $\text{F}, \text{E}_2$).
+
+(2) One of the element in $[\text{element}_1, \text{element}_2]$ is from soft body and another is from rigid body:
+
+This situation can only happen between bodies, so $[\text{element}_1, \text{element}_2] \in [[V,F], [E_1,E_2]]$, thus: 
+
+$$ \sum_{i \in \text{element}_1} w_i = 1, \sum_{j \in \text{element}_2} w_j = -1$$
+
+The situation can formed as the first blocked row or column in the hessian above. 
+
+- **Soft - Rigid**:
+$$
+\begin{aligned}
+& \sum_{j \in \text{element}_2}  \nabla^2 E_{q_i, q_j} 
+\\ =& 
+(\sum_{j \in \text{element}_2} w_j) \begin{bmatrix}
+nn^T
+& n_1 n X_2^T
+& n_2 n X_2^T
+& n_3 n X_2^T
+\end{bmatrix} \in R^{3 \times 12} \\
+=& 
+-n
+\begin{bmatrix}
+n \\ n_1 X_2 \\ n_2 X_2 \\ n_3 X_2
+\end{bmatrix}^T
+\end{aligned}
+$$
+
+- **Rigid - Soft**:
+$$
+\begin{aligned}
+& \sum_{i \in \text{element}_1} \nabla^2 E_{q_i, q_j} 
+\\ =& 
+(\sum_{i \in \text{element}_1} w_i) \begin{bmatrix}
+H
+\\ n_1 X_1 n^T
+\\ n_2 X_1 n^T
+\\ n_3 X_1 n^T
+\end{bmatrix} \in R^{3 \times 12} \\
+=& 
+-\begin{bmatrix}
+n \\ n_1 X_1 \\ n_2 X_1 \\ n_3 X_1
+\end{bmatrix}
+n^T
 \end{aligned}
 $$
