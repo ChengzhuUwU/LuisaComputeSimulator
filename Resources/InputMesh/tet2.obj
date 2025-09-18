@@ -1,0 +1,13 @@
+# File exported by Houdini 18.5.351 (www.sidefx.com)
+# 4 points
+# 6 vertices
+# 4 primitives
+v 0 0 0
+v 1 0 0
+v 0 1 0
+v 0 0 1
+g 
+f 1 2 3
+f 1 2 4
+f 2 3 4
+f 3 1 4
