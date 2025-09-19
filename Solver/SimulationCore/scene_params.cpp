@@ -1,8 +1,7 @@
-#include <vector>
 #include "scene_params.h"
+// #include <vector>
 
-namespace lcs 
-{
+namespace lcs {
 
 // std::vector<SceneParams> scene_params;
 SceneParams scene_params;

@@ -90,9 +90,9 @@ file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
 add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
-
+add_definitions(-DLCGS_DLL_EXPORTS)
 if(WIN32)
-set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
+set(CMAKE_PREFIX_PATH   "C:/ligo/vcpkg/installed/x64-windows")
 endif()
 
 find_package(Eigen3 REQUIRED)

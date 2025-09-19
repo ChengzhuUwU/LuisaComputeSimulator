@@ -1,0 +1,8 @@
+add_requires("polyscope")
+target("app-simulator")
+    set_kind("binary")
+    add_files("*.cpp|app_test_features.cpp")
+    add_headerfiles("*.h", "*.hpp")
+    add_includedirs(os.scriptdir(), {public = true})
+    add_deps("luisa-compute-solver")
+    add_packages("polyscope")
