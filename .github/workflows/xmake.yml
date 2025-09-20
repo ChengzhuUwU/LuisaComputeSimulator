@@ -5,9 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/xmake.yml"
-      - "include/**"
-      - "src/**"
-      - "tests/**"
+      - "Application/**"
+      - "Solver/**"
       - "xmake.lua"
 
 jobs:
@@ -40,4 +39,5 @@ jobs:
 
       - name: Build
         run: |
-          xmake build --verbose --diagnosis --all
+          xmake build --verbose luisa-compute-solver-lib
+          xmake --verbose
