@@ -1,6 +1,23 @@
 set_allowedplats("windows")
 set_allowedarchs("x64")
 set_allowedmodes("debug", "release", "releasedbg")
+-- windows flags
+if (is_host("windows")) then 
+    add_defines("NOMINMAX")
+    add_defines("_GAMING_DESKTOP")
+    add_defines("_CRT_SECURE_NO_WARNINGS")
+    add_defines("_ENABLE_EXTENDED_ALIGNED_STORAGE")
+    add_defines("_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR") -- for preventing std::mutex crash when lock
+    if (is_mode("release")) then
+        set_runtimes("MD")
+    elseif (is_mode("asan")) then
+        add_defines("_DISABLE_VECTOR_ANNOTATION")
+    else
+        set_runtimes("MDd")
+    end
+end
+
+includes("ext")
 
 option("dev", {default = true})
 
@@ -21,7 +38,6 @@ if has_config("dev") then
         add_cxflags("/permissive-", {tools = "cl"})
     end
 end
-
 add_requires("luisa-compute", "eigen", "tbb", "polyscope")
 -- add_requires("luisa-compute[cuda]", "eigen", "tbb", "polyscope")
 

@@ -1,0 +1,23 @@
+{
+  "xmake.additionalConfigArguments": [],
+  "C_Cpp.codeAnalysis.runAutomatically": false,
+  "C_Cpp.intelliSenseEngine": "Disabled",
+  "C_Cpp.formatting": "Disabled",
+  "C_Cpp.autoAddFileAssociations": false,
+  "C_Cpp.autocompleteAddParentheses": false,
+  "C_Cpp.autocomplete": "Disabled",
+  "C_Cpp.errorSquiggles": "Disabled",
+  "clangd.arguments": [
+    "--compile-commands-dir=.vscode",
+    "--log=error",
+    "--completion-style=bundled",
+    "--background-index", 
+    "--background-index-priority=normal",
+    "--header-insertion=never",
+    "--pch-storage=memory",
+    "--offset-encoding=utf-8"
+  ],
+  "files.eol":"\n",
+  "ccls.misc.compilationDatabaseDirectory": ".vscode",
+  "ccls.cache.directory": ".vscode/.ccls-cache"
+}

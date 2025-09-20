@@ -1,7 +1,7 @@
 /build
 /bin
 /.xmake
-/.vscode
+/.vscode/*
 /.cache
 __pycache__
 .pytest_cache
@@ -22,3 +22,6 @@ lc_options.generated.lua
 .polyscope.ini
 imgui.ini
 .VSCodeCounter
+ext/*
+!ext/xmake.lua
+!.vscode/settings.json.for_xmake
