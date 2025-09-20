@@ -25,18 +25,6 @@ end
 add_requires("luisa-compute", "eigen", "tbb", "polyscope")
 -- add_requires("luisa-compute[cuda]", "eigen", "tbb", "polyscope")
 
-add_requireconfs("amgcl.boost", {
-    override = true,
-    configs = {
-        cmake = true,
-        serialization = true,
-        program_options = true,
-        container = true,
-        regex = true,
-        thread = true,
-    }
-})
-
 target("luisa-compute-solver-lib")
     set_kind("static")
     add_files("Solver/**.cpp", "Solver/**.cc")

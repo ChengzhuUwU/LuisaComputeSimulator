@@ -1,4 +1,4 @@
-#include "precond_cg.h"
+#include "LinearSolver/precond_cg.h"
 #include "Core/lc_to_eigen.h"
 #include "Core/scalar.h"
 #include "SimulationCore/scene_params.h"

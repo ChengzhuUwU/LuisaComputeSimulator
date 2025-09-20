@@ -38,6 +38,6 @@ jobs:
         run: |
           xmake config --yes
 
-      - name: Build clice
+      - name: Build
         run: |
           xmake build --verbose --diagnosis --all
