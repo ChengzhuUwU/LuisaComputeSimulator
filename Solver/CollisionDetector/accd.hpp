@@ -221,7 +221,7 @@ inline float ccd_helper(const Mat3x4f &x0, const Mat3x4f &dx, float u_max,
             break;
         }
     }
-    if constexpr (print_ccd_iter_count) if (iter_count != 1) luisa::log_info("CCD iter for {}, toi = {}", iter_count, toi);
+    if constexpr (print_ccd_iter_count) if (iter_count != 1) LUISA_INFO("CCD iter for {}, toi = {}", iter_count, toi);
     assert(toi > 0.0f);
     return toi;
 }

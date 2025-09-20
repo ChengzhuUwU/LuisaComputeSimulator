@@ -698,7 +698,7 @@ static inline bool is_the_same(luisa::compute::Stream& stream, luisa::compute::B
     {
         if (buffer_result[i] != vector[i])
         {
-            luisa::log_info("Not equal at {} : get {} desire {}", i, buffer_result[i], vector[i]);
+            LUISA_INFO("Not equal at {} : get {} desire {}", i, buffer_result[i], vector[i]);
             return false;
         }
     }
@@ -765,12 +765,12 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
     for (uint i = 0; i < host_parrent.size(); i++)
     {
         auto parrent = host_parrent[i];
-        luisa::log_info("parrent of {} = {}", i, parrent);
+        LUISA_INFO("parrent of {} = {}", i, parrent);
     }
     for (uint i = 0; i < host_children.size(); i++)
     {
         auto parrent = host_children[i];
-        luisa::log_info("children of {} = {}", i, parrent);
+        LUISA_INFO("children of {} = {}", i, parrent);
     }
 }
 
@@ -778,21 +778,21 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
 
 void LBVH::reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_position)
 {
-    if (input_position.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
+    if (input_position.size() > 256 * 256) { LUISA_ERROR("Buffer size out of reduce range"); exit(0); }
     stream 
         << fn_reduce_vert_tree_global_aabb(input_position).dispatch(input_position.size())
         << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_position.size(), 256));
 }
 void LBVH::reduce_edge_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint2>& input_edges)
 {
-    if (input_edges.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
+    if (input_edges.size() > 256 * 256) { LUISA_ERROR("Buffer size out of reduce range"); exit(0); }
     stream 
         << fn_reduce_edge_tree_global_aabb(input_position, input_edges).dispatch(input_edges.size())
         << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_edges.size(), 256));
 }
 void LBVH::reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
 {
-    if (input_faces.size() > 256 * 256) { luisa::log_error("Buffer size out of reduce range"); exit(0); }
+    if (input_faces.size() > 256 * 256) { LUISA_ERROR("Buffer size out of reduce range"); exit(0); }
     stream 
         << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_faces.size())
         << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_faces.size(), 256));
@@ -892,7 +892,7 @@ void LBVH::refit(Stream& stream)
     // }, 
     // [](const uint left, const uint right) { return max_scalar(left, right); }, 
     // 0);
-    // luisa::log_info("Depth = {}, num_leaves = {}, log2 = {}", depth, lbvh_data->num_leaves, luisa::log2(lbvh_data->num_leaves));
+    // LUISA_INFO("Depth = {}, num_leaves = {}, log2 = {}", depth, lbvh_data->num_leaves, luisa::log2(lbvh_data->num_leaves));
 
     CpuParallel::parallel_for(0, lbvh_data->num_leaves, [&](const uint lid)
     {

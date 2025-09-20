@@ -59,7 +59,7 @@ namespace detail
         }
         // else
         // {
-        //     luisa::log_error("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
+        //     LUISA_ERROR("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
         // }
         return offsets;
     }
@@ -92,7 +92,7 @@ namespace detail
         }
         // else
         // {
-        //     luisa::log_error(
+        //     LUISA_ERROR(
         //         "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
         // }
         return offsets;
@@ -544,7 +544,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
+        LUISA_ERROR("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
     }
 }
 
@@ -582,7 +582,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }
@@ -621,7 +621,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }
@@ -667,7 +667,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
+        LUISA_ERROR("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
     }
 }
 
@@ -718,7 +718,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }
@@ -780,7 +780,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }
@@ -830,7 +830,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
+        LUISA_ERROR("Invalid flag (%d,%d,%d)", flag[0], flag[1], flag[2]);
     }
 }
 
@@ -886,7 +886,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }
@@ -954,7 +954,7 @@ template <typename T>
     }
     else
     {
-        luisa::log_error(
+        LUISA_ERROR(
             "Invalid flag (%d,%d,%d,%d)", flag[0], flag[1], flag[2], flag[3]);
     }
 }

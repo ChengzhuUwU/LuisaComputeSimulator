@@ -83,7 +83,7 @@ struct LbvhData
         this->tree_type = input_tree_type;
         this->update_type = input_update_type;
 
-        luisa::log_info("Allocate for {}-LBVH data : num_leaves = {}", 
+        LUISA_INFO("Allocate for {}-LBVH data : num_leaves = {}", 
             input_tree_type == LBVHTreeTypeVert ? "Vert" : input_tree_type == LBVHTreeTypeFace ? "Face" : "Edge", num_leaves);
 
         using Initializer::resize_buffer;

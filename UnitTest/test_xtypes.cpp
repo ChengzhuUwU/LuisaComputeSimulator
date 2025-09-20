@@ -18,7 +18,7 @@ int main(int argc, char** argv)
     luisa::compute::Context context{ binary_path };
     luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
     if (device_names.empty()) { LUISA_WARNING("No haredware device found."); exit(1); }
-    for (size_t i = 0; i < device_names.size(); ++i) { luisa::log_info("Device {}: {}", i, device_names[i]); }
+    for (size_t i = 0; i < device_names.size(); ++i) { LUISA_INFO("Device {}: {}", i, device_names[i]); }
     luisa::compute::Device device = context.create_device(backend);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
@@ -66,7 +66,7 @@ int main(int argc, char** argv)
         auto result1 = lcs::mult_largemat_mat(mat1, mat2);
         auto result2 = lcs::mult_largemat_vec(result1, vec1);
         // lcs::print_largemat(mat1);
-        // luisa::log_info("");
+        // LUISA_INFO("");
         // lcs::print_largemat(mat2);
         lcs::print_largemat(result1);
         lcs::print_largevec(result2);

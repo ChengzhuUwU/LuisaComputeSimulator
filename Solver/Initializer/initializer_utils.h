@@ -135,7 +135,7 @@ inline void fn_graph_coloring_per_constraint(const std::string& constraint_name,
         clusterd_constraint.push_back(rest_cluster);
     }
 
-    luisa::log_info("Cluster Count of {} = {}", constraint_name, clusterd_constraint.size());
+    LUISA_INFO("Cluster Count of {} = {}", constraint_name, clusterd_constraint.size());
 };
 
 inline void fn_get_prefix(auto& prefix_buffer, const std::vector< std::vector<uint> >& clusterd_constraint)

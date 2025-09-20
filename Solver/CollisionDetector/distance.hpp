@@ -470,7 +470,7 @@ inline Vec4f edge_edge_distance_coeff(const SVec<T, 3> &ea0,
     Eigen::Transpose<Mat3x2f> a_t = a.transpose();
     Vec2f x;
     if (solve(a.transpose() * a, a.transpose() * (eb0 - ea0).template cast<float>(), x)) {
-        // luisa::log_info("r0 = {}, r1 = {}, x = {}", r0, r1, x);
+        // LUISA_INFO("r0 = {}, r1 = {}, x = {}", r0, r1, x);
         return Vec4f(1.0f - x[0], x[0], 1.0f - x[1], x[1]);
     } else {
         return Vec4f(0.5f, 0.5f, 0.5f, 0.5f);

@@ -85,7 +85,7 @@ void init_mesh_data(
     uint num_edges = mesh_data->num_edges;
     uint num_dihedral_edges = mesh_data->num_dihedral_edges;
 
-    luisa::log_info("Cloth : (numVerts : {}) (numFaces : {})  (numEdges : {}) (numDihedralEdges : {})", 
+    LUISA_INFO("Cloth : (numVerts : {}) (numFaces : {})  (numEdges : {}) (numDihedralEdges : {})", 
         num_verts, num_faces, num_edges, num_dihedral_edges);
     
     // Read information
@@ -186,7 +186,7 @@ void init_mesh_data(
                     auto edge = mesh_data->sa_edges[prefix_num_edges + eid];
                     return length_vec(mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
                 }) / float(curr_num_edges);
-                luisa::log_info("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}", meshIdx, 
+                LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}", meshIdx, 
                     curr_num_verts, curr_num_faces, curr_num_edges, avg_spring_length,
                     pos_max - pos_min);
 
@@ -304,7 +304,7 @@ void init_mesh_data(
                     }
                 }
             }
-            if (adj_edges_set.size() != 3) luisa::log_error("Face {} adj edge count {} != 3", fid, adj_edges_set.size());
+            if (adj_edges_set.size() != 3) LUISA_ERROR("Face {} adj edge count {} != 3", fid, adj_edges_set.size());
             uint3 face_adj_edges; uint idx = 0;
             for (const auto& adj_eid : adj_edges_set) { face_adj_edges[idx++] = adj_eid; }
             mesh_data->face_adj_edges[fid] = face_adj_edges;
@@ -375,8 +375,8 @@ void init_mesh_data(
         float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
         float sum_edge_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_edge_area);
         float sum_vert_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_vert_area);
-        // luisa::log_info("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
-        luisa::log_info("Average areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
+        // LUISA_INFO("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
+        LUISA_INFO("Average areas : face = {}, edge = {}, vert = {}", sum_face_area / double(num_faces), sum_edge_area / double(num_edges), sum_vert_area / double(num_verts));
     }
 
     // Init vert info

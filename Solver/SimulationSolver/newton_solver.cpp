@@ -725,7 +725,7 @@ void NewtonSolver::host_evaluate_inertia()
             hessian = stiffness_dirichlet * hessian;
         }
         {  
-            if constexpr (print_detail) luisa::log_info("vid {}, mass: {}, move = {}, gradient: {}, hessian: {}", vid, mass, length_vec(x_k - x_tilde), gradient, hessian);
+            if constexpr (print_detail) LUISA_INFO("vid {}, mass: {}, move = {}, gradient: {}, hessian: {}", vid, mass, length_vec(x_k - x_tilde), gradient, hessian);
             // sa_cgX[vid] = dx_0;
             sa_cgB[vid] = gradient;
             sa_cgA_diag[vid] = hessian;
@@ -889,7 +889,7 @@ void NewtonSolver::host_evaluete_spring()
             force[1] = -force[0];
             He = stiffness_stretch_spring * nnT + stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f) * (luisa::make_float3x3(1.0f) - nnT);
             
-            if constexpr (print_detail) luisa::log_info("eid {} (orig = {}), edge ({}, {}), L {}, l {}, C {}, force0 {}, He {}", eid, cluster[curr_prefix + index], edge[0], edge[1], L, l, C, force[0], He);
+            if constexpr (print_detail) LUISA_INFO("eid {} (orig = {}), edge ({}, {}), L {}, l {}, C {}, force0 {}, He {}", eid, cluster[curr_prefix + index], edge[0], edge[1], L, l, C, force[0], He);
 
             // Stable but Responsive Cloth
             // if (C > 0.0f)
@@ -1380,9 +1380,9 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::functio
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
-        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         (eigen_b - eigen_A * eigen_dx).norm(), infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
     );
@@ -1452,7 +1452,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 ptr[vid + 1] = block_prefix;
             }, 0);
     
-            uint hessian_block_count = ptr.back(); // luisa::log_info("Total hessian non-zero block count: {}", hessian_block_count);
+            uint hessian_block_count = ptr.back(); // LUISA_INFO("Total hessian non-zero block count: {}", hessian_block_count);
     
             col.resize(hessian_block_count);
             val.resize(hessian_block_count);
@@ -1479,12 +1479,12 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), vid));
                 if (offset != 0)
                 {
-                    luisa::log_error("Vert {} diag not found in adjacency list", vid);
+                    LUISA_ERROR("Vert {} diag not found in adjacency list", vid);
                 }
                 const auto diag_hessian = host_sim_data->sa_cgA_diag[vid];
                 val[prefix + offset] = float3x3_to_eigen3x3(diag_hessian);
                 rhs[vid] = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
-                // luisa::log_info("Vert {} diag offset = {}", vid, offset);
+                // LUISA_INFO("Vert {} diag offset = {}", vid, offset);
             });
     
             // Off-diag part
@@ -1511,7 +1511,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                         {
                             const uint right = edge[jj];
                             const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), right));
-                            // luisa::log_info("Edge {}: ({}, {}) -> ({}, {}), offset = {}", eid, edge[0], edge[1], left, right, offset);
+                            // LUISA_INFO("Edge {}: ({}, {}) -> ({}, {}), offset = {}", eid, edge[0], edge[1], left, right, offset);
                             val[prefix + offset] += float3x3_to_eigen3x3(negHe);
                         }
                     }
@@ -1544,7 +1544,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                             const uint right = edge[jj];
                             const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), right));
                             val[prefix + offset] += stiffness_bending * m_Q[j][jj] * EigenFloat3x3::Identity();
-                            // luisa::log_info("Bending Edge {}: ({}, {}, {}, {}) -> ({}, {}), offset = {}", eid, edge[0], edge[1], edge[2], edge[3], left, right, offset);
+                            // LUISA_INFO("Bending Edge {}: ({}, {}, {}, {}) -> ({}, {}), offset = {}", eid, edge[0], edge[1], edge[2], edge[3], left, right, offset);
                         }
                     }
                 }
@@ -1595,7 +1595,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                             const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), right));
                             auto hessian = weight[j] * weight[jj] * xxT;
                             val[prefix + offset] += hessian;
-                            // luisa::log_info("Collision Pair {}: ({}, {}, {}, {}) -> ({}, {}), offset = {}", pair_idx, indices[0], indices[1], indices[2], indices[3], left, right, offset);
+                            // LUISA_INFO("Collision Pair {}: ({}, {}, {}, {}) -> ({}, {}), offset = {}", pair_idx, indices[0], indices[1], indices[2], indices[3], left, right, offset);
                         }
                     }
                 }
@@ -1636,7 +1636,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
             ptr2[3 * vid + 0] = 9 * prefix + 0 * adj_count * 3;
             ptr2[3 * vid + 1] = 9 * prefix + 1 * adj_count * 3;
             ptr2[3 * vid + 2] = 9 * prefix + 2 * adj_count * 3;
-            // luisa::log_info("Vert {} prefix = {}, adj_count = {}, row Prefix = {} / {} / {}", vid, prefix, adj_count, ptr2[3 * vid + 0], ptr2[3 * vid + 1], ptr2[3 * vid + 2]);
+            // LUISA_INFO("Vert {} prefix = {}, adj_count = {}, row Prefix = {} / {} / {}", vid, prefix, adj_count, ptr2[3 * vid + 0], ptr2[3 * vid + 1], ptr2[3 * vid + 2]);
 
             for (uint j = 0; j < adj_count; j++)
             {
@@ -1649,7 +1649,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                         const uint index = (9 * prefix + ii * adj_count * 3 + j * 3 + jj);
                         col2[index] = 3 * adj_vid + jj;
                         val2[index] = hessian(ii, jj);
-                        // luisa::log_info("Hessian ({}, {}) -> ({}, {}), index = {}, val = {}", vid, ii, adj_vid, jj, index, val2[index]);
+                        // LUISA_INFO("Hessian ({}, {}) -> ({}, {}), index = {}, val = {}", vid, ii, adj_vid, jj, index, val2[index]);
                     }
                 }
             }
@@ -1682,7 +1682,7 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
         return solver(rhs, lhs);
         // std::cout << "CG finished in " << iters << " iterations, resid = " << error << std::endl;
     #else
-        luisa::log_error("AMGCL is not enabled in this build");
+        LUISA_ERROR("AMGCL is not enabled in this build");
         return std::make_tuple(0u, 0.0f);
     #endif
     };
@@ -1692,9 +1692,9 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
     std::vector<EigenFloat3x3> val;
     assmble_amgcl_system(ptr, col, val, rhs);
 
-    // for (auto prefix : ptr) { luisa::log_info("Prefix = {}", prefix); }
-    // for (auto adj_vid : col) { luisa::log_info("adj_vid = {}", adj_vid); }
-    // for (auto hess : val) { luisa::log_info("hess = {}", hess); }
+    // for (auto prefix : ptr) { LUISA_INFO("Prefix = {}", prefix); }
+    // for (auto adj_vid : col) { LUISA_INFO("adj_vid = {}", adj_vid); }
+    // for (auto hess : val) { LUISA_INFO("hess = {}", hess); }
 
     std::vector<uint> ptr2;
     std::vector<uint> col2;
@@ -1723,9 +1723,9 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
-        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    LUISA_INFO("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         iter, error, infinity_norm, print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : ""
     );
@@ -1739,7 +1739,7 @@ void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
 
 void NewtonSolver::host_apply_dx(const float alpha)
 {
-    if (alpha < 0.0f || alpha > 1.0f) { luisa::log_error("Alpha is not safe : {}", alpha); }
+    if (alpha < 0.0f || alpha > 1.0f) { LUISA_ERROR("Alpha is not safe : {}", alpha); }
     // Update sa_x
     CpuParallel::parallel_for(0, mesh_data->num_verts, [&](const uint vid)
     {
@@ -1841,10 +1841,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // auto material_energy = host_compute_elastic_energy(curr_x);
         auto material_energy = device_compute_elastic_energy(stream, sim_data->sa_x);
         auto barrier_energy = device_compute_contact_energy(stream, sim_data->sa_x);
-        // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        // LUISA_INFO(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
-        if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
-        if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
+        if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { LUISA_ERROR("Material energy is not valid : {}", material_energy); }
+        if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { LUISA_ERROR("Barrier energy is not valid : {}", material_energy); }
         return total_energy;
     };
     auto linear_solver_interface = [&]()
@@ -1881,7 +1881,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         double prev_state_energy = Float_max;
 
-        luisa::log_info("=== In frame {} ===", get_scene_params().current_frame); 
+        LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -1904,7 +1904,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 // host_evaluate_dirichlet();
                 
-                // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++) luisa::log_info("Post Vert {}'s force = {}", vid, host_sim_data->sa_cgB[vid]);
+                // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++) LUISA_INFO("Post Vert {}'s force = {}", vid, host_sim_data->sa_cgB[vid]);
                 // if (iter == 0) // Always refresh for collision count is variant 
                 if (use_energy_linesearch) { prev_state_energy = compute_energy_interface(host_sim_data->sa_x); }
             }
@@ -1927,7 +1927,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
                 if (curr_max_step < max_move * substep_dt) 
                 {
-                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    LUISA_INFO("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
                     break;
                 }
             } // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
@@ -1936,7 +1936,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             { 
                 // Energy after CCD or just solving Axb
                 auto curr_energy = compute_energy_interface(host_sim_data->sa_x); 
-                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
+                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { LUISA_ERROR("Energy is not valid : {}", curr_energy); }
                 
                 uint line_search_count = 0;
                 while (line_search_count < 20) // Compare energy
@@ -1945,7 +1945,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     { 
                         if (alpha != 1.0f)
                         {
-                            luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
+                            LUISA_INFO("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
                                 line_search_count, alpha, curr_energy, prev_state_energy, 
                                 ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
                         }
@@ -1953,19 +1953,19 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
+                        LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
                             line_search_count, alpha, curr_energy, prev_state_energy, 
                             ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
                     }
                     alpha /= 2; host_apply_dx(alpha); 
 
                     curr_energy = compute_energy_interface(host_sim_data->sa_x);
-                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
+                    LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                     
                     if (alpha < 1e-4) 
                     {
-                        luisa::log_error("  Line search failed, energy = {}, prev state energy = {}", 
+                        LUISA_ERROR("  Line search failed, energy = {}, prev state energy = {}", 
                             curr_energy, prev_state_energy);
                     }
                     line_search_count++;
@@ -2051,10 +2051,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
         auto material_energy = device_compute_elastic_energy(stream, curr_x);
         auto barrier_energy = device_compute_contact_energy(stream, curr_x);;
-        // luisa::log_info(".       Energy = {} + {}", material_energy, barrier_energy);
+        // LUISA_INFO(".       Energy = {} + {}", material_energy, barrier_energy);
         auto total_energy = material_energy + barrier_energy;
-        if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { luisa::log_error("Material energy is not valid : {}", material_energy); }
-        if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { luisa::log_error("Barrier energy is not valid : {}", material_energy); }
+        if (is_nan_scalar(material_energy) || is_inf_scalar(material_energy)) { LUISA_ERROR("Material energy is not valid : {}", material_energy); }
+        if (is_nan_scalar(barrier_energy) || is_inf_scalar(barrier_energy)) { LUISA_ERROR("Barrier energy is not valid : {}", material_energy); }
 
         return total_energy;
     };
@@ -2078,7 +2078,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         
         double prev_state_energy = Float_max;
 
-        luisa::log_info("=== In frame {} ===", get_scene_params().current_frame); 
+        LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame); 
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {   get_scene_params().current_nonlinear_iter = iter;
@@ -2130,7 +2130,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX); 
                 if (curr_max_step < max_move * substep_dt) 
                 {
-                    luisa::log_info("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
+                    LUISA_INFO("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}", iter, curr_max_step, max_move * substep_dt);
                     break;
                 }
             } // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
@@ -2139,7 +2139,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             { 
                 // Energy after CCD or just solving Axb
                 auto curr_energy = compute_energy_interface(sim_data->sa_x); 
-                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { luisa::log_error("Energy is not valid : {}", curr_energy); }
+                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy)) { LUISA_ERROR("Energy is not valid : {}", curr_energy); }
                 
                 uint line_search_count = 0;
                 while (line_search_count < 20) // Compare energy
@@ -2148,7 +2148,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     { 
                         if (alpha != 1.0f)
                         {
-                            luisa::log_info("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
+                            LUISA_INFO("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}", 
                                 line_search_count, alpha, curr_energy, prev_state_energy, 
                                 ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
                         }
@@ -2156,19 +2156,19 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     }
                     if (line_search_count == 0)
                     {
-                        luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
+                        LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}", 
                             line_search_count, alpha, curr_energy, prev_state_energy, 
                             ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
                     }
                     alpha /= 2; host_apply_dx(alpha); device_apply_dx(alpha);
 
                     curr_energy = compute_energy_interface(sim_data->sa_x);
-                    luisa::log_info("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
+                    LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", 
                         line_search_count, alpha, curr_energy);
                     
                     if (alpha < 1e-4) 
                     {
-                        luisa::log_error("  Line search failed, energy = {}, prev state energy = {}", 
+                        LUISA_ERROR("  Line search failed, energy = {}, prev state energy = {}", 
                             curr_energy, prev_state_energy);
                     }
                     line_search_count++;

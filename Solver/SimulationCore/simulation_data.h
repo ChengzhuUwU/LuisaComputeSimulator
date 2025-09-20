@@ -491,8 +491,8 @@ struct CollisionData : SimulationType
             sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size()
         ;
         
-        luisa::log_info("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
-        if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f) luisa::log_info("Allocated buffer size for collision pair = {} GB", collision_pair_bytes / (1024 * 1024 * 1024));
+        LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
+        if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f) LUISA_INFO("Allocated buffer size for collision pair = {} GB", collision_pair_bytes / (1024 * 1024 * 1024));
     }
 };
 

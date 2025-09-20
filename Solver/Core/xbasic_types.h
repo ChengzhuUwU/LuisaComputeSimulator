@@ -1075,10 +1075,10 @@ auto outer_product_largevec(const Var<LargeVector<N>>& left_vec, const Var<Large
 
 
 
-inline void print_largevec(const LargeVector<3>& vec)  { luisa::log_info("({:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z); }
-inline void print_largevec(const LargeVector<6>& vec)  { luisa::log_info("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z); }
-inline void print_largevec(const LargeVector<9>& vec)  { luisa::log_info("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z, vec.vec[2].x, vec.vec[2].y, vec.vec[2].z); }
-inline void print_largevec(const LargeVector<12>& vec)  { luisa::log_info("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z, vec.vec[2].x, vec.vec[2].y, vec.vec[2].z, vec.vec[3].x, vec.vec[3].y, vec.vec[3].z); }
+inline void print_largevec(const LargeVector<3>& vec)  { LUISA_INFO("({:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z); }
+inline void print_largevec(const LargeVector<6>& vec)  { LUISA_INFO("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z); }
+inline void print_largevec(const LargeVector<9>& vec)  { LUISA_INFO("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z, vec.vec[2].x, vec.vec[2].y, vec.vec[2].z); }
+inline void print_largevec(const LargeVector<12>& vec)  { LUISA_INFO("({:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f} {:>10.5f})", vec.vec[0].x, vec.vec[0].y, vec.vec[0].z, vec.vec[1].x, vec.vec[1].y, vec.vec[1].z, vec.vec[2].x, vec.vec[2].y, vec.vec[2].z, vec.vec[3].x, vec.vec[3].y, vec.vec[3].z); }
 template <size_t M, size_t N> inline void print_largemat(const LargeMatrix<M, N>&  mat) { for (uint row = 0; row < N; row++) print_largevec(get_row_largemat(mat, row)); }
 
 

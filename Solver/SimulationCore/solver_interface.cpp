@@ -55,11 +55,11 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
             try 
             {
                 std::filesystem::create_directories(dir_path);
-                luisa::log_info("Created directory: {}", dir_path.string());
+                LUISA_INFO("Created directory: {}", dir_path.string());
             } 
             catch (const std::filesystem::filesystem_error& e) 
             {
-                luisa::log_error("Error creating directory: {}", e.what());
+                LUISA_ERROR("Error creating directory: {}", e.what());
                 return;
             }
         }
@@ -85,11 +85,11 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
         }
      
         file.close();
-        luisa::log_info("State file saved: {}", full_path);
+        LUISA_INFO("State file saved: {}", full_path);
     } 
     else 
     {
-        luisa::log_error("Unable to open file: {}", full_path);
+        LUISA_ERROR("Unable to open file: {}", full_path);
     }
 }
 void SolverInterface::load_saved_state()
@@ -113,7 +113,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
     std::ifstream file(full_path, std::ios::in);
     if (!file.is_open()) 
     {
-        luisa::log_error("Unable to open state file: {}", full_path);
+        LUISA_ERROR("Unable to open state file: {}", full_path);
         return;
     }
 
@@ -158,12 +158,12 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 
     if (pos_vid != host_mesh_data->num_verts || vel_vid != host_mesh_data->num_verts)
     {
-        luisa::log_error("numVerts read {} does NOT match numVerts of current mesh {}", pos_vid, host_mesh_data->num_verts);
+        LUISA_ERROR("numVerts read {} does NOT match numVerts of current mesh {}", pos_vid, host_mesh_data->num_verts);
     }
 
     load_saved_state();
 
-    luisa::log_info("State file loaded: {}", full_path);
+    LUISA_INFO("State file loaded: {}", full_path);
 
 }
 void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
@@ -265,7 +265,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         else 
         {
         }
-        if constexpr (print_detail) luisa::log_info("    vid {} inertia energy {} (|dx| = {})", vid, energy, sqrt_scalar(length_squared_vec(x_new - x_tilde)));
+        if constexpr (print_detail) LUISA_INFO("    vid {} inertia energy {} (|dx| = {})", vid, energy, sqrt_scalar(length_squared_vec(x_new - x_tilde)));
         return energy;
     };
     auto compute_energy_goundcollision = [](
@@ -312,7 +312,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         // if (C > 0.0f)
             energy = 0.5f * stiffness_spring * C * C;
 
-        if constexpr (print_detail) luisa::log_info("    eid {} edge ({}, {}), L {}, l {}, C {}, spring energy {}", eid, edge[0], edge[1], rest_edge_length, l, C, energy);
+        if constexpr (print_detail) LUISA_INFO("    eid {} edge ({}, {}), L {}, l {}, C {}, spring energy {}", eid, edge[0], edge[1], rest_edge_length, l, C, energy);
         return energy;
     };
     auto compute_energy_bending = [](
@@ -382,7 +382,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
     double energy_total = energy_inertia + energy_goundcollision + energy_spring + energy_bending;
     if (get_scene_params().print_system_energy)
     {
-        luisa::log_info("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", energy_total, energy_inertia, energy_goundcollision, energy_spring, energy_bending);
+        LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", energy_total, energy_inertia, energy_goundcollision, energy_spring, energy_bending);
     }
     return energy_total;
 };
@@ -572,7 +572,7 @@ double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& st
     float total_energy = std::reduce(&host_energy[0], &host_energy[8], 0.0f);
     if (get_scene_params().print_system_energy)
     {
-        luisa::log_info("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", 
+        LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}", 
             total_energy,
             host_energy[offset_inertia], 
             host_energy[offset_ground_collision], 

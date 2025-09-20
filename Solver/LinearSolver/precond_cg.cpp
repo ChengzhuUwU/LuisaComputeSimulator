@@ -497,7 +497,7 @@ void ConjugateGradientSolver::host_solve(
         normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
         save_dot_rz(0, sa_convergence, dot_rz);
 
-        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
+        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
         // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
         // if (dot_rz == 0.0f) 
         if (dot_rz < 1e-8) 
@@ -514,7 +514,7 @@ void ConjugateGradientSolver::host_solve(
         
         const float alpha = read_alpha(sa_convergence);
 
-        // luisa::log_info("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
+        // LUISA_INFO("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
         //         iter, normR, beta, alpha);
         
         pcg_step(alpha);
@@ -523,9 +523,9 @@ void ConjugateGradientSolver::host_solve(
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
-        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         iter, normR / normR_0, infinity_norm, ""
     );
@@ -628,7 +628,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
         // << luisa::compute::synchronize();
         ;
     
-    // luisa::log_info("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
+    // LUISA_INFO("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
     //     host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
     //     host_norm(host_sim_data->sa_cgB),
     //     host_norm(host_sim_data->sa_cgP)
@@ -662,7 +662,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
             // stream
             //     << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
             //     << luisa::compute::synchronize();
-            // luisa::log_info("rTr = {}", normR);
+            // LUISA_INFO("rTr = {}", normR);
             // if (iter == 0) normR_0 = normR;
             // if (normR == 0.0f) 
             // {
@@ -673,8 +673,8 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
             stream
                 << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz)
                 << luisa::compute::synchronize();
-            // luisa::log_info("dot_rz = {}", dot_rz);
-            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { luisa::log_error("Exist NAN/INF in PCG iteration"); exit(0); }
+            // LUISA_INFO("dot_rz = {}", dot_rz);
+            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
             // if (dot_rz == 0.0f) 
             if (dot_rz < 1e-8) 
             {
@@ -703,7 +703,7 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
             // << luisa::compute::synchronize()
             ;
 
-        // luisa::log_info("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
+        // LUISA_INFO("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
         //         iter, 
         //         host_dot(host_sim_data->sa_cgB, host_sim_data->sa_cgB),
         //         normR, beta, alpha,
@@ -719,9 +719,9 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
-        luisa::log_error("cgX exist NAN/INF value : {}", infinity_norm);
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    luisa::log_info("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
         get_scene_params().current_nonlinear_iter,
         iter, normR / normR_0, infinity_norm, ""
     );
@@ -759,11 +759,11 @@ void ConjugateGradientSolver::eigen_solve(
         // }
         // Eigen::VectorXf eigen_cgZ = eigen_cgR.cwiseProduct(eigen_cgM_inv);
         // Eigen::VectorXf eigen_cgQ = eigen_cgA * eigen_cgZ;
-        // luisa::log_info("initB = {}, initR = {}, initM = {}, initZ = {}, initQ = {}",
+        // LUISA_INFO("initB = {}, initR = {}, initM = {}, initZ = {}, initQ = {}",
         //     eigen_cgB.norm(), eigen_cgR.norm(), eigen_cgM_inv.norm(), eigen_cgZ.norm(), eigen_cgQ.norm());
 
         solver._solve_impl(eigen_cgB, eigen_cgX);
-        if (solver.info() != Eigen::Success) { luisa::log_error("Eigen: Solve failed in {} iterations", solver.iterations()); }
+        if (solver.info() != Eigen::Success) { LUISA_ERROR("Eigen: Solve failed in {} iterations", solver.iterations()); }
         else 
         {
             CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
@@ -771,7 +771,7 @@ void ConjugateGradientSolver::eigen_solve(
                 host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
             });
 
-            luisa::log_info("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}", 
+            LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, solver.iterations(),
                 solver.error(), fast_infinity_norm(host_cgX)); // from normR_0 -> normR
         }
@@ -783,13 +783,13 @@ void ConjugateGradientSolver::eigen_solve(
         solver.compute(eigen_cgA);
         if (solver.info() != Eigen::Success)
         {
-            luisa::log_error("Eigen: SimplicialLDLT decomposition failed!");
+            LUISA_ERROR("Eigen: SimplicialLDLT decomposition failed!");
             return;
         }
         solver._solve_impl(eigen_cgB, eigen_cgX);
         if (solver.info() != Eigen::Success)
         {
-            luisa::log_error("Eigen: SimplicialLDLT solve failed!");
+            LUISA_ERROR("Eigen: SimplicialLDLT solve failed!");
             return;
         }
         else
@@ -799,7 +799,7 @@ void ConjugateGradientSolver::eigen_solve(
             {
                 host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
             });
-            luisa::log_info("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}", 
+            LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}", 
                 get_scene_params().current_nonlinear_iter, 
                 error, fast_infinity_norm(host_cgX)); // from normR_0 -> normR
         }

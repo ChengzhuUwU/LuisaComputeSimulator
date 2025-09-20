@@ -44,17 +44,17 @@ void DescentSolver::test_luisa()
     // auto left = Var<TestTypeAAA>{vec1, vec1, vec1};;
     // auto right = Var<TestTypeAAA>{vec1, vec1, vec1};;
     // auto value = left * right;
-    // luisa::log_info("print left {} {} {}", left.a, left.b, left.c);
-    // luisa::log_info("print right {} {} {}", right.a, right.b, right.c);
-    // luisa::log_info("print mat1 {} {} {}", value.x, value.y, value.z);
+    // LUISA_INFO("print left {} {} {}", left.a, left.b, left.c);
+    // LUISA_INFO("print right {} {} {}", right.a, right.b, right.c);
+    // LUISA_INFO("print mat1 {} {} {}", value.x, value.y, value.z);
 
     // Float3 vec1 = make_float3(0.0f);
     // Float4 vec2 = make_float4(0.0f);
     // auto mat1 = Float4x3{vec1, vec1, vec1, vec1};
     // auto mat2 = Float3x4{vec2, vec2, vec2};
     // // auto result = mat1 * mat2;
-    // luisa::log_info("print mat1 {}", vec1);
-    // luisa::log_info("print mat2 {}", vec2);
+    // LUISA_INFO("print mat1 {}", vec1);
+    // LUISA_INFO("print mat2 {}", vec2);
 
 }
 void DescentSolver::reset_constrains(luisa::compute::Stream& stream)
@@ -251,7 +251,7 @@ void DescentSolver::compile(luisa::compute::Device& device)
     //         };
     //         float3 diff = vert_pos[1] - vert_pos[0];
     //         float l = max(length(diff), Epsilon);
-    //         luisa::log_info("vid {}'s {}th adj {}: rest length = {}", vid, j, adj_eid, l);
+    //         LUISA_INFO("vid {}'s {}th adj {}: rest length = {}", vid, j, adj_eid, l);
     //     }
     // }
 
@@ -420,7 +420,7 @@ void DescentSolver::update_velocity(luisa::compute::Stream& stream)
 void compute_energy()
 {
     if (!lcs::get_scene_params().print_system_energy) return;
-    // // luisa::log_info("buffer size = {}", curr_position.size());
+    // // LUISA_INFO("buffer size = {}", curr_position.size());
 
     // double energy = 0.0;
     // double energy_inertia = 0.f, energy_stretch = 0.f, energy_bending = 0.f;
@@ -754,8 +754,8 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     {
         predict_position(substep_dt);
 
-        if (print_energy) luisa::log_info("Frame {} start   position energy = {}", lcs::get_scene_params().current_frame, host_compute_elastic_energy(host_sim_data->sa_x_step_start));
-        if (print_energy) luisa::log_info("Frame {} predict position energy = {}", lcs::get_scene_params().current_frame ,host_compute_elastic_energy(host_sim_data->sa_x));
+        if (print_energy) LUISA_INFO("Frame {} start   position energy = {}", lcs::get_scene_params().current_frame, host_compute_elastic_energy(host_sim_data->sa_x_step_start));
+        if (print_energy) LUISA_INFO("Frame {} predict position energy = {}", lcs::get_scene_params().current_frame ,host_compute_elastic_energy(host_sim_data->sa_x));
 
         for (uint iter = 0; iter < nonlinear_iter_count; iter++)
         {
@@ -765,7 +765,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
 
             step();
 
-            if (print_energy) luisa::log_info("    Non-linear iter {:2} energy = {}", iter, host_compute_elastic_energy(host_sim_data->sa_x));
+            if (print_energy) LUISA_INFO("    Non-linear iter {:2} energy = {}", iter, host_compute_elastic_energy(host_sim_data->sa_x));
         }
         update_velocity(substep_dt, false, lcs::get_scene_params().damping_cloth);
     }

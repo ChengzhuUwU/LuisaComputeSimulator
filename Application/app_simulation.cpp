@@ -1,609 +1,813 @@
-#include <iostream>
-#include <luisa/luisa-compute.h>
-
-#include "CollisionDetector/lbvh.h"
-#include "CollisionDetector/narrow_phase.h"
-#include "Core/constant_value.h"
-#include "Initializer/init_collision_data.h"
-#include "MeshOperation/default_mesh.h"
-#include "MeshOperation/mesh_reader.h"
-#include "SimulationSolver/newton_solver.h"
-#include "Utils/cpu_parallel.h"
-#include "Utils/device_parallel.h"
-#include "Utils/buffer_filler.h"
-
+#include "precond_cg.h"
+#include "Core/lc_to_eigen.h"
+#include "Core/scalar.h"
 #include "SimulationCore/scene_params.h"
-#include "SimulationCore/base_mesh.h"
-#include "SimulationCore/solver_interface.h"
-#include "SimulationSolver/descent_solver.h"
+#include "Utils/cpu_parallel.h"
+#include "Utils/reduce_helper.h"
+#include "luisa/core/logging.h"
 
-#include "Initializer/init_mesh_data.h"
-#include "Initializer/init_xpbd_data.h"
-#include "app_simulation_demo_config.h"
-#include "luisa/core/basic_types.h"
-#include "polyscope/volume_grid.h"
-
-#include <polyscope/polyscope.h>
-#include <polyscope/surface_mesh.h>
-#include <Eigen/Dense>
+namespace lcs 
+{
 
 template<typename T>
-using Buffer = luisa::compute::Buffer<T>;
-
-namespace lcs::Initializer
+void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
 {
-
-
-void init_simulation_params()
+    buffer->write(dest, buffer->read(dest) + value);
+}
+template<typename T>
+void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest, const Var<T>& value)
 {
-    // if (lcs::get_scene_params().use_small_timestep) { lcs::get_scene_params().implicit_dt = 0.001f; }
-    
-    // lcs::get_scene_params().num_iteration = lcs::get_scene_params().num_substep * lcs::get_scene_params().nonlinear_iter_count;
-    // lcs::get_scene_params().collision_detection_frequece = 1;    
+    buffer->write(dest, buffer->read(dest) + value);
+}
 
-    // lcs::get_scene_params().stiffness_stretch_spring = FEM::calcSecondLame(lcs::get_scene_params().youngs_modulus_cloth, lcs::get_scene_params().poisson_ratio_cloth); // mu;
-    // lcs::get_scene_params().stiffness_pressure = 1e6;
+void ConjugateGradientSolver::compile(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
     
+    luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
+    // auto& sa_cgX = sim_data->sa_cgX;
+    // auto& sa_cgB = sim_data->sa_cgB;
+    // auto& sa_cgA_diag = sim_data->sa_cgA_diag;
+    
+    // auto& sa_cgMinv = sim_data->sa_cgMinv;
+    // auto& sa_cgP = sim_data->sa_cgP;
+    // auto& sa_cgQ = sim_data->sa_cgQ;
+    // auto& sa_cgR = sim_data->sa_cgR;
+    // auto& sa_cgZ = sim_data->sa_cgZ;
+
+    fn_reset_float3 = device.compile<1>([](Var<luisa::compute::BufferView<float3>> buffer)
     {
-        // lcs::get_scene_params().stiffness_stretch_spring = 1e4;
-        // lcs::get_scene_params().xpbd_stiffness_collision = 1e7;
-        // lcs::get_scene_params().stiffness_quadratic_bending = 5e-3;
-        // lcs::get_scene_params().stiffness_DAB_bending = 5e-3;
-    }
+        buffer->write(dispatch_id().x, luisa::compute::make_float3(0.0f));
+    });
+    fn_reset_float = device.compile<1>([](Var<luisa::compute::BufferView<float>> buffer)
+    {
+        buffer->write(dispatch_id().x, Float(0.0f));
+    });
+    fn_reset_uint = device.compile<1>([](Var<luisa::compute::BufferView<uint>> buffer)
+    {
+        buffer->write(dispatch_id().x, Uint(0u));
+    });
 
+    // 0 : old_dot_rr
+    // 1 : new_dot_rz
+    // 2 : alpha 
+    // 3 : beta
+    // 4 : new_dot_rr
+    // 
+    // 6 : init energy
+    // 7 : new energy
+
+    auto fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr) 
+    { 
+        const Float normR = sqrt_scalar(dot_rr);
+        // Save current rTr
+        sa_convergence->write(4, normR);
+
+        // Save current rTr to convergent list
+        Uint iteration_idx = as<Uint>(sa_convergence->read(8));
+        sa_convergence->write(10 + iteration_idx, normR); 
+        sa_convergence->write(8, as<Float>(iteration_idx + 1));
+    };
+    auto fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(1);
+    };
+    auto fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz) 
+    { 
+        sa_convergence->write(1, dot_rz);
+    };
+
+    auto fn_save_alpha = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq) 
+    { 
+        Float delta = fn_read_rz();
+        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq); // alpha = delta / dot(p, q)
+        sa_convergence->write(2, alpha);
+    };
+    auto fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(2);
+    };
+    
+    auto fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_rz_old, const Float dot_rz) 
+    { 
+        // Float delta_old = fn_read_rz();
+        Float delta_old = dot_rz_old;
+        Float beta = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
+        sa_convergence->write(3, beta);
+    };
+    auto fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]() 
+    { 
+        return sa_convergence->read(3);
+    };
+
+    // PCG kernels
+    fn_pcg_init = device.compile<1>(
+        [
+            sa_cgB = sim_data->sa_cgB.view(),
+            sa_cgQ = sim_data->sa_cgQ.view(),
+            sa_cgR = sim_data->sa_cgR.view(),
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        Float dot_rr = 0.0f;
+        {
+            Float3 b = sa_cgB->read(vid);
+            Float3 q = sa_cgQ->read(vid);
+            Float3 r = b - q;
+            sa_cgR->write(vid, r);
+            sa_cgP->write(vid, make_float3(0.0f));
+            sa_cgQ->write(vid, make_float3(0.0f));
+    
+            dot_rr = dot_vec(r, r);
+        };
+        dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / 256;
+            sa_block_result->write(blockIdx, dot_rr);
+        };
+    }, default_option);
+
+    fn_pcg_init_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            sa_convergence = sim_data->sa_convergence.view()
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_rr = 0.0f;
+            {
+                dot_rr = sa_block_result->read(vid);
+            };
+            dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+
+            $if (vid == 0)
+            {
+                sa_convergence->write(0, dot_rr); // rTr_0
+                sa_convergence->write(1, 0.0f); // rTz
+                sa_convergence->write(2, 0.0f); // alpha
+                sa_convergence->write(3, 0.0f); // beta
+
+                sa_convergence->write(8, as<Float>(Uint(0))); // iteration count
+                sa_convergence->write(9, dot_rr);
+            };
+        }
+    );
+
+
+    fn_dot_pq = device.compile<1>(
+        [
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_cgQ = sim_data->sa_cgQ.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_pq = 0.0f;
+            {
+                Float3 p = sa_cgP->read(vid);
+                Float3 q = sa_cgQ->read(vid);
+                dot_pq = dot_vec(p, q);
+            };
+            
+            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+
+            $if (vid % 256 == 0)
+            {
+                sa_block_result->write(vid / 256, dot_pq);
+            };
+        }
+    );
+
+    // Write 2 <- alpha
+    fn_dot_pq_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            &fn_save_alpha
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_pq = 0.0f;
+            {
+                dot_pq = sa_block_result->read(vid);
+            };
+                
+            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+
+            $if (vid == 0) { fn_save_alpha(dot_pq); };
+        }
+    );
+
+
+
+    fn_pcg_update_p = device.compile<1>(
+        [
+        sa_cgP = sim_data->sa_cgP.view(),
+        sa_cgZ = sim_data->sa_cgZ.view(),
+        sa_convergence = sim_data->sa_convergence.view(),
+        &fn_read_beta
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        const Float beta = fn_read_beta();
+        const Float3 p = sa_cgP->read(vid);
+        sa_cgP->write(vid, sa_cgZ->read(vid) + beta * p);
+    }, default_option);
+
+    fn_pcg_step = device.compile<1>(
+        [
+        sa_cgX = sim_data->sa_cgX.view(),
+        sa_cgR = sim_data->sa_cgR.view(),
+        sa_cgP = sim_data->sa_cgP.view(),
+        sa_cgQ = sim_data->sa_cgQ.view(),
+        &fn_read_alpha
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        const Float alpha = fn_read_alpha();
+        sa_cgX->write(vid, sa_cgX->read(vid) + alpha * sa_cgP->read(vid));
+        sa_cgR->write(vid, sa_cgR->read(vid) - alpha * sa_cgQ->read(vid));
+    }, default_option);
+
+
+
+    // Preconditioner
+    fn_pcg_make_preconditioner = device.compile<1>(
+        [
+            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+            sa_cgMinv = sim_data->sa_cgMinv.view(),
+            sa_is_fixed = mesh_data->sa_is_fixed.view()
+        ]()
+    {
+        const UInt vid = dispatch_id().x;
+        Float3x3 diagA = sa_cgA_diag->read(vid);
+        Float3x3 inv_M = inverse(diagA);
+        sa_cgMinv->write(vid, inv_M);
+    }, default_option);
+
+    fn_pcg_apply_preconditioner = device.compile<1>(
+        [
+            sa_cgR = sim_data->sa_cgR.view(),
+            sa_cgZ = sim_data->sa_cgZ.view(),
+            sa_cgMinv = sim_data->sa_cgMinv.view(),
+            sa_block_result = sim_data->sa_block_result.view()
+        ]() 
+    {
+        const UInt vid = dispatch_id().x;
+        const Float3 r = sa_cgR->read(vid);
+        const Float3x3 inv_M = sa_cgMinv->read(vid);
+        Float3 z = inv_M * r;
+        sa_cgZ->write(vid, z);
+
+        Float dot_rz = dot_vec(r, z);
+        Float dot_rr = dot_vec(r, r);
+        Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+        dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+        $if (vid % 256 == 0)
+        {
+            const Uint blockIdx = vid / 256;
+            sa_block_result->write(2 * blockIdx + 0, dot_rr_rz[0]);
+            sa_block_result->write(2 * blockIdx + 1, dot_rr_rz[1]);
+        };
+    }, default_option);
+
+    // Write 1 <- dot_rz (replace)
+    // Write 3 <- beta
+    fn_pcg_apply_preconditioner_second_pass = device.compile<1>(
+        [
+            sa_block_result = sim_data->sa_block_result.view(),
+            &fn_update_dot_rz, &fn_save_dot_rr, &fn_save_beta, &fn_read_rz
+        ]()
+        {
+            const UInt vid = dispatch_id().x;
+
+            Float dot_rr = sa_block_result->read(2 * vid + 0);
+            Float dot_rz = sa_block_result->read(2 * vid + 1);
+            Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+
+            dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+
+            $if (vid == 0)
+            {
+                dot_rr = dot_rr_rz[0];
+                dot_rz = dot_rr_rz[1];
+
+                const Float dot_rz_old = fn_read_rz();
+                fn_save_beta(dot_rz_old, dot_rz);
+                fn_update_dot_rz(dot_rz);
+                fn_save_dot_rr(dot_rr);
+            };
+        }
+    );
 }
 
 
-}
 
-static uint energy_idx = 0; 
-
-
-
-
-
-enum SolverType
+static inline float fast_dot(const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) 
 {
-    SolverTypeGaussNewton,
-    SolverTypeXPBD_CPU,
-    SolverTypeVBD_CPU,
-    SolverTypeVBD_async,
+    return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
+    {
+        return luisa::dot(left_ptr[vid], right_ptr[vid]);
+    });
+};
+static inline float fast_norm(const std::vector<float3>& ptr)
+{
+    float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
+    {
+        return luisa::dot(ptr[vid], ptr[vid]);
+    });
+    return sqrt(tmp);
+};
+static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min value in array
+{
+    return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
+    {
+        return luisa::length(ptr[vid]);
+    }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
 };
 
-#include <glm/glm.hpp>
-
-int main(int argc, char** argv)
+void ConjugateGradientSolver::host_solve(
+    luisa::compute::Stream& stream, 
+    std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
+    std::function<double(const std::vector<float3>&)> func_compute_energy
+)
 {
-    luisa::log_level_info();
-    std::cout << "Hello, LuisaComputeSimulation!" << std::endl;
+    std::vector<float3>& sa_cgX = host_sim_data->sa_cgX;
+    std::vector<float3>& sa_cgB = host_sim_data->sa_cgB;
+    std::vector<float3x3>& sa_cgA_diag = host_sim_data->sa_cgA_diag;
+ 
+    std::vector<float3x3>& sa_cgMinv = host_sim_data->sa_cgMinv;
+    std::vector<float3>& sa_cgP = host_sim_data->sa_cgP;
+    std::vector<float3>& sa_cgQ = host_sim_data->sa_cgQ;
+    std::vector<float3>& sa_cgR = host_sim_data->sa_cgR;
+    std::vector<float3>& sa_cgZ = host_sim_data->sa_cgZ;
     
-    // Init GPU system
-#if defined(__APPLE__)
-    std::string    backend          = "metal";
-#else
-    std::string    backend          = "cuda";
-#endif
-    const std::string binary_path(argv[0]);
-    luisa::compute::Context context{ binary_path };
-    luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
-    if (device_names.empty()) { LUISA_WARNING("No haredware device found."); exit(1); }
-    for (size_t i = 0; i < device_names.size(); ++i) { luisa::log_info("Device {}: {}", i, device_names[i]); }
-    luisa::compute::Device device = context.create_device(backend);
-    luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
+    std::vector<float3>& sa_x = host_sim_data->sa_x;
+    std::vector<float3>& sa_x_iter_start = host_sim_data->sa_x_iter_start;
+    std::vector<float3>& sa_x_tilde = host_sim_data->sa_x_tilde;
 
-    lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
-
-    // Some params
-    {
-        lcs::get_scene_params().implicit_dt = 1.0f/ 120.f;
-        lcs::get_scene_params().num_substep = 1;
-        lcs::get_scene_params().nonlinear_iter_count = 50;
-        lcs::get_scene_params().pcg_iter_count = 2000;
-        // lcs::get_scene_params().use_bending = false;
-        // lcs::get_scene_params().use_quadratic_bending_model = true;
-        // lcs::get_scene_params().use_xpbd_solver = false;
-        // lcs::get_scene_params().use_vbd_solver = false;
-        // lcs::get_scene_params().use_newton_solver = true;
-        lcs::get_scene_params().use_gpu = false; // true
-    }
-
-    // Read Mesh
-    std::vector<lcs::Initializer::ShellInfo> shell_list;
-    Demo::Simulation::load_scene(shell_list);
+    const uint num_verts = sa_cgX.size();
     
-
-    luisa::log_info("Init mesh data...");
-    // Init data
-    lcs::MeshData<std::vector>             host_mesh_data;
-    lcs::MeshData<luisa::compute::Buffer>  mesh_data;
+    auto get_dot_rz_rr = [&]() -> float2 // [0] = r^T z, [1] = r^T r
     {
-        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);
-        lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
-    }
-
-    lcs::SimulationData<std::vector>               host_xpbd_data;
-    lcs::SimulationData<luisa::compute::Buffer>    xpbd_data;
-    {
-        lcs::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
-        lcs::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
-        lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
-        lcs::Initializer::init_simulation_params();
-    }
-
-    lcs::LbvhData<luisa::compute::Buffer>  lbvh_data_face;
-    lcs::LbvhData<luisa::compute::Buffer>  lbvh_data_edge;
-    {
-        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace, lcs::LBVHUpdateTypeCloth);
-        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge, lcs::LBVHUpdateTypeCloth);
-        // lbvh_cloth_vert.unit_test(device, stream);
-    }
-    
-    lcs::CollisionData<std::vector>             host_collision_data;
-    lcs::CollisionData<luisa::compute::Buffer>  collision_data;
-    {
-        host_collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
-        collision_data.resize_collision_data(device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
-    }
-
-    // Init solver class
-    luisa::log_info("JIT Compiling LBVH...");
-    lcs::BufferFiller   buffer_filler;
-    lcs::DeviceParallel device_parallel;
-
-    lcs::LBVH           lbvh_face;
-    lcs::LBVH           lbvh_edge;
-    {
-        lbvh_face.set_lbvh_data(&lbvh_data_face);
-        lbvh_edge.set_lbvh_data(&lbvh_data_edge);
-        lbvh_face.compile(device);
-        lbvh_edge.compile(device);
-    }
-
-    luisa::log_info("JIT Compiling Narrow Phase Detector...");
-    lcs::NarrowPhasesDetector narrow_phase_detector;
-    {
-        narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
-        narrow_phase_detector.compile(device);
-        // narrow_phase_detector.unit_test(device, stream);
-    }
-    
-    luisa::log_info("JIT Compiling Solver...");
-    lcs::ConjugateGradientSolver pcg_solver;
-    {
-        pcg_solver.set_data(
-            &host_mesh_data, 
-            &mesh_data, 
-            &host_xpbd_data, 
-            &xpbd_data
-        );
-        pcg_solver.compile(device);
-    }
-
-    // lcs::DescentSolver  solver;
-    lcs::NewtonSolver      solver;
-    {
-        // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
-        solver.lcs::SolverInterface::set_data_pointer(
-            &host_mesh_data, 
-            &mesh_data, 
-            &host_xpbd_data, 
-            &xpbd_data, 
-            &host_collision_data,
-            &collision_data,
-            &lbvh_face,
-            &lbvh_edge,
-            &buffer_filler, 
-            &device_parallel,
-            &narrow_phase_detector,
-            &pcg_solver
-        );
-        solver.lcs::SolverInterface::compile(device);
-        solver.compile(device);
-    }
-
-    // Define Simulation
-    {
-        solver.lcs::SolverInterface::restart_system();
-        luisa::log_info("Simulation begin...");
-    }
-
-    // for (auto edge : host_mesh_data.sa_edges)
-    // {
-    //     luisa::log_info("edge = {}", edge);
-    // }
-    // for (auto bendingedge : host_mesh_data.sa_bending_edges)
-    // {
-    //     luisa::log_info("edge = {}", bendingedge);
-    // }
-    // for (auto face : host_mesh_data.sa_faces)
-    // {
-    //     luisa::log_info("face = {}", face);
-    // }
-    // for (auto mass : host_mesh_data.sa_vert_mass)
-    // {
-    //     luisa::log_info("mass = {}", mass);
-    // }
-
-    auto fn_physics_step = [&]()
-    {
-        auto fn_affine_position = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
+        return CpuParallel::parallel_for_and_reduce_sum<float2>(0, sa_cgR.size(), [&](const uint vid) -> float2
         {
-            auto fn_scale = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
-            {
-                return (luisa::scaling(fixed_point.scale * time) * luisa::make_float4(pos, 1.0f)).xyz();
-            };
-            auto fn_rotate = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
-            {
-                const float rotAngRad = time * fixed_point.rotAngVelDeg / 180.0f * float(lcs::Pi);
-                const auto relative_vec = pos - fixed_point.rotCenter;
-                auto matrix = luisa::rotation(fixed_point.rotAxis, rotAngRad);
-                const auto rotated_pos = matrix * luisa::make_float4(relative_vec, 1.0f);
-                return fixed_point.rotCenter + rotated_pos.xyz();
-            };
-            auto fn_translate = [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
-            {
-                return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
-            };
-            auto new_pos = pos;
-            if (fixed_point.use_scale)      new_pos = fn_scale(fixed_point, time, new_pos);
-            if (fixed_point.use_rotate)     new_pos = fn_rotate(fixed_point, time, new_pos);
-            if (fixed_point.use_translate)  new_pos = fn_translate(fixed_point, time, new_pos);
-            return new_pos;
-        };
-        
-        auto fn_fixed_point_animation = [&](const uint curr_frame)
-        {
-            const float h = lcs::get_scene_params().implicit_dt;
-
-            CpuParallel::parallel_for(0, host_mesh_data.num_verts, [&](const uint vid)
-            {
-                if (host_mesh_data.sa_is_fixed[vid])
-                {
-                    host_mesh_data.sa_x_frame_outer[vid] = host_mesh_data.sa_rest_x[vid];
-                    host_mesh_data.sa_x_frame_outer_next[vid] = host_mesh_data.sa_rest_x[vid];
-                    host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
-                }
-            });
-
-            // Animation for fixed points
-            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
-            {
-                const auto& fixed_point_info = shell_list[clothIdx].fixed_point_list;
-                if (fixed_point_info.empty()) continue;
-                
-                for (const auto& fixed_point : fixed_point_info)
-                {
-                    if (fixed_point.use_rotate || fixed_point.use_scale || fixed_point.use_translate)
-                    {
-                        const std::vector<uint>& fixed_point_verts = fixed_point.fixed_point_verts;
-                        CpuParallel::parallel_for(0, fixed_point_verts.size(), [&](const uint index)
-                        {
-                            const uint vid = fixed_point_verts[index];
-                            auto& orig_pos = host_mesh_data.sa_rest_x[vid];
-                            {
-                                // Rotate
-                                const float rotAngRad = curr_frame * h;
-                                const float start_time = curr_frame == 0 ? 0 : (curr_frame - 1) * h;
-                                const float end_time = curr_frame * h;
-                                auto bg = fn_affine_position(fixed_point, start_time, orig_pos);
-                                auto ed = fn_affine_position(fixed_point, end_time, orig_pos);
-                                host_mesh_data.sa_x_frame_outer[vid] = bg;
-                                host_mesh_data.sa_x_frame_outer_next[vid] = ed;
-                                host_mesh_data.sa_v_frame_outer[vid] = (ed - bg) / h;
-                                // luisa::log_info("Fix point desire from {} to {} (vel = {})", bg, ed, (ed - bg) / h);
-                                // host_mesh_data.sa_x_frame_outer[vid] = ed;
-                                // host_mesh_data.sa_x_frame_outer_next[vid] = ed;
-                                // host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
-                            }                            
-                        });
-                    }
-                }
-            }
-        };
-        fn_fixed_point_animation(lcs::get_scene_params().current_frame);
-
-        if (lcs::get_scene_params().use_gpu)
-            solver.physics_step_GPU(device, stream);
-        else
-            solver.physics_step_CPU(device, stream);
-
-        CpuParallel::parallel_for(0, host_mesh_data.num_verts, [&](const uint vid)
-        {
-            if (host_mesh_data.sa_is_fixed[vid])
-            {
-                host_mesh_data.sa_x_frame_outer[vid] = host_mesh_data.sa_x_frame_outer_next[vid];
-            }
+            float3 r = sa_cgR[vid];
+            float3 z = sa_cgZ[vid];
+            return luisa::make_float2(luisa::dot(r, z), luisa::dot(r, r));
         });
-
-        lcs::get_scene_params().current_frame += 1; 
     };
-
-
-    uint max_frame = 0; uint optimize_frames = 20;
-    constexpr bool draw_bounding_box = false;
-    constexpr bool use_ui = true; 
+    auto read_beta = [](const uint vid, std::vector<float>& sa_converage) -> float
+    {
+        float delta_old = sa_converage[0];
+        float delta = sa_converage[2];
+        float beta = delta_old == 0.0f ? 0.0f : delta / delta_old;
+        if (vid == 0)  
+        { 
+            sa_converage[1] = 0; 
+            uint iteration_idx = uint(sa_converage[8]);
+            sa_converage[9 + iteration_idx] = delta;
+            sa_converage[8] = float(iteration_idx + 1); 
+        }
+        return beta;
+    };
+    auto save_dot_pq = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_pq) -> void
+    {
+        sa_converage[1] = dot_pq; /// <= reduce
+        if (blockIdx == 0)
+        {
+            float delta_old = sa_converage[2];
+            float delta_old_old = sa_converage[0];
+            sa_converage[2] = 0;
+            sa_converage[0] = delta_old;
+            sa_converage[4] = delta_old_old;
+        }
+    };
+    auto read_alpha = [](std::vector<float>& sa_converage) -> float
+    {
+        float delta = sa_converage[0];
+        float dot_pq = sa_converage[1];
+        float alpha = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
+        return alpha;
+    };
+    auto save_dot_rz = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_rz) -> void
+    {
+        sa_converage[2] = dot_rz; /// <= reduce
+    };
     
-    // Init rendering data
-    std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(shell_list.size() + 0 + 0);
-    std::vector<std::vector<std::array<uint, 3>>> sa_rendering_faces(shell_list.size() + 0 + 0);
-    std::vector<std::array<float, 3>> sa_global_aabb_vertices(SimMesh::BoundingBox::get_num_vertices(), std::array<float, 3>({0.0f, 0.0f, 0.0f}));
-    std::vector<std::array<uint, 3>> sa_global_aabb_faces = SimMesh::BoundingBox::get_box_faces();
-    std::vector<std::vector<std::array<float, 3>>> face_color(shell_list.size());
+    auto pcg_make_preconditioner_jacobi = [&]()
     {
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
+        auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
+
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
         {
-            sa_rendering_vertices[meshIdx].resize(host_mesh_data.prefix_num_verts[meshIdx + 1] - host_mesh_data.prefix_num_verts[meshIdx]);
-            sa_rendering_faces[meshIdx].resize(host_mesh_data.prefix_num_faces[meshIdx + 1] - host_mesh_data.prefix_num_faces[meshIdx]);
-            const uint curr_prefix_num_verts = host_mesh_data.prefix_num_verts[meshIdx];
-            const uint next_prefix_num_verts = host_mesh_data.prefix_num_verts[meshIdx + 1];
-            const uint curr_prefix_num_faces = host_mesh_data.prefix_num_faces[meshIdx];
-            const uint next_prefix_num_faces = host_mesh_data.prefix_num_faces[meshIdx + 1];
-            CpuParallel::parallel_for(0, next_prefix_num_verts - curr_prefix_num_verts, [&](const uint vid)
-            {
-                auto pos = host_mesh_data.sa_rest_x[curr_prefix_num_verts + vid];
-                // sa_rendering_vertices[i][vid] = glm::vec3(pos.x, pos.y, pos.z);
-                sa_rendering_vertices[meshIdx][vid] = {pos.x, pos.y, pos.z};
-            });
-            CpuParallel::parallel_for(0, next_prefix_num_faces - curr_prefix_num_faces, [&](const uint fid)
-            {
-                auto face = host_mesh_data.sa_faces[curr_prefix_num_faces + fid];
-                sa_rendering_faces[meshIdx][fid] = {
-                    face[0] - curr_prefix_num_verts, 
-                    face[1] - curr_prefix_num_verts, 
-                    face[2] - curr_prefix_num_verts};
-            });
-            face_color[meshIdx].resize(host_mesh_data.prefix_num_faces[meshIdx + 1] - host_mesh_data.prefix_num_faces[meshIdx], {0.7, 0.2, 0.3});
+            float3x3 diagA = sa_cgA_diag[vid];
+            float3x3 inv_M = luisa::inverse(diagA);
+
+            // Not available
+            // const bool is_fixed = sa_is_fixed[vid];
+            // if (is_fixed)
+            // {
+            //     inv_M = luisa::make_float3x3(0.0f);
+            // }
+
+            // float3x3 inv_M = luisa::make_float3x3(
+            //     luisa::make_float3(1.0f / diagA[0][0], 0.0f, 0.0f), 
+            //     luisa::make_float3(0.0f, 1.0f / diagA[1][1], 0.0f), 
+            //     luisa::make_float3(0.0f, 0.0f, 1.0f / diagA[2][2])
+            // );
+            sa_cgMinv[vid] = inv_M;
+        });
+    };
+    auto pcg_apply_preconditioner_jacobi = [&]()
+    {
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            const float3 r = sa_cgR[vid];
+            const float3x3 inv_M = sa_cgMinv[vid];
+            float3 z = inv_M * r;
+            sa_cgZ[vid] = z;
+        });
+    };
+
+    auto pcg_init = [&]()
+    {
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            const float3 b = sa_cgB[vid];
+            const float3 q = sa_cgQ[vid];
+            const float3 r = b - q;  // r = b - q = b - A * x
+            sa_cgR[vid] = r;
+            sa_cgP[vid] = Zero3;
+            sa_cgQ[vid] = Zero3;
+        });
+    };
+    auto pcg_update_p = [&](const float beta)
+    {
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            const float3 p = sa_cgP[vid];
+            sa_cgP[vid] = sa_cgZ[vid] + beta * p;
+        });
+    };
+    auto pcg_step = [&](const float alpha)
+    {
+        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+        {
+            sa_cgX[vid] = sa_cgX[vid] + alpha * sa_cgP[vid];
+            sa_cgR[vid] = sa_cgR[vid] - alpha * sa_cgQ[vid];
+        });
+    };
+
+    auto& sa_convergence = host_sim_data->sa_convergence;
+    std::fill(sa_convergence.begin(), sa_convergence.end(), 0.0f);
+
+    // func_spmv(sa_cgX, sa_cgQ);
+    CpuParallel::parallel_set(sa_cgQ, luisa::make_float3(0.0f));
+
+    pcg_init();
+    
+    pcg_make_preconditioner_jacobi();
+
+    float normR_0 = 0.0f;
+    float normR = 0.0f;
+
+    uint iter = 0;
+    for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
+    {
+        lcs::get_scene_params().current_pcg_it = iter;
+
+        // if (get_scene_params().print_system_energy)
+        // {
+        //     update_position_for_energy();
+        //     compute_system_energy(it);
+        //     compute_pcg_residual(it);
+        // }
+
+        pcg_apply_preconditioner_jacobi();
+
+        float2 dot_rr_rz = get_dot_rz_rr(); 
+        float dot_rz = dot_rr_rz[0];
+        normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+        save_dot_rz(0, sa_convergence, dot_rz);
+
+        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
+        // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
+        // if (dot_rz == 0.0f) 
+        if (dot_rz < 1e-8) 
+        {
+            break;
         }
 
-        if constexpr (draw_bounding_box)
-        {
-            std::array<float, 3> min_pos = { -0.01f, -0.01f, -0.01f };; std::array<float, 3> max_pos = {  0.01f,  0.01f,  0.01f };
-            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
-        }
+        const float beta = read_beta(0, sa_convergence);
+        pcg_update_p(beta);
+    
+        func_spmv(sa_cgP, sa_cgQ);
+        float dot_pq = fast_dot(sa_cgP, sa_cgQ);
+        save_dot_pq(0, sa_convergence, dot_pq);   
+        
+        const float alpha = read_alpha(sa_convergence);
+
+        // LUISA_INFO("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
+        //         iter, normR, beta, alpha);
+        
+        pcg_step(alpha);
     }
-    auto fn_update_rendering_vertices = [&]()
+
+    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
+    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
-        for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
+    }
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+        get_scene_params().current_nonlinear_iter,
+        iter, normR / normR_0, infinity_norm, ""
+    );
+            
+    /*
+    for (uint iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
+    {
+        lcs::get_scene_params().current_pcg_it = iter;
+        pcg_apply_preconditioner_jacobi();
+        delta_old = delta;
+        float2 dot_rr_rz = get_dot_rz_rr(); delta = dot_rr_rz[0];
+        float normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+        float beta = delta_old == 0.0f ? 0.0f : delta / delta_old;
+        pcg_update_p(beta);
+        pcg_spmv(sa_cgP, sa_cgQ);
+        float dot_pq = fast_dot(sa_cgP, sa_cgQ);
+        if (normR < 5e-3 * normR_0) 
         {
-            CpuParallel::parallel_for(0, host_mesh_data.prefix_num_verts[clothIdx + 1] - host_mesh_data.prefix_num_verts[clothIdx], [&](const uint vid)
-            {
-                auto pos = host_mesh_data.sa_x_frame_outer[vid + host_mesh_data.prefix_num_verts[clothIdx]];
-                sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
-            });
+            break;
         }
-        if constexpr (draw_bounding_box)
+        const float alpha = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
+        pcg_step(alpha);   
+    }
+    */
+
+    /*
+    auto eigen_pcg = [&](const EigenFloat12x12& A, const EigenFloat12& b)
+    {
+        uint n = A.cols();
+        EigenFloat12 x = EigenFloat12::Zero();
+        EigenFloat12 r = b - A * x;
+        EigenFloat12x12 diagA = EigenFloat12x12::Zero(); diagA.diagonal() = A.diagonal();
+        EigenFloat12x12 M_inv = diagA.inverse();
+        EigenFloat12 z = M_inv * r;
+        EigenFloat12 p = z;
+        float rz_old = r.dot(z);
+        for (uint iter = 0; iter < 100; iter++)
         {
-            lcs::float2x3 global_aabb; std::array<float, 3> min_pos; std::array<float, 3> max_pos; 
-            // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            global_aabb = lbvh_data_face.host_node_aabb[0];
-            min_pos = { global_aabb[0][0], global_aabb[0][1], global_aabb[0][2] };
-            max_pos = { global_aabb[1][0], global_aabb[1][1], global_aabb[1][2] };
-            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
+            EigenFloat12 Ap = A * p;
+            float alpha = rz_old / (p.dot(Ap));
+            x += alpha * p;
+            r -= alpha * Ap; 
+            if (r.norm() < 1e-8)
+            {
+                break;
+            }
+            auto z = M_inv * r;
+            auto rz_new = (r.dot(z)); std::cout << rz_new << " ";
+            auto beta = rz_new / rz_old;
+            p = z + beta * p;
+            rz_old = rz_new;
+        }
+        std::cout << std::endl;
+        return x;
+    };
+    */
+
+}
+void ConjugateGradientSolver::device_solve( // TODO: input sa_x
+    luisa::compute::Stream& stream, 
+    std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
+    std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy
+)
+{
+    auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
+    {
+        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
+        {
+            return luisa::length(ptr[vid]);
+        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+    };
+    
+    std::vector<float3>& host_x = host_sim_data->sa_x;
+    std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
+    std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
+    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
+
+    // auto device_pcg = [&]()
+    const uint num_verts = host_cgX.size();
+    const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
+
+    stream 
+        << fn_reset_float(sim_data->sa_convergence).dispatch(sim_data->sa_convergence.size())
+        ;
+
+    // pcg_spmv(sim_data->sa_cgX, sim_data->sa_cgQ);
+
+    stream 
+        // << sim_data->sa_cgR.copy_from(sim_data->sa_cgB) // Cause cgX is set to zero...
+        // << mp_buffer_filler->fill(device, sim_data->sa_cgQ, luisa::make_float3(0.0f))
+        << fn_reset_float3(sim_data->sa_cgQ).dispatch(num_verts)
+        << fn_pcg_init().dispatch(num_verts) 
+        << fn_pcg_init_second_pass().dispatch(num_blocks_verts)
+        << fn_pcg_make_preconditioner().dispatch(num_verts)
+        
+        // << sim_data->sa_convergence.copy_to(host_sim_data->sa_convergence.data())
+        // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
+        // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
+        // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
+        // << luisa::compute::synchronize();
+        ;
+    
+    // LUISA_INFO("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
+    //     host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
+    //     host_norm(host_sim_data->sa_cgB),
+    //     host_norm(host_sim_data->sa_cgP)
+    // );
+
+    float normR_0 = 0.0f;
+    float normR = 0.0f; float beta = 0.0f; float alpha = 0.0f;
+    float dot_rz = 0.0f;
+
+    uint iter = 0;
+    for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
+    {
+        lcs::get_scene_params().current_pcg_it = iter;
+
+        stream 
+            << fn_pcg_apply_preconditioner().dispatch(num_verts)
+            << fn_pcg_apply_preconditioner_second_pass().dispatch(num_blocks_verts) // Compute beta
+            ;
+
+        // 0 : old_dot_rr
+        // 1 : new_dot_rz
+        // 2 : alpha 
+        // 3 : beta
+        // 4 : new_dot_rr
+        // 
+        // 6 : init energy
+        // 7 : new energy
+
+        if (iter % 25 == 0)
+        {
+            // stream
+            //     << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+            //     << luisa::compute::synchronize();
+            // LUISA_INFO("rTr = {}", normR);
+            // if (iter == 0) normR_0 = normR;
+            // if (normR == 0.0f) 
+            // {
+            //     break;
+            // }
+
+            if (iter == 0) stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR_0);
+            stream
+                << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz)
+                << luisa::compute::synchronize();
+            // LUISA_INFO("dot_rz = {}", dot_rz);
+            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
+            // if (dot_rz == 0.0f) 
+            if (dot_rz < 1e-8) 
+            {
+                break;
+            }
+        }
+
+        stream 
+            << fn_pcg_update_p().dispatch(num_verts);
+
+        func_spmv(sim_data->sa_cgP, sim_data->sa_cgQ);
+        stream 
+            << fn_dot_pq().dispatch(num_verts)
+            << fn_dot_pq_second_pass().dispatch(num_blocks_verts) // Compute alpha
+
+            // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
+            // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
+            // << sim_data->sa_cgQ.copy_to(host_sim_data->sa_cgQ.data())
+            // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
+            // << sim_data->sa_cgZ.copy_to(host_sim_data->sa_cgZ.data())
+            // << sim_data->sa_convergence.view(2, 1).copy_to(&alpha)
+            // << sim_data->sa_convergence.view(3, 1).copy_to(&beta)
+
+            << fn_pcg_step().dispatch(num_verts)
+
+            // << luisa::compute::synchronize()
+            ;
+
+        // LUISA_INFO("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
+        //         iter, 
+        //         host_dot(host_sim_data->sa_cgB, host_sim_data->sa_cgB),
+        //         normR, beta, alpha,
+        //         host_dot(host_sim_data->sa_cgP, host_sim_data->sa_cgQ),
+        //         host_dot(host_sim_data->sa_cgR, host_sim_data->sa_cgZ) );
+    }
+
+    stream 
+        << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+        << sim_data->sa_cgX.copy_to(host_sim_data->sa_cgX.data())
+        << luisa::compute::synchronize();
+
+    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
+    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
+    {
+        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
+    }
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
+        get_scene_params().current_nonlinear_iter,
+        iter, normR / normR_0, infinity_norm, ""
+    );
+}
+
+void ConjugateGradientSolver::eigen_solve(
+    const Eigen::SparseMatrix<float>& eigen_cgA, 
+    Eigen::VectorXf& eigen_cgX,
+    const Eigen::VectorXf& eigen_cgB, 
+    std::function<double(const std::vector<float3>&)> func_compute_energy
+)
+{
+    std::vector<float3>& host_x = host_sim_data->sa_x;
+    std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
+    std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
+    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
+
+    const uint num_verts = host_cgX.size();
+
+    auto eigen_iter_solve = [&]()
+    {
+        // Solve cgA * dx = cg_b_vec for dx using Conjugate Gradient
+        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver; // Eigen::IncompleteCholesky<float>
+
+        // solver.setMaxIterations(128);
+        solver.setTolerance(1e-2f);
+        solver.compute(eigen_cgA);
+
+        // 计算 Jacobi 预条件子的对角线逆
+        // Eigen::VectorXf eigen_cgR = eigen_cgB - eigen_cgA * eigen_cgX;
+        // Eigen::VectorXf eigen_cgM_inv(eigen_cgR.rows());
+        // for (int i = 0; i < eigen_cgR.rows(); ++i) {
+        //     float diag = eigen_cgA.coeff(i, i);
+        //     eigen_cgM_inv[i] = (std::abs(diag) > 1e-12f) ? (1.0f / diag) : 0.0f;
+        // }
+        // Eigen::VectorXf eigen_cgZ = eigen_cgR.cwiseProduct(eigen_cgM_inv);
+        // Eigen::VectorXf eigen_cgQ = eigen_cgA * eigen_cgZ;
+        // LUISA_INFO("initB = {}, initR = {}, initM = {}, initZ = {}, initQ = {}",
+        //     eigen_cgB.norm(), eigen_cgR.norm(), eigen_cgM_inv.norm(), eigen_cgZ.norm(), eigen_cgQ.norm());
+
+        solver._solve_impl(eigen_cgB, eigen_cgX);
+        if (solver.info() != Eigen::Success) { LUISA_ERROR("Eigen: Solve failed in {} iterations", solver.iterations()); }
+        else 
+        {
+            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+            {
+                host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
+            });
+
+            LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}", 
+                get_scene_params().current_nonlinear_iter, solver.iterations(),
+                solver.error(), fast_infinity_norm(host_cgX)); // from normR_0 -> normR
+        }
+    };
+    auto eigen_decompose_solve = [&]()
+    {
+        // Solve cgA * dx = cg_b_vec for dx using SimplicialLDLT decomposition
+        Eigen::SimplicialLDLT<Eigen::SparseMatrix<float>> solver;
+        solver.compute(eigen_cgA);
+        if (solver.info() != Eigen::Success)
+        {
+            LUISA_ERROR("Eigen: SimplicialLDLT decomposition failed!");
+            return;
+        }
+        solver._solve_impl(eigen_cgB, eigen_cgX);
+        if (solver.info() != Eigen::Success)
+        {
+            LUISA_ERROR("Eigen: SimplicialLDLT solve failed!");
+            return;
+        }
+        else
+        {
+            float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
+            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
+            {
+                host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
+            });
+            LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}", 
+                get_scene_params().current_nonlinear_iter, 
+                error, fast_infinity_norm(host_cgX)); // from normR_0 -> normR
         }
     };
 
-    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
+    eigen_iter_solve();
 
-    if constexpr (!use_ui)
-    {
-        auto fn_single_step_without_ui = [&]()
-        {
-            luisa::log_info("     Newton solver frame {}", lcs::get_scene_params().current_frame);   
-
-            fn_physics_step();
-        };
-
-        // solver.lcs::SolverInterface::restart_system();
-
-        // for (uint frame = 0; frame < max_frame; frame++)
-        {
-            fn_single_step_without_ui();
-        }
-        fn_update_rendering_vertices();
-        SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
-        // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, ""); 
-    }
-    else
-    {
-        // Init Polyscope
-        polyscope::init("openGL3_glfw");
-        std::vector<polyscope::SurfaceMesh*> surface_meshes;
-        std::vector<polyscope::SurfaceMesh*> bounding_boxes;
-        
-        
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
-        {
-            const std::string& curr_mesh_name = shell_list[meshIdx].model_name + std::to_string(meshIdx);
-            polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
-                curr_mesh_name, 
-                sa_rendering_vertices[meshIdx], 
-                sa_rendering_faces[meshIdx]
-            );
-            curr_mesh_ptr->setEnabled(true);
-            curr_mesh_ptr->addFaceColorQuantity("Collision Count", face_color[meshIdx]);
-            surface_meshes.push_back(curr_mesh_ptr);
-        }
-        
-        if constexpr (draw_bounding_box)
-        {
-            polyscope::SurfaceMesh* bounding_box_ptr = polyscope::registerSurfaceMesh("Global Bounding Box", sa_global_aabb_vertices, sa_global_aabb_faces);
-            bounding_box_ptr->setTransparency(0.25f);
-            bounding_boxes.push_back(bounding_box_ptr);
-        }
-
-        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-        
-        
-        auto fn_update_GUI_vertices = [&]()
-        {
-            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
-            {
-                surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
-            }
-            if constexpr (draw_bounding_box) bounding_boxes.back()->updateVertexPositions(sa_global_aabb_vertices);
-        };
-        auto fn_single_step_with_ui = [&]()
-        {
-            // luisa::log_info("     Sync frame {}", lcs::get_scene_params().current_frame);   
-            fn_physics_step();
-
-            fn_update_rendering_vertices();
-            fn_update_GUI_vertices();
-        };
-        
-        bool is_simulate_frame = false;
-
-        polyscope::state::userCallback = [&]()
-        {
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) polyscope::unshow();
-
-            // Selection
-            {
-                static polyscope::PickResult prev_selection;
-                if (polyscope::haveSelection())
-                {
-                    polyscope::PickResult selection = polyscope::getSelection();
-                    if (selection.isHit 
-                        && !(selection.screenCoords.x == prev_selection.screenCoords.x && selection.screenCoords.y == prev_selection.screenCoords.y)
-                    )
-                    {
-                        prev_selection = selection;
-                        for (uint meshIdx = 0; meshIdx < surface_meshes.size(); meshIdx++)
-                        {
-                            polyscope::SurfaceMesh* mesh = surface_meshes[meshIdx];
-                            if (mesh == selection.structure)
-                            {
-                                polyscope::SurfaceMeshPickResult meshPickResult = mesh->interpretPickResult(selection);
-                                if (meshPickResult.elementType == polyscope::MeshElement::VERTEX)
-                                {
-                                    uint prefix = host_mesh_data.prefix_num_verts[meshIdx];
-                                    uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Vert {:3} on mesh {}", vid, meshIdx);
-                                }
-                                else if (meshPickResult.elementType == polyscope::MeshElement::FACE)
-                                {
-                                    uint prefix = host_mesh_data.prefix_num_faces[meshIdx];
-                                    uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Face {:3} on mesh {}", vid, meshIdx);
-                                }
-                                else if (meshPickResult.elementType == polyscope::MeshElement::EDGE)
-                                {
-                                    uint prefix = host_mesh_data.prefix_num_edges[meshIdx];
-                                    uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Edge {:3} on mesh {}", vid, meshIdx);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) 
-            {
-                ImGui::InputScalar("Optimize Frames", ImGuiDataType_U32, &optimize_frames);
-                ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcs::get_scene_params().num_substep);
-                ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().nonlinear_iter_count);
-                ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().pcg_iter_count);
-                ImGui::SliderFloat("Implicit Timestep", &lcs::get_scene_params().implicit_dt, 0.0001f, 0.2f); 
-                ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
-                ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
-                
-                // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
-                // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);
-                ImGui::SliderFloat("Bending Stiffness", &lcs::get_scene_params().stiffness_bending_ui, 0.0f, 10.0f); 
-                // static int stiffness_bending_exp = 0;
-                // ImGui::InputInt("Bending Stiffness's Exp", &stiffness_bending_exp);
-                // lcs::get_scene_params().stiffness_bending_ui = pow(10.0f, (float)stiffness_bending_exp);
-
-                static uint stiffness_spring_exp = 4;
-                ImGui::InputScalar("Stretch Stiffness's Exp", ImGuiDataType_U32, &stiffness_spring_exp);
-                lcs::get_scene_params().stiffness_spring = pow(10.0f, (float)stiffness_spring_exp);
-                // ImGui::Checkbox("Print Convergence", &lcs::get_scene_params().print_xpbd_convergence);
-                ImGui::Checkbox("Print Energy", &lcs::get_scene_params().print_system_energy);
-                ImGui::Checkbox("Use GPU Solver", &lcs::get_scene_params().use_gpu);
-                ImGui::Checkbox("Use Self-Collision", &lcs::get_scene_params().use_self_collision);
-                // ImGui::Checkbox("Print PCG Convergence", &lcs::get_scene_params().print_pcg_convergence);
-
-                // static const char* items[] = { "A", "B", "C" };
-                // static int current_item = 0;
-                // ImGui::Combo("Combo", &current_item, items, IM_ARRAYSIZE(items));
-            }
-
-            if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) 
-            {
-                ImGui::Text("Frame %d", lcs::get_scene_params().current_frame);
-                if (ImGui::Button("Reset", ImVec2(-1, 0))) 
-                {
-                    lcs::get_scene_params().current_frame = 0;
-                    max_frame = 0;
-                    solver.lcs::SolverInterface::restart_system();
-                    fn_update_rendering_vertices();
-                    fn_update_GUI_vertices();
-                }
-                if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
-                {
-                    fn_single_step_with_ui();
-                }
-                if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
-                {
-                    is_simulate_frame = true;
-                    max_frame = lcs::get_scene_params().current_frame + optimize_frames;
-                }
-                if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
-                {
-                    is_simulate_frame = true;
-                    max_frame = 10000;
-                }
-                if (ImGui::Button("End Simulation", ImVec2(-1, 0)))
-                {
-                    is_simulate_frame = false;
-                    max_frame = lcs::get_scene_params().current_frame;
-                }
-            }
-
-            if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen)) 
-            {
-                ImGui::Checkbox("Use Ground Collision", &lcs::get_scene_params().use_floor);
-                ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f); 
-                constexpr uint offset_vf = host_collision_data.get_vf_count_offset();
-                constexpr uint offset_ee = host_collision_data.get_ee_count_offset();
-                ImGui::Text("Num VF = %d EE = %d", host_collision_data.narrow_phase_collision_count[offset_vf], host_collision_data.narrow_phase_collision_count[offset_ee]);
-            }
-            
-            if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen)) 
-            {
-                if (ImGui::Button("Save mesh", ImVec2(-1, 0)))
-                {
-                    SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
-                }
-                if (ImGui::Button("Save State", ImVec2(-1, 0)))
-                {
-                    solver.lcs::SolverInterface::save_current_frame_state_to_host(lcs::get_scene_params().current_frame, "");
-                }
-                uint& state_frame = lcs::get_scene_params().load_state_frame;
-                ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
-                if (ImGui::Button("Load State", ImVec2(-1, 0)))
-                {
-                    solver.lcs::SolverInterface::load_saved_state_from_host(state_frame, "");
-                    lcs::get_scene_params().current_frame = state_frame;;
-                    fn_update_rendering_vertices();
-                    fn_update_GUI_vertices();
-                }
-            }
-            
-            if (is_simulate_frame)
-            {
-                fn_single_step_with_ui();
-                if (lcs::get_scene_params().current_frame >= max_frame)
-                {
-                    is_simulate_frame = false;
-                    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
-                }
-            }
-        };
-        polyscope::show();
-    }
-
-    return 0;
 }
+
+
+} // namespace lcs 

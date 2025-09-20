@@ -71,7 +71,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         if (eid == mesh_data->num_dihedral_edges - 1) num_bending_edges = global_prefix;
     }, 0);
 
-    luisa::log_info("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})", 
+    LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})", 
         num_stretch_springs, mesh_data->num_edges, num_stretch_faces, mesh_data->num_faces, num_bending_edges, mesh_data->num_dihedral_edges);
 
 
@@ -143,7 +143,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         
                 float3 tmp;
                 const float angle = lcs::BendingEnergy::CalcGradientsAndAngle(x1, x2, x3, x4, tmp, tmp, tmp, tmp);
-                if (luisa::isnan(angle)) luisa::log_error("is nan rest angle {}", eid);
+                if (luisa::isnan(angle)) LUISA_ERROR("is nan rest angle {}", eid);
                 
                 xpbd_data->sa_bending_edges[eid] = edge;
                 xpbd_data->sa_bending_edges_rest_angle[eid] = angle; 
@@ -341,7 +341,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     return;
                 }
             }
-            luisa::log_error("Can not find {} in adjacent list of {}", right, left); 
+            LUISA_ERROR("Can not find {} in adjacent list of {}", right, left); 
         });
         {
             const uint num_offdiag_upper = 1;
@@ -360,7 +360,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
 
                         const auto& adj_list = vert_adj_verts[left];
                         auto find = std::find(adj_list.begin(), adj_list.end(), right); 
-                        if (find == adj_list.end()) { luisa::log_error("Can not find {} in adjacent list of {}", right, left); }
+                        if (find == adj_list.end()) { LUISA_ERROR("Can not find {} in adjacent list of {}", right, left); }
                         else 
                         {
                             uint offset = std::distance(adj_list.begin(), find);
@@ -426,7 +426,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     }
                 });
                 prefix += curr_cluster.size();
-            } if (prefix != xpbd_data->sa_stretch_springs.size()) luisa::log_error("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
+            } if (prefix != xpbd_data->sa_stretch_springs.size()) LUISA_ERROR("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
         }
 
         // Bending Constraint
@@ -450,7 +450,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     }
                 });
                 prefix += curr_cluster.size();
-            } if (prefix != xpbd_data->sa_bending_edges.size()) luisa::log_error("Sum of Bending Cluster Is Not Equal Than Orig");
+            } if (prefix != xpbd_data->sa_bending_edges.size()) LUISA_ERROR("Sum of Bending Cluster Is Not Equal Than Orig");
         }
     }
 
