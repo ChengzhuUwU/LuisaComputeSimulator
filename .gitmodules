@@ -13,8 +13,12 @@
 # 	url = https://gitee.com/celeste-huohuo/ipc-toolkit.git
 #     branch = main
 
-[submodule "External/amgcl"]
-	path = External/amgcl
-	url = https://github.com/ddemidov/amgcl.git
-    # branch = master
+# [submodule "External/amgcl"]
+# 	path = External/amgcl
+# 	url = https://github.com/ddemidov/amgcl.git
+#     # branch = master
 
+# [submodule "External/libdispatch"]
+# 	path = External/libdispatch
+# 	url = https://github.com/apple-oss-distributions/libdispatch.git
+# 	branch = main
