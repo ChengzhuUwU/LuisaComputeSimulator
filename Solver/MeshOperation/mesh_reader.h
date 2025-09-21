@@ -5,6 +5,7 @@
 #include <string>
 #include <fstream>
 #include <format>
+#include <array>
 
 #include "MeshOperation/tiny_obj_loader.h"
 #include "Utils/cpu_parallel.h"
