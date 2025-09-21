@@ -4,6 +4,19 @@ set(CMAKE_CXX_STANDARD 20)
 
 project(LuisaComputeSolver)
 
+
+# lib
+file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
+file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
+add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
+target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
+target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
+
+if(WIN32)
+set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
+endif()
+
+
 set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/External)
 include(FetchContent)
 if (NOT TARGET luisa::compute)
@@ -74,30 +87,52 @@ endif()
 #     add_subdirectory(${EXT_PATH}/ipc-toolkit)
 # endif()
 
-set(USE_AMGCL_FOR_SIM OFF CACHE BOOL "" FORCE)
-if (USE_AMGCL_FOR_SIM AND NOT TARGET amgcl::amgcl)
-    add_subdirectory(${EXT_PATH}/amgcl)
-endif()
+# set(USE_AMGCL_FOR_SIM OFF CACHE BOOL "" FORCE)
+# if (USE_AMGCL_FOR_SIM AND NOT TARGET amgcl::amgcl)
+#     add_subdirectory(${EXT_PATH}/amgcl)
+# endif()
 
 # if (NOT TARGET TBB::tbb)
 #     set(TBB_TEST OFF CACHE BOOL "" FORCE)
 #     add_subdirectory(${EXT_PATH}/oneTBB)
 # endif()
 
-# lib
-file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
-file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
-add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
-target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
-target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
+option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" ON)
+if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
+    target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR=1)
+    find_package(TBB CONFIG)
+    if (TBB_FOUND)
+        message("Host parallel function use TBB")
+        target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_TBB=1)
+        target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb)
+    else()
+        # use libdispatch or TBB for parallel_for on non-Apple Unix systems if available
+        if (UNIX AND NOT APPLE)
+            # libdispatch
+            find_library(DISPATCH_LIB dispatch)
+            find_path(DISPATCH_INCLUDE_DIR dispatch/dispatch.h) # Apple use native libdispatch
+            if (DISPATCH_LIB AND DISPATCH_INCLUDE_DIR)
+                message("Host parallel function use package libdispatch")
+                target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
+                target_link_libraries(luisa-compute-solver-lib PUBLIC ${DISPATCH_LIB})
+                target_include_directories(luisa-compute-solver-lib PUBLIC ${DISPATCH_INCLUDE_DIR})
+            endif ()
+        else() 
+            if (APPLE)
+                # Use native libdispatch
+                message("Host parallel function use native libdispatch")
+            else ()
+                message(WARNING "TBB and libdispatch not found. Performance of the fallback backend may be affected.")
+            endif ()
+        endif()
+    endif()
+endif ()
 
-if(WIN32)
-set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
-endif()
 
 find_package(Eigen3 REQUIRED)
-find_package(TBB CONFIG REQUIRED)
-target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb Eigen3::Eigen)
+# find_package(TBB CONFIG REQUIRED)
+target_link_libraries(luisa-compute-solver-lib PUBLIC 
+    Eigen3::Eigen)
 if (USE_AMGCL_FOR_SIM)
     target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_AMGCL_FOR_SIM)
     target_link_libraries(luisa-compute-solver-lib PUBLIC amgcl::amgcl)
