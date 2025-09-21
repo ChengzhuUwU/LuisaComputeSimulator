@@ -84,7 +84,7 @@ function install_lc()
         add_git_job("eigen", path.join(ext_path, "eigen"), "https://github.com/PX4/eigen.git")
         add_git_job("polyscope", path.join(ext_path, "polyscope"), "https://github.com/nmwsharp/polyscope.git")
         add_git_job("glm", path.join(ext_path, "glm"), "https://github.com/icaven/glm.git")
-        add_git_job("libdispatch", path.join(ext_path, "libdispatch"), "https://github.com/DrPizza/libdispatch.git")
+        add_git_job("libdispatch", path.join(ext_path, "libdispatch"), "https://github.com/MaxwellGengYF/libdispatch.git")
 
 
         runjobs("git", jobs, {
