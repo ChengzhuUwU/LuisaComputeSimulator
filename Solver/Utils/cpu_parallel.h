@@ -5,13 +5,12 @@
 // #undef min
 #include <numeric>
 #include <vector>
-#include <luisa/core/stl/algorithm.h>
 
 #ifdef LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR
 
 #if defined(LUISA_COMPUTE_SOLVER_ENABLE_TBB)
     #define LCS_PARALLEL_USE_TBB
-    #include <tbb/parallel_for.h>
+    #include <tbb/tbb.h>
 #elif defined(__APPLE__)
     #define LCS_PARALLEL_USE_DISPATCH
     #include <dispatch/dispatch.h>
@@ -484,7 +483,7 @@ inline T parallel_for_and_reduce(uint start_pos, uint end_pos, ParallelFunc func
     return std::reduce(thread_result.begin(), thread_result.end(), zero, func_binary);
 }
 
-// inclusive : 包含第一个元素, func_output(index, block_prefix, parallel_result);
+// inclusive : first prefixsum is the first count, func_output(index, block_prefix, parallel_result);
 template<typename T, typename ParallelFunc, typename OutputFunc>
 inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc func_parallel, OutputFunc func_output, const T& zero)
 {
@@ -493,20 +492,22 @@ inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc fun
     {
         thread_result[index - start_pos] = func_parallel(index); 
     }
-    std::exclusive_scan(thread_result.begin(), thread_result.end(), thread_result.begin(), zero);
+    std::inclusive_scan(thread_result.begin(), thread_result.end(), thread_result.begin(), 
+        [](const T& left, const T& right){ return left + right; }, zero);
+    // std::exclusive_scan(thread_result.begin(), thread_result.end(), thread_result.begin(), zero);
     for (uint index = start_pos; index < end_pos; index++) 
     {
-        thread_result[index - start_pos] = func_output(
+        func_output(
             index, 
-            thread_result[index], 
-            index == start_pos ? thread_result[0] : thread_result[index] - thread_result[index - 1]); 
+            thread_result[index - start_pos], 
+            index == start_pos ? thread_result.front() : thread_result[index - start_pos] - thread_result[index - start_pos - 1]); 
     }
 }
 
 template <typename Ptr, typename _Comp>
 inline void parallel_sort(Ptr begin, Ptr end, _Comp comp = default_compate)
 {
-    luisa::sort(begin, end, comp);
+    std::sort(begin, end, comp);
 }
 
 #endif
