@@ -1,5 +1,7 @@
 #include "MeshOperation/mesh_reader.h"
 #include <filesystem>
+#include <istream>
+#include <sstream>
 
 namespace SimMesh
 {
