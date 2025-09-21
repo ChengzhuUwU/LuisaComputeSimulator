@@ -1,0 +1,17 @@
+CompileFlags:
+  Add: [-Wno-ignored-attributes, -Wno-unused-function]
+  Remove: [-f*, -m*]
+
+Diagnostics:
+  Suppress:
+    - pragma_attribute_no_pop_eof
+    - pragma_attribute_stack_mismatch
+
+InlayHints:
+  BlockEnd: No
+  Designators: Yes
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  DefaultArguments: Yes
+  TypeNameLimit: 24

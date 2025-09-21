@@ -76,3 +76,19 @@ target("implot")
         end
     end)
 target_end()
+
+target("libdispatch")
+    add_rules("lc_basic_settings", {
+        project_kind = "static"
+    })
+    add_files("libdispatch/libdispatch/src/**.c")
+    add_includedirs("libdispatch/libdispatch", {public = true})
+    on_load(function(target)
+        if is_host("windows") then
+            -- target:add("files", 
+            --     path.join(os.scriptdir(), "libdispatch/libdispatch/platform/windows/**.c"),
+            --     path.join(os.scriptdir(), "libdispatch/libdispatch/platform/windows/**.cpp"))
+            target:add("defines", "WIN32")
+        end
+    end)
+target_end()
