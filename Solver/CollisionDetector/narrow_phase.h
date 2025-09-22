@@ -111,6 +111,8 @@ public:
         const Buffer<float>& sa_rest_area_left, 
         const Buffer<float>& sa_rest_area_right, 
         const Buffer<uint3>& sa_faces_right,
+        const Buffer<uint>& sa_vert_affine_bodies_id_left,
+        const Buffer<uint>& sa_vert_affine_bodies_id_right,
         const float d_hat, 
         const float thickness, const float kappa);
 
@@ -123,6 +125,8 @@ public:
         const Buffer<float>& sa_rest_area_right, 
         const Buffer<uint2>& sa_edges_left,
         const Buffer<uint2>& sa_edges_right,
+        const Buffer<uint>& sa_vert_affine_bodies_id_left,
+        const Buffer<uint>& sa_vert_affine_bodies_id_right,
         const float d_hat, 
         const float thickness, const float kappa);
 
@@ -200,6 +204,8 @@ private:
         luisa::compute::BufferView<float>,
         luisa::compute::BufferView<float>,
         luisa::compute::BufferView<uint3>, 
+        luisa::compute::BufferView<uint>, 
+        luisa::compute::BufferView<uint>, 
         float, 
         float,
         float
@@ -214,6 +220,8 @@ private:
         luisa::compute::BufferView<float>,
         luisa::compute::BufferView<uint2>,
         luisa::compute::BufferView<uint2>, 
+        luisa::compute::BufferView<uint>, 
+        luisa::compute::BufferView<uint>, 
         float, 
         float,
         float

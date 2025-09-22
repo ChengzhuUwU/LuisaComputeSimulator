@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/float_nxn.h"
+#include "Core/lc_to_eigen.h"
 #include "SimulationCore/simulation_type.h"
 #include "Utils/buffer_allocator.h"
 #include <vector>
@@ -25,15 +26,39 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_iter_start;
 
     // Energy
+    uint num_verts_soft = 0;
+    uint num_verts_rigid = 0;
+    uint num_affine_bodies = 0;
     BufferType<float> sa_system_energy;
+    
     BufferType<uint2> sa_stretch_springs;
     BufferType<float> sa_stretch_spring_rest_state_length;
+    
     BufferType<uint3> sa_stretch_faces;
     BufferType<float2x2> sa_stretch_faces_Dm_inv;
+
     BufferType<uint4> sa_bending_edges;
     BufferType<float> sa_bending_edges_rest_angle;
     BufferType<float4x4> sa_bending_edges_Q;
+    
+    BufferType<uint> sa_vert_affine_bodies_id;
+    BufferType<uint> sa_affine_bodies;
+    BufferType<float> sa_affine_bodies_volume;
+    BufferType<float3x3> sa_affine_bodies_mass_matrix_diag;
+    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
+    BufferType<float3x3> sa_affine_bodies_mass_matrix_compressed_offdiag;
+    BufferType<float3> sa_affine_bodies_rest_q;
+    BufferType<float3> sa_affine_bodies_rest_q_v;
+    BufferType<float3> sa_affine_bodies_gravity;
+    BufferType<float3> sa_affine_bodies_q;
+    BufferType<float3> sa_affine_bodies_q_v;
+    BufferType<float3> sa_affine_bodies_q_tilde;
+    BufferType<float3> sa_affine_bodies_q_iter_start;
+    BufferType<float3> sa_affine_bodies_q_step_start;
 
+    BufferType<float3> sa_affine_bodies_q_outer;
+    BufferType<float3> sa_affine_bodies_q_v_outer;
+    
     // Merged constraints
     BufferType<uint2> sa_merged_stretch_springs; 
     BufferType<float> sa_merged_stretch_spring_rest_length;
@@ -81,6 +106,7 @@ struct SimulationData : SimulationType
     BufferType<float3x3> sa_cgA_diag;
     BufferType<float3x3> sa_cgA_offdiag_stretch_spring;
     BufferType<float3x3> sa_cgA_offdiag_bending; 
+    BufferType<float3x3> sa_cgA_offdiag_affine_body;
  
     BufferType<float3x3> sa_cgMinv;
     BufferType<float3> sa_cgP;

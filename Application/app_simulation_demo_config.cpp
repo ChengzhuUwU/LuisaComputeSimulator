@@ -66,7 +66,12 @@ void ccd_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({
-        .model_name = obj_mesh_path + "square2.obj",
+        // .model_name = obj_mesh_path + "square2.obj",
+        .model_name = obj_mesh_path + "cube.obj",
+        // .model_name = obj_mesh_path + "tet2.obj",
+        // .translation = luisa::make_float3(0.1, 0.5, 0),
+        .translation = luisa::make_float3(0, 0.2, 0),
+        .rotation = luisa::make_float3(lcs::Pi/6, 0, lcs::Pi/6),
         // .fixed_point_list = {
         //     lcs::Initializer::FixedPointInfo{
         //         .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
@@ -74,23 +79,23 @@ void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_lis
         // },
         .shell_type = lcs::Initializer::ShellTypeRigid
     });
-    shell_list.push_back({
-        .model_name = obj_mesh_path + "square2.obj",
-        .translation = luisa::make_float3(0.1, -0.3, 0),
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-            },
-        }
-    });
+    // shell_list.push_back({
+    //     .model_name = obj_mesh_path + "square2.obj",
+    //     .translation = luisa::make_float3(0.1, 0.2, 0),
+    //     .fixed_point_list = {
+    //         lcs::Initializer::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
+    //         },
+    //     }
+    // });
     
-    lcs::get_scene_params().use_floor = false;
-    lcs::get_scene_params().implicit_dt = 0.2;;
+    lcs::get_scene_params().use_floor = true;
+    lcs::get_scene_params().implicit_dt = 0.01;;
     lcs::get_scene_params().num_substep = 1;
-    lcs::get_scene_params().nonlinear_iter_count = 10;
+    lcs::get_scene_params().nonlinear_iter_count = 1;
     lcs::get_scene_params().pcg_iter_count = 200;
-    lcs::get_scene_params().use_ccd_linesearch = true;
-    lcs::get_scene_params().use_self_collision = true;
+    lcs::get_scene_params().use_ccd_linesearch = false;
+    lcs::get_scene_params().use_self_collision = false;
     lcs::get_scene_params().use_energy_linesearch = false;
 }
 void moving_vf_unit(std::vector<lcs::Initializer::ShellInfo>& shell_list)
@@ -306,7 +311,7 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     const uint case_number = 
-        3
+        5
     ;
 
     switch (case_number)
