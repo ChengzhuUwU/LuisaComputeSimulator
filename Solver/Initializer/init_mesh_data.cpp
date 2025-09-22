@@ -92,6 +92,7 @@ void init_mesh_data(
     {
         mesh_data->sa_rest_x.resize(num_verts);
         mesh_data->sa_model_x.resize(num_verts);
+        mesh_data->sa_scaled_model_x.resize(num_verts);
         mesh_data->sa_faces.resize(num_faces);
         mesh_data->sa_edges.resize(num_edges);
         mesh_data->sa_dihedral_edges.resize(num_dihedral_edges);
@@ -131,6 +132,7 @@ void init_mesh_data(
                 float4x4 model_matrix = lcs::make_model_matrix(curr_shell_info.translation, curr_shell_info.rotation, curr_shell_info.scale);
                 float3 world_position = lcs::affine_position(model_matrix, model_position);
                 mesh_data->sa_model_x[prefix_num_verts + vid] = model_position;
+                mesh_data->sa_scaled_model_x[prefix_num_verts + vid] = curr_shell_info.scale * model_position;
                 mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
                 mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
                 mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
@@ -440,6 +442,7 @@ void upload_mesh_buffers(
         << upload_buffer(device, output_data->sa_rest_rotation, input_data->sa_rest_rotation)
         << upload_buffer(device, output_data->sa_rest_scale, input_data->sa_rest_scale)
         << upload_buffer(device, output_data->sa_model_x, input_data->sa_model_x)
+        << upload_buffer(device, output_data->sa_scaled_model_x, input_data->sa_scaled_model_x)
         
         << upload_buffer(device, output_data->sa_rest_x, input_data->sa_rest_x)
         << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)

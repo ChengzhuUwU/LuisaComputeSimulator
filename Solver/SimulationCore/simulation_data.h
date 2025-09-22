@@ -41,11 +41,11 @@ struct SimulationData : SimulationType
     BufferType<float> sa_bending_edges_rest_angle;
     BufferType<float4x4> sa_bending_edges_Q;
     
+    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<uint> sa_vert_affine_bodies_id;
     BufferType<uint> sa_affine_bodies;
     BufferType<float> sa_affine_bodies_volume;
     BufferType<float3x3> sa_affine_bodies_mass_matrix_diag;
-    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<float3x3> sa_affine_bodies_mass_matrix_compressed_offdiag;
     BufferType<float3> sa_affine_bodies_rest_q;
     BufferType<float3> sa_affine_bodies_rest_q_v;
@@ -55,6 +55,7 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_affine_bodies_q_tilde;
     BufferType<float3> sa_affine_bodies_q_iter_start;
     BufferType<float3> sa_affine_bodies_q_step_start;
+    
 
     BufferType<float3> sa_affine_bodies_q_outer;
     BufferType<float3> sa_affine_bodies_q_v_outer;

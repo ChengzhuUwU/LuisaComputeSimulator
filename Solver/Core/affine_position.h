@@ -114,6 +114,9 @@ inline luisa::float3 affine_position(const luisa::float4x4& model_matrix, const 
     return luisa::make_float3(mult_position[0], mult_position[1], mult_position[2]);
 }
 
+namespace AffineBodyDynamics 
+{
+    
 inline Eigen::Matrix<float, 3, 12> get_jacobian_dxdq(const luisa::float3& model_position)
 {
     Eigen::Matrix<float, 3, 12> J = Eigen::Matrix<float, 3, 12>::Zero();
@@ -210,5 +213,8 @@ inline auto affine_Jacobian_to_hessian(const Vec& X1, const Vec& X2, const Mat& 
     output_hessian[8] = hessian[2][1] * outer_product(X1, X2);
 
 }
+
+}
+
 
 }

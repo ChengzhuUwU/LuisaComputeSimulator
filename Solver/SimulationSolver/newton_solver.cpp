@@ -1011,13 +1011,13 @@ void NewtonSolver::host_evaluate_ground_collision()
                 float area = sa_rest_vert_area[vid];
                 float stiff = 1e9f * area;
                 float k1 = stiff * C;
-                float3 model_x = host_mesh_data->sa_model_x[vid];
+                float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
                 float3 force = stiff * C * normal;
                 float3x3 hessian = stiff * outer_product(normal, normal);
                 {
                     float3x3 curr_hessian[10]; float3 curr_force[4];
-                    affine_Jacobian_to_gradient(model_x, force, curr_force);
-                    affine_Jacobian_to_hessian(model_x, model_x, hessian, curr_hessian);
+                    AffineBodyDynamics::affine_Jacobian_to_gradient(model_x, force, curr_force);
+                    AffineBodyDynamics::affine_Jacobian_to_hessian(model_x, model_x, hessian, curr_hessian);
                     for (uint jj = 0; jj < 4; jj++) { body_force[jj] += curr_force[jj]; }
                     for (uint jj = 0; jj < 10; jj++) { body_hessian[jj] = body_hessian[jj] + curr_hessian[jj]; }
                     // for (uint jj = 0; jj < 4; jj++) { luisa::log_info("For vert {} : force = {}", vid, curr_force[jj]); }
@@ -1122,10 +1122,10 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                         float area = host_mesh_data->sa_rest_vert_area[vid];
                         float stiff = 1e9f * area;
                         float k1 = stiff * C;
-                        float3 model_x = host_mesh_data->sa_model_x[vid];
+                        float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
                         float3 force = stiff * C * normal;
                         float3x3 hessian = stiff * outer_product(normal, normal);
-                        auto J = get_jacobian_dxdq(model_x);
+                        auto J = AffineBodyDynamics::get_jacobian_dxdq(model_x);
                         cgB += J.transpose() * float3_to_eigen3(force);
                         cgA += J.transpose() * float3x3_to_eigen3x3(hessian) * J;
                         //  0   1   2   3
@@ -2213,8 +2213,8 @@ void NewtonSolver::host_apply_dx(const float alpha)
         {
             const uint body_idx = host_sim_data->sa_vert_affine_bodies_id[vid];
             float3 p; float3x3 A;
-            extract_Ap_from_q(&host_sim_data->sa_affine_bodies_q[4 * body_idx], A, p);
-            const float3 rest_x = host_mesh_data->sa_model_x[vid];
+            AffineBodyDynamics::extract_Ap_from_q(&host_sim_data->sa_affine_bodies_q[4 * body_idx], A, p);
+            const float3 rest_x = host_mesh_data->sa_scaled_model_x[vid];
             const float3 affine_x = A * rest_x + p; // Affine position
             host_sim_data->sa_x[vid] = affine_x;
             // luisa::log_info("Rigid Body {}'s Vert {} apply transform, from {} to {}", body_idx, vid, rest_x, affine_x);

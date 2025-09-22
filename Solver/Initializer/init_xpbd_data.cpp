@@ -236,16 +236,17 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         {
             const uint meshIdx = affine_body_indices[body_idx];
             xpbd_data->sa_affine_bodies[body_idx] = meshIdx;
+
             {
                 float3 init_translation = mesh_data->sa_rest_translate[meshIdx];
                 float3 init_rotation = mesh_data->sa_rest_rotation[meshIdx];
-                float3 init_scale = mesh_data->sa_rest_scale[meshIdx];
+                // float3 init_scale = mesh_data->sa_rest_scale[meshIdx];
+                float3 init_scale = luisa::make_float3(1.0f); // Since we use |AAT-I|
                 float4x4 init_transform_matrix = lcs::make_model_matrix(init_translation, init_rotation, init_scale);
-                float4x3 rest_q = extract_q_from_affine_matrix(init_transform_matrix);;
-                // float3 fake_pos(1,2,3);
-                // float3 pos1 = (init_transform_matrix * luisa::make_float4(fake_pos, 1.0f)).xyz();
-                // float3 pos2 = (luisa::make_float3x3(rest_q[1], rest_q[2], rest_q[3]) * fake_pos) + rest_q[0];
-                // luisa::log_info("Affined delta = {} ( = {} / {})", pos1 - pos2, pos1, pos2);
+                float4x3 rest_q = AffineBodyDynamics::extract_q_from_affine_matrix(init_transform_matrix);;
+                float3x3 init_A; float3 init_p;
+                AffineBodyDynamics::extract_Ap_from_q(rest_q.cols, init_A, init_p);
+                // luisa::log_info("init p = {}, ATA-I={}, |ATA-I| = {}", init_p, init_A * luisa::transpose(init_A) - Identity3x3, luisa::transpose(init_A));
                 xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 0] = rest_q[0]; // = init_transform_matrix[0].xyz()
                 xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 1] = rest_q[1]; // = init_transform_matrix[1].xyz()
                 xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 2] = rest_q[2]; // = init_transform_matrix[2].xyz()
@@ -254,8 +255,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 1] = Zero3;
                 xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 2] = Zero3;
                 xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 3] = Zero3;
-
-                luisa::log_info("Affine Body {} Rest q = {}", body_idx, rest_q);
+                // luisa::log_info("Affine Body {} Rest q = {}", body_idx, rest_q);
             }
 
             const uint curr_prefix = mesh_data->prefix_num_verts[meshIdx];
@@ -266,28 +266,17 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
             CpuParallel::single_thread_for(curr_prefix, next_prefix, [&](const uint vid)
             {
                 float mass = mesh_data->sa_vert_mass[vid];
-                float3 rest_x = mesh_data->sa_model_x[vid];
-                auto J = get_jacobian_dxdq(rest_x);
+                float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
+                auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
                 // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
                 body_mass += mass * J.transpose() * J;
             });
-            body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
-
             // TODO: weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
-
-            // const float total_mass = 1e3f;
-            // const float total_I = 1e2f;
-            // EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
-            // body_mass.block<3, 3>(0, 0) = total_mass * EigenFloat3x3::Identity();
-            // body_mass.block<3, 3>(3, 3) = total_I * EigenFloat3x3::Identity();
-            // body_mass.block<3, 3>(6, 6) = total_I * EigenFloat3x3::Identity();
-            // body_mass.block<3, 3>(9, 9) = total_I * EigenFloat3x3::Identity();
-            
-            xpbd_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
-            // }, [](const EigenFloat12x12& left, const EigenFloat12x12& right) { return left + right; }, EigenFloat12x12::Zero());
-
+            std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
+            std::cout << "Sum of mass = \n" << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f) << std::endl;
             // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
             // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
+            xpbd_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
             xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0] = eigen3x3_to_float3x3(body_mass.block<3, 3>(0, 0));
             xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1] = eigen3x3_to_float3x3(body_mass.block<3, 3>(3, 3));
             xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2] = eigen3x3_to_float3x3(body_mass.block<3, 3>(6, 6));
@@ -297,6 +286,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 eigen3_to_float3(body_mass.block<3, 1>(6, 1)),
                 eigen3_to_float3(body_mass.block<3, 1>(9, 2))
             );
+            body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
 
             float area = CpuParallel::parallel_for_and_reduce_sum<float>(curr_prefix, next_prefix, [&](const uint vid)
             {
@@ -308,30 +298,22 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
             
             const float defulat_density = 10.0f;
             xpbd_data->sa_affine_bodies_volume[body_idx] = area;
-            // xpbd_data->sa_affine_bodies_mass[body_idx] = area_mass[1];
 
             EigenFloat12 gravity_sum = EigenFloat12::Zero(); 
             CpuParallel::single_thread_for(curr_prefix, next_prefix, [&](const uint vid)
             {
                 float mass = mesh_data->sa_vert_mass[vid];
                 float3 rest_x = mesh_data->sa_model_x[vid];
-                auto J = get_jacobian_dxdq(rest_x);
-                // std::cout << "Gravity of vert " << vid << " = " << (mass * J.transpose() * float3_to_eigen3(luisa::make_float3(0, -9.8, 0))).transpose() << std::endl;
+                auto J = AffineBodyDynamics::get_jacobian_dxdq(rest_x);
                 gravity_sum += mass * J.transpose() * float3_to_eigen3(luisa::make_float3(0, -9.8, 0));
-                // luisa::log_info("Mass of vert {} = {}", vid, mass);
-                // return affine_Jacobian_to_gradient(rest_x, mass * luisa::make_float3(0, -9.8f, 0.0f));
             }) ; // / area_mass[1];
-            
-            // tmp.block<3, 1>(0, 0) = float3_to_eigen3(gravity_sum[0]);
-            // tmp.block<3, 1>(3, 0) = float3_to_eigen3(gravity_sum[1]);
-            // tmp.block<3, 1>(6, 0) = float3_to_eigen3(gravity_sum[2]);
-            // tmp.block<3, 1>(9, 0) = float3_to_eigen3(gravity_sum[3]);
+
             EigenFloat12 body_gravity = body_mass.inverse() * gravity_sum;
             xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 0] = eigen3_to_float3(body_gravity.block<3, 1>(0, 0));
             xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 1] = eigen3_to_float3(body_gravity.block<3, 1>(3, 0));
             xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 2] = eigen3_to_float3(body_gravity.block<3, 1>(6, 0));
             xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 3] = eigen3_to_float3(body_gravity.block<3, 1>(9, 0));
-            luisa::log_info("Affine body {} : Area = {}, Gravity = {}", body_idx, area, body_gravity);
+            // luisa::log_info("Affine body {} : Area = {}, Gravity = {}", body_idx, area, body_gravity);
         });
 
         CpuParallel::parallel_copy(xpbd_data->sa_affine_bodies_rest_q, xpbd_data->sa_affine_bodies_q_outer);
