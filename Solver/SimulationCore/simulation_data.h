@@ -14,6 +14,86 @@ namespace lcs
 {
 
 template<template<typename...> typename BufferType>
+struct ColoredData : SimulationType
+{
+    // Merged constraints
+    BufferType<uint2> sa_merged_stretch_springs; 
+    BufferType<float> sa_merged_stretch_spring_rest_length;
+
+    BufferType<uint4> sa_merged_bending_edges; 
+    BufferType<float> sa_merged_bending_edges_angle;
+    BufferType<float4x4> sa_merged_bending_edges_Q;
+
+    // Coloring
+    // Spring constraint
+    uint num_clusters_springs = 0;
+    BufferType<uint> sa_clusterd_springs; 
+    BufferType<uint> sa_prefix_merged_springs;
+    BufferType<float> sa_lambda_stretch_mass_spring;
+
+    // Bending constraint
+    uint num_clusters_bending_edges = 0;
+    BufferType<uint> sa_clusterd_bending_edges; 
+    BufferType<uint> sa_prefix_merged_bending_edges; 
+    BufferType<float> sa_lambda_bending;
+
+    // Hessian non-conflict set
+    uint num_clusters_hessian_pairs = 0;
+    BufferType<uint2> sa_hessian_pairs; // Constaints the needed hessian pair 
+    BufferType<uint> sa_clusterd_hessian_pairs;
+    BufferType<uint> sa_hessian_slot_per_edge; 
+    BufferType<uint2> sa_merged_hessian_pairs; // TODO
+    BufferType<uint> sa_prefix_merged_hessian_pairs; // TODO
+    BufferType<uint> sa_merged_hessian_slot_per_edge; // TODO
+    // BufferType<uint> sa_clusterd_hessian_slot_per_dehedral_angle; 
+    // BufferType<uint> sa_clusterd_hessian_slot_per_triangle; 
+
+    // VBD
+    uint num_clusters_per_vertex_with_material_constraints = 0; 
+    BufferType<uint> prefix_per_vertex_with_material_constraints; 
+    BufferType<uint> clusterd_per_vertex_with_material_constraints; 
+    BufferType<uint> per_vertex_bending_cluster_id; // ubyte
+};
+
+template<template<typename...> typename BufferType>
+struct AffineBodyData : SimulationType
+{
+    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
+    BufferType<uint> sa_vert_affine_bodies_id;
+    BufferType<uint> sa_affine_bodies;
+    BufferType<float> sa_affine_bodies_volume;
+    BufferType<float3x3> sa_affine_bodies_mass_matrix_diag;
+    BufferType<float3x3> sa_affine_bodies_mass_matrix_compressed_offdiag;
+    BufferType<float3> sa_affine_bodies_rest_q;
+    BufferType<float3> sa_affine_bodies_rest_q_v;
+    BufferType<float3> sa_affine_bodies_gravity;
+    BufferType<float3> sa_affine_bodies_q;
+    BufferType<float3> sa_affine_bodies_q_v;
+    BufferType<float3> sa_affine_bodies_q_tilde;
+    BufferType<float3> sa_affine_bodies_q_iter_start;
+    BufferType<float3> sa_affine_bodies_q_step_start;
+
+    BufferType<float3> sa_affine_bodies_q_outer;
+    BufferType<float3> sa_affine_bodies_q_v_outer;
+};
+
+template<template<typename...> typename BufferType>
+struct PcgData : SimulationType
+{
+    // PCG
+    BufferType<float3> sa_cgX;
+    BufferType<float3> sa_cgB;
+    BufferType<float3x3> sa_cgA_diag;
+    BufferType<float3x3> sa_cgMinv;
+    BufferType<float3> sa_cgP;
+    BufferType<float3> sa_cgQ;
+    BufferType<float3> sa_cgR;
+    BufferType<float3> sa_cgZ;
+    BufferType<float> sa_block_result;
+    BufferType<float> sa_convergence;
+};
+
+template<template<typename...> typename BufferType>
 struct SimulationData : SimulationType
 {
     // template<typename T>
@@ -59,44 +139,8 @@ struct SimulationData : SimulationType
 
     BufferType<float3> sa_affine_bodies_q_outer;
     BufferType<float3> sa_affine_bodies_q_v_outer;
-    
-    // Merged constraints
-    BufferType<uint2> sa_merged_stretch_springs; 
-    BufferType<float> sa_merged_stretch_spring_rest_length;
 
-    BufferType<uint4> sa_merged_bending_edges; 
-    BufferType<float> sa_merged_bending_edges_angle;
-    BufferType<float4x4> sa_merged_bending_edges_Q;
-
-    // Coloring
-    // Spring constraint
-    uint num_clusters_springs = 0;
-    BufferType<uint> sa_clusterd_springs; 
-    BufferType<uint> sa_prefix_merged_springs;
-    BufferType<float> sa_lambda_stretch_mass_spring;
-
-    // Bending constraint
-    uint num_clusters_bending_edges = 0;
-    BufferType<uint> sa_clusterd_bending_edges; 
-    BufferType<uint> sa_prefix_merged_bending_edges; 
-    BufferType<float> sa_lambda_bending;
-
-    // Hessian non-conflict set
-    uint num_clusters_hessian_pairs = 0;
-    BufferType<uint2> sa_hessian_pairs; // Constaints the needed hessian pair 
-    BufferType<uint> sa_clusterd_hessian_pairs;
-    BufferType<uint> sa_hessian_slot_per_edge; 
-    BufferType<uint2> sa_merged_hessian_pairs; // TODO
-    BufferType<uint> sa_prefix_merged_hessian_pairs; // TODO
-    BufferType<uint> sa_merged_hessian_slot_per_edge; // TODO
-    // BufferType<uint> sa_clusterd_hessian_slot_per_dehedral_angle; 
-    // BufferType<uint> sa_clusterd_hessian_slot_per_triangle; 
-
-    // VBD
-    uint num_clusters_per_vertex_with_material_constraints = 0; 
-    BufferType<uint> prefix_per_vertex_with_material_constraints; 
-    BufferType<uint> clusterd_per_vertex_with_material_constraints; 
-    BufferType<uint> per_vertex_bending_cluster_id; // ubyte
+    ColoredData<BufferType> colored_data;
     
     BufferType<float> sa_Hf; 
     BufferType<float4x3> sa_Hf1; 

@@ -403,6 +403,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         {
             std::vector<uint>& adj_list = xpbd_data->vert_adj_material_force_verts[vid];
             std::sort(adj_list.begin(), adj_list.end());
+            if (adj_list.size() > 255) LUISA_ERROR("Adjacent count out of range {}");
         });
         upload_2d_csr_from(xpbd_data->sa_vert_adj_material_force_verts_csr, xpbd_data->vert_adj_material_force_verts);
     }
@@ -410,6 +411,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     // Constraint Graph Coloring
     std::vector< std::vector<uint> > tmp_clusterd_constraint_stretch_mass_spring;
     std::vector< std::vector<uint> > tmp_clusterd_constraint_bending;
+    auto* colored_data = &xpbd_data->colored_data;
     {
         fn_graph_coloring_per_constraint(
             "Distance  Spring Constraint", 
@@ -421,14 +423,14 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
             tmp_clusterd_constraint_bending, 
             xpbd_data->vert_adj_bending_edges, xpbd_data->sa_bending_edges, 4);
             
-        xpbd_data->num_clusters_springs = tmp_clusterd_constraint_stretch_mass_spring.size();
-        xpbd_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
+        colored_data->num_clusters_springs = tmp_clusterd_constraint_stretch_mass_spring.size();
+        colored_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
 
-        fn_get_prefix(xpbd_data->sa_prefix_merged_springs, tmp_clusterd_constraint_stretch_mass_spring);
-        fn_get_prefix(xpbd_data->sa_prefix_merged_bending_edges, tmp_clusterd_constraint_bending);
+        fn_get_prefix(colored_data->sa_prefix_merged_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        fn_get_prefix(colored_data->sa_prefix_merged_bending_edges, tmp_clusterd_constraint_bending);
         
-        upload_2d_csr_from(xpbd_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
-        upload_2d_csr_from(xpbd_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
+        upload_2d_csr_from(colored_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        upload_2d_csr_from(colored_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
     }
 
     // Init Newton Coloring
@@ -456,10 +458,10 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
             tmp_clusterd_hessian_set, 
             vert_adj_upper_verts, upper_matrix_elements, 2);
         
-        upload_from(xpbd_data->sa_hessian_pairs, upper_matrix_elements);
-        xpbd_data->num_clusters_hessian_pairs = tmp_clusterd_hessian_set.size();
-        fn_get_prefix(xpbd_data->sa_prefix_merged_hessian_pairs, tmp_clusterd_hessian_set);
-        upload_2d_csr_from(xpbd_data->sa_clusterd_hessian_pairs, tmp_clusterd_hessian_set);
+        upload_from(colored_data->sa_hessian_pairs, upper_matrix_elements);
+        colored_data->num_clusters_hessian_pairs = tmp_clusterd_hessian_set.size();
+        fn_get_prefix(colored_data->sa_prefix_merged_hessian_pairs, tmp_clusterd_hessian_set);
+        upload_2d_csr_from(colored_data->sa_clusterd_hessian_pairs, tmp_clusterd_hessian_set);
 
         std::vector<std::vector<uint>> hessian_insert_indices(num_verts);
         CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
@@ -484,7 +486,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         });
         {
             const uint num_offdiag_upper = 1;
-            xpbd_data->sa_hessian_slot_per_edge.resize(num_stretch_springs * num_offdiag_upper);
+            colored_data->sa_hessian_slot_per_edge.resize(num_stretch_springs * num_offdiag_upper);
             CpuParallel::parallel_for(0, num_stretch_springs, [&](const uint eid)
             {
                 auto edge = xpbd_data->sa_stretch_springs[eid];
@@ -504,7 +506,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                         {
                             uint offset = std::distance(adj_list.begin(), find);
                             const uint adj_index = hessian_insert_indices[left][offset];
-                            xpbd_data->sa_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
+                            colored_data->sa_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
                             edge_offset += 1;
                         }
                     }
@@ -524,21 +526,21 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         std::vector<std::vector<uint>> clusterd_vertices_bending; std::vector<uint> prefix_vertices_bending;
 
         fn_graph_coloring_per_vertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
-        xpbd_data->num_clusters_per_vertex_with_material_constraints = clusterd_vertices_bending.size();
-        upload_from(xpbd_data->prefix_per_vertex_with_material_constraints, prefix_vertices_bending); 
-        upload_2d_csr_from(xpbd_data->clusterd_per_vertex_with_material_constraints, clusterd_vertices_bending);
+        colored_data->num_clusters_per_vertex_with_material_constraints = clusterd_vertices_bending.size();
+        upload_from(colored_data->prefix_per_vertex_with_material_constraints, prefix_vertices_bending); 
+        upload_2d_csr_from(colored_data->clusterd_per_vertex_with_material_constraints, clusterd_vertices_bending);
 
         // Reverse map
-        xpbd_data->per_vertex_bending_cluster_id.resize(mesh_data->num_verts);
-        for (uint cluster = 0; cluster < xpbd_data->num_clusters_per_vertex_with_material_constraints; cluster++)
+        colored_data->per_vertex_bending_cluster_id.resize(mesh_data->num_verts);
+        for (uint cluster = 0; cluster < colored_data->num_clusters_per_vertex_with_material_constraints; cluster++)
         {
-            const uint next_prefix = xpbd_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
-            const uint curr_prefix = xpbd_data->clusterd_per_vertex_with_material_constraints[cluster];
+            const uint next_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
+            const uint curr_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster];
             const uint num_verts_cluster = next_prefix - curr_prefix;
             CpuParallel::parallel_for(0, num_verts_cluster, [&](const uint i)
             {
-                const uint vid = xpbd_data->clusterd_per_vertex_with_material_constraints[curr_prefix + i];
-                xpbd_data->per_vertex_bending_cluster_id[vid] = cluster;
+                const uint vid = colored_data->clusterd_per_vertex_with_material_constraints[curr_prefix + i];
+                colored_data->per_vertex_bending_cluster_id[vid] = cluster;
             });
         }
         
@@ -548,9 +550,9 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     {
         // Spring Constraint
         {
-            xpbd_data->sa_merged_stretch_springs.resize(num_stretch_springs);
-            xpbd_data->sa_merged_stretch_spring_rest_length.resize(num_stretch_springs);
-            xpbd_data->sa_lambda_stretch_mass_spring.resize(num_stretch_springs);
+            colored_data->sa_merged_stretch_springs.resize(num_stretch_springs);
+            colored_data->sa_merged_stretch_spring_rest_length.resize(num_stretch_springs);
+            colored_data->sa_lambda_stretch_mass_spring.resize(num_stretch_springs);
 
             uint prefix = 0;
             for (uint cluster = 0; cluster < tmp_clusterd_constraint_stretch_mass_spring.size(); cluster++)
@@ -560,8 +562,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 {
                     const uint eid = curr_cluster[i];
                     {
-                        xpbd_data->sa_merged_stretch_springs[prefix + i] = xpbd_data->sa_stretch_springs[eid];
-                        xpbd_data->sa_merged_stretch_spring_rest_length[prefix + i] = xpbd_data->sa_stretch_spring_rest_state_length[eid];
+                        colored_data->sa_merged_stretch_springs[prefix + i] = xpbd_data->sa_stretch_springs[eid];
+                        colored_data->sa_merged_stretch_spring_rest_length[prefix + i] = xpbd_data->sa_stretch_spring_rest_state_length[eid];
                     }
                 });
                 prefix += curr_cluster.size();
@@ -570,10 +572,10 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
 
         // Bending Constraint
         {
-            xpbd_data->sa_merged_bending_edges.resize(num_bending_edges);
-            xpbd_data->sa_merged_bending_edges_angle.resize(num_bending_edges);
-            xpbd_data->sa_merged_bending_edges_Q.resize(num_bending_edges);
-            xpbd_data->sa_lambda_bending.resize(num_bending_edges);
+            colored_data->sa_merged_bending_edges.resize(num_bending_edges);
+            colored_data->sa_merged_bending_edges_angle.resize(num_bending_edges);
+            colored_data->sa_merged_bending_edges_Q.resize(num_bending_edges);
+            colored_data->sa_lambda_bending.resize(num_bending_edges);
 
             uint prefix = 0;
             for (uint cluster = 0; cluster < tmp_clusterd_constraint_bending.size(); cluster++)
@@ -583,9 +585,9 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 {
                     const uint eid = curr_cluster[i];
                     {
-                        xpbd_data->sa_merged_bending_edges[prefix + i] = xpbd_data->sa_bending_edges[eid];
-                        xpbd_data->sa_merged_bending_edges_angle[prefix + i] = xpbd_data->sa_bending_edges_rest_angle[eid];
-                        xpbd_data->sa_merged_bending_edges_Q[prefix + i] = xpbd_data->sa_bending_edges_Q[eid];
+                        colored_data->sa_merged_bending_edges[prefix + i] = xpbd_data->sa_bending_edges[eid];
+                        colored_data->sa_merged_bending_edges_angle[prefix + i] = xpbd_data->sa_bending_edges_rest_angle[eid];
+                        colored_data->sa_merged_bending_edges_Q[prefix + i] = xpbd_data->sa_bending_edges_Q[eid];
                     }
                 });
                 prefix += curr_cluster.size();
@@ -601,10 +603,10 @@ void upload_xpbd_buffers(
     lcs::SimulationData<std::vector>* input_data, 
     lcs::SimulationData<luisa::compute::Buffer>* output_data)
 {
-    output_data->num_clusters_springs = input_data->num_clusters_springs;
-    output_data->num_clusters_bending_edges = input_data->num_clusters_bending_edges;
-    output_data->num_clusters_per_vertex_with_material_constraints = input_data->num_clusters_per_vertex_with_material_constraints;
-    output_data->num_clusters_hessian_pairs= input_data->num_clusters_hessian_pairs;
+    output_data->colored_data.num_clusters_springs = input_data->colored_data.num_clusters_springs;
+    output_data->colored_data.num_clusters_bending_edges = input_data->colored_data.num_clusters_bending_edges;
+    output_data->colored_data.num_clusters_per_vertex_with_material_constraints = input_data->colored_data.num_clusters_per_vertex_with_material_constraints;
+    output_data->colored_data.num_clusters_hessian_pairs= input_data->colored_data.num_clusters_hessian_pairs;
 
     stream
         << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
@@ -622,8 +624,8 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
             << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
 
-            << upload_buffer(device, output_data->sa_merged_stretch_springs, input_data->sa_merged_stretch_springs)
-            << upload_buffer(device, output_data->sa_merged_stretch_spring_rest_length, input_data->sa_merged_stretch_spring_rest_length)
+            << upload_buffer(device, output_data->colored_data.sa_merged_stretch_springs, input_data->colored_data.sa_merged_stretch_springs)
+            << upload_buffer(device, output_data->colored_data.sa_merged_stretch_spring_rest_length, input_data->colored_data.sa_merged_stretch_spring_rest_length)
             ;
     }
     if (input_data->sa_stretch_faces.size() > 0)
@@ -632,9 +634,9 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
 
-            << upload_buffer(device, output_data->sa_clusterd_springs, input_data->sa_clusterd_springs)
-            << upload_buffer(device, output_data->sa_prefix_merged_springs, input_data->sa_prefix_merged_springs)
-            << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
+            << upload_buffer(device, output_data->colored_data.sa_clusterd_springs, input_data->colored_data.sa_clusterd_springs)
+            << upload_buffer(device, output_data->colored_data.sa_prefix_merged_springs, input_data->colored_data.sa_prefix_merged_springs)
+            << upload_buffer(device, output_data->colored_data.sa_lambda_stretch_mass_spring, input_data->colored_data.sa_lambda_stretch_mass_spring) // just resize
             ;
     }
     if (input_data->sa_bending_edges.size() > 0)
@@ -644,13 +646,13 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
             << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
 
-            << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
-            << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
-            << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
+            << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges, input_data->colored_data.sa_merged_bending_edges)
+            << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges_angle, input_data->colored_data.sa_merged_bending_edges_angle)
+            << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges_Q, input_data->colored_data.sa_merged_bending_edges_Q)
 
-            << upload_buffer(device, output_data->sa_clusterd_bending_edges, input_data->sa_clusterd_bending_edges)
-            << upload_buffer(device, output_data->sa_prefix_merged_bending_edges, input_data->sa_prefix_merged_bending_edges)
-            << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
+            << upload_buffer(device, output_data->colored_data.sa_clusterd_bending_edges, input_data->colored_data.sa_clusterd_bending_edges)
+            << upload_buffer(device, output_data->colored_data.sa_prefix_merged_bending_edges, input_data->colored_data.sa_prefix_merged_bending_edges)
+            << upload_buffer(device, output_data->colored_data.sa_lambda_bending, input_data->colored_data.sa_lambda_bending) // just resize
             ;
     }
     if (input_data->sa_affine_bodies.size() > 0)
@@ -671,13 +673,13 @@ void upload_xpbd_buffers(
         ;
     } 
     stream << upload_buffer(device, output_data->sa_vert_affine_bodies_id, input_data->sa_vert_affine_bodies_id); // Basic information
-    if (input_data->sa_hessian_pairs.size() > 0)
+    if (input_data->colored_data.sa_hessian_pairs.size() > 0)
     {
         stream 
-            << upload_buffer(device, output_data->sa_prefix_merged_hessian_pairs, input_data->sa_prefix_merged_hessian_pairs)
-            << upload_buffer(device, output_data->sa_clusterd_hessian_pairs, input_data->sa_clusterd_hessian_pairs)
-            << upload_buffer(device, output_data->sa_hessian_pairs, input_data->sa_hessian_pairs)
-            << upload_buffer(device, output_data->sa_hessian_slot_per_edge, input_data->sa_hessian_slot_per_edge)
+            << upload_buffer(device, output_data->colored_data.sa_prefix_merged_hessian_pairs, input_data->colored_data.sa_prefix_merged_hessian_pairs)
+            << upload_buffer(device, output_data->colored_data.sa_clusterd_hessian_pairs, input_data->colored_data.sa_clusterd_hessian_pairs)
+            << upload_buffer(device, output_data->colored_data.sa_hessian_pairs, input_data->colored_data.sa_hessian_pairs)
+            << upload_buffer(device, output_data->colored_data.sa_hessian_slot_per_edge, input_data->colored_data.sa_hessian_slot_per_edge)
         ;
     }
     stream
@@ -686,10 +688,10 @@ void upload_xpbd_buffers(
         << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr)
 
-        << upload_buffer(device, output_data->prefix_per_vertex_with_material_constraints, input_data->prefix_per_vertex_with_material_constraints)
-        << upload_buffer(device, output_data->clusterd_per_vertex_with_material_constraints, input_data->clusterd_per_vertex_with_material_constraints)
+        << upload_buffer(device, output_data->colored_data.prefix_per_vertex_with_material_constraints, input_data->colored_data.prefix_per_vertex_with_material_constraints)
+        << upload_buffer(device, output_data->colored_data.clusterd_per_vertex_with_material_constraints, input_data->colored_data.clusterd_per_vertex_with_material_constraints)
 
-        << upload_buffer(device, output_data->per_vertex_bending_cluster_id, input_data->per_vertex_bending_cluster_id)
+        << upload_buffer(device, output_data->colored_data.per_vertex_bending_cluster_id, input_data->colored_data.per_vertex_bending_cluster_id)
         << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
         << upload_buffer(device, output_data->sa_Hf1, input_data->sa_Hf1)
         << luisa::compute::synchronize();

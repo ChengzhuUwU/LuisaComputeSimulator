@@ -1257,9 +1257,9 @@ void NewtonSolver::host_evaluete_spring()
     // auto& sa_edges = host_mesh_data->sa_edges;
     // auto& sa_rest_length = host_mesh_data->sa_stretch_spring_rest_state_length;
     
-    auto& cluster = host_sim_data->sa_prefix_merged_springs;
+    auto& cluster = host_sim_data->colored_data.sa_prefix_merged_springs;
 
-    for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+    for (uint cluster_idx = 0; cluster_idx < host_sim_data->colored_data.num_clusters_springs; cluster_idx++) 
     {
         const uint curr_prefix = cluster[cluster_idx];
         const uint next_prefix = cluster[cluster_idx + 1];
@@ -1269,12 +1269,12 @@ void NewtonSolver::host_evaluete_spring()
         CpuParallel::parallel_for(0, num_elements_clustered, 
             [
                 sa_x = host_sim_data->sa_x.data(),
-                sa_edges = host_sim_data->sa_merged_stretch_springs.data(),
-                sa_rest_length = host_sim_data->sa_merged_stretch_spring_rest_length.data(),
+                sa_edges = host_sim_data->colored_data.sa_merged_stretch_springs.data(),
+                sa_rest_length = host_sim_data->colored_data.sa_merged_stretch_spring_rest_length.data(),
                 sa_cgB = host_sim_data->sa_cgB.data(),
                 sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
                 sa_cgA_offdiag_stretch_spring = host_sim_data->sa_cgA_offdiag_stretch_spring.data(),
-                cluster = host_sim_data->sa_clusterd_springs.data() + host_sim_data->num_clusters_springs + 1,
+                cluster = host_sim_data->colored_data.sa_clusterd_springs.data() + host_sim_data->colored_data.num_clusters_springs + 1,
                 curr_prefix, stiffness_stretch = get_scene_params().stiffness_spring
             ](const uint index)
         {
@@ -1390,8 +1390,8 @@ void NewtonSolver::host_evaluete_spring()
 }
 void NewtonSolver::host_evaluete_bending()
 {
-    auto& culster = host_sim_data->sa_prefix_merged_bending_edges;
-    for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_bending_edges; cluster_idx++) 
+    auto& culster = host_sim_data->colored_data.sa_prefix_merged_bending_edges;
+    for (uint cluster_idx = 0; cluster_idx < host_sim_data->colored_data.num_clusters_bending_edges; cluster_idx++) 
     {
         const uint curr_prefix = culster[cluster_idx];
         const uint next_prefix = culster[cluster_idx + 1];
@@ -1400,8 +1400,8 @@ void NewtonSolver::host_evaluete_bending()
         CpuParallel::parallel_for(0, num_elements_clustered, 
             [
                 sa_x = host_sim_data->sa_x.data(),
-                sa_bending_edges = host_sim_data->sa_merged_bending_edges.data(),
-                sa_bending_edges_Q = host_sim_data->sa_merged_bending_edges_Q.data(),
+                sa_bending_edges = host_sim_data->colored_data.sa_merged_bending_edges.data(),
+                sa_bending_edges_Q = host_sim_data->colored_data.sa_merged_bending_edges_Q.data(),
                 sa_cgB = host_sim_data->sa_cgB.data(),
                 sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
                 sa_cgA_offdiag_bending = host_sim_data->sa_cgA_offdiag_bending.data(),
@@ -1665,10 +1665,10 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
         // auto& cluster = host_xpbd_data->sa_clusterd_springs;
         // Stretch 6x6 offidag part
         {
-            auto& sa_edges = host_sim_data->sa_merged_stretch_springs;
-            auto& cluster = host_sim_data->sa_prefix_merged_springs;
+            auto& sa_edges = host_sim_data->colored_data.sa_merged_stretch_springs;
+            auto& cluster = host_sim_data->colored_data.sa_prefix_merged_springs;
             auto& off_diag_hessian_ptr = host_sim_data->sa_cgA_offdiag_stretch_spring;
-            for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_springs; cluster_idx++) 
+            for (uint cluster_idx = 0; cluster_idx < host_sim_data->colored_data.num_clusters_springs; cluster_idx++) 
             {
                 const uint curr_prefix = cluster[cluster_idx];
                 const uint next_prefix = cluster[cluster_idx + 1];
@@ -1693,12 +1693,12 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
         }
         // Bending 12x12 offdiag part
         {
-            auto& sa_bending_edges = host_sim_data->sa_merged_bending_edges;
-            auto& sa_bending_edges_Q = host_sim_data->sa_merged_bending_edges_Q;
-            auto& cluster = host_sim_data->sa_prefix_merged_bending_edges;
+            auto& sa_bending_edges = host_sim_data->colored_data.sa_merged_bending_edges;
+            auto& sa_bending_edges_Q = host_sim_data->colored_data.sa_merged_bending_edges_Q;
+            auto& cluster = host_sim_data->colored_data.sa_prefix_merged_bending_edges;
             auto& off_diag_hessian_ptr = host_sim_data->sa_cgA_offdiag_bending;
             const float stiffness_bending = get_scene_params().get_stiffness_quadratic_bending();
-            for (uint cluster_idx = 0; cluster_idx < host_sim_data->num_clusters_bending_edges; cluster_idx++) 
+            for (uint cluster_idx = 0; cluster_idx < host_sim_data->colored_data.num_clusters_bending_edges; cluster_idx++) 
             {
                 const uint curr_prefix = cluster[cluster_idx];
                 const uint next_prefix = cluster[cluster_idx + 1];
@@ -1814,7 +1814,7 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::functio
     {
         float3x3 offdiag1 = host_sim_data->sa_cgA_offdiag_stretch_spring[eid];
         float3x3 offdiag2 = luisa::transpose(offdiag1);
-        uint2 edge = host_sim_data->sa_merged_stretch_springs[eid];
+        uint2 edge = host_sim_data->colored_data.sa_merged_stretch_springs[eid];
         eigen_A.block<3, 3>( edge[0] * 3, edge[1] * 3) += float3x3_to_eigen3x3(offdiag1);
         eigen_A.block<3, 3>( edge[1] * 3, edge[0] * 3) += float3x3_to_eigen3x3(offdiag2);
     }
@@ -1948,9 +1948,9 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
             });
     
             // Off-diag part
-            CpuParallel::single_thread_for(0, host_sim_data->sa_merged_stretch_springs.size(), 
+            CpuParallel::single_thread_for(0, host_sim_data->colored_data.sa_merged_stretch_springs.size(), 
                 [
-                    sa_edges = host_sim_data->sa_merged_stretch_springs.data(),
+                    sa_edges = host_sim_data->colored_data.sa_merged_stretch_springs.data(),
                     off_diag_hessian_ptr = host_sim_data->sa_cgA_offdiag_stretch_spring.data(),
                     ptr = ptr.data(),
                     adjacency = adjacency.data(),
@@ -1978,10 +1978,10 @@ void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream, std::functio
                 }
             });
     
-            CpuParallel::single_thread_for(0, host_sim_data->sa_merged_bending_edges.size(), 
+            CpuParallel::single_thread_for(0, host_sim_data->colored_data.sa_merged_bending_edges.size(), 
                 [
-                    sa_edges = host_sim_data->sa_merged_bending_edges.data(),
-                    sa_bending_edges_Q = host_sim_data->sa_merged_bending_edges_Q.data(),
+                    sa_edges = host_sim_data->colored_data.sa_merged_bending_edges.data(),
+                    sa_bending_edges_Q = host_sim_data->colored_data.sa_merged_bending_edges_Q.data(),
                     off_diag_hessian_ptr = host_sim_data->sa_cgA_offdiag_bending.data(),
                     stiffness_bending = get_scene_params().get_stiffness_quadratic_bending(),
                     ptr = ptr.data(),
