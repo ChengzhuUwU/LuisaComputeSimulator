@@ -1,4 +1,5 @@
 #include "SimulationCore/solver_interface.h"
+#include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -30,6 +31,11 @@ void SolverInterface::restart_system()
 
         auto rest_vel = host_mesh_data->sa_rest_v[vid];
         host_mesh_data->sa_v_frame_outer[vid] = rest_vel;
+    });
+    CpuParallel::parallel_for(0, host_sim_data->sa_affine_bodies.size() * 4, [&](const uint bid)
+    {
+        host_sim_data->sa_affine_bodies_q_outer[bid] = host_sim_data->sa_affine_bodies_rest_q[bid];
+        host_sim_data->sa_affine_bodies_q_v_outer[bid] = host_sim_data->sa_affine_bodies_rest_q_v[bid];
     });
 }
 void SolverInterface::save_current_frame_state()
@@ -485,7 +491,7 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
         };
     }, default_option);
 
-    fn_calc_energy_spring = device.compile<1>(
+    if (host_sim_data->sa_stretch_springs.size() > 0) fn_calc_energy_spring = device.compile<1>(
         [
             sa_edges = sim_data->sa_stretch_springs.view(),
             sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
@@ -516,7 +522,7 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
         };
     }, default_option);
 
-    fn_calc_energy_bending = device.compile<1>(
+    if (host_sim_data->sa_bending_edges.size() > 0) fn_calc_energy_bending = device.compile<1>(
         [
             sa_edges = sim_data->sa_bending_edges.view(),
             sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),

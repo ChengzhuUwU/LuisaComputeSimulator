@@ -3,6 +3,7 @@
 #include <Eigen/Dense>
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
+#include "Core/xbasic_types.h"
 
 namespace lcs
 {
@@ -109,6 +110,30 @@ inline float12x12 eigen12x12_to_float12x12(const EigenFloat9x9& input)
         }
     }
     return output;
+};
+
+inline EigenFloat12 float4x3_to_eigen12(const float4x3& input)
+{
+    EigenFloat12 mat; mat << 
+        input[0][0], 
+        input[0][1], 
+        input[0][2], 
+        input[1][0], 
+        input[1][1], 
+        input[1][2], 
+        input[2][0], 
+        input[2][1], 
+        input[2][2]; 
+    return mat;
+};
+inline float4x3 eigen12_to_float4x3(const EigenFloat12& input)
+{
+    return makeFloat4x3(
+        luisa::make_float3(input(0), input(1), input(2)), 
+        luisa::make_float3(input(3), input(4), input(5)), 
+        luisa::make_float3(input(6), input(7), input(8)),
+        luisa::make_float3(input(9), input(10), input(11))
+    );
 };
 
 // SPD projection

@@ -25,3 +25,4 @@ imgui.ini
 ext/*
 !ext/xmake.lua
 !.vscode/settings.json.for_xmake
+.obsidian

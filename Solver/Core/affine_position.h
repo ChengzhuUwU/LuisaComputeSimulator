@@ -1,7 +1,9 @@
 #pragma once
 
 #include <luisa/luisa-compute.h>
+#include "Core/lc_to_eigen.h"
 #include "Core/xbasic_types.h"
+#include "Core/float_nxn.h"
 
 namespace lcs 
 {
@@ -112,24 +114,56 @@ inline luisa::float3 affine_position(const luisa::float4x4& model_matrix, const 
     return luisa::make_float3(mult_position[0], mult_position[1], mult_position[2]);
 }
 
+namespace AffineBodyDynamics 
+{
+    
+inline Eigen::Matrix<float, 3, 12> get_jacobian_dxdq(const luisa::float3& model_position)
+{
+    Eigen::Matrix<float, 3, 12> J = Eigen::Matrix<float, 3, 12>::Zero();
+    J.block<3, 3>(0, 0) = float3x3_to_eigen3x3(Identity3x3);
+    J.block<3, 3>(0, 3) = float3x3_to_eigen3x3(luisa::transpose(float3x3(model_position, Zero3,  Zero3)));
+    J.block<3, 3>(0, 6) = float3x3_to_eigen3x3(luisa::transpose(float3x3(Zero3,  model_position, Zero3)));
+    J.block<3, 3>(0, 9) = float3x3_to_eigen3x3(luisa::transpose(float3x3(Zero3,  Zero3,  model_position)));
+    return J;
+}
 inline auto extract_q_from_affine_matrix(const luisa::float4x4& A)
 {
     float4x3 q;
-    q.cols[0] = A[0].xyz();
-    q.cols[1] = A[1].xyz();
-    q.cols[2] = A[2].xyz();
-    q.cols[3] = A[3].xyz();
+    q.cols[0] = A[3].xyz();
+    auto T = luisa::transpose(A);
+    q.cols[1] = T[0].xyz();
+    q.cols[2] = T[1].xyz();
+    q.cols[3] = T[2].xyz();
     return q;
 }
 inline auto extract_q_from_affine_matrix(const Var<luisa::float4x4>& A)
 {
     Var<float4x3> q;
-    q.cols[0] = A[0].xyz();
-    q.cols[1] = A[1].xyz();
-    q.cols[2] = A[2].xyz();
-    q.cols[3] = A[3].xyz();
+    q.cols[0] = A[3].xyz();
+    auto T = luisa::compute::transpose(A);
+    q.cols[1] = T[0].xyz();
+    q.cols[2] = T[1].xyz();
+    q.cols[3] = T[2].xyz();
     return q;
 }
+
+inline void extract_Ap_from_q(const lcs::float4x3& q, float3x3& A, float3& p)
+{
+    p = q[0];
+    A[0] = q[1];
+    A[1] = q[2];
+    A[2] = q[3];
+    A = luisa::transpose(A);
+}
+inline void extract_Ap_from_q(const lcs::float3* q, float3x3& A, float3& p)
+{
+    p = q[0];
+    A[0] = q[1];
+    A[1] = q[2];
+    A[2] = q[3];
+    A = luisa::transpose(A);
+}
+
 template <typename Vec>
 inline auto affine_Jacobian_to_gradient(const Vec& rest_position, const Vec& vertex_force)
 {
@@ -140,5 +174,47 @@ inline auto affine_Jacobian_to_gradient(const Vec& rest_position, const Vec& ver
         vertex_force.z * rest_position
     );
 }
+template <typename Vec>
+inline auto affine_Jacobian_to_gradient(const Vec& model_position, const Vec& vertex_force, Vec output_force[4])
+{
+    output_force[0] = vertex_force;
+    output_force[1] = vertex_force.x * model_position;
+    output_force[2] = vertex_force.y * model_position;
+    output_force[3] = vertex_force.z * model_position;
+}
+template <typename Vec, typename Mat>
+inline auto affine_Jacobian_to_hessian(const Vec& X1, const Vec& X2, const Mat& hessian, Mat output_hessian[10])
+{
+    //  0            1            2          3
+    // t1            4            5          6
+    // t2           t5            7          8
+    // t3           t6           t8          9 
+    // 
+    //  H           H.c1 * x2T   H.c2 * x2T  H.c3 * x2T
+    //  x1 * H.r1   H11*x1*x2T   H12*x1*x2T  H13*x1*x2T 
+    //  x1 * H.r2   H21*x1*x2T   H22*x1*x2T  H23*x1*x2T
+    //  x1 * H.r3   H31*x1*x2T   H32*x1*x2T  H33*x1*x2T
+
+    // Diag
+    Mat x1x2T = outer_product(X1, X2);
+    output_hessian[0] = hessian;
+    output_hessian[4] = hessian[0][0] * x1x2T;
+    output_hessian[7] = hessian[1][1] * x1x2T;
+    output_hessian[9] = hessian[2][2] * x1x2T;
+
+    // Offi-diag
+    Mat trans = transpose_mat(hessian);
+    output_hessian[1] = outer_product(trans[0], X2);
+    output_hessian[2] = outer_product(trans[1], X2);
+    output_hessian[3] = outer_product(trans[2], X2);
+
+    output_hessian[5] = hessian[1][0] * outer_product(X1, X2);
+    output_hessian[6] = hessian[2][0] * outer_product(X1, X2);
+    output_hessian[8] = hessian[2][1] * outer_product(X1, X2);
+
+}
+
+}
+
 
 }

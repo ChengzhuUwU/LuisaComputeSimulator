@@ -63,34 +63,79 @@ void ccd_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().use_self_collision = true;
     lcs::get_scene_params().use_energy_linesearch = true;
 }
-void rigid_body_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
+void rigid_body_cube_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({
-        .model_name = obj_mesh_path + "square2.obj",
-        // .fixed_point_list = {
-        //     lcs::Initializer::FixedPointInfo{
-        //         .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.z > 0.999f  && norm_pos.x < 0.001f; },
-        //     },
-        // },
+        // .model_name = obj_mesh_path + "square2.obj",
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0, 0.2, 0),
+        .rotation = luisa::make_float3(lcs::Pi/6, 0, lcs::Pi/6),
+        .scale = luisa::make_float3(0.1),
         .shell_type = lcs::Initializer::ShellTypeRigid
     });
     shell_list.push_back({
-        .model_name = obj_mesh_path + "square2.obj",
-        .translation = luisa::make_float3(0.1, -0.3, 0),
-        .fixed_point_list = {
-            lcs::Initializer::FixedPointInfo{
-                .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
-            },
-        }
+        // .model_name = obj_mesh_path + "square2.obj",
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0.6, 0.4, 0),
+        .rotation = luisa::make_float3(lcs::Pi/6, 0, lcs::Pi/3),
+        .scale = luisa::make_float3(0.2),
+        .shell_type = lcs::Initializer::ShellTypeRigid
     });
-    
-    lcs::get_scene_params().use_floor = false;
-    lcs::get_scene_params().implicit_dt = 0.2;;
+    shell_list.push_back({
+        // .model_name = obj_mesh_path + "square2.obj",
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0.9, 0.6, 0),
+        .rotation = luisa::make_float3(lcs::Pi/3, lcs::Pi/6, 0),
+        .scale = luisa::make_float3(0.5),
+        .shell_type = lcs::Initializer::ShellTypeRigid
+    });
+    // shell_list.push_back({
+    //     .model_name = obj_mesh_path + "square2.obj",
+    //     .translation = luisa::make_float3(0.1, 0.2, 0),
+    //     .fixed_point_list = {
+    //         lcs::Initializer::FixedPointInfo{
+    //             .is_fixed_point_func = [](const luisa::float3& norm_pos) { return norm_pos.x < 0.001f || norm_pos.x > 0.999; },
+    //         },
+    //     }
+    // });
+    lcs::get_scene_params().use_gpu = false;
+    lcs::get_scene_params().use_floor = true;
+    lcs::get_scene_params().implicit_dt = 0.01;;
     lcs::get_scene_params().num_substep = 1;
-    lcs::get_scene_params().nonlinear_iter_count = 10;
+    lcs::get_scene_params().nonlinear_iter_count = 2;
     lcs::get_scene_params().pcg_iter_count = 200;
-    lcs::get_scene_params().use_ccd_linesearch = true;
-    lcs::get_scene_params().use_self_collision = true;
+    lcs::get_scene_params().use_ccd_linesearch = false;
+    lcs::get_scene_params().use_self_collision = false;
+    lcs::get_scene_params().use_energy_linesearch = false;
+}
+void rigid_body_folding_cube_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
+{
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0, 0.9, 0),
+        .scale = luisa::make_float3(0.1),
+        .shell_type = lcs::Initializer::ShellTypeRigid
+    });
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0, 0.6, 0),
+        .scale = luisa::make_float3(0.2),
+        .shell_type = lcs::Initializer::ShellTypeRigid
+    });
+    shell_list.push_back({
+        .model_name = obj_mesh_path + "cube.obj",
+        .translation = luisa::make_float3(0, 0, 0),
+        .scale = luisa::make_float3(0.5),
+        .shell_type = lcs::Initializer::ShellTypeRigid
+    });
+    lcs::get_scene_params().use_gpu = false;
+    lcs::get_scene_params().use_floor = true;
+    lcs::get_scene_params().implicit_dt = 0.01;;
+    lcs::get_scene_params().num_substep = 1;
+    lcs::get_scene_params().nonlinear_iter_count = 2;
+    lcs::get_scene_params().pcg_iter_count = 200;
+    lcs::get_scene_params().use_ccd_linesearch = false;
+    lcs::get_scene_params().use_self_collision = false;
     lcs::get_scene_params().use_energy_linesearch = false;
 }
 void moving_vf_unit(std::vector<lcs::Initializer::ShellInfo>& shell_list)
@@ -295,12 +340,13 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
         }
     });
     lcs::get_scene_params().pcg_iter_count = 500;;
-    lcs::get_scene_params().nonlinear_iter_count = 6;
+    lcs::get_scene_params().nonlinear_iter_count = 3;
     lcs::get_scene_params().use_ccd_linesearch = true;
     lcs::get_scene_params().stiffness_bending_ui = 0.0;
     lcs::get_scene_params().use_self_collision = true;
     lcs::get_scene_params().use_energy_linesearch = false;
     lcs::get_scene_params().gravity = luisa::make_float3(0.0f);
+    lcs::get_scene_params().use_gpu = true;
     lcs::get_scene_params().use_floor = false;
 }
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
@@ -316,7 +362,8 @@ void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
         case 2: { moving_vf_unit(shell_list); break; };
         case 3: { ccd_rotation_cylinder(shell_list); break; };
         case 4: { energy_linesearch_vf_unit_case(shell_list); break; };
-        case 5: { rigid_body_vf_unit_case(shell_list); break; };
+        case 5: { rigid_body_cube_unit_case(shell_list); break; };
+        case 6: { rigid_body_folding_cube_case(shell_list); break; };
         case 8: { dcd_cloth_ball(shell_list); break; };
         case 9: { cloth_bottle4(shell_list); break; };
 

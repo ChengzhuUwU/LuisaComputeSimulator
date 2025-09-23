@@ -22,7 +22,11 @@ $$
 
 > So this is Gauss-Newton, which result in problem in some configurations, but this is enough for most cases.
 
-We can make a **quadratic** formulation of energy $E = \frac{1}{2} k (d-\hat{d})^2$ or a **log-barrier** formulation of energy $E = -(d - \hat{d})^2 \ln (\frac{d}{\hat{d}})$.
+We can use different type of contact energy, include: 
+
+- A **quadratic** formulation of energy $E = \frac{1}{2} k (d-\hat{d})^2$
+- A **log-barrier** formulation of energy $E = -(d - \hat{d})^2 \ln (\frac{d}{\hat{d}})$ 
+   - Or use Codimentional-IPC enhanced energy, which modeling the thickness $\epsilon$
 
 Then we have:
 
@@ -39,11 +43,11 @@ $$
 
 We set $k_1 = \partial E / \partial d$:
 - For quadratic formulation: $k_1 = k (d-\hat{d})$
-- For log-barrier formulation: $k_1 = \text{Refers to IPC toolkit lol}$
+- For log-barrier formulation: $k_1 = (\hat{d} - d)(2 \ln (\frac{d}{\hat{d}}) - \frac{\hat{d}}{d} + 1 )$
 
 And set $k_2 = \partial^2 E / \partial d^2$
 - For quadratic formulation: $k_2 = k$
-- For log-barrier formulation: $k_2 = \text{Refers to IPC toolkit lol}$
+- For log-barrier formulation: $k_2 = (\frac{\hat{d}}{d} + 2)\frac{\hat{d}}{d} - 2\ln (\frac{d}{\hat d}) -3$
 
 For $i$'s vertex in VF/EE pair:
 
@@ -217,7 +221,7 @@ We just need to calculate $\nabla E_{q_i}$ according to the formulation above.
 $$\nabla E_{q_i} 
 = J^T \textcolor{red}{g} 
 = J^T k_1 w_1 n
-= \begin{bmatrix}
+= k_1 \begin{bmatrix}
 n
 \\ n_{0} \overline{x} 
 \\ n_{1} \overline{x} 
@@ -479,9 +483,9 @@ $$ X_1 = \sum_{i \in \text{element}_1} |w_i| \overline{x}_i$$
 
 $$ X_2 = \sum_{i \in \text{element}_2} |w_i| \overline{x}_i$$
 
-(1) If $[\text{element}_1, \text{element}_2]$ are both from rigid body:
+If $[\text{element}_1, \text{element}_2]$ are both from rigid body, We can summurize the contribution of each part:
 
-We can summurize the contribution of each part:
+- (1) **Rigid - Rigid**:
 
 $$
 \begin{aligned}
@@ -519,7 +523,7 @@ $$
 
 Also, $\sum_{i} w_i$ is 1 (For $\text{V}, \text{E}_1$) or -1 (For $\text{F}, \text{E}_2$).
 
-(2) One of the element in $[\text{element}_1, \text{element}_2]$ is from soft body and another is from rigid body:
+If one of the element in $[\text{element}_1, \text{element}_2]$ is from soft body and another is from rigid body:
 
 This situation can only happen between bodies, so $[\text{element}_1, \text{element}_2] \in [[V,F], [E_1,E_2]]$, thus: 
 
@@ -527,10 +531,10 @@ $$ \sum_{i \in \text{element}_1} w_i = 1, \sum_{j \in \text{element}_2} w_j = -1
 
 The situation can formed as the first blocked row or column in the hessian above. 
 
-- **Soft - Rigid**:
+- (2) **Soft - Rigid**:
 $$
 \begin{aligned}
-& \sum_{j \in \text{element}_2}  \nabla^2 E_{q_i, q_j} 
+&  \sum_{i \in \text{element}_1} \sum_{j \in \text{element}_2}  \nabla^2 E_{q_i, q_j} 
 \\ =& 
 (\sum_{j \in \text{element}_2} w_j) \begin{bmatrix}
 nn^T
@@ -546,17 +550,17 @@ n \\ n_1 X_2 \\ n_2 X_2 \\ n_3 X_2
 \end{aligned}
 $$
 
-- **Rigid - Soft**:
+- (3) **Rigid - Soft**:
 $$
 \begin{aligned}
-& \sum_{i \in \text{element}_1} \nabla^2 E_{q_i, q_j} 
+& \sum_{i \in \text{element}_1} \sum_{j \in \text{element}_2} \nabla^2 E_{q_i, q_j} 
 \\ =& 
 (\sum_{i \in \text{element}_1} w_i) \begin{bmatrix}
 H
 \\ n_1 X_1 n^T
 \\ n_2 X_1 n^T
 \\ n_3 X_1 n^T
-\end{bmatrix} \in R^{3 \times 12} \\
+\end{bmatrix} \in R^{12 \times 3} \\
 =& 
 -\begin{bmatrix}
 n \\ n_1 X_1 \\ n_2 X_1 \\ n_3 X_1

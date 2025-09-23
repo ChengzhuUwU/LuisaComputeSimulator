@@ -6,12 +6,12 @@
 namespace lcs
 {
 
-#define Identity2x2 make_float2x2(1.0f)
-#define Identity3x3 make_float3x3(1.0f)
-#define Identity4x4 make_float4x4(1.0f)
+#define Identity2x2 luisa::make_float2x2(1.0f)
+#define Identity3x3 luisa::make_float3x3(1.0f)
+#define Identity4x4 luisa::make_float4x4(1.0f)
 
-#define Zero3x3 make_float3x3(0.0f)
-#define Zero4x4 make_float4x4(0.0f)
+#define Zero3x3 luisa::make_float3x3(0.0f)
+#define Zero4x4 luisa::make_float4x4(0.0f)
 
 // makeFloat NxN
 // diag scalar

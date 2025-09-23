@@ -2,10 +2,12 @@
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
+#include "Core/lc_to_eigen.h"
 #include "Energy/bending_energy.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
+#include "luisa/core/logging.h"
 #include "luisa/core/mathematics.h"
 
 
@@ -31,7 +33,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     CpuParallel::parallel_for_and_scan(0, mesh_data->num_edges, [&](const uint eid)
     {
         uint2 edge = mesh_data->sa_edges[eid];
-        bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+        bool is_cloth = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
         bool is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[edge[0]] || !mesh_data->sa_is_fixed[edge[1]] : true;
         return (is_cloth && is_dynamic) ? 1 : 0;
     }, [&](const uint eid, const uint global_prefix, const uint parallel_result)
@@ -43,7 +45,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     CpuParallel::parallel_for_and_scan(0, mesh_data->num_faces, [&](const uint fid)
     {
         uint3 face = mesh_data->sa_faces[fid];
-        bool is_cloth = mesh_data->sa_vert_mesh_id[face[0]] == uint(ShellTypeCloth);
+        bool is_cloth = mesh_data->sa_vert_mesh_type[face[0]] == uint(ShellTypeCloth);
         bool is_dynamic = cull_unused_constraints ? 
             !mesh_data->sa_is_fixed[face[0]] || 
             !mesh_data->sa_is_fixed[face[1]] || 
@@ -58,7 +60,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     CpuParallel::parallel_for_and_scan(0, mesh_data->num_dihedral_edges, [&](const uint eid)
     {
         uint4 edge = mesh_data->sa_dihedral_edges[eid];
-        bool is_cloth = mesh_data->sa_vert_mesh_id[edge[0]] == uint(ShellTypeCloth);
+        bool is_cloth = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
         bool is_dynamic = cull_unused_constraints ?
             !mesh_data->sa_is_fixed[edge[0]] || 
             !mesh_data->sa_is_fixed[edge[1]] || 
@@ -74,6 +76,33 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})", 
         num_stretch_springs, mesh_data->num_edges, num_stretch_faces, mesh_data->num_faces, num_bending_edges, mesh_data->num_dihedral_edges);
 
+    const uint num_verts_soft = CpuParallel::parallel_for_and_reduce_sum<uint>(0, mesh_data->num_verts, [&](const uint vid)
+    {
+        return mesh_data->sa_vert_mesh_type[vid] == ShellTypeRigid ? 0 : 1;
+    }); 
+
+    std::vector<uint> affine_body_indices(mesh_data->num_meshes, -1u); uint num_affine_bodies = 0;
+    CpuParallel::parallel_for_and_scan(0, mesh_data->num_meshes, [&](const uint meshIdx)
+    {
+        const uint curr_prefix = mesh_data->prefix_num_verts[meshIdx];
+        const uint first_vid = curr_prefix;
+        const bool has_boundary_edge = // Unclosed
+            (mesh_data->prefix_num_edges[meshIdx + 1] - mesh_data->prefix_num_edges[meshIdx]) !=
+            (mesh_data->prefix_num_dihedral_edges[meshIdx + 1] - mesh_data->prefix_num_dihedral_edges[meshIdx]);
+        // bool has_dynamic_vert = mesh_data->sa_is_fixed[first_vid];
+        bool is_rigid = (mesh_data->sa_vert_mesh_type[first_vid] == uint(ShellTypeRigid)) ;// ;&& !has_boundary_edge;
+        return (is_rigid) ? 1 : 0; // has_dynamic_vert
+    }, [&](const uint meshIdx, const uint global_prefix, const uint parallel_result)
+    {
+        if (parallel_result == 1) affine_body_indices[global_prefix - 1] = meshIdx;
+        if (meshIdx == mesh_data->num_meshes - 1) num_affine_bodies = global_prefix;
+    }, 0);
+
+    xpbd_data->num_verts_soft = num_verts_soft;
+    xpbd_data->num_verts_rigid = mesh_data->num_verts - num_verts_soft;
+    xpbd_data->num_affine_bodies = num_affine_bodies;
+
+    LUISA_INFO("NumVertSoft = {}, Num Affine Bodies {}", num_verts_soft, num_affine_bodies);
 
     // Init energy
     {
@@ -181,6 +210,116 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 xpbd_data->sa_bending_edges_Q[eid] = m_Q; // See : A quadratic bending model for inextensible surfaces.
             }
         });
+
+        // Rest affine body info
+        const uint num_blocks_affine_body = num_affine_bodies * 4;
+        xpbd_data->sa_affine_bodies.resize(num_affine_bodies);
+
+        xpbd_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_rest_q_v.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_gravity.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_v.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_tilde.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_iter_start.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_step_start.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_outer.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
+        xpbd_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
+
+        xpbd_data->sa_affine_bodies_mass_matrix_diag.resize(num_affine_bodies * 4);
+        xpbd_data->sa_affine_bodies_mass_matrix_compressed_offdiag.resize(num_affine_bodies);
+
+        xpbd_data->sa_cgA_offdiag_affine_body.resize(num_affine_bodies * 6);
+        xpbd_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
+
+        CpuParallel::single_thread_for(0, num_affine_bodies, [&](const uint body_idx)
+        {
+            const uint meshIdx = affine_body_indices[body_idx];
+            xpbd_data->sa_affine_bodies[body_idx] = meshIdx;
+
+            {
+                float3 init_translation = mesh_data->sa_rest_translate[meshIdx];
+                float3 init_rotation = mesh_data->sa_rest_rotation[meshIdx];
+                // float3 init_scale = mesh_data->sa_rest_scale[meshIdx];
+                float3 init_scale = luisa::make_float3(1.0f); // Since we use |AAT-I|
+                float4x4 init_transform_matrix = lcs::make_model_matrix(init_translation, init_rotation, init_scale);
+                float4x3 rest_q = AffineBodyDynamics::extract_q_from_affine_matrix(init_transform_matrix);;
+                float3x3 init_A; float3 init_p;
+                AffineBodyDynamics::extract_Ap_from_q(rest_q.cols, init_A, init_p);
+                // LUISA_INFO("init p = {}, ATA-I={}, |ATA-I| = {}", init_p, init_A * luisa::transpose(init_A) - Identity3x3, luisa::transpose(init_A));
+                xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 0] = rest_q[0]; // = init_transform_matrix[0].xyz()
+                xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 1] = rest_q[1]; // = init_transform_matrix[1].xyz()
+                xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 2] = rest_q[2]; // = init_transform_matrix[2].xyz()
+                xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 3] = rest_q[3]; // = init_transform_matrix[3].xyz()
+                xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 0] = Zero3;
+                xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 1] = Zero3;
+                xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 2] = Zero3;
+                xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 3] = Zero3;
+                // LUISA_INFO("Affine Body {} Rest q = {}", body_idx, rest_q);
+            }
+
+            const uint curr_prefix = mesh_data->prefix_num_verts[meshIdx];
+            const uint next_prefix = mesh_data->prefix_num_verts[meshIdx + 1];
+            const uint num_verts_body = next_prefix - curr_prefix;
+
+            EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
+            CpuParallel::single_thread_for(curr_prefix, next_prefix, [&](const uint vid)
+            {
+                float mass = mesh_data->sa_vert_mass[vid];
+                float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
+                auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
+                // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
+                body_mass += mass * J.transpose() * J;
+            });
+            // TODO: weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
+            std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
+            std::cout << "Sum of mass = \n" << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f) << std::endl;
+            // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+            // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
+            xpbd_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
+            xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0] = eigen3x3_to_float3x3(body_mass.block<3, 3>(0, 0));
+            xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1] = eigen3x3_to_float3x3(body_mass.block<3, 3>(3, 3));
+            xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2] = eigen3x3_to_float3x3(body_mass.block<3, 3>(6, 6));
+            xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 3] = eigen3x3_to_float3x3(body_mass.block<3, 3>(9, 9));
+            xpbd_data->sa_affine_bodies_mass_matrix_compressed_offdiag[body_idx] = luisa::make_float3x3(
+                eigen3_to_float3(body_mass.block<3, 1>(3, 0)),
+                eigen3_to_float3(body_mass.block<3, 1>(6, 1)),
+                eigen3_to_float3(body_mass.block<3, 1>(9, 2))
+            );
+            body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
+
+            float area = CpuParallel::parallel_for_and_reduce_sum<float>(curr_prefix, next_prefix, [&](const uint vid)
+            {
+                xpbd_data->sa_vert_affine_bodies_id[vid] = body_idx;
+                return (
+                    mesh_data->sa_rest_vert_area[vid]
+                );
+            });
+            
+            const float defulat_density = 10.0f;
+            xpbd_data->sa_affine_bodies_volume[body_idx] = area;
+
+            EigenFloat12 gravity_sum = EigenFloat12::Zero(); 
+            CpuParallel::single_thread_for(curr_prefix, next_prefix, [&](const uint vid)
+            {
+                float mass = mesh_data->sa_vert_mass[vid];
+                float3 rest_x = mesh_data->sa_model_x[vid];
+                auto J = AffineBodyDynamics::get_jacobian_dxdq(rest_x);
+                gravity_sum += mass * J.transpose() * float3_to_eigen3(luisa::make_float3(0, -9.8, 0));
+            }) ; // / area_mass[1];
+
+            EigenFloat12 body_gravity = body_mass.inverse() * gravity_sum;
+            xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 0] = eigen3_to_float3(body_gravity.block<3, 1>(0, 0));
+            xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 1] = eigen3_to_float3(body_gravity.block<3, 1>(3, 0));
+            xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 2] = eigen3_to_float3(body_gravity.block<3, 1>(6, 0));
+            xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 3] = eigen3_to_float3(body_gravity.block<3, 1>(9, 0));
+            // LUISA_INFO("Affine body {} : Area = {}, Gravity = {}", body_idx, area, body_gravity);
+        });
+
+        CpuParallel::parallel_copy(xpbd_data->sa_affine_bodies_rest_q, xpbd_data->sa_affine_bodies_q_outer);
+        CpuParallel::parallel_copy(xpbd_data->sa_affine_bodies_rest_q_v, xpbd_data->sa_affine_bodies_q_v_outer);
+
     }
 
     // Init Energy Adjacent List
@@ -493,10 +632,6 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
 
-            << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
-            << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
-            << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
-
             << upload_buffer(device, output_data->sa_clusterd_springs, input_data->sa_clusterd_springs)
             << upload_buffer(device, output_data->sa_prefix_merged_springs, input_data->sa_prefix_merged_springs)
             << upload_buffer(device, output_data->sa_lambda_stretch_mass_spring, input_data->sa_lambda_stretch_mass_spring) // just resize
@@ -509,11 +644,33 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
             << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
 
+            << upload_buffer(device, output_data->sa_merged_bending_edges, input_data->sa_merged_bending_edges)
+            << upload_buffer(device, output_data->sa_merged_bending_edges_angle, input_data->sa_merged_bending_edges_angle)
+            << upload_buffer(device, output_data->sa_merged_bending_edges_Q, input_data->sa_merged_bending_edges_Q)
+
             << upload_buffer(device, output_data->sa_clusterd_bending_edges, input_data->sa_clusterd_bending_edges)
             << upload_buffer(device, output_data->sa_prefix_merged_bending_edges, input_data->sa_prefix_merged_bending_edges)
             << upload_buffer(device, output_data->sa_lambda_bending, input_data->sa_lambda_bending) // just resize
             ;
     }
+    if (input_data->sa_affine_bodies.size() > 0)
+    {
+        stream  
+            << upload_buffer(device, output_data->sa_affine_bodies, input_data->sa_affine_bodies)
+            << upload_buffer(device, output_data->sa_affine_bodies_rest_q, input_data->sa_affine_bodies_rest_q)
+            << upload_buffer(device, output_data->sa_affine_bodies_gravity, input_data->sa_affine_bodies_gravity)
+            << upload_buffer(device, output_data->sa_affine_bodies_q, input_data->sa_affine_bodies_q)
+            << upload_buffer(device, output_data->sa_affine_bodies_q_v, input_data->sa_affine_bodies_q_v)
+            << upload_buffer(device, output_data->sa_affine_bodies_q_tilde, input_data->sa_affine_bodies_q_tilde)
+            << upload_buffer(device, output_data->sa_affine_bodies_q_iter_start, input_data->sa_affine_bodies_q_iter_start)
+            << upload_buffer(device, output_data->sa_affine_bodies_q_step_start, input_data->sa_affine_bodies_q_step_start)
+            << upload_buffer(device, output_data->sa_affine_bodies_volume, input_data->sa_affine_bodies_volume)
+            << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix_diag, input_data->sa_affine_bodies_mass_matrix_diag)
+            << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix_compressed_offdiag, input_data->sa_affine_bodies_mass_matrix_compressed_offdiag)
+            << upload_buffer(device, output_data->sa_cgA_offdiag_affine_body, input_data->sa_cgA_offdiag_affine_body)
+        ;
+    } 
+    stream << upload_buffer(device, output_data->sa_vert_affine_bodies_id, input_data->sa_vert_affine_bodies_id); // Basic information
     if (input_data->sa_hessian_pairs.size() > 0)
     {
         stream 
@@ -546,10 +703,11 @@ void resize_pcg_data(
     lcs::SimulationData<luisa::compute::Buffer>* device_data
 )
 {
-    const uint num_verts = mesh_data->num_verts;
     const uint num_springs = host_data->sa_stretch_springs.size();
     const uint num_bending_edges = host_data->sa_bending_edges.size();
     const uint num_faces = host_data->sa_stretch_faces.size();
+    const uint num_affine_bodies = host_data->num_affine_bodies;
+    const uint num_verts = host_data->num_verts_soft + num_affine_bodies * 4;
 
     // const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
 
@@ -558,6 +716,7 @@ void resize_pcg_data(
     resize_buffer(host_data->sa_cgA_diag, num_verts);
     if (num_springs > 0)        resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
     if (num_bending_edges > 0)  resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    if (num_affine_bodies > 0)   resize_buffer(host_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
 
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
@@ -572,6 +731,7 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
     if (num_springs > 0)        resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
     if (num_bending_edges > 0)  resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    if (num_affine_bodies > 0)   resize_buffer(device, device_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);
     resize_buffer(device, device_data->sa_cgQ, num_verts);

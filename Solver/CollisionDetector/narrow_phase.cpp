@@ -31,6 +31,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
     compile_ccd(device);
     compile_dcd(device, contact_energy_type);
     compile_energy(device, contact_energy_type);
+    compile_prefix_sum(device);
     compile_assemble(device);
 }
 
@@ -454,6 +455,11 @@ namespace lcs // DCD
 constexpr bool use_area_weighting = true;
 constexpr float rest_distance_culling_rate = 1.0f;
 
+template<typename T>
+inline auto vert_is_rigid_body(const T& mask)
+{
+    return mask != -1u;
+}
 
 void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type)
 {
@@ -482,6 +488,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
         Var<BufferView<float>> sa_rest_area_a, 
         Var<BufferView<float>> sa_rest_area_b,
         Var<BufferView<uint3>> sa_faces_right,
+        Var<BufferView<uint>> sa_vert_affine_bodies_id_left,
+        Var<BufferView<uint>> sa_vert_affine_bodies_id_right,
         Float d_hat,
         Float thickness,
         Float kappa
@@ -495,7 +503,10 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
         $if (
             vid == face[0] | 
             vid == face[1] | 
-            vid == face[2]) 
+            vid == face[2]
+            | ( vert_is_rigid_body(sa_vert_affine_bodies_id_left.read(vid)) |
+                vert_is_rigid_body(sa_vert_affine_bodies_id_right.read(face[0])))
+            ) 
         {
 
         }
@@ -595,6 +606,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
         Var<BufferView<float>> sa_rest_area_b,
         Var<BufferView<uint2>> sa_edges_left,
         Var<BufferView<uint2>> sa_edges_right,
+        Var<BufferView<uint>> sa_vert_affine_bodies_id_left,
+        Var<BufferView<uint>> sa_vert_affine_bodies_id_right,
         Float d_hat,
         Float thickness,
         Float kappa
@@ -609,7 +622,10 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
             left_edge[0] == right_edge[0] |
             left_edge[0] == right_edge[1] |
             left_edge[1] == right_edge[0] |
-            left_edge[1] == right_edge[1]) 
+            left_edge[1] == right_edge[1] |
+            (vert_is_rigid_body(sa_vert_affine_bodies_id_left.read(left_edge[0])) |
+             vert_is_rigid_body(sa_vert_affine_bodies_id_right.read(right_edge[0])))
+            ) 
         {
         }
         $else
@@ -699,6 +715,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     const Buffer<float>& sa_rest_area_left, 
     const Buffer<float>& sa_rest_area_right, 
     const Buffer<uint3>& sa_faces_right,
+    const Buffer<uint>& sa_vert_affine_bodies_id_left,
+    const Buffer<uint>& sa_vert_affine_bodies_id_right,
     const float d_hat,
     const float thickness,
     const float kappa)
@@ -708,7 +726,13 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream& stream,
     if (num_vf_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_vf_dcd_query(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_faces_right, d_hat, thickness, kappa).dispatch(num_vf_broadphase);
+            fn_narrow_phase_vf_dcd_query(
+                sa_x_left, sa_x_right, 
+                sa_rest_x_left, sa_rest_x_right, 
+                sa_rest_area_left, sa_rest_area_right, 
+                sa_faces_right, 
+                sa_vert_affine_bodies_id_left, sa_vert_affine_bodies_id_right,
+                d_hat, thickness, kappa).dispatch(num_vf_broadphase);
     }
 
 }
@@ -721,6 +745,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     const Buffer<float>& sa_rest_area_right, 
     const Buffer<uint2>& sa_edges_left,
     const Buffer<uint2>& sa_edges_right,
+    const Buffer<uint>& sa_vert_affine_bodies_id_left,
+    const Buffer<uint>& sa_vert_affine_bodies_id_right,
     const float d_hat,
     const float thickness,
     const float kappa)
@@ -731,11 +757,49 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
     if (num_ee_broadphase != 0)
     {
         stream << 
-            fn_narrow_phase_ee_dcd_query(sa_x_left, sa_x_right, sa_rest_x_left, sa_rest_x_right, sa_rest_area_left, sa_rest_area_right, sa_edges_left, sa_edges_right, d_hat, thickness, kappa).dispatch(num_ee_broadphase);
+            fn_narrow_phase_ee_dcd_query(
+                sa_x_left, sa_x_right, 
+                sa_rest_x_left, sa_rest_x_right, 
+                sa_rest_area_left, sa_rest_area_right, 
+                sa_edges_left, sa_edges_right, 
+                sa_vert_affine_bodies_id_left, sa_vert_affine_bodies_id_right,
+                d_hat, thickness, kappa).dispatch(num_ee_broadphase);
     }
 }
 
 } // namespace lcs 
+
+
+namespace lcs // Scan collision set
+{
+
+void NarrowPhasesDetector::compile_prefix_sum(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
+
+    const uint offset_vv = collision_data->get_vv_count_offset();
+    const uint offset_ve = collision_data->get_ve_count_offset();
+    const uint offset_vf = collision_data->get_vf_count_offset();
+    const uint offset_ee = collision_data->get_ee_count_offset();
+
+    fn_atomic_add_spmv_vf = device.compile<1>(
+    [
+        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+    ](
+        Var<BufferView<float3>> input_array, 
+        Var<BufferView<float3>> output_array
+    )
+    {
+        const Uint pair_idx = dispatch_x();
+        
+    });
+
+    
+}
+
+}
+
+
 
 namespace lcs // Compute Barrier Gradient & Hessian & Assemble
 {

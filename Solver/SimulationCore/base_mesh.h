@@ -51,6 +51,7 @@ struct MeshData : SimulationType
     BufferType<float3> sa_rest_x;
     BufferType<float3> sa_rest_v;
     BufferType<float3> sa_model_x;
+    BufferType<float3> sa_scaled_model_x;
 
     BufferType<uint3> sa_faces;
     BufferType<uint2> sa_edges;

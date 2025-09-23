@@ -34,7 +34,8 @@ private:
     void host_apply_dx(const float alpha);
     void host_predict_position();
     void host_update_velocity();
-    void host_evaluate_inertia() ;
+    void host_evaluate_inertia();
+    void host_evaluate_orthogonality();
     void host_evaluate_ground_collision();
     void host_evaluate_dirichlet();
     void host_reset_off_diag();
@@ -56,6 +57,8 @@ private:
     void device_SpMV(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& input_array, luisa::compute::Buffer<float3>& output_array);
     float device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
     // void device_line_search(luisa::compute::Stream& stream);
+
+    void host_test_affine_body(luisa::compute::Stream& stream);
 
 private:
     void collision_detection(luisa::compute::Stream& stream);

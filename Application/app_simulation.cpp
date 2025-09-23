@@ -87,7 +87,7 @@ int main(int argc, char** argv)
     luisa::compute::Context context{ binary_path };
     luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
     if (device_names.empty()) { LUISA_WARNING("No haredware device found."); exit(1); }
-    for (size_t i = 0; i < device_names.size(); ++i) { luisa::log_info("Device {}: {}", i, device_names[i]); }
+    for (size_t i = 0; i < device_names.size(); ++i) { LUISA_INFO("Device {}: {}", i, device_names[i]); }
     luisa::compute::Device device = context.create_device(backend);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
@@ -112,7 +112,7 @@ int main(int argc, char** argv)
     Demo::Simulation::load_scene(shell_list);
     
 
-    luisa::log_info("Init mesh data...");
+    LUISA_INFO("Init mesh data...");
     // Init data
     lcs::MeshData<std::vector>             host_mesh_data;
     lcs::MeshData<luisa::compute::Buffer>  mesh_data;
@@ -146,7 +146,7 @@ int main(int argc, char** argv)
     }
 
     // Init solver class
-    luisa::log_info("JIT Compiling LBVH...");
+    LUISA_INFO("JIT Compiling LBVH...");
     lcs::BufferFiller   buffer_filler;
     lcs::DeviceParallel device_parallel;
 
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
         lbvh_edge.compile(device);
     }
 
-    luisa::log_info("JIT Compiling Narrow Phase Detector...");
+    LUISA_INFO("JIT Compiling Narrow Phase Detector...");
     lcs::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
         // narrow_phase_detector.unit_test(device, stream);
     }
     
-    luisa::log_info("JIT Compiling Solver...");
+    LUISA_INFO("JIT Compiling Solver...");
     lcs::ConjugateGradientSolver pcg_solver;
     {
         pcg_solver.set_data(
@@ -204,24 +204,24 @@ int main(int argc, char** argv)
     // Define Simulation
     {
         solver.lcs::SolverInterface::restart_system();
-        luisa::log_info("Simulation begin...");
+        LUISA_INFO("Simulation begin...");
     }
 
     // for (auto edge : host_mesh_data.sa_edges)
     // {
-    //     luisa::log_info("edge = {}", edge);
+    //     LUISA_INFO("edge = {}", edge);
     // }
     // for (auto bendingedge : host_mesh_data.sa_bending_edges)
     // {
-    //     luisa::log_info("edge = {}", bendingedge);
+    //     LUISA_INFO("edge = {}", bendingedge);
     // }
     // for (auto face : host_mesh_data.sa_faces)
     // {
-    //     luisa::log_info("face = {}", face);
+    //     LUISA_INFO("face = {}", face);
     // }
     // for (auto mass : host_mesh_data.sa_vert_mass)
     // {
-    //     luisa::log_info("mass = {}", mass);
+    //     LUISA_INFO("mass = {}", mass);
     // }
 
     auto fn_physics_step = [&]()
@@ -290,7 +290,7 @@ int main(int argc, char** argv)
                                 host_mesh_data.sa_x_frame_outer[vid] = bg;
                                 host_mesh_data.sa_x_frame_outer_next[vid] = ed;
                                 host_mesh_data.sa_v_frame_outer[vid] = (ed - bg) / h;
-                                // luisa::log_info("Fix point desire from {} to {} (vel = {})", bg, ed, (ed - bg) / h);
+                                // LUISA_INFO("Fix point desire from {} to {} (vel = {})", bg, ed, (ed - bg) / h);
                                 // host_mesh_data.sa_x_frame_outer[vid] = ed;
                                 // host_mesh_data.sa_x_frame_outer_next[vid] = ed;
                                 // host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
@@ -389,7 +389,7 @@ int main(int argc, char** argv)
     {
         auto fn_single_step_without_ui = [&]()
         {
-            luisa::log_info("     Newton solver frame {}", lcs::get_scene_params().current_frame);   
+            LUISA_INFO("     Newton solver frame {}", lcs::get_scene_params().current_frame);   
 
             fn_physics_step();
         };
@@ -445,7 +445,7 @@ int main(int argc, char** argv)
         };
         auto fn_single_step_with_ui = [&]()
         {
-            // luisa::log_info("     Sync frame {}", lcs::get_scene_params().current_frame);   
+            // LUISA_INFO("     Sync frame {}", lcs::get_scene_params().current_frame);   
             fn_physics_step();
 
             fn_update_rendering_vertices();
@@ -479,19 +479,19 @@ int main(int argc, char** argv)
                                 {
                                     uint prefix = host_mesh_data.prefix_num_verts[meshIdx];
                                     uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Vert {:3} on mesh {}", vid, meshIdx);
+                                    LUISA_INFO("Select Vert {:3} on mesh {}", vid, meshIdx);
                                 }
                                 else if (meshPickResult.elementType == polyscope::MeshElement::FACE)
                                 {
                                     uint prefix = host_mesh_data.prefix_num_faces[meshIdx];
                                     uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Face {:3} on mesh {}", vid, meshIdx);
+                                    LUISA_INFO("Select Face {:3} on mesh {}", vid, meshIdx);
                                 }
                                 else if (meshPickResult.elementType == polyscope::MeshElement::EDGE)
                                 {
                                     uint prefix = host_mesh_data.prefix_num_edges[meshIdx];
                                     uint vid = prefix + meshPickResult.index;
-                                    luisa::log_info("Select Edge {:3} on mesh {}", vid, meshIdx);
+                                    LUISA_INFO("Select Edge {:3} on mesh {}", vid, meshIdx);
                                 }
                             }
                         }
