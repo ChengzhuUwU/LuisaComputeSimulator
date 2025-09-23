@@ -197,7 +197,13 @@ struct CollisionPairEE
     float2 bary; // 
     float2 vec2;
 };
-
+struct ReducedCollisionPairInfo
+{
+    std::array<float, 3> weighted_model_pos1; 
+    uint affine_body_idx1;
+    std::array<float, 3> weighted_model_pos2; 
+    uint affine_body_idx2;
+};
 // enum CollisionListType
 // {
 //     CollisionListTypeVV,
@@ -448,6 +454,8 @@ struct CollisionData : SimulationType
     BufferType<CollisionPairVE> narrow_phase_list_ve; // 1
     BufferType<CollisionPairVF> narrow_phase_list_vf; // 2
     BufferType<CollisionPairEE> narrow_phase_list_ee; // 3
+    BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
+    BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
     // BufferType<uint> narrow_phase_indices_ef; 
 
     BufferType<uint> per_vert_num_broad_phase_vf; 
@@ -496,6 +504,8 @@ struct CollisionData : SimulationType
         if (!use_vv_ve) lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1); 
         lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts); 
         lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges); 
+        lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_vf, per_element_count_NP * num_verts); 
+        lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_ee, per_element_count_NP * num_edges); 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts); 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts); 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts); 
@@ -515,7 +525,9 @@ struct CollisionData : SimulationType
             sizeof(CollisionPairVV) * this->narrow_phase_list_vv.size() +
             sizeof(CollisionPairVE) * this->narrow_phase_list_ve.size() +
             sizeof(CollisionPairVF) * this->narrow_phase_list_vf.size() +
-            sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size()
+            sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size() +
+            sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_vf.size() +
+            sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_ee.size()
         ;
         
         luisa::log_info("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
