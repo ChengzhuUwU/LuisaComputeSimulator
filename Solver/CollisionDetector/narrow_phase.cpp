@@ -31,6 +31,7 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
     compile_ccd(device);
     compile_dcd(device, contact_energy_type);
     compile_energy(device, contact_energy_type);
+    compile_prefix_sum(device);
     compile_assemble(device);
 }
 
@@ -767,6 +768,38 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
 }
 
 } // namespace lcs 
+
+
+namespace lcs // Scan collision set
+{
+
+void NarrowPhasesDetector::compile_prefix_sum(luisa::compute::Device& device)
+{
+    using namespace luisa::compute;
+
+    const uint offset_vv = collision_data->get_vv_count_offset();
+    const uint offset_ve = collision_data->get_ve_count_offset();
+    const uint offset_vf = collision_data->get_vf_count_offset();
+    const uint offset_ee = collision_data->get_ee_count_offset();
+
+    fn_atomic_add_spmv_vf = device.compile<1>(
+    [
+        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+    ](
+        Var<BufferView<float3>> input_array, 
+        Var<BufferView<float3>> output_array
+    )
+    {
+        const Uint pair_idx = dispatch_x();
+        
+    });
+
+    
+}
+
+}
+
+
 
 namespace lcs // Compute Barrier Gradient & Hessian & Assemble
 {

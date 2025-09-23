@@ -34,6 +34,7 @@ private:
     void compile_ccd(luisa::compute::Device& device);
     void compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
     void compile_energy(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
+    void compile_prefix_sum(luisa::compute::Device& device);
     void compile_assemble(luisa::compute::Device& device);
     
 public:
