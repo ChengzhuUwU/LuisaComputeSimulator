@@ -566,8 +566,8 @@ int main(int argc, char** argv)
             {
                 ImGui::Checkbox("Use Ground Collision", &lcs::get_scene_params().use_floor);
                 ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f); 
-                constexpr uint offset_vf = host_collision_data.get_vf_count_offset();
-                constexpr uint offset_ee = host_collision_data.get_ee_count_offset();
+                const uint offset_vf = host_collision_data.get_vf_count_offset();
+                const uint offset_ee = host_collision_data.get_ee_count_offset();
                 ImGui::Text("Num VF = %d EE = %d", host_collision_data.narrow_phase_collision_count[offset_vf], host_collision_data.narrow_phase_collision_count[offset_ee]);
             }
             

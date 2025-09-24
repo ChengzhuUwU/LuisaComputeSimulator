@@ -473,10 +473,10 @@ struct CollisionData : SimulationType
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase; 
 
 
-    static consteval uint get_vv_count_offset() { return 0; }
-    static consteval uint get_ve_count_offset() { return 1; }
-    static consteval uint get_vf_count_offset() { return 2; }
-    static consteval uint get_ee_count_offset() { return 3; }
+    const uint get_vv_count_offset() { return 0; }
+    const uint get_ve_count_offset() { return 1; }
+    const uint get_vf_count_offset() { return 2; }
+    const uint get_ee_count_offset() { return 3; }
 
     // template<template<typename...> typename BufferType>
     inline void resize_collision_data(
