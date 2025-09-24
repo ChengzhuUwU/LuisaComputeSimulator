@@ -5,6 +5,7 @@
 // #undef min
 #include <numeric>
 #include <vector>
+#include <luisa/core/stl/algorithm.h>
 
 #ifdef LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR
 
@@ -507,7 +508,8 @@ inline void parallel_for_and_scan(uint start_pos, uint end_pos, ParallelFunc fun
 template <typename Ptr, typename _Comp>
 inline void parallel_sort(Ptr begin, Ptr end, _Comp comp = default_compate)
 {
-    std::sort(begin, end, comp);
+    //pdqsort
+    luisa::sort(begin, end, comp);
 }
 
 #endif

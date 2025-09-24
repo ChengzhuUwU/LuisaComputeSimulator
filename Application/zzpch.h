@@ -1,0 +1,11 @@
+#include <Eigen/Dense>
+#include <polyscope/polyscope.h>
+#include <polyscope/surface_mesh.h>
+#include <imgui.h>
+#include <filesystem>
+#include <istream>
+#include <sstream>
+#include <vector>
+#include <string>
+#define LUISA_ENABLE_DSL
+#include <luisa/luisa-compute.h>

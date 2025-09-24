@@ -33,6 +33,15 @@ includes("LuisaCompute")
 target("eigen")
     set_kind("headeronly")
     add_includedirs("eigen", {public = true})
+    add_defines("EIGEN_HAS_STD_RESULT_OF=0", {
+        public = true
+    })
+    on_config(function(target)
+        local _, cc = target:tool("cxx")
+        if (cc == "clang" or cc == "clangxx") then
+            target:add("defines", "EIGEN_DISABLE_AVX", {public = true})
+        end
+    end)
 target_end()
 
 target("glm")
@@ -46,7 +55,7 @@ target_end()
 
 target("polyscope")
     add_rules("lc_basic_settings", {
-        project_kind = "shared",
+        project_kind = "static",
         enable_exception = true
     })
     add_includedirs("polyscope/include", "polyscope/deps/MarchingCubeCpp/include", { public = true })
@@ -55,6 +64,7 @@ target("polyscope")
     add_defines("GLAD_GLAPI_EXPORT", {public = true})
     add_defines("GLAD_GLAPI_EXPORT_BUILD")
     add_deps("glm", "implot", "stb-image", "nlohmann_json")
+    set_pcxxheader("polyscope_pch.h")
 target_end()
 
 target("nlohmann_json")
@@ -73,22 +83,6 @@ target("implot")
         if is_host("windows") then
             target:add("defines", "IMPLOT_API=__declspec(dllexport)");
             target:add("defines", "IMPLOT_API=__declspec(dllimport)", { interface = true });
-        end
-    end)
-target_end()
-
-target("libdispatch")
-    add_rules("lc_basic_settings", {
-        project_kind = "static"
-    })
-    add_files("libdispatch/libdispatch/src/**.c")
-    add_includedirs("libdispatch/libdispatch", {public = true})
-    on_load(function(target)
-        if is_host("windows") then
-            -- target:add("files", 
-            --     path.join(os.scriptdir(), "libdispatch/libdispatch/platform/windows/**.c"),
-            --     path.join(os.scriptdir(), "libdispatch/libdispatch/platform/windows/**.cpp"))
-            target:add("defines", "WIN32")
         end
     end)
 target_end()

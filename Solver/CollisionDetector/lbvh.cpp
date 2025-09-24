@@ -71,7 +71,7 @@ template<typename UintType> UintType extract_leaf(const UintType mask)  { return
 
 int clz_ulong(morton64 x) 
 {
-    return __builtin_clzll(x);
+    return std::countl_zero(x);
 }
 Var<int> clz_ulong(Var<morton64> x) 
 {

@@ -295,7 +295,7 @@ template <typename T, uint N> struct get_vec_length<Var<luisa::compute::Vector<T
 };
 
 template <typename T> struct get_matrix_length;
-template <uint N> struct get_matrix_length<luisa::Matrix<N>> 
+template <typename T, uint N> struct get_matrix_length<luisa::Matrix<T, N>> 
 {
     static constexpr uint value = N;
 };

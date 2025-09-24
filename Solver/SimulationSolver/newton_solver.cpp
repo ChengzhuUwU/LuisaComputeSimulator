@@ -395,7 +395,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
         }
         for (uint j = 0; j < 4; j++)
         {
-            const Float3x3& diag = stiffness_bending * m_Q[j][j] * luisa::compute::make_float3x3(1.0f);
+            const Float3x3& diag = stiffness_bending * m_Q[j][j] * luisa::compute::float3x3::eye(1.0f);
             for (uint ii = 0; ii < 3; ii++)
             {
                 for (uint jj = 0; jj < 3; jj++)
@@ -516,7 +516,7 @@ void NewtonSolver::compile(luisa::compute::Device& device)
             {
                 if (j != jj)
                 {
-                    Float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::make_float3x3(1.0f);
+                    Float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::float3x3::eye(1.0f);
                     output_vec[j] += hessian * input_vec[jj];
                 }
             }
@@ -1736,7 +1736,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream& stream, const std::vector<f
                         {
                             if (j != jj)
                             {
-                                float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::make_float3x3(1.0f);
+                                float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::float3x3::eye(1.0f);
                                 output_vec[j] += hessian * input_vec[jj];
                             }
                         }
