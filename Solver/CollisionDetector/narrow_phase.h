@@ -9,7 +9,7 @@
 #include <luisa/luisa-compute.h>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
-
+#include <Utils/async_compiler.h>
 
 namespace lcs 
 {
@@ -31,15 +31,15 @@ class NarrowPhasesDetector
     using Device = luisa::compute::Device;
 
 private:
-    void compile_ccd(luisa::compute::Device& device);
-    void compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
-    void compile_energy(luisa::compute::Device& device, const ContactEnergyType contact_energy_type);
-    void compile_prefix_sum(luisa::compute::Device& device);
-    void compile_assemble(luisa::compute::Device& device);
+    void compile_ccd(AsyncCompiler& compiler);
+    void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+    void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+    void compile_prefix_sum(AsyncCompiler& compiler);
+    void compile_assemble(AsyncCompiler& compiler);
     
 public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(luisa::compute::Device& device);
+    void compile(AsyncCompiler& compiler);
     void set_collision_data(
         CollisionData<std::vector>* host_ccd_ptr,
         CollisionData<luisa::compute::Buffer>* ccd_ptr

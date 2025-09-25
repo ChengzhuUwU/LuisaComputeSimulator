@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
+#include <Utils/async_compiler.h>
 
 namespace lcs
 {
@@ -121,7 +122,7 @@ public:
     // void init(luisa::compute::Device& device, luisa::compute::Stream& stream, 
     //      const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type);
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(luisa::compute::Device& device);
+    void compile(AsyncCompiler& compiler);
     void set_lbvh_data(LbvhData<luisa::compute::Buffer>* input_ptr) { lbvh_data = input_ptr; }
 
 public:

@@ -14,6 +14,7 @@
 #include "luisa/runtime/device.h"
 #include "luisa/runtime/shader.h"
 #include "luisa/runtime/stream.h"
+#include <Utils/async_compiler.h>
 
 namespace lcs 
 {
@@ -64,9 +65,9 @@ public:
         mp_narrowphase_detector = narrowphase_detector_ptr;
         pcg_solver = pcg_solver_ptr;
     }
-    void compile(luisa::compute::Device& device)
+    void compile(AsyncCompiler& compiler)
     {
-        compile_compute_energy(device);
+        compile_compute_energy(compiler);
     }
 
 public:
@@ -80,7 +81,7 @@ public:
     void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
     double host_compute_elastic_energy(const std::vector<float3>& curr_x);
     double device_compute_elastic_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
-    void compile_compute_energy(luisa::compute::Device& device);
+    void compile_compute_energy(AsyncCompiler& compiler);
 
 protected:
     MeshData<std::vector>*                      host_mesh_data;
