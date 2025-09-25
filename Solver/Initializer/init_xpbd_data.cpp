@@ -14,6 +14,28 @@
 namespace lcs::Initializer
 {
 
+template <uint N>
+std::array<luisa::ushort, N * (N - 1)> get_offsets_in_adjlist_from_adjacent_list(const std::vector<std::vector<uint>>& vert_adj_verts, const luisa::Vector<uint, N>& element)
+{
+    std::array<luisa::ushort, N * (N - 1)> offsets = {0}; uint idx = 0;
+    for (uint ii = 0; ii < N; ii++)
+    {
+        const uint vid = element[ii];
+        const std::vector<uint>& adj_list = vert_adj_verts[vid];
+        for (uint jj = 0; jj < N; jj++)
+        {
+            if (ii != jj)
+            {
+                const uint adj_vid = element[jj];
+                const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), adj_vid));
+                offsets[idx] = luisa::ushort(offset);
+                idx += 1;
+            }
+        }
+    }
+    return offsets;
+}
+
 void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* xpbd_data)
 {
     xpbd_data->sa_x_tilde.resize(mesh_data->num_verts); 
@@ -110,6 +132,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         // Rest spring length
         xpbd_data->sa_stretch_springs.resize(num_stretch_springs);
         xpbd_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
+        xpbd_data->sa_stretch_springs_gradients.resize(num_stretch_springs * 2);
+        xpbd_data->sa_stretch_springs_hessians.resize(num_stretch_springs * 4);
         CpuParallel::parallel_for(0, num_stretch_springs, [&](const uint eid)
         {
             const uint orig_eid = stretch_spring_indices[eid];
@@ -123,6 +147,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         // Rest stretch face length
         xpbd_data->sa_stretch_faces.resize(num_stretch_faces);
         xpbd_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
+        xpbd_data->sa_stretch_face_gradients.resize(num_stretch_faces * 3);
+        xpbd_data->sa_stretch_face_hessians.resize(num_stretch_faces * 9);
         CpuParallel::parallel_for(0, num_stretch_faces, [&](const uint fid)
         {
             const uint orig_fid = stretch_face_indices[fid];
@@ -153,6 +179,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         xpbd_data->sa_bending_edges.resize(num_bending_edges);
         xpbd_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
         xpbd_data->sa_bending_edges_Q.resize(num_bending_edges);
+        xpbd_data->sa_bending_edges_gradients.resize(num_bending_edges * 4);
+        xpbd_data->sa_bending_edges_hessians.resize(num_bending_edges * 16);
         CpuParallel::parallel_for(0, num_bending_edges, [&](const uint eid)
         {
             const uint orig_eid = bending_edge_indices[eid];
@@ -406,6 +434,45 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
             if (adj_list.size() > 255) LUISA_ERROR("Adjacent count out of range {}");
         });
         upload_2d_csr_from(xpbd_data->sa_vert_adj_material_force_verts_csr, xpbd_data->vert_adj_material_force_verts);
+
+        // Final off-diag hessian
+        xpbd_data->sa_cgA_offdiag.resize(xpbd_data->sa_vert_adj_material_force_verts_csr.size()); //  - mesh_data->num_verts - 1
+    }
+
+    // Find material-force-offset
+    {
+        const std::vector<std::vector<uint>>& reference_adj_list = xpbd_data->vert_adj_material_force_verts;
+
+        // Spring energy
+        xpbd_data->sa_stretch_springs_offsets_in_adjlist.resize(xpbd_data->sa_stretch_springs.size() * 2);
+        CpuParallel::parallel_for(0, xpbd_data->sa_stretch_springs.size(), [&](const uint eid)
+        {
+            auto edge = xpbd_data->sa_stretch_springs[eid];
+            auto mask = get_offsets_in_adjlist_from_adjacent_list<2>(reference_adj_list, edge); // size = 2
+            std::memcpy(xpbd_data->sa_stretch_springs_offsets_in_adjlist.data() + eid * 2, mask.data(), sizeof(ushort) * 2);
+        });
+        for (uint i = 0; i < xpbd_data->sa_stretch_springs_offsets_in_adjlist.size(); i++) 
+        {
+            auto adj_offset = xpbd_data->sa_stretch_springs_offsets_in_adjlist[i];
+        }
+
+        // Stretch face energy
+        xpbd_data->sa_stretch_face_offsets_in_adjlist.resize(xpbd_data->sa_stretch_faces.size() * 6);
+        CpuParallel::parallel_for(0, xpbd_data->sa_stretch_faces.size(), [&](const uint fid)
+        {
+            auto face = xpbd_data->sa_stretch_faces[fid];
+            auto mask = get_offsets_in_adjlist_from_adjacent_list<3>(reference_adj_list, face); // size = 6
+            std::memcpy(xpbd_data->sa_stretch_face_offsets_in_adjlist.data() + fid * 6, mask.data(), sizeof(ushort) * 6);
+        });
+
+        // Bending angle energy
+        xpbd_data->sa_bending_edges_offsets_in_adjlist.resize(xpbd_data->sa_bending_edges.size() * 12);
+        CpuParallel::parallel_for(0, xpbd_data->sa_bending_edges.size(), [&](const uint eid)
+        {
+            auto edge = xpbd_data->sa_bending_edges[eid];
+            auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list, edge); // size = 12
+            std::memcpy(xpbd_data->sa_bending_edges_offsets_in_adjlist.data() + eid * 12, mask.data(), sizeof(ushort) * 12);
+        });
     }
 
     // Constraint Graph Coloring
@@ -546,7 +613,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         
     }
 
-    // Precomputation
+    // Colored contraint precomputation
     {
         // Spring Constraint
         {
@@ -623,6 +690,9 @@ void upload_xpbd_buffers(
         stream 
             << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
             << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
+            << upload_buffer(device, output_data->sa_stretch_springs_offsets_in_adjlist, input_data->sa_stretch_springs_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_stretch_springs_gradients, input_data->sa_stretch_springs_gradients)
+            << upload_buffer(device, output_data->sa_stretch_springs_hessians, input_data->sa_stretch_springs_hessians)
 
             << upload_buffer(device, output_data->colored_data.sa_merged_stretch_springs, input_data->colored_data.sa_merged_stretch_springs)
             << upload_buffer(device, output_data->colored_data.sa_merged_stretch_spring_rest_length, input_data->colored_data.sa_merged_stretch_spring_rest_length)
@@ -633,6 +703,9 @@ void upload_xpbd_buffers(
         stream 
             << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
+            << upload_buffer(device, output_data->sa_stretch_face_offsets_in_adjlist, input_data->sa_stretch_face_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_stretch_face_gradients, input_data->sa_stretch_face_gradients)
+            << upload_buffer(device, output_data->sa_stretch_face_hessians, input_data->sa_stretch_face_hessians)
 
             << upload_buffer(device, output_data->colored_data.sa_clusterd_springs, input_data->colored_data.sa_clusterd_springs)
             << upload_buffer(device, output_data->colored_data.sa_prefix_merged_springs, input_data->colored_data.sa_prefix_merged_springs)
@@ -645,7 +718,10 @@ void upload_xpbd_buffers(
             << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
             << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
             << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
-
+            << upload_buffer(device, output_data->sa_bending_edges_offsets_in_adjlist, input_data->sa_bending_edges_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_bending_edges_gradients, input_data->sa_bending_edges_gradients)
+            << upload_buffer(device, output_data->sa_bending_edges_hessians, input_data->sa_bending_edges_hessians)
+            
             << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges, input_data->colored_data.sa_merged_bending_edges)
             << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges_angle, input_data->colored_data.sa_merged_bending_edges_angle)
             << upload_buffer(device, output_data->colored_data.sa_merged_bending_edges_Q, input_data->colored_data.sa_merged_bending_edges_Q)
@@ -683,6 +759,7 @@ void upload_xpbd_buffers(
         ;
     }
     stream
+        << upload_buffer(device, output_data->sa_cgA_offdiag, input_data->sa_cgA_offdiag)
         << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
@@ -716,8 +793,8 @@ void resize_pcg_data(
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    if (num_springs > 0)        resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    if (num_bending_edges > 0)  resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    // if (num_springs > 0)        resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
+    // if (num_bending_edges > 0)  resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     if (num_affine_bodies > 0)   resize_buffer(host_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
 
     resize_buffer(host_data->sa_cgMinv, num_verts);
@@ -731,8 +808,8 @@ void resize_pcg_data(
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    if (num_springs > 0)        resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    if (num_bending_edges > 0)  resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
+    // if (num_springs > 0)        resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
+    // if (num_bending_edges > 0)  resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
     if (num_affine_bodies > 0)   resize_buffer(device, device_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);

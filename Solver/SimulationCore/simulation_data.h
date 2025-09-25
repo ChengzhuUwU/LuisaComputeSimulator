@@ -113,13 +113,22 @@ struct SimulationData : SimulationType
     
     BufferType<uint2> sa_stretch_springs;
     BufferType<float> sa_stretch_spring_rest_state_length;
+    BufferType<ushort> sa_stretch_springs_offsets_in_adjlist;
+    BufferType<float3> sa_stretch_springs_gradients;
+    BufferType<float3x3> sa_stretch_springs_hessians;
     
     BufferType<uint3> sa_stretch_faces;
     BufferType<float2x2> sa_stretch_faces_Dm_inv;
-
+    BufferType<ushort> sa_stretch_face_offsets_in_adjlist;
+    BufferType<float3> sa_stretch_face_gradients;
+    BufferType<float3x3> sa_stretch_face_hessians;
+    
     BufferType<uint4> sa_bending_edges;
     BufferType<float> sa_bending_edges_rest_angle;
     BufferType<float4x4> sa_bending_edges_Q;
+    BufferType<ushort> sa_bending_edges_offsets_in_adjlist;
+    BufferType<float3> sa_bending_edges_gradients;
+    BufferType<float3x3> sa_bending_edges_hessians;
     
     std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<uint> sa_vert_affine_bodies_id;
@@ -149,8 +158,7 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_cgX;
     BufferType<float3> sa_cgB;
     BufferType<float3x3> sa_cgA_diag;
-    BufferType<float3x3> sa_cgA_offdiag_stretch_spring;
-    BufferType<float3x3> sa_cgA_offdiag_bending; 
+    BufferType<float3x3> sa_cgA_offdiag;
     BufferType<float3x3> sa_cgA_offdiag_affine_body;
  
     BufferType<float3x3> sa_cgMinv;

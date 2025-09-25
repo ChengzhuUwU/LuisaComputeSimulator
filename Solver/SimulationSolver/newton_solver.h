@@ -42,6 +42,7 @@ private:
     void host_reset_cgB_cgX_diagA();
     void host_evaluete_spring();
     void host_evaluete_bending();
+    void host_material_energy_assembly();
     void host_solve_amgcl(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_solve_eigen(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
@@ -79,10 +80,10 @@ private:
     luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision; // Float substep_dt
     luisa::compute::Shader<1, float> fn_evaluate_spring; // Float stiffness_stretch
     luisa::compute::Shader<1, float> fn_evaluate_bending; // Float stiffness_bending
+    luisa::compute::Shader<1> fn_material_energy_assembly;
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag ;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_stretch_spring;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float> fn_pcg_spmv_offdiag_bending;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part;
 
     luisa::compute::Shader<1, float> fn_apply_dx;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;;
