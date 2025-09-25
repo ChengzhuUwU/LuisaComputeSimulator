@@ -2328,7 +2328,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     const bool use_ccd_linesearch = get_scene_params().use_ccd_linesearch;
     
     // Init LBVH
-    if (false)
     {
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
         mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
