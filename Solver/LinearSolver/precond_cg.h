@@ -5,6 +5,7 @@
 #include <vector>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
+#include <Utils/async_compiler.h>
 
 namespace lcs 
 {
@@ -33,7 +34,7 @@ public:
         this->host_sim_data = host_sim_data;
         this->sim_data = sim_data;
     }
-    void compile(luisa::compute::Device& device);
+    void compile(AsyncCompiler& compiler);
 
 public:
     void host_solve(

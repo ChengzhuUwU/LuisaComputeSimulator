@@ -77,517 +77,465 @@ static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min va
     }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
 };
 
-void NewtonSolver::compile(luisa::compute::Device& device)
-{
+
+void NewtonSolver::compile(AsyncCompiler &compiler) {
     const bool use_debug_info = false;
     using namespace luisa::compute;
 
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
 
-    fn_reset_vector = device.compile<1>([](Var<BufferView<float3>> buffer)
-    {
+    compiler.compile<1>(fn_reset_vector, [](Var<BufferView<float3>> buffer) {
         const UInt vid = dispatch_id().x;
         // buffer->write(vid, target);
         buffer->write(vid, make_float3(0.0f));
     });
-    fn_reset_float3x3 = device.compile<1>([](Var<BufferView<float3x3>> buffer)
-    {
+    compiler.compile<1>(fn_reset_float3x3, [](Var<BufferView<float3x3>> buffer) {
         const UInt vid = dispatch_id().x;
         buffer->write(vid, make_float3x3(0.0f));
     });
 
-    fn_predict_position = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_x_step_start = sim_data->sa_x_step_start.view(), 
-            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
-            sa_x_tilde = sim_data->sa_x_tilde.view(),
-            sa_v = sim_data->sa_v.view(),
-            sa_cgX = sim_data->sa_cgX.view(),
-            sa_is_fixed = mesh_data->sa_is_fixed.view()
-        ](const Float substep_dt, const Float3 gravity)
-    {
-        const UInt vid = dispatch_id().x;
-        // const Float3 gravity = make_float3(0.0f, -9.8f, 0.0f);
-        Float3 x_prev = sa_x_step_start->read(vid);
-        Float3 v_prev = sa_v->read(vid);
-        Float3 outer_acceleration = gravity;
-        Float3 v_pred = v_prev + substep_dt * outer_acceleration;
+    compiler.compile<1>(
+        fn_predict_position,
+        [sa_x = sim_data->sa_x.view(),
+         sa_x_step_start = sim_data->sa_x_step_start.view(),
+         sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+         sa_x_tilde = sim_data->sa_x_tilde.view(),
+         sa_v = sim_data->sa_v.view(),
+         sa_cgX = sim_data->sa_cgX.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view()](const Float substep_dt, const Float3 gravity) {
+            const UInt vid = dispatch_id().x;
+            // const Float3 gravity = make_float3(0.0f, -9.8f, 0.0f);
+            Float3 x_prev = sa_x_step_start->read(vid);
+            Float3 v_prev = sa_v->read(vid);
+            Float3 outer_acceleration = gravity;
+            Float3 v_pred = v_prev + substep_dt * outer_acceleration;
 
-        const Bool is_fixed = sa_is_fixed->read(vid);
+            const Bool is_fixed = sa_is_fixed->read(vid);
 
-        $if (is_fixed)
-        { 
-            v_pred = v_prev;
-            // v_pred = make_float3(0.0f); 
-        };
+            $if (is_fixed) {
+                v_pred = v_prev;
+                // v_pred = make_float3(0.0f);
+            };
 
-        sa_x_iter_start->write(vid, x_prev);
-        Float3 x_pred = x_prev + substep_dt * v_pred;
-        sa_x_tilde->write(vid, x_pred);
-        sa_x->write(vid, x_prev);
-        // sa_cgX->write(vid, make_float3(0.0f));
-    }, default_option);
+            sa_x_iter_start->write(vid, x_prev);
+            Float3 x_pred = x_prev + substep_dt * v_pred;
+            sa_x_tilde->write(vid, x_pred);
+            sa_x->write(vid, x_prev);
+            // sa_cgX->write(vid, make_float3(0.0f));
+        },
+        default_option);
 
-    fn_update_velocity = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_v = sim_data->sa_v.view(),
-            sa_x_step_start = sim_data->sa_x_step_start.view(),
-            sa_v_step_start = sim_data->sa_v_step_start.view()
-        ](const Float substep_dt, const Bool fix_scene, const Float damping)
-    {
-        const UInt vid = dispatch_id().x;
-        Float3 x_step_begin = sa_x_step_start->read(vid);
-        Float3 x_step_end = sa_x->read(vid);
+    compiler.compile<1>(
+        fn_update_velocity, [sa_x = sim_data->sa_x.view(), sa_v = sim_data->sa_v.view(), sa_x_step_start = sim_data->sa_x_step_start.view(), sa_v_step_start = sim_data->sa_v_step_start.view()](const Float substep_dt, const Bool fix_scene, const Float damping) {
+            const UInt vid = dispatch_id().x;
+            Float3 x_step_begin = sa_x_step_start->read(vid);
+            Float3 x_step_end = sa_x->read(vid);
 
-        Float3 dx = x_step_end - x_step_begin;
-        Float3 vel = dx / substep_dt;
+            Float3 dx = x_step_end - x_step_begin;
+            Float3 vel = dx / substep_dt;
 
-        $if (fix_scene) 
-        {
-            dx = make_float3(0.0f);
-            vel = make_float3(0.0f);
-            sa_x->write(vid, x_step_begin);
-            return;
-        };
+            $if (fix_scene) {
+                dx = make_float3(0.0f);
+                vel = make_float3(0.0f);
+                sa_x->write(vid, x_step_begin);
+                return;
+            };
 
-        vel *= exp(-damping * substep_dt);
-        
-        sa_v->write(vid, vel);
-        sa_v_step_start->write(vid, vel);
-        sa_x_step_start->write(vid, x_step_end);
-    }, default_option);
+            vel *= exp(-damping * substep_dt);
 
-    fn_evaluate_inertia = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_x_tilde = sim_data->sa_x_tilde.view(),
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_is_fixed = mesh_data->sa_is_fixed.view(),
-            sa_vert_mass = mesh_data->sa_vert_mass.view()
-        ](const Float substep_dt, const Float stiffness_dirichlet)
-    {
-        const UInt vid = dispatch_id().x;
-        const Float h = substep_dt;
-        const Float h_2_inv = 1.0f / (h * h);
+            sa_v->write(vid, vel);
+            sa_v_step_start->write(vid, vel);
+            sa_x_step_start->write(vid, x_step_end); }, default_option);
 
-        Float3 x_k = sa_x->read(vid);
-        Float3 x_tilde = sa_x_tilde->read(vid);
-        Float mass = sa_vert_mass->read(vid);
-
-        Float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
-        Float3x3 hessian = make_float3x3(1.0f) * mass * h_2_inv;
-
-        $if (sa_is_fixed->read(vid) != 0) 
-        {
-            gradient = gradient + stiffness_dirichlet * gradient;
-            hessian = hessian + stiffness_dirichlet * hessian;
-            // hessian = make_float3x3(1.0f) * 1e9f;
-            // gradient = make_float3(0.0f);
-        };
-
-        sa_cgB->write(vid, gradient); 
-        sa_cgA_diag->write(vid, hessian);
-    }, default_option);
-
-    fn_evaluate_dirichlet = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_x_tilde = sim_data->sa_x_tilde.view(),
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_is_fixed = mesh_data->sa_is_fixed.view(),
-            sa_vert_mass = mesh_data->sa_vert_mass.view()
-        ](const Float substep_dt, const Float stiffness_dirichlet)
-    {
-        const UInt vid = dispatch_id().x;
-        return;
-
-        Bool is_fixed = sa_is_fixed->read(vid);
-        $if (is_fixed) 
-        {
+    compiler.compile<1>(
+        fn_evaluate_inertia,
+        [sa_x = sim_data->sa_x.view(),
+         sa_x_tilde = sim_data->sa_x_tilde.view(),
+         sa_cgB = sim_data->sa_cgB.view(),
+         sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view(),
+         sa_vert_mass = mesh_data->sa_vert_mass.view()](const Float substep_dt, const Float stiffness_dirichlet) {
+            const UInt vid = dispatch_id().x;
             const Float h = substep_dt;
             const Float h_2_inv = 1.0f / (h * h);
 
             Float3 x_k = sa_x->read(vid);
             Float3 x_tilde = sa_x_tilde->read(vid);
-            // Float3 gradient = stiffness_dirichlet * (x_k - x_tilde);
-            // Float3x3 hessian = stiffness_dirichlet * make_float3x3(1.0f);
             Float mass = sa_vert_mass->read(vid);
-            Float3 gradient  = stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
-            Float3x3 hessian = stiffness_dirichlet * h_2_inv * mass * make_float3x3(1.0f);
-            sa_cgB->write(vid, sa_cgB->read(vid) - gradient); 
-            sa_cgA_diag->write(vid, sa_cgA_diag->read(vid) + hessian);
-        };
-    }, default_option);
 
-    fn_evaluate_ground_collision = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_is_fixed = mesh_data->sa_is_fixed.view(),
-            sa_vert_mass = mesh_data->sa_vert_mass.view()
-        ](
+            Float3 gradient = -mass * h_2_inv * (x_k - x_tilde);
+            Float3x3 hessian = make_float3x3(1.0f) * mass * h_2_inv;
+
+            $if (sa_is_fixed->read(vid) != 0) {
+                gradient = gradient + stiffness_dirichlet * gradient;
+                hessian = hessian + stiffness_dirichlet * hessian;
+                // hessian = make_float3x3(1.0f) * 1e9f;
+                // gradient = make_float3(0.0f);
+            };
+
+            sa_cgB->write(vid, gradient);
+            sa_cgA_diag->write(vid, hessian);
+        },
+        default_option);
+
+    compiler.compile<1>(
+        fn_evaluate_dirichlet,
+        [sa_x = sim_data->sa_x.view(),
+         sa_x_tilde = sim_data->sa_x_tilde.view(),
+         sa_cgB = sim_data->sa_cgB.view(),
+         sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view(),
+         sa_vert_mass = mesh_data->sa_vert_mass.view()](const Float substep_dt, const Float stiffness_dirichlet) {
+            const UInt vid = dispatch_id().x;
+            return;
+
+            Bool is_fixed = sa_is_fixed->read(vid);
+            $if (is_fixed) {
+                const Float h = substep_dt;
+                const Float h_2_inv = 1.0f / (h * h);
+
+                Float3 x_k = sa_x->read(vid);
+                Float3 x_tilde = sa_x_tilde->read(vid);
+                // Float3 gradient = stiffness_dirichlet * (x_k - x_tilde);
+                // Float3x3 hessian = stiffness_dirichlet * make_float3x3(1.0f);
+                Float mass = sa_vert_mass->read(vid);
+                Float3 gradient = stiffness_dirichlet * h_2_inv * mass * (x_k - x_tilde);
+                Float3x3 hessian = stiffness_dirichlet * h_2_inv * mass * make_float3x3(1.0f);
+                sa_cgB->write(vid, sa_cgB->read(vid) - gradient);
+                sa_cgA_diag->write(vid, sa_cgA_diag->read(vid) + hessian);
+            };
+        },
+        default_option);
+
+    compiler.compile<1>(
+        fn_evaluate_ground_collision,
+        [sa_x = sim_data->sa_x.view(),
+         sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
+         sa_cgB = sim_data->sa_cgB.view(),
+         sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view(),
+         sa_vert_mass = mesh_data->sa_vert_mass.view()](
             Float floor_y,
             Bool use_ground_collision,
             Float stiffness,
             Float d_hat,
-            Float thickness
-        )
-    {
-        const UInt vid = dispatch_id().x;
-        $if (use_ground_collision)
-        {
-            $if (!sa_is_fixed->read(vid))
-            {
-                Float3 x_k = sa_x->read(vid);
-                Float diff = x_k.y - floor_y;
-        
-                Float3 force = sa_cgB->read(vid);
-                Float3x3 hessian = sa_cgA_diag->read(vid);
-                $if (diff < d_hat + thickness)
-                {
-                    Float C = d_hat + thickness - diff;
-                    float3 normal = luisa::make_float3(0, 1, 0);
-                    Float area = sa_rest_vert_area->read(vid);
-                    Float stiff = stiffness * area;
-                    force += stiff * C * normal;
-                    hessian += stiff * outer_product(normal, normal);
+            Float thickness) {
+            const UInt vid = dispatch_id().x;
+            $if (use_ground_collision) {
+                $if (!sa_is_fixed->read(vid)) {
+                    Float3 x_k = sa_x->read(vid);
+                    Float diff = x_k.y - floor_y;
+
+                    Float3 force = sa_cgB->read(vid);
+                    Float3x3 hessian = sa_cgA_diag->read(vid);
+                    $if (diff < d_hat + thickness) {
+                        Float C = d_hat + thickness - diff;
+                        float3 normal = luisa::make_float3(0, 1, 0);
+                        Float area = sa_rest_vert_area->read(vid);
+                        Float stiff = stiffness * area;
+                        force += stiff * C * normal;
+                        hessian += stiff * outer_product(normal, normal);
+                    };
+                    sa_cgB->write(vid, force);
+                    sa_cgA_diag->write(vid, hessian);
                 };
-                sa_cgB->write(vid, force);
-                sa_cgA_diag->write(vid, hessian);
             };
-        };
-    }, default_option);
-    
-    if (host_sim_data->sa_stretch_springs.size() > 0) fn_evaluate_spring = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_cgA_offdiag_stretch_spring = sim_data->sa_cgA_offdiag_stretch_spring.view(),
-            sa_edges = sim_data->sa_stretch_springs.view(),
-            sa_rest_length = sim_data->sa_stretch_spring_rest_state_length.view()
-            // sa_edges = sim_data->sa_merged_stretch_springs.view(),
-            // sa_rest_length = sim_data->sa_merged_stretch_spring_rest_length.view()
-        ](const Float stiffness_stretch)
-    {
-        // const Uint curr_prefix = culster->read(cluster_idx);
-        // const UInt eid = curr_prefix + dispatch_id().x;
+        },
+        default_option);
 
-        const UInt eid = dispatch_id().x;
-        UInt2 edge = sa_edges->read(eid);
+    if (host_sim_data->sa_stretch_springs.size() > 0)
+        compiler.compile<1>(
+            fn_evaluate_spring,
+            [sa_x = sim_data->sa_x.view(),
+             sa_cgB = sim_data->sa_cgB.view(),
+             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+             sa_cgA_offdiag_stretch_spring = sim_data->sa_cgA_offdiag_stretch_spring.view(),
+             sa_edges = sim_data->sa_stretch_springs.view(),
+             sa_rest_length = sim_data->sa_stretch_spring_rest_state_length.view()
+             // sa_edges = sim_data->sa_merged_stretch_springs.view(),
+             // sa_rest_length = sim_data->sa_merged_stretch_spring_rest_length.view()
+        ](const Float stiffness_stretch) {
+                // const Uint curr_prefix = culster->read(cluster_idx);
+                // const UInt eid = curr_prefix + dispatch_id().x;
 
-        Float3 vert_pos[2] = { sa_x->read(edge.x), sa_x->read(edge.y) };
-        Float3 force[2] = {make_float3(0.0f), make_float3(0.0f)};
-        Float3x3 He = make_float3x3(0.0f);
+                const UInt eid = dispatch_id().x;
+                UInt2 edge = sa_edges->read(eid);
 
-        const Float L = sa_rest_length->read(eid);
-        const Float stiffness_spring = stiffness_stretch;
+                Float3 vert_pos[2] = {sa_x->read(edge.x), sa_x->read(edge.y)};
+                Float3 force[2] = {make_float3(0.0f), make_float3(0.0f)};
+                Float3x3 He = make_float3x3(0.0f);
 
-        Float3 diff = vert_pos[1] - vert_pos[0];
-        Float l = max(length(diff), Epsilon);
-        Float l0 = L;
-        Float C = l - l0;
+                const Float L = sa_rest_length->read(eid);
+                const Float stiffness_spring = stiffness_stretch;
 
-        Float3 dir = diff / l;
-        Float3x3 xxT = outer_product(diff, diff);
-        Float x_inv = 1.f / l;
-        Float x_squared_inv = x_inv * x_inv;
+                Float3 diff = vert_pos[1] - vert_pos[0];
+                Float l = max(length(diff), Epsilon);
+                Float l0 = L;
+                Float C = l - l0;
 
-        force[0] = stiffness_spring * dir * C;
-        force[1] = -force[0];
-        He = stiffness_spring * x_squared_inv * xxT + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
+                Float3 dir = diff / l;
+                Float3x3 xxT = outer_product(diff, diff);
+                Float x_inv = 1.f / l;
+                Float x_squared_inv = x_inv * x_inv;
 
-        for (uint j = 0; j < 2; j++)
-        {
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
-            }
-        }
+                force[0] = stiffness_spring * dir * C;
+                force[1] = -force[0];
+                He = stiffness_spring * x_squared_inv * xxT + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
 
-        for (uint j = 0; j < 2; j++)
-        {
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                for (uint jj = 0; jj < 3; jj++)
-                {
-                    sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(He[ii][jj]);
-                    // sa_cgB->atomic(edge[ii])[jj].fetch_add(force[ii][jj]);
+                for (uint j = 0; j < 2; j++) {
+                    for (uint ii = 0; ii < 3; ii++) {
+                        sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
+                    }
                 }
-            }
-        }
-        // atomic_buffer_add(sa_cgB, edge[0], force[0]);
-        // atomic_buffer_add(sa_cgB, edge[1], force[1]);
-        // atomic_buffer_add(sa_cgA_diag, edge[0], He);
-        // atomic_buffer_add(sa_cgA_diag, edge[1], He);
-        sa_cgA_offdiag_stretch_spring->write(eid, -1.0f * He); // eid * 2 + 0, -1.0f * He);
-    }, default_option);
 
-    if (host_sim_data->sa_bending_edges.size() > 0) fn_evaluate_bending = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_cgA_offdiag_bending = sim_data->sa_cgA_offdiag_bending.view(),
-            sa_edges = sim_data->sa_bending_edges.view(),
-            sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view()
-        ](const Float stiffness_bending)
-    {
-        // const Uint curr_prefix = culster->read(cluster_idx);
-        // const UInt eid = curr_prefix + dispatch_id().x;
-
-        const UInt eid = dispatch_id().x;
-        UInt4 edge = sa_edges->read(eid);
-        Float4x4 m_Q = sa_bending_edges_Q->read(eid);
-
-        Float3 vert_pos[4] = { 
-            sa_x->read(edge[0]), 
-            sa_x->read(edge[1]), 
-            sa_x->read(edge[2]), 
-            sa_x->read(edge[3]), 
-        };
-        Float3 force[4] = {
-            make_float3(0.0f), 
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-        };
-
-        
-        for (uint ii = 0; ii < 4; ii++) 
-        {
-            for (uint jj = 0; jj < 4; jj++) 
-            {
-                force[ii] -= m_Q[ii][jj] * vert_pos[jj]; // -Qx
-            }
-            force[ii] = stiffness_bending * force[ii];
-        }
-        for (uint j = 0; j < 4; j++)
-        {
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
-            }
-        }
-
-        // Float3x3 hessian[10];
-        {
-            //  0   1   2   3
-            // t1   4   5   6
-            // t2  t5   7   8
-            // t3  t6  t8   9 
-            // hessian[0] = stiffness_bending * m_Q[0][0] * luisa::compute::make_float3x3(1.0f);
-            // hessian[1] = stiffness_bending * m_Q[0][1] * luisa::compute::make_float3x3(1.0f);
-            // hessian[2] = stiffness_bending * m_Q[0][2] * luisa::compute::make_float3x3(1.0f);
-            // hessian[3] = stiffness_bending * m_Q[0][3] * luisa::compute::make_float3x3(1.0f);
-            // hessian[4] = stiffness_bending * m_Q[1][1] * luisa::compute::make_float3x3(1.0f);
-            // hessian[5] = stiffness_bending * m_Q[1][2] * luisa::compute::make_float3x3(1.0f);
-            // hessian[6] = stiffness_bending * m_Q[1][3] * luisa::compute::make_float3x3(1.0f);
-            // hessian[7] = stiffness_bending * m_Q[2][2] * luisa::compute::make_float3x3(1.0f);
-            // hessian[8] = stiffness_bending * m_Q[2][3] * luisa::compute::make_float3x3(1.0f);
-            // hessian[9] = stiffness_bending * m_Q[3][3] * luisa::compute::make_float3x3(1.0f);
-        }
-        for (uint j = 0; j < 4; j++)
-        {
-            const Float3x3& diag = stiffness_bending * m_Q[j][j] * luisa::compute::float3x3::eye(1.0f);
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                for (uint jj = 0; jj < 3; jj++)
-                {
-                    sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(diag[ii][jj]);
+                for (uint j = 0; j < 2; j++) {
+                    for (uint ii = 0; ii < 3; ii++) {
+                        for (uint jj = 0; jj < 3; jj++) {
+                            sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(He[ii][jj]);
+                            // sa_cgB->atomic(edge[ii])[jj].fetch_add(force[ii][jj]);
+                        }
+                    }
                 }
-            }
-        }
-  
-        // sa_cgA_offdiag_bending->write(6 * eid + 0, stiffness_bending * m_Q[0][1] * luisa::compute::make_float3x3(1.0f));
-        // sa_cgA_offdiag_bending->write(6 * eid + 1, stiffness_bending * m_Q[0][2] * luisa::compute::make_float3x3(1.0f));
-        // sa_cgA_offdiag_bending->write(6 * eid + 2, stiffness_bending * m_Q[0][3] * luisa::compute::make_float3x3(1.0f));
-        // sa_cgA_offdiag_bending->write(6 * eid + 3, stiffness_bending * m_Q[1][2] * luisa::compute::make_float3x3(1.0f));
-        // sa_cgA_offdiag_bending->write(6 * eid + 4, stiffness_bending * m_Q[1][3] * luisa::compute::make_float3x3(1.0f));
-        // sa_cgA_offdiag_bending->write(6 * eid + 5, stiffness_bending * m_Q[2][3] * luisa::compute::make_float3x3(1.0f));
+                // atomic_buffer_add(sa_cgB, edge[0], force[0]);
+                // atomic_buffer_add(sa_cgB, edge[1], force[1]);
+                // atomic_buffer_add(sa_cgA_diag, edge[0], He);
+                // atomic_buffer_add(sa_cgA_diag, edge[1], He);
+                sa_cgA_offdiag_stretch_spring->write(eid, -1.0f * He);// eid * 2 + 0, -1.0f * He);
+            },
+            default_option);
 
-        // uint off_diag_offset[4] = {0, 4, 7, 9};
-        // for (uint j = 0; j < 4; j++)
-        // {
-        //     const Float3x3& off_diag = hessian[off_diag_offset[j]];
-        //     for (uint ii = 0; ii < 3; ii++)
-        //     {
-        //         for (uint jj = 0; jj < 3; jj++)
-        //         {
-        //             sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(off_diag[ii][jj]);
-        //         }
-        //     }
-        // }
-  
-        // sa_cgA_offdiag_bending->write(6 * eid + 0, hessian[1]);
-        // sa_cgA_offdiag_bending->write(6 * eid + 1, hessian[2]);
-        // sa_cgA_offdiag_bending->write(6 * eid + 2, hessian[3]);
-        // sa_cgA_offdiag_bending->write(6 * eid + 3, hessian[5]);
-        // sa_cgA_offdiag_bending->write(6 * eid + 4, hessian[6]);
-        // sa_cgA_offdiag_bending->write(6 * eid + 5, hessian[8]);
-        
-    }, default_option);
+    if (host_sim_data->sa_bending_edges.size() > 0)
+        compiler.compile<1>(
+            fn_evaluate_bending,
+            [sa_x = sim_data->sa_x.view(),
+             sa_cgB = sim_data->sa_cgB.view(),
+             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+             sa_cgA_offdiag_bending = sim_data->sa_cgA_offdiag_bending.view(),
+             sa_edges = sim_data->sa_bending_edges.view(),
+             sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view()](const Float stiffness_bending) {
+                // const Uint curr_prefix = culster->read(cluster_idx);
+                // const UInt eid = curr_prefix + dispatch_id().x;
+
+                const UInt eid = dispatch_id().x;
+                UInt4 edge = sa_edges->read(eid);
+                Float4x4 m_Q = sa_bending_edges_Q->read(eid);
+
+                Float3 vert_pos[4] = {
+                    sa_x->read(edge[0]),
+                    sa_x->read(edge[1]),
+                    sa_x->read(edge[2]),
+                    sa_x->read(edge[3]),
+                };
+                Float3 force[4] = {
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                };
+
+                for (uint ii = 0; ii < 4; ii++) {
+                    for (uint jj = 0; jj < 4; jj++) {
+                        force[ii] -= m_Q[ii][jj] * vert_pos[jj];// -Qx
+                    }
+                    force[ii] = stiffness_bending * force[ii];
+                }
+                for (uint j = 0; j < 4; j++) {
+                    for (uint ii = 0; ii < 3; ii++) {
+                        sa_cgB->atomic(edge[j])[ii].fetch_add(force[j][ii]);
+                    }
+                }
+
+                // Float3x3 hessian[10];
+                {
+                    //  0   1   2   3
+                    // t1   4   5   6
+                    // t2  t5   7   8
+                    // t3  t6  t8   9
+                    // hessian[0] = stiffness_bending * m_Q[0][0] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[1] = stiffness_bending * m_Q[0][1] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[2] = stiffness_bending * m_Q[0][2] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[3] = stiffness_bending * m_Q[0][3] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[4] = stiffness_bending * m_Q[1][1] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[5] = stiffness_bending * m_Q[1][2] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[6] = stiffness_bending * m_Q[1][3] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[7] = stiffness_bending * m_Q[2][2] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[8] = stiffness_bending * m_Q[2][3] * luisa::compute::make_float3x3(1.0f);
+                    // hessian[9] = stiffness_bending * m_Q[3][3] * luisa::compute::make_float3x3(1.0f);
+                }
+                for (uint j = 0; j < 4; j++) {
+                    const Float3x3 &diag = stiffness_bending * m_Q[j][j] * luisa::compute::float3x3::eye(1.0f);
+                    for (uint ii = 0; ii < 3; ii++) {
+                        for (uint jj = 0; jj < 3; jj++) {
+                            sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(diag[ii][jj]);
+                        }
+                    }
+                }
+
+                // sa_cgA_offdiag_bending->write(6 * eid + 0, stiffness_bending * m_Q[0][1] * luisa::compute::make_float3x3(1.0f));
+                // sa_cgA_offdiag_bending->write(6 * eid + 1, stiffness_bending * m_Q[0][2] * luisa::compute::make_float3x3(1.0f));
+                // sa_cgA_offdiag_bending->write(6 * eid + 2, stiffness_bending * m_Q[0][3] * luisa::compute::make_float3x3(1.0f));
+                // sa_cgA_offdiag_bending->write(6 * eid + 3, stiffness_bending * m_Q[1][2] * luisa::compute::make_float3x3(1.0f));
+                // sa_cgA_offdiag_bending->write(6 * eid + 4, stiffness_bending * m_Q[1][3] * luisa::compute::make_float3x3(1.0f));
+                // sa_cgA_offdiag_bending->write(6 * eid + 5, stiffness_bending * m_Q[2][3] * luisa::compute::make_float3x3(1.0f));
+
+                // uint off_diag_offset[4] = {0, 4, 7, 9};
+                // for (uint j = 0; j < 4; j++)
+                // {
+                //     const Float3x3& off_diag = hessian[off_diag_offset[j]];
+                //     for (uint ii = 0; ii < 3; ii++)
+                //     {
+                //         for (uint jj = 0; jj < 3; jj++)
+                //         {
+                //             sa_cgA_diag->atomic(edge[j])[ii][jj].fetch_add(off_diag[ii][jj]);
+                //         }
+                //     }
+                // }
+
+                // sa_cgA_offdiag_bending->write(6 * eid + 0, hessian[1]);
+                // sa_cgA_offdiag_bending->write(6 * eid + 1, hessian[2]);
+                // sa_cgA_offdiag_bending->write(6 * eid + 2, hessian[3]);
+                // sa_cgA_offdiag_bending->write(6 * eid + 3, hessian[5]);
+                // sa_cgA_offdiag_bending->write(6 * eid + 4, hessian[6]);
+                // sa_cgA_offdiag_bending->write(6 * eid + 5, hessian[8]);
+            },
+            default_option);
 
     // SpMV
     // PCG SPMV diagonal kernel
-    fn_pcg_spmv_diag = device.compile<1>(
-        [
-            sa_cgA_diag = sim_data->sa_cgA_diag.view()
-        ](
-            Var<luisa::compute::BufferView<float3>> sa_input_vec, 
-            Var<luisa::compute::BufferView<float3>> sa_output_vec
-        )
-    {
-        const UInt vid = dispatch_id().x;
-        Float3x3 A_diag = sa_cgA_diag->read(vid);
-        Float3 input = sa_input_vec->read(vid);
-        Float3 diag_output = A_diag * input;
-        sa_output_vec->write(vid, diag_output);
-    }, default_option);
+    compiler.compile<1>(
+        fn_pcg_spmv_diag,
+        [sa_cgA_diag = sim_data->sa_cgA_diag.view()](
+            Var<luisa::compute::BufferView<float3>> sa_input_vec,
+            Var<luisa::compute::BufferView<float3>> sa_output_vec) {
+            const UInt vid = dispatch_id().x;
+            Float3x3 A_diag = sa_cgA_diag->read(vid);
+            Float3 input = sa_input_vec->read(vid);
+            Float3 diag_output = A_diag * input;
+            sa_output_vec->write(vid, diag_output);
+        },
+        default_option);
 
+    if (host_sim_data->sa_stretch_springs.size() > 0)
+        compiler.compile<1>(
+            fn_pcg_spmv_offdiag_stretch_spring,
+            [sa_stretch_springs = sim_data->sa_stretch_springs.view(),
+             sa_cgA_offdiag_stretch_spring = sim_data->sa_cgA_offdiag_stretch_spring.view()](
+                Var<luisa::compute::BufferView<float3>> sa_input_vec,
+                Var<luisa::compute::BufferView<float3>> sa_output_vec) {
+                const UInt eid = dispatch_id().x;
+                UInt2 edge = sa_stretch_springs->read(eid);
+                Float3x3 offdiag_hessian1 = sa_cgA_offdiag_stretch_spring->read(eid);
+                Float3x3 offdiag_hessian2 = luisa::compute::transpose(offdiag_hessian1);
+                Float3 input_vec[2] = {
+                    sa_input_vec->read(edge[0]),
+                    sa_input_vec->read(edge[1])};
+                Float3 output_vec[2] = {
+                    make_float3(0.0f),
+                    make_float3(0.0f)};
 
-    if (host_sim_data->sa_stretch_springs.size() > 0) fn_pcg_spmv_offdiag_stretch_spring = device.compile<1>(
-        [
-            sa_stretch_springs = sim_data->sa_stretch_springs.view(),
-            sa_cgA_offdiag_stretch_spring = sim_data->sa_cgA_offdiag_stretch_spring.view()
-        ](
-            Var<luisa::compute::BufferView<float3>> sa_input_vec, 
-            Var<luisa::compute::BufferView<float3>> sa_output_vec
-        )
-    {
-        const UInt eid = dispatch_id().x;
-        UInt2 edge = sa_stretch_springs->read(eid);
-        Float3x3 offdiag_hessian1 = sa_cgA_offdiag_stretch_spring->read(eid);
-        Float3x3 offdiag_hessian2 = luisa::compute::transpose(offdiag_hessian1);
-        Float3 input_vec[2] = {
-            sa_input_vec->read(edge[0]),
-            sa_input_vec->read(edge[1])
-        };
-        Float3 output_vec[2] = {
-            make_float3(0.0f),
-            make_float3(0.0f)
-        };
+                output_vec[0] = offdiag_hessian1 * input_vec[1];
+                output_vec[1] = offdiag_hessian2 * input_vec[0];
 
-        output_vec[0] = offdiag_hessian1 * input_vec[1];
-        output_vec[1] = offdiag_hessian2 * input_vec[0];
+                atomic_buffer_add(sa_output_vec, edge[0], output_vec[0]);
+                atomic_buffer_add(sa_output_vec, edge[1], output_vec[1]);
+                // buffer_add(sa_output_vec, edge[0], output1);
+                // buffer_add(sa_output_vec, edge[1], output2);
+            },
+            default_option);
 
-        atomic_buffer_add(sa_output_vec, edge[0], output_vec[0]);
-        atomic_buffer_add(sa_output_vec, edge[1], output_vec[1]);
-        // buffer_add(sa_output_vec, edge[0], output1);
-        // buffer_add(sa_output_vec, edge[1], output2);
-    }, default_option);
+    if (host_sim_data->sa_bending_edges.size() > 0)
+        compiler.compile<1>(
+            fn_pcg_spmv_offdiag_bending,
+            [sa_bending_edges = sim_data->sa_bending_edges.view(),
+             sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),
+             sa_cgA_offdiag_bending = sim_data->sa_cgA_offdiag_bending.view()](
+                Var<luisa::compute::BufferView<float3>> sa_input_vec,
+                Var<luisa::compute::BufferView<float3>> sa_output_vec,
+                Float stiffness_bending) {
+                const UInt eid = dispatch_id().x;
+                UInt4 edge = sa_bending_edges->read(eid);
+                Float4x4 m_Q = sa_bending_edges_Q->read(eid);
 
-    if (host_sim_data->sa_bending_edges.size() > 0) fn_pcg_spmv_offdiag_bending = device.compile<1>(
-        [
-            sa_bending_edges = sim_data->sa_bending_edges.view(),
-            sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),
-            sa_cgA_offdiag_bending = sim_data->sa_cgA_offdiag_bending.view()
-        ](
-            Var<luisa::compute::BufferView<float3>> sa_input_vec, 
-            Var<luisa::compute::BufferView<float3>> sa_output_vec,
-            Float stiffness_bending
-        )
-    {
-        const UInt eid = dispatch_id().x;
-        UInt4 edge = sa_bending_edges->read(eid);
-        Float4x4 m_Q = sa_bending_edges_Q->read(eid);
-
-        Float3 input_vec[4] = {
-            sa_input_vec.read(edge[0]),
-            sa_input_vec.read(edge[1]),
-            sa_input_vec.read(edge[2]),
-            sa_input_vec.read(edge[3]),
-        }; 
-        Float3 output_vec[4] = {
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-        };
-        for (uint j = 0; j < 4; j++)
-        {
-            for (uint jj = 0; jj < 4; jj++)
-            {
-                if (j != jj)
-                {
-                    Float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::float3x3::eye(1.0f);
-                    output_vec[j] += hessian * input_vec[jj];
+                Float3 input_vec[4] = {
+                    sa_input_vec.read(edge[0]),
+                    sa_input_vec.read(edge[1]),
+                    sa_input_vec.read(edge[2]),
+                    sa_input_vec.read(edge[3]),
+                };
+                Float3 output_vec[4] = {
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f),
+                };
+                for (uint j = 0; j < 4; j++) {
+                    for (uint jj = 0; jj < 4; jj++) {
+                        if (j != jj) {
+                            Float3x3 hessian = stiffness_bending * m_Q[j][jj] * luisa::compute::float3x3::eye(1.0f);
+                            output_vec[j] += hessian * input_vec[jj];
+                        }
+                    }
                 }
-            }
-        }
-        // Uint offset = 0;
-        // for (uint j = 0; j < 4; j++)
-        // {
-        //     for (uint jj = j + 1; jj < 4; jj++)
-        //     {
-        //         //  0   1   2   3
-        //         // t1   4   5   6
-        //         // t2  t5   7   8
-        //         // t3  t6  t8   9 
-        //         Float3x3 hessian = sa_cgA_offdiag_bending->read(6 * eid + offset); offset += 1;
-        //         output_vec[j] += hessian * input_vec[jj];
-        //         output_vec[jj] += transpose(hessian) * input_vec[j];
-        //     }
-        // }
-        atomic_buffer_add(sa_output_vec, edge[0], output_vec[0]);
-        atomic_buffer_add(sa_output_vec, edge[1], output_vec[1]);
-        atomic_buffer_add(sa_output_vec, edge[2], output_vec[2]);
-        atomic_buffer_add(sa_output_vec, edge[3], output_vec[3]); 
-    }, default_option);
+                // Uint offset = 0;
+                // for (uint j = 0; j < 4; j++)
+                // {
+                //     for (uint jj = j + 1; jj < 4; jj++)
+                //     {
+                //         //  0   1   2   3
+                //         // t1   4   5   6
+                //         // t2  t5   7   8
+                //         // t3  t6  t8   9
+                //         Float3x3 hessian = sa_cgA_offdiag_bending->read(6 * eid + offset); offset += 1;
+                //         output_vec[j] += hessian * input_vec[jj];
+                //         output_vec[jj] += transpose(hessian) * input_vec[j];
+                //     }
+                // }
+                atomic_buffer_add(sa_output_vec, edge[0], output_vec[0]);
+                atomic_buffer_add(sa_output_vec, edge[1], output_vec[1]);
+                atomic_buffer_add(sa_output_vec, edge[2], output_vec[2]);
+                atomic_buffer_add(sa_output_vec, edge[3], output_vec[3]);
+            },
+            default_option);
 
     // Line search
-    auto fn_reduce_and_add_energy = device.compile<1>(
-        [
-            sa_block_result = sim_data->sa_block_result.view(),
-            sa_convergence = sim_data->sa_convergence.view()
-        ]()
-        {
-            const Uint index = dispatch_id().x;
-            Float energy = 0.0f;
-            {
-                energy = sa_block_result->read(index);
-            };
-            energy = ParallelIntrinsic::block_intrinsic_reduce(index, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+    // auto fn_reduce_and_add_energy = compiler.compile<1>(
+    //     [sa_block_result = sim_data->sa_block_result.view(),
+    //      sa_convergence = sim_data->sa_convergence.view()]() {
+    //         const Uint index = dispatch_id().x;
+    //         Float energy = 0.0f;
+    //         {
+    //             energy = sa_block_result->read(index);
+    //         };
+    //         energy = ParallelIntrinsic::block_intrinsic_reduce(index, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (index == 0)
-            {
-                sa_convergence->atomic(7).fetch_add(energy);
-                // buffer_add(sa_convergence, 7, energy);
-            };
-        }
-    );
+    //         $if (index == 0) {
+    //             sa_convergence->atomic(7).fetch_add(energy);
+    //             // buffer_add(sa_convergence, 7, energy);
+    //         };
+    //     });
 
+    compiler.compile<1>(
+        fn_apply_dx,
+        [sa_x = sim_data->sa_x.view(),
+         sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+         sa_cgX = sim_data->sa_cgX.view()](const Float alpha) {
+            const UInt vid = dispatch_id().x;
+            sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
+        },
+        default_option);
 
-    fn_apply_dx = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
-            sa_cgX = sim_data->sa_cgX.view()
-        ](const Float alpha) 
-    {
-        const UInt vid = dispatch_id().x;
-        sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
-    }, default_option);
-
-    fn_apply_dx_non_constant = device.compile<1>(
-        [
-            sa_x = sim_data->sa_x.view(),
-            sa_x_iter_start = sim_data->sa_x_iter_start.view(),
-            sa_cgX = sim_data->sa_cgX.view()
-        ](Var<BufferView<float>> alpha_buffer) 
-    {
-        const Float alpha = alpha_buffer.read(0);
-        const UInt vid = dispatch_id().x;
-        sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
-    }, default_option);
-    
+    compiler.compile<1>(
+        fn_apply_dx_non_constant,
+        [sa_x = sim_data->sa_x.view(),
+         sa_x_iter_start = sim_data->sa_x_iter_start.view(),
+         sa_cgX = sim_data->sa_cgX.view()](Var<BufferView<float>> alpha_buffer) {
+            const Float alpha = alpha_buffer.read(0);
+            const UInt vid = dispatch_id().x;
+            sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
+        },
+        default_option);
 }
+
 
 // Host functions
 // Outputs:

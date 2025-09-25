@@ -20,118 +20,110 @@ void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest
     buffer->write(dest, buffer->read(dest) + value);
 }
 
-void ConjugateGradientSolver::compile(luisa::compute::Device& device)
-{
+void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
     using namespace luisa::compute;
-    
+
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
     // auto& sa_cgX = sim_data->sa_cgX;
     // auto& sa_cgB = sim_data->sa_cgB;
     // auto& sa_cgA_diag = sim_data->sa_cgA_diag;
-    
+
     // auto& sa_cgMinv = sim_data->sa_cgMinv;
     // auto& sa_cgP = sim_data->sa_cgP;
     // auto& sa_cgQ = sim_data->sa_cgQ;
     // auto& sa_cgR = sim_data->sa_cgR;
     // auto& sa_cgZ = sim_data->sa_cgZ;
 
-    fn_reset_float3 = device.compile<1>([](Var<luisa::compute::BufferView<float3>> buffer)
-    {
+    compiler.compile<1>(fn_reset_float3, [](Var<luisa::compute::BufferView<float3>> buffer) {
         buffer->write(dispatch_id().x, luisa::compute::make_float3(0.0f));
     });
-    fn_reset_float = device.compile<1>([](Var<luisa::compute::BufferView<float>> buffer)
-    {
+    compiler.compile<1>(fn_reset_float, [](Var<luisa::compute::BufferView<float>> buffer) {
         buffer->write(dispatch_id().x, Float(0.0f));
     });
-    fn_reset_uint = device.compile<1>([](Var<luisa::compute::BufferView<uint>> buffer)
-    {
+    compiler.compile<1>(fn_reset_uint, [](Var<luisa::compute::BufferView<uint>> buffer) {
         buffer->write(dispatch_id().x, Uint(0u));
     });
 
     // 0 : old_dot_rr
     // 1 : new_dot_rz
-    // 2 : alpha 
+    // 2 : alpha
     // 3 : beta
     // 4 : new_dot_rr
-    // 
+    //
     // 6 : init energy
     // 7 : new energy
 
-    auto fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr) 
-    { 
+    // These lambda function should captured by value
+    luisa::compute::Callable fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr) {
         const Float normR = sqrt_scalar(dot_rr);
         // Save current rTr
         sa_convergence->write(4, normR);
 
         // Save current rTr to convergent list
         Uint iteration_idx = as<Uint>(sa_convergence->read(8));
-        sa_convergence->write(10 + iteration_idx, normR); 
+        sa_convergence->write(10 + iteration_idx, normR);
         sa_convergence->write(8, as<Float>(iteration_idx + 1));
     };
-    auto fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]() 
-    { 
+    luisa::compute::Callable fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]() {
         return sa_convergence->read(1);
     };
-    auto fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz) 
-    { 
+    luisa::compute::Callable fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz) {
         sa_convergence->write(1, dot_rz);
     };
 
-    auto fn_save_alpha = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq) 
-    { 
+    luisa::compute::Callable fn_save_alpha = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq) {
         Float delta = fn_read_rz();
-        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq); // alpha = delta / dot(p, q)
+        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq);// alpha = delta / dot(p, q)
         sa_convergence->write(2, alpha);
     };
-    auto fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]() 
-    { 
+    luisa::compute::Callable fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]() {
         return sa_convergence->read(2);
     };
-    
-    auto fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_rz_old, const Float dot_rz) 
-    { 
+
+    luisa::compute::Callable fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_rz_old, const Float dot_rz) {
         // Float delta_old = fn_read_rz();
         Float delta_old = dot_rz_old;
         Float beta = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
         sa_convergence->write(3, beta);
     };
-    auto fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]() 
-    { 
+    luisa::compute::Callable fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]() {
         return sa_convergence->read(3);
     };
 
     // PCG kernels
-    fn_pcg_init = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_init,
         [
             sa_cgB = sim_data->sa_cgB.view(),
             sa_cgQ = sim_data->sa_cgQ.view(),
             sa_cgR = sim_data->sa_cgR.view(),
             sa_cgP = sim_data->sa_cgP.view(),
             sa_block_result = sim_data->sa_block_result.view()
-        ]()
-    {
-        const UInt vid = dispatch_id().x;
-        Float dot_rr = 0.0f;
+        ]() 
         {
-            Float3 b = sa_cgB->read(vid);
-            Float3 q = sa_cgQ->read(vid);
-            Float3 r = b - q;
-            sa_cgR->write(vid, r);
-            sa_cgP->write(vid, make_float3(0.0f));
-            sa_cgQ->write(vid, make_float3(0.0f));
-    
-            dot_rr = dot_vec(r, r);
-        };
-        dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            const UInt vid = dispatch_id().x;
+            Float dot_rr = 0.0f;
+            {
+                Float3 b = sa_cgB->read(vid);
+                Float3 q = sa_cgQ->read(vid);
+                Float3 r = b - q;
+                sa_cgR->write(vid, r);
+                sa_cgP->write(vid, make_float3(0.0f));
+                sa_cgQ->write(vid, make_float3(0.0f));
 
-        $if (vid % 256 == 0)
-        {
-            const Uint blockIdx = vid / 256;
-            sa_block_result->write(blockIdx, dot_rr);
-        };
-    }, default_option);
+                dot_rr = dot_vec(r, r);
+            };
+            dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-    fn_pcg_init_second_pass = device.compile<1>(
+            $if (vid % 256 == 0) {
+                const Uint blockIdx = vid / 256;
+                sa_block_result->write(blockIdx, dot_rr);
+            };
+        },
+        default_option);
+
+    compiler.compile<1>(
+        fn_pcg_init_second_pass,
         [
             sa_block_result = sim_data->sa_block_result.view(),
             sa_convergence = sim_data->sa_convergence.view()
@@ -147,19 +139,18 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
 
             $if (vid == 0)
             {
-                sa_convergence->write(0, dot_rr); // rTr_0
-                sa_convergence->write(1, 0.0f); // rTz
-                sa_convergence->write(2, 0.0f); // alpha
-                sa_convergence->write(3, 0.0f); // beta
+                sa_convergence->write(0, dot_rr);// rTr_0
+                sa_convergence->write(1, 0.0f);  // rTz
+                sa_convergence->write(2, 0.0f);  // alpha
+                sa_convergence->write(3, 0.0f);  // beta
 
-                sa_convergence->write(8, as<Float>(Uint(0))); // iteration count
+                sa_convergence->write(8, as<Float>(Uint(0)));// iteration count
                 sa_convergence->write(9, dot_rr);
             };
-        }
-    );
+        });
 
-
-    fn_dot_pq = device.compile<1>(
+    compiler.compile<1>(
+        fn_dot_pq,
         [
             sa_cgP = sim_data->sa_cgP.view(),
             sa_cgQ = sim_data->sa_cgQ.view(),
@@ -174,21 +165,20 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
                 Float3 q = sa_cgQ->read(vid);
                 dot_pq = dot_vec(p, q);
             };
-            
+
             dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (vid % 256 == 0)
-            {
+            $if (vid % 256 == 0) {
                 sa_block_result->write(vid / 256, dot_pq);
             };
-        }
-    );
+        });
 
     // Write 2 <- alpha
-    fn_dot_pq_second_pass = device.compile<1>(
+    compiler.compile<1>(
+        fn_dot_pq_second_pass,
         [
             sa_block_result = sim_data->sa_block_result.view(),
-            &fn_save_alpha
+            fn_save_alpha
         ]()
         {
             const UInt vid = dispatch_id().x;
@@ -197,94 +187,96 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
             {
                 dot_pq = sa_block_result->read(vid);
             };
-                
+
             dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
             $if (vid == 0) { fn_save_alpha(dot_pq); };
-        }
-    );
+        });
 
-
-
-    fn_pcg_update_p = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_update_p,
         [
-        sa_cgP = sim_data->sa_cgP.view(),
-        sa_cgZ = sim_data->sa_cgZ.view(),
-        sa_convergence = sim_data->sa_convergence.view(),
-        &fn_read_beta
-        ]()
-    {
-        const UInt vid = dispatch_id().x;
-        const Float beta = fn_read_beta();
-        const Float3 p = sa_cgP->read(vid);
-        sa_cgP->write(vid, sa_cgZ->read(vid) + beta * p);
-    }, default_option);
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_cgZ = sim_data->sa_cgZ.view(),
+            sa_convergence = sim_data->sa_convergence.view(),
+            fn_read_beta
+        ]() 
+        {
+            const UInt vid = dispatch_id().x;
+            const Float beta = fn_read_beta();
+            const Float3 p = sa_cgP->read(vid);
+            sa_cgP->write(vid, sa_cgZ->read(vid) + beta * p);
+        },
+        default_option);
 
-    fn_pcg_step = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_step,
         [
-        sa_cgX = sim_data->sa_cgX.view(),
-        sa_cgR = sim_data->sa_cgR.view(),
-        sa_cgP = sim_data->sa_cgP.view(),
-        sa_cgQ = sim_data->sa_cgQ.view(),
-        &fn_read_alpha
+            sa_cgX = sim_data->sa_cgX.view(),
+            sa_cgR = sim_data->sa_cgR.view(),
+            sa_cgP = sim_data->sa_cgP.view(),
+            sa_cgQ = sim_data->sa_cgQ.view(),
+            fn_read_alpha
         ]()
-    {
-        const UInt vid = dispatch_id().x;
-        const Float alpha = fn_read_alpha();
-        sa_cgX->write(vid, sa_cgX->read(vid) + alpha * sa_cgP->read(vid));
-        sa_cgR->write(vid, sa_cgR->read(vid) - alpha * sa_cgQ->read(vid));
-    }, default_option);
-
-
+         {
+            const UInt vid = dispatch_id().x;
+            const Float alpha = fn_read_alpha();
+            sa_cgX->write(vid, sa_cgX->read(vid) + alpha * sa_cgP->read(vid));
+            sa_cgR->write(vid, sa_cgR->read(vid) - alpha * sa_cgQ->read(vid));
+        },
+        default_option);
 
     // Preconditioner
-    fn_pcg_make_preconditioner = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_make_preconditioner,
         [
             sa_cgA_diag = sim_data->sa_cgA_diag.view(),
             sa_cgMinv = sim_data->sa_cgMinv.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view()
         ]()
-    {
-        const UInt vid = dispatch_id().x;
-        Float3x3 diagA = sa_cgA_diag->read(vid);
-        Float3x3 inv_M = inverse(diagA);
-        sa_cgMinv->write(vid, inv_M);
-    }, default_option);
+        {
+            const UInt vid = dispatch_id().x;
+            Float3x3 diagA = sa_cgA_diag->read(vid);
+            Float3x3 inv_M = inverse(diagA);
+            sa_cgMinv->write(vid, inv_M);
+        },
+        default_option);
 
-    fn_pcg_apply_preconditioner = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_apply_preconditioner,
         [
             sa_cgR = sim_data->sa_cgR.view(),
             sa_cgZ = sim_data->sa_cgZ.view(),
             sa_cgMinv = sim_data->sa_cgMinv.view(),
             sa_block_result = sim_data->sa_block_result.view()
-        ]() 
-    {
-        const UInt vid = dispatch_id().x;
-        const Float3 r = sa_cgR->read(vid);
-        const Float3x3 inv_M = sa_cgMinv->read(vid);
-        Float3 z = inv_M * r;
-        sa_cgZ->write(vid, z);
+        ]() {
+            const UInt vid = dispatch_id().x;
+            const Float3 r = sa_cgR->read(vid);
+            const Float3x3 inv_M = sa_cgMinv->read(vid);
+            Float3 z = inv_M * r;
+            sa_cgZ->write(vid, z);
 
-        Float dot_rz = dot_vec(r, z);
-        Float dot_rr = dot_vec(r, r);
-        Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
-        dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
-        $if (vid % 256 == 0)
-        {
-            const Uint blockIdx = vid / 256;
-            sa_block_result->write(2 * blockIdx + 0, dot_rr_rz[0]);
-            sa_block_result->write(2 * blockIdx + 1, dot_rr_rz[1]);
-        };
-    }, default_option);
+            Float dot_rz = dot_vec(r, z);
+            Float dot_rr = dot_vec(r, r);
+            Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+            dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+            $if (vid % 256 == 0)
+             {
+                const Uint blockIdx = vid / 256;
+                sa_block_result->write(2 * blockIdx + 0, dot_rr_rz[0]);
+                sa_block_result->write(2 * blockIdx + 1, dot_rr_rz[1]);
+            };
+        },
+        default_option);
 
     // Write 1 <- dot_rz (replace)
     // Write 3 <- beta
-    fn_pcg_apply_preconditioner_second_pass = device.compile<1>(
+    compiler.compile<1>(
+        fn_pcg_apply_preconditioner_second_pass,
         [
             sa_block_result = sim_data->sa_block_result.view(),
-            &fn_update_dot_rz, &fn_save_dot_rr, &fn_save_beta, &fn_read_rz
-        ]()
-        {
+            fn_update_dot_rz, fn_save_dot_rr, fn_save_beta, fn_read_rz
+        ]() {
             const UInt vid = dispatch_id().x;
 
             Float dot_rr = sa_block_result->read(2 * vid + 0);
@@ -303,11 +295,8 @@ void ConjugateGradientSolver::compile(luisa::compute::Device& device)
                 fn_update_dot_rz(dot_rz);
                 fn_save_dot_rr(dot_rr);
             };
-        }
-    );
+        });
 }
-
-
 
 static inline float fast_dot(const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) 
 {

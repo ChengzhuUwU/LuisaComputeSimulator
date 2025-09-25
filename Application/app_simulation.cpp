@@ -75,6 +75,7 @@ enum SolverType
 int main(int argc, char** argv)
 {
     luisa::log_level_info();
+    luisa::fiber::scheduler scheduler;
     std::cout << "Hello, LuisaComputeSimulation!" << std::endl;
     
     // Init GPU system
@@ -146,24 +147,26 @@ int main(int argc, char** argv)
     }
 
     // Init solver class
+    luisa::compute::Clock clk;
     LUISA_INFO("JIT Compiling LBVH...");
     lcs::BufferFiller   buffer_filler;
     lcs::DeviceParallel device_parallel;
 
     lcs::LBVH           lbvh_face;
     lcs::LBVH           lbvh_edge;
+    lcs::AsyncCompiler compiler(device);
     {
         lbvh_face.set_lbvh_data(&lbvh_data_face);
         lbvh_edge.set_lbvh_data(&lbvh_data_edge);
-        lbvh_face.compile(device);
-        lbvh_edge.compile(device);
+        lbvh_face.compile(compiler);
+        lbvh_edge.compile(compiler);
     }
 
     LUISA_INFO("JIT Compiling Narrow Phase Detector...");
     lcs::NarrowPhasesDetector narrow_phase_detector;
     {
         narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
-        narrow_phase_detector.compile(device);
+        narrow_phase_detector.compile(compiler);
         // narrow_phase_detector.unit_test(device, stream);
     }
     
@@ -176,7 +179,7 @@ int main(int argc, char** argv)
             &host_xpbd_data, 
             &xpbd_data
         );
-        pcg_solver.compile(device);
+        pcg_solver.compile(compiler);
     }
 
     // lcs::DescentSolver  solver;
@@ -197,10 +200,11 @@ int main(int argc, char** argv)
             &narrow_phase_detector,
             &pcg_solver
         );
-        solver.lcs::SolverInterface::compile(device);
-        solver.compile(device);
+        solver.lcs::SolverInterface::compile(compiler);
+        solver.compile(compiler);
     }
-
+    compiler.wait();
+    LUISA_INFO("Shader compile done with time {} seconds.", clk.toc() * 1e-3); 
     // Define Simulation
     {
         solver.lcs::SolverInterface::restart_system();

@@ -56,14 +56,15 @@ target_end()
 target("polyscope")
     add_rules("lc_basic_settings", {
         project_kind = "static",
-        enable_exception = true
+        enable_exception = true,
+        rtti = true
     })
     add_includedirs("polyscope/include", "polyscope/deps/MarchingCubeCpp/include", { public = true })
     add_files("polyscope/src/**.cpp")
     add_includedirs("LuisaCompute/src/ext/stb/stb")
     add_defines("GLAD_GLAPI_EXPORT", {public = true})
-    add_defines("GLAD_GLAPI_EXPORT_BUILD")
-    add_deps("glm", "implot", "stb-image", "nlohmann_json")
+    add_defines("GLAD_GLAPI_EXPORT_BUILD", "POLYSCOPE_BACKEND_OPENGL3_GLFW_ENABLED", "POLYSCOPE_BACKEND_OPENGL3_ENABLED")
+    add_deps("glm", "implot", "stb-image", "nlohmann_json", "glad")
     set_pcxxheader("polyscope_pch.h")
 target_end()
 
@@ -85,4 +86,16 @@ target("implot")
             target:add("defines", "IMPLOT_API=__declspec(dllimport)", { interface = true });
         end
     end)
+target_end()
+
+target("glad")
+    add_rules("lc_basic_settings", {
+        project_kind = "static"
+    })
+    add_files("glad/src/**.c")
+    add_includedirs("glad/include", {public = true})
+target_end()
+
+target("imgui")
+add_files("LuisaCompute/src/ext/imgui/backends/imgui_impl_opengl3.cpp")
 target_end()

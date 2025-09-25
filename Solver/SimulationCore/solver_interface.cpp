@@ -398,18 +398,18 @@ constexpr uint offset_ground_collision = 1;
 constexpr uint offset_stretch_spring = 2;
 constexpr uint offset_bending = 3;
 
-void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
+void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
     const bool use_debug_info = false;
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
 
-    fn_reset_float = device.compile<1>([](Var<BufferView<float>> buffer)
-    {
+    compiler.compile<1>(fn_reset_float, [](Var<BufferView<float>> buffer) {
         buffer->write(dispatch_x(), 0.0f);
     });
 
-    fn_calc_energy_inertia = device.compile<1>(
+     compiler.compile<1>(
+        fn_calc_energy_inertia,
         [
             sa_x_tilde = sim_data->sa_x_tilde.view(),
             sa_vert_mass = mesh_data->sa_vert_mass.view(),
@@ -420,39 +420,40 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             Float substep_dt,
             Float stiffness_dirichlet
         )
-    {
-        const Uint vid = dispatch_id().x;
-
-        Float energy = 0.0f;
-
         {
-            Float3 x_new = sa_x->read(vid);
-            Float3 x_tilde = sa_x_tilde->read(vid);
-            Float mass = sa_vert_mass->read(vid);
-            Bool is_fixed = sa_is_fixed->read(vid);
-            const Float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
-            energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-            $if (is_fixed)
+            const Uint vid = dispatch_id().x;
+
+            Float energy = 0.0f;
+
             {
-                // Dirichlet boundary energy
-                energy = stiffness_dirichlet * energy;
-            }
-            $else
-            {
+                Float3 x_new = sa_x->read(vid);
+                Float3 x_tilde = sa_x_tilde->read(vid);
+                Float mass = sa_vert_mass->read(vid);
+                Bool is_fixed = sa_is_fixed->read(vid);
+                const Float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
+                energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
+                $if (is_fixed)
+                {
+                    // Dirichlet boundary energy
+                    energy = stiffness_dirichlet * energy;
+                }
+                $else
+                {
+                };
+                if constexpr (print_detail) device_log("vid {}, inertia energy {} (invdt2 = {}, |dx|2 = {}, diff = {}) mass = {}", vid, energy, squared_inv_dt, (length_squared_vec(x_new - x_tilde)), x_new - x_tilde, mass);
             };
-            if constexpr (print_detail) device_log("vid {}, inertia energy {} (invdt2 = {}, |dx|2 = {}, diff = {}) mass = {}", vid, energy, squared_inv_dt, (length_squared_vec(x_new - x_tilde)), x_new - x_tilde, mass);
-        };
-        
-        
-        energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if(vid % 256 == 0)
-        {
-            // sa_system_energy->write(vid / 256, energy);
-            sa_system_energy->atomic(offset_inertia).fetch_add(energy);
-        };
-    }, default_option);
+            
+            
+            energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(vid % 256 == 0)
+            {
+                // sa_system_energy->write(vid / 256, energy);
+                sa_system_energy->atomic(offset_inertia).fetch_add(energy);
+            };
+        }, default_option);
 
-    fn_calc_energy_ground_collision = device.compile<1>(
+    compiler.compile<1>(
+        fn_calc_energy_ground_collision,
         [
             sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
             sa_is_fixed = mesh_data->sa_is_fixed.view(),
@@ -465,33 +466,35 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             Float d_hat,
             Float thickness
         )
-    {
-        const Uint vid = dispatch_id().x;
-
-        Float energy = 0.0f;
-        Bool is_fixed = sa_is_fixed->read(vid) != 0;
-        $if (use_ground_collision & !is_fixed)
         {
-            Float3 x_k = sa_x->read(vid);
-            Float diff = x_k.y - floor_y;
-            $if (diff < d_hat + thickness)
+            const Uint vid = dispatch_id().x;
+
+            Float energy = 0.0f;
+            Bool is_fixed = sa_is_fixed->read(vid) != 0;
+            $if (use_ground_collision & !is_fixed)
             {
-                Float C = d_hat + thickness - diff;
-                Float area = sa_rest_vert_area->read(vid);
-                Float stiff = stiffness * area;
-                energy = 0.5f * stiff * C * C;
+                Float3 x_k = sa_x->read(vid);
+                Float diff = x_k.y - floor_y;
+                $if (diff < d_hat + thickness)
+                {
+                    Float C = d_hat + thickness - diff;
+                    Float area = sa_rest_vert_area->read(vid);
+                    Float stiff = stiffness * area;
+                    energy = 0.5f * stiff * C * C;
+                };
             };
-        };
 
-        energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if(vid % 256 == 0)
-        {
-            // sa_system_energy->write(vid / 256, energy);
-            sa_system_energy->atomic(offset_ground_collision).fetch_add(energy);
-        };
-    }, default_option);
+            energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(vid % 256 == 0)
+            {
+                // sa_system_energy->write(vid / 256, energy);
+                sa_system_energy->atomic(offset_ground_collision).fetch_add(energy);
+            };
+        }, default_option);
 
-    if (host_sim_data->sa_stretch_springs.size() > 0) fn_calc_energy_spring = device.compile<1>(
+    if (host_sim_data->sa_stretch_springs.size() > 0) 
+        compiler.compile<1>(
+            fn_calc_energy_spring,
         [
             sa_edges = sim_data->sa_stretch_springs.view(),
             sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
@@ -500,29 +503,31 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             Var<BufferView<float3>> sa_x,
             Float stiffness_spring
         )
-    {
-        const Uint eid = dispatch_id().x;
-        Float energy = 0.0f;
         {
-            const Uint2 edge = sa_edges->read(eid);
-            const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
-            Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
-            Float orig_lengthsqr = length_squared_vec(diff);
-            Float l = sqrt_scalar(orig_lengthsqr);
-            Float l0 = rest_edge_length;
-            Float C = l - l0;
-            // if (C > 0.0f)
-                energy = 0.5f * stiffness_spring * C * C;
-        };
-        energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if (eid % 256 == 0)
-        {
-            // sa_system_energy->write(eid / 256, energy);
-            sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);
-        };
-    }, default_option);
+            const Uint eid = dispatch_id().x;
+            Float energy = 0.0f;
+            {
+                const Uint2 edge = sa_edges->read(eid);
+                const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
+                Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
+                Float orig_lengthsqr = length_squared_vec(diff);
+                Float l = sqrt_scalar(orig_lengthsqr);
+                Float l0 = rest_edge_length;
+                Float C = l - l0;
+                // if (C > 0.0f)
+                    energy = 0.5f * stiffness_spring * C * C;
+            };
+            energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if (eid % 256 == 0)
+            {
+                // sa_system_energy->write(eid / 256, energy);
+                sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);
+            };
+        }, default_option);
 
-    if (host_sim_data->sa_bending_edges.size() > 0) fn_calc_energy_bending = device.compile<1>(
+    if (host_sim_data->sa_bending_edges.size() > 0) 
+        compiler.compile<1>(
+            fn_calc_energy_bending,
         [
             sa_edges = sim_data->sa_bending_edges.view(),
             sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),
@@ -531,34 +536,34 @@ void SolverInterface::compile_compute_energy(luisa::compute::Device& device)
             Var<BufferView<float3>> sa_x,
             Float stiffness_bending
         )
-    {
-        const Uint eid = dispatch_id().x;
-        Float energy = 0.0f;
         {
-            const Uint4 edge = sa_edges->read(eid);
-            const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
-            Float3 vert_pos[4] = {
-                sa_x.read(edge[0]),
-                sa_x.read(edge[1]),
-                sa_x.read(edge[2]),
-                sa_x.read(edge[3]),
-            };
-            for (uint ii = 0; ii < 4; ii++) 
+            const Uint eid = dispatch_id().x;
+            Float energy = 0.0f;
             {
-                for (uint jj = 0; jj < 4; jj++) 
+                const Uint4 edge = sa_edges->read(eid);
+                const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
+                Float3 vert_pos[4] = {
+                    sa_x.read(edge[0]),
+                    sa_x.read(edge[1]),
+                    sa_x.read(edge[2]),
+                    sa_x.read(edge[3]),
+                };
+                for (uint ii = 0; ii < 4; ii++) 
                 {
-                    // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
-                    energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]); 
+                    for (uint jj = 0; jj < 4; jj++) 
+                    {
+                        // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+                        energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]); 
+                    }
                 }
-            }
-            energy = 0.5f * stiffness_bending * energy;
-        };
-        energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        $if (eid % 256 == 0)
-        {
-            sa_system_energy->atomic(offset_bending).fetch_add(energy);
-        };
-    }, default_option);
+                energy = 0.5f * stiffness_bending * energy;
+            };
+            energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if (eid % 256 == 0)
+            {
+                sa_system_energy->atomic(offset_bending).fetch_add(energy);
+            };
+        }, default_option);
 }
 double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x)
 {
