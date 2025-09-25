@@ -15,7 +15,7 @@ public:
     AsyncCompiler(AsyncCompiler &&) = default;
     ~AsyncCompiler() = default;
     template<size_t N, typename Func, typename... Args>
-    [[nodiscard]] void compile(luisa::compute::Shader<N, Args...> &result,
+    void compile(luisa::compute::Shader<N, Args...> &result,
                                Func const &kernel,
                                const luisa::compute::ShaderOption &option = {}) noexcept {
         _counter.add();
@@ -23,6 +23,8 @@ public:
             result = device.compile<N>(kernel, option);
             counter.done();
         });
+        // _counter.wait();
+        // result = this->_device.compile<N>(kernel, option);
     }
     // template<size_t N, typename Func, typename Shader>
     //     requires(std::negation_v<luisa::compute::detail::is_dsl_kernel<std::remove_cvref_t<Func>>> && N >= 1 && N <= 3)
