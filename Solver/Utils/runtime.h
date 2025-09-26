@@ -8,6 +8,7 @@
 
 #include <luisa/luisa-compute.h>
 
+#ifdef LCGS_SHARED_LIBRARY
 #ifdef _MSC_VER
 #ifdef LCGS_DLL_EXPORTS
     #define LCGS_API __declspec(dllexport)
@@ -16,6 +17,9 @@
 #endif
 #else
     #define LCGS_API __attribute__((visibility("default")))
+#endif
+#else
+#define LCGS_API
 #endif
 
 

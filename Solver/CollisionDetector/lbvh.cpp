@@ -71,7 +71,7 @@ template<typename UintType> UintType extract_leaf(const UintType mask)  { return
 
 int clz_ulong(morton64 x) 
 {
-    return __builtin_clzll(x);
+    return std::countl_zero(x);
 }
 Var<int> clz_ulong(Var<morton64> x) 
 {
@@ -185,7 +185,7 @@ Var<int> findSplit(const Var<int2>& ranges, const luisa::compute::BufferView<mor
     return split;
 }
 
-void LBVH::compile(luisa::compute::Device& device)
+void LBVH::compile(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
 
@@ -193,8 +193,11 @@ void LBVH::compile(luisa::compute::Device& device)
     const uint num_inner_nodes = lbvh_data->num_inner_nodes;
     const uint num_nodes = lbvh_data->num_nodes;
 
+
     // Construct
-    auto reduce_aabb_1_pass_template = [
+
+     // Should capture by value in asynchronous JIT environment
+    auto reduce_aabb_1_pass_template = [ // Setting blockDim is not available in luisa::compute::Callable
         sa_block_aabb = lbvh_data->sa_block_aabb.view(),
         sa_leaf_center = lbvh_data->sa_leaf_center.view()
     ](
@@ -219,7 +222,7 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     };
 
-    fn_reduce_aabb_2_pass = device.compile<1>([
+    compiler.compile<1>(fn_reduce_aabb_2_pass, [
         sa_block_aabb = lbvh_data->sa_block_aabb.view()
     ]()
     {
@@ -243,8 +246,8 @@ void LBVH::compile(luisa::compute::Device& device)
         };
     });
     
-    fn_reduce_vert_tree_global_aabb = device.compile<1>([
-        &reduce_aabb_1_pass_template
+    compiler.compile<1>(fn_reduce_vert_tree_global_aabb, [
+        reduce_aabb_1_pass_template // Should capture by value
     ]
     (
         const Var<luisa::compute::BufferView<float3>> input_position
@@ -257,13 +260,13 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(vert_pos, aabb);
     });
 
-    fn_reduce_edge_tree_global_aabb = device.compile<1>([
-        &reduce_aabb_1_pass_template
+    compiler.compile<1>(fn_reduce_edge_tree_global_aabb, [
+        reduce_aabb_1_pass_template
     ]
     (
         const Var<luisa::compute::BufferView<float3>> input_position,
         const Var<luisa::compute::BufferView<uint2>> input_edge
-    )
+    ) 
     {
         luisa::compute::set_block_size(256);
         
@@ -282,13 +285,13 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(center, aabb);
     });
 
-    fn_reduce_face_tree_global_aabb = device.compile<1>([
-        &reduce_aabb_1_pass_template
+    compiler.compile<1>(fn_reduce_face_tree_global_aabb, [
+        reduce_aabb_1_pass_template
     ]
     (
         const Var<luisa::compute::BufferView<float3>> input_position,
         const Var<luisa::compute::BufferView<uint3>> input_face
-    )
+    ) 
     {
         luisa::compute::set_block_size(256);
         
@@ -309,12 +312,11 @@ void LBVH::compile(luisa::compute::Device& device)
         reduce_aabb_1_pass_template(center, aabb);
     });
 
-
-    fn_reset_tree = device.compile<1>([
+    compiler.compile<1>(fn_reset_tree, [
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_object_idx = lbvh_data->sa_object_idx.view()
-    ]()
+    ]() 
     {
         const Uint vid = luisa::compute::dispatch_id().x;
         $if (vid == 0)
@@ -325,12 +327,12 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_object_idx->write(vid, -1u);
     });
     
-    fn_compute_mortons = device.compile<1>([
+    compiler.compile(fn_compute_mortons, [
         sa_block_aabb = lbvh_data->sa_block_aabb.view(),
         sa_leaf_center = lbvh_data->sa_leaf_center.view(),
         sa_morton = lbvh_data->sa_morton.view(),
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view()
-    ]()
+    ]() 
     {
         const Uint lid = luisa::compute::dispatch_id().x;
 
@@ -344,14 +346,15 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_sorted_get_original->write(lid, lid);
     });
 
-    fn_apply_sorted = device.compile<1>([
+    compiler.compile<1>(fn_apply_sorted, [
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_morton = lbvh_data->sa_morton.view(),
         sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
         sa_children = lbvh_data->sa_children.view(),
         sa_object_idx = lbvh_data->sa_object_idx.view(),
         num_inner_nodes
-    ]() {
+    ]() 
+    {
         const Uint lid = dispatch_id().x;
         const Uint orig_vid = sa_sorted_get_original->read(lid);
         sa_morton_sorted->write(lid, sa_morton->read(orig_vid));
@@ -359,13 +362,14 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_object_idx->write(num_inner_nodes + lid, orig_vid);
     });
 
-    fn_build_inner_nodes = device.compile<1>([
+    compiler.compile<1>(fn_build_inner_nodes, [
         sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
         sa_children = lbvh_data->sa_children.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
         num_inner_nodes
-    ]() {
+    ]() 
+    {
         const Uint nid = dispatch_id().x;
 
         Int num_inners = num_inner_nodes;
@@ -415,11 +419,12 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_children->write(nid, make_uint2(Uint(child_left), Uint(child_right)));
     });
 
-    fn_check_construction = device.compile<1>([
+    compiler.compile<1>(fn_check_construction, [
         sa_children = lbvh_data->sa_children.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_is_healthy = lbvh_data->sa_is_healthy.view()
-    ]() {
+    ]() 
+    {
         const Uint nid = dispatch_id().x;
         Uint2 child = sa_children->read(nid);
         Uint parrent_of_left = sa_parrent->read(child[0]);
@@ -432,7 +437,7 @@ void LBVH::compile(luisa::compute::Device& device)
 
 
     // Refit
-    fn_update_vert_tree_leave_aabb = device.compile<1>([
+    compiler.compile(fn_update_vert_tree_leave_aabb, [
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
@@ -448,7 +453,7 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
 
-    fn_update_edge_tree_leave_aabb = device.compile<1>([
+    compiler.compile<1>(fn_update_edge_tree_leave_aabb, [
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
@@ -457,7 +462,8 @@ void LBVH::compile(luisa::compute::Device& device)
         const Var<luisa::compute::BufferView<float3>> sa_x_end,
         const Var<luisa::compute::BufferView<uint2>> input_edge,
         const Float thickness
-    ) {
+    ) 
+    {
         const Uint lid = dispatch_id().x;
         Uint eid = sa_sorted_get_original->read(lid);
         UInt2 edge = input_edge->read(eid);
@@ -474,7 +480,7 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
     
-    fn_update_face_tree_leave_aabb = device.compile<1>([
+    compiler.compile<1>(fn_update_face_tree_leave_aabb, [
         sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         num_inner_nodes
@@ -483,7 +489,8 @@ void LBVH::compile(luisa::compute::Device& device)
         const Var<luisa::compute::BufferView<float3>> sa_x_end,
         const Var<luisa::compute::BufferView<uint3>> input_face,
         const Float thickness
-    ) {
+    ) 
+    {
         const Uint lid = dispatch_id().x;
         Uint fid = sa_sorted_get_original->read(lid);
         UInt3 face = input_face->read(fid);
@@ -504,21 +511,22 @@ void LBVH::compile(luisa::compute::Device& device)
         sa_node_aabb->write(num_inner_nodes + lid, aabb);
     });
 
-    fn_clear_apply_flag = device.compile<1>([
+    compiler.compile<1>(fn_clear_apply_flag, [
         sa_apply_flag = lbvh_data->sa_apply_flag.view()
     ]() {
         const Uint nid = dispatch_id().x;
         sa_apply_flag->write(nid, 0u);
     });
 
-    fn_refit_tree_aabb = device.compile<1>([
+    compiler.compile<1>(fn_refit_tree_aabb, [
         sa_apply_flag = lbvh_data->sa_apply_flag.view(),
         sa_parrent = lbvh_data->sa_parrent.view(),
         sa_children = lbvh_data->sa_children.view(),
         sa_node_aabb = lbvh_data->sa_node_aabb.view(),
         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
         num_inner_nodes
-    ]() {
+    ]() 
+    {
         const Uint lid = dispatch_id().x;
         Uint current = lid + num_inner_nodes;
         Uint parrent = sa_parrent->read(current);
@@ -630,22 +638,25 @@ void LBVH::compile(luisa::compute::Device& device)
     };
 #endif
 
-    fn_reset_collision_count = device.compile<1>([](
+    compiler.compile<1>(fn_reset_collision_count, [
+    ](
         Var<BufferView<uint>> broadphase_count
-    ){
+    )
+    {
         const Uint vid = dispatch_id().x;
         broadphase_count.write(vid, 0u);
     });
 
-    fn_query_from_verts = device.compile<1>([
-        num_leaves, &query_template
+    compiler.compile<1>(fn_query_from_verts, [
+        num_leaves, query_template
     ](
         Var<BufferView<float3>> sa_x_begin,
         Var<BufferView<float3>> sa_x_end,
         Var<BufferView<uint>> broadphase_count,
         Var<BufferView<uint>> broad_phase_list,
         const Float thickness
-    ) {
+    ) 
+    {
         const Uint vid = dispatch_id().x;
         // Float3 pos = sa_x_begin->read(vid);
         // Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
@@ -658,8 +669,8 @@ void LBVH::compile(luisa::compute::Device& device)
             [&](const Uint adj_fid) { return Var<bool>(true); } );
     });
 
-    fn_query_from_edges = device.compile<1>([
-        num_leaves, &query_template
+    compiler.compile<1>(fn_query_from_edges, [
+        num_leaves, query_template
     ](
         Var<BufferView<float3>> sa_x_begin,
         Var<BufferView<float3>> sa_x_end,
@@ -667,7 +678,8 @@ void LBVH::compile(luisa::compute::Device& device)
         Var<BufferView<uint>> broadphase_count,
         Var<BufferView<uint>> broad_phase_list,
         const Float thickness
-    ) {
+    ) 
+    {
         const Uint eid = dispatch_id().x;
         const Uint2 edge = sa_edges->read(eid);
         Float2x3 vert_aabb = AABB::make_aabb(
@@ -712,7 +724,8 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
     LbvhData<luisa::compute::Buffer> tmp_lbvh_data;
     tmp_lbvh_data.allocate(device, 8, LBVHTreeTypeVert, LBVHUpdateTypeCloth);
     set_lbvh_data(&tmp_lbvh_data);
-    compile(device);
+    AsyncCompiler compiler(device);
+    compile(compiler);
 
     const uint num_leaves = lbvh_data->num_leaves;
     const uint num_inner_nodes = lbvh_data->num_inner_nodes;
@@ -748,7 +761,8 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
         }
     });
 
-    stream 
+    compiler.wait();
+    stream
         << init_test().dispatch(8)
         << synchronize();
 

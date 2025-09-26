@@ -17,21 +17,45 @@ set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
 endif()
 
 
-set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/External)
+set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/ext)
+set(FETCHCONTENT_QUIET OFF)
+set(FETCHCONTENT_VERBOSE ON)
 include(FetchContent)
 if (NOT TARGET luisa::compute)
-    # download LuisaCompute from github.com/LuisaGroup/LuisaCompute.git to the build directory
-
-    # FetchContent_Populate(luisa_compute
-    #         # GIT_REPOSITORY "https://github.com/LuisaGroup/LuisaCompute.git"
-    #         # GIT_TAG stable)
-    #         GIT_REPOSITORY "https://gitee.com/celeste-huohuo/LuisaCompute.git"
-    #         GIT_TAG stable)
-    # set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
+    FetchContent_Declare(
+        luisa_compute
+        GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
+        GIT_TAG next
+        # GIT_SUBMODULES ""
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
+    )
+    FetchContent_Populate(luisa_compute)
     set(LuisaCompute_SOURCE_DIR ${EXT_PATH}/LuisaCompute)
+    # set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
     message(STATUS "LuisaCompute source dir: ${LuisaCompute_SOURCE_DIR}")
-
     include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
+
+    # FetchContent_Declare(
+    #     spdlog
+    #     GIT_REPOSITORY https://github.com/LuisaGroup/spdlog.git
+    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/spdlog
+    # )
+    # FetchContent_Populate(spdlog)
+
+    # FetchContent_Declare(
+    #     imgui
+    #     GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    #     GIT_TAG docking
+    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/imgui
+    # )
+    # FetchContent_Populate(imgui)
+
+    # FetchContent_Declare(
+    #     glfw
+    #     GIT_REPOSITORY https://github.com/glfw/glfw.git
+    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/glfw
+    # )
+    # FetchContent_Populate(glfw)
 
     # add LuisaCompute as a subdirectory
     set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -43,59 +67,36 @@ if (NOT TARGET luisa::compute)
     set(LUISA_COMPUTE_ENABLE_CUDA  ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_REMOTE OFF CACHE BOOL "" FORCE)
-    set(LUISA_COMPUTE_ENABLE_GUI ON CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_WAYLAND ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_FALLBACK OFF CACHE BOOL "" FORCE)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
 
 if (NOT TARGET polyscope)
-
+    FetchContent_Declare(
+        polyscope
+        # https://github.com/nmwsharp/polyscope.git
+        # https://gitee.com/celeste-huohuo/polyscope.git
+        GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
+        SOURCE_DIR ${EXT_PATH}/polyscope
+    )
     set(POLYSCOPE_USE_EXTERNAL_GLFW ON CACHE BOOL "" FORCE)
     set(POLYSCOPE_BACKEND_OPENGL3_GLFW ON CACHE BOOL "" FORCE)
     set(POLYSCOPE_BACKEND_OPENGL_MOCK ON CACHE BOOL "" FORCE)
+    FetchContent_Populate(polyscope)
     add_subdirectory(${EXT_PATH}/polyscope)
-
-    # FetchContent_Declare(
-    #         polyscope
-    #         GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
-    #         GIT_TAG master
-    #         # GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
-    #         # GIT_TAG 2cd38b7496a1e8ff79f615920de2980295bedef7
-    # )
-    # FetchContent_GetProperties(polyscope)
-    # if(NOT polyscope_POPULATED)
-    #     # Fetch the content using previously declared details
-    #     FetchContent_Populate(polyscope)
-    #     message(STATUS "polyscope_SOURCE_DIR: ${polyscope_SOURCE_DIR}")
-    #     message(STATUS "polyscope_BINARY_DIR: ${polyscope_BINARY_DIR}")
-    #     add_subdirectory(${polyscope_SOURCE_DIR} ${polyscope_BINARY_DIR})
-    # endif()
-    # FetchContent_MakeAvailable(polyscope)
 endif()
 
-# if (NOT TARGET ipc::toolkit)
-#     set(IPC_TOOLKIT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_CUDA OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_RATIONAL_INTERSECTION OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_ROBIN_MAP OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_ABSEIL OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_FILIB OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_SIMD OFF CACHE BOOL "" FORCE)
-#     set(IPC_TOOLKIT_WITH_CODE_COVERAGE OFF CACHE BOOL "" FORCE)
-#     add_subdirectory(${EXT_PATH}/ipc-toolkit)
-# endif()
+if (NOT TARGET libdispatch)
+    FetchContent_Declare(
+        libdispatch
+        GIT_REPOSITORY https://github.com/MaxwellGengYF/libdispatch.git
+        SOURCE_DIR ${EXT_PATH}/libdispatch
+    )
+    FetchContent_Populate(libdispatch)
+endif()
 
-# set(USE_AMGCL_FOR_SIM OFF CACHE BOOL "" FORCE)
-# if (USE_AMGCL_FOR_SIM AND NOT TARGET amgcl::amgcl)
-#     add_subdirectory(${EXT_PATH}/amgcl)
-# endif()
-
-# if (NOT TARGET TBB::tbb)
-#     set(TBB_TEST OFF CACHE BOOL "" FORCE)
-#     add_subdirectory(${EXT_PATH}/oneTBB)
-# endif()
 
 option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" ON)
 if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
@@ -120,6 +121,7 @@ if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
         else() 
             if (APPLE)
                 # Use native libdispatch
+                target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
                 message("Host parallel function use native libdispatch")
             else ()
                 message(WARNING "TBB and libdispatch not found. Performance of the fallback backend may be affected.")

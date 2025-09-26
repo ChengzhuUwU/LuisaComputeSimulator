@@ -14,7 +14,7 @@
 namespace lcs // Data IO
 {
 
-void NarrowPhasesDetector::compile(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
 
@@ -28,11 +28,11 @@ void NarrowPhasesDetector::compile(luisa::compute::Device& device)
         ContactEnergyType::Quadratic : 
         ContactEnergyType::Barrier; // Quadratic or Barrier
 
-    compile_ccd(device);
-    compile_dcd(device, contact_energy_type);
-    compile_energy(device, contact_energy_type);
-    compile_prefix_sum(device);
-    compile_assemble(device);
+    compile_ccd(compiler);
+    compile_dcd(compiler, contact_energy_type);
+    compile_energy(compiler, contact_energy_type);
+    compile_prefix_sum(compiler);
+    compile_assemble(compiler);
 }
 
 void NarrowPhasesDetector::reset_toi(Stream& stream)
@@ -174,23 +174,23 @@ float NarrowPhasesDetector::get_global_toi(Stream& stream)
 namespace lcs // CCD
 {
 
-void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile_ccd(AsyncCompiler &compiler)
 {
     using namespace luisa::compute;
 
-    fn_reset_toi = device.compile<1>([](Var<BufferView<float>> sa_toi)
+    compiler.compile<1>(fn_reset_toi, [](Var<BufferView<float>> sa_toi)
     {
         sa_toi->write(dispatch_x(), accd::line_search_max_t);
     });
-    fn_reset_uint = device.compile<1>([](Var<BufferView<uint>> sa_toi)
+    compiler.compile<1>(fn_reset_uint, [](Var<BufferView<uint>> sa_toi)
     {
         sa_toi->write(dispatch_x(), 0u);
     });
-    fn_reset_float = device.compile<1>([](Var<BufferView<float>> sa_toi)
+    compiler.compile<1>(fn_reset_float, [](Var<BufferView<float>> sa_toi)
     {
         sa_toi->write(dispatch_x(), 0.0f);
     });
-    fn_reset_energy = device.compile<1>([](Var<BufferView<float>> sa_energy)
+    compiler.compile<1>(fn_reset_energy, [](Var<BufferView<float>> sa_energy)
     {
         sa_energy->write(dispatch_x(), 0.0f);
     });
@@ -200,8 +200,7 @@ void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
     
-    fn_narrow_phase_vf_ccd_query = device.compile<1>(
-    [
+    compiler.compile<1>(fn_narrow_phase_vf_ccd_query, [
         sa_toi = collision_data->toi_per_vert.view(),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
         broadphase_list = collision_data->broad_phase_list_vf.view()
@@ -267,7 +266,7 @@ void NarrowPhasesDetector::compile_ccd(luisa::compute::Device& device)
         };
     });
 
-    fn_narrow_phase_ee_ccd_query = device.compile<1>(
+    compiler.compile<1>(fn_narrow_phase_ee_ccd_query,
     [
         sa_toi = collision_data->toi_per_vert.view(),
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
@@ -461,7 +460,7 @@ inline auto vert_is_rigid_body(const T& mask)
     return mask != -1u;
 }
 
-void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const ContactEnergyType contact_energy_type)
+void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
 {
     using namespace luisa::compute;
 
@@ -470,7 +469,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
 
-    fn_narrow_phase_vf_dcd_query = device.compile<1>(
+    compiler.compile<1>(
+        fn_narrow_phase_vf_dcd_query,
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
         broadphase_list = collision_data->broad_phase_list_vf.view(),
@@ -591,7 +591,8 @@ void NarrowPhasesDetector::compile_dcd(luisa::compute::Device& device, const Con
         };
     });
 
-    fn_narrow_phase_ee_dcd_query = device.compile<1>(
+    compiler.compile<1>(
+        fn_narrow_phase_ee_dcd_query,
     [
         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
         broadphase_list = collision_data->broad_phase_list_ee.view(),
@@ -773,7 +774,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream& stream,
 namespace lcs // Scan collision set
 {
 
-void NarrowPhasesDetector::compile_prefix_sum(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile_prefix_sum(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
 
@@ -782,17 +783,7 @@ void NarrowPhasesDetector::compile_prefix_sum(luisa::compute::Device& device)
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
 
-    fn_atomic_add_spmv_vf = device.compile<1>(
-    [
-        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    ](
-        Var<BufferView<float3>> input_array, 
-        Var<BufferView<float3>> output_array
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        
-    });
+    
 
     
 }
@@ -804,7 +795,7 @@ void NarrowPhasesDetector::compile_prefix_sum(luisa::compute::Device& device)
 namespace lcs // Compute Barrier Gradient & Hessian & Assemble
 {
 
-void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
+void NarrowPhasesDetector::compile_assemble(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
 
@@ -815,7 +806,7 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
 
     // Assemble
     auto atomic_add_float3 = [](
-        Var<BufferView<float3>>& sa_cgB, const Uint& idx, const Float3& vec
+        Var<Buffer<float3>>& sa_cgB, const Uint& idx, const Float3& vec
     )
     {
         sa_cgB.atomic(idx)[0].fetch_add(vec[0]);
@@ -823,7 +814,7 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
         sa_cgB.atomic(idx)[2].fetch_add(vec[2]);
     };
     auto atomic_sub_float3 = [](
-        Var<BufferView<float3>>& sa_cgB, const Uint& idx, const Float3& vec
+        Var<Buffer<float3>>& sa_cgB, const Uint& idx, const Float3& vec
     )
     {
         sa_cgB.atomic(idx)[0].fetch_sub(vec[0]);
@@ -831,7 +822,7 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
         sa_cgB.atomic(idx)[2].fetch_sub(vec[2]);
     };
     auto atomic_add_float3x3 = [](
-        Var<BufferView<float3x3>>& sa_cgA_diag, const Uint& idx, const Float3x3& mat
+        Var<Buffer<float3x3>>& sa_cgA_diag, const Uint& idx, const Float3x3& mat
     )
     {
         sa_cgA_diag.atomic(idx)[0][0].fetch_add(mat[0][0]);
@@ -846,195 +837,201 @@ void NarrowPhasesDetector::compile_assemble(luisa::compute::Device& device)
     };
 
     // Spring-form contact energy
-    fn_assemble_repulsion_hessian_gradient_vf = device.compile<1>(
-    [
-        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    , &atomic_add_float3, &atomic_add_float3x3](
-        Var<BufferView<float3>> sa_x_left, 
-        Var<BufferView<float3>> sa_x_right, 
-        Float d_hat,
-        Float thickness,
-        Var<BufferView<float3>> sa_cgB, 
-        Var<BufferView<float3x3>> sa_cgA_diag
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_vf->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_vf_weight(pair);
-
-        // const Float3 diff = 
-        //     weight[0] * sa_x_left.read(indices[0]) + 
-        //     weight[1] * sa_x_right.read(indices[1]) + 
-        //     weight[2] * sa_x_right.read(indices[2]) + 
-        //     weight[3] * sa_x_right.read(indices[3]);
-        // const Float d = length_vec(diff);
-
-        // const Float stiff = CollisionPair::get_stiff(pair);
-        const Float2 stiff = CollisionPair::get_vf_stiff(pair);
-        const Float k1 = stiff[0];
-        const Float k2 = stiff[1];
-
-        // const Float d = dot_vec(diff, normal);
-        // $if (d < d_hat + thickness)
+    compiler.compile<1>(
+        fn_assemble_repulsion_hessian_gradient_vf, 
+        [
+            narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+            , &atomic_add_float3, &atomic_add_float3x3
+        ]
+        (
+            Var<Buffer<float3>> sa_x_left, 
+            Var<Buffer<float3>> sa_x_right, 
+            Float d_hat,
+            Float thickness,
+            Var<Buffer<float3>> sa_cgB, 
+            Var<Buffer<float3x3>> sa_cgA_diag
+        )
         {
-            // const Float C = thickness + d_hat - d;
-            const Float3x3 nnT = outer_product(normal, normal);
-    
-            for (uint j = 0; j < 4; j++)
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_vf->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
+
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_vf_weight(pair);
+
+            // const Float3 diff = 
+            //     weight[0] * sa_x_left.read(indices[0]) + 
+            //     weight[1] * sa_x_right.read(indices[1]) + 
+            //     weight[2] * sa_x_right.read(indices[2]) + 
+            //     weight[3] * sa_x_right.read(indices[3]);
+            // const Float d = length_vec(diff);
+
+            // const Float stiff = CollisionPair::get_stiff(pair);
+            const Float2 stiff = CollisionPair::get_vf_stiff(pair);
+            const Float k1 = stiff[0];
+            const Float k2 = stiff[1];
+
+            // const Float d = dot_vec(diff, normal);
+            // $if (d < d_hat + thickness)
             {
-                Float3 force;
-                Float3x3 hessian;
-                force = k1 * weight[j] * normal;
-                hessian = k2 * weight[j] * weight[j] * nnT;
-
-                // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
-                atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
-                atomic_add_float3(sa_cgB, indices[j], force);
-            }
-        };
-    });
-
-    fn_assemble_repulsion_hessian_gradient_ee = device.compile<1>(
-    [
-        narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
-    , &atomic_add_float3, &atomic_add_float3x3](
-        Var<BufferView<float3>> sa_x_left, 
-        Var<BufferView<float3>> sa_x_right, 
-        Float d_hat,
-        Float thickness,
-        Var<BufferView<float3>> sa_cgB, 
-        Var<BufferView<float3x3>> sa_cgA_diag
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_ee->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_ee_weight(pair);
+                // const Float C = thickness + d_hat - d;
+                const Float3x3 nnT = outer_product(normal, normal);
         
-        // const Float stiff = CollisionPair::get_stiff(pair);
-        const Float2 stiff = CollisionPair::get_ee_stiff(pair);
-        const Float k1 = stiff[0];
-        const Float k2 = stiff[1];
+                for (uint j = 0; j < 4; j++)
+                {
+                    Float3 force;
+                    Float3x3 hessian;
+                    force = k1 * weight[j] * normal;
+                    hessian = k2 * weight[j] * weight[j] * nnT;
 
+                    // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
+                    atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
+                    atomic_add_float3(sa_cgB, indices[j], force);
+                }
+            };
+        });
+
+    compiler.compile<1>(
+        fn_assemble_repulsion_hessian_gradient_ee,
+        [
+            narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
+        , &atomic_add_float3, &atomic_add_float3x3](
+            Var<Buffer<float3>> sa_x_left, 
+            Var<Buffer<float3>> sa_x_right, 
+            Float d_hat,
+            Float thickness,
+            Var<Buffer<float3>> sa_cgB, 
+            Var<Buffer<float3x3>> sa_cgA_diag
+        )
         {
-            // const Float C = thickness + d_hat - d;
-            const Float3x3 nnT = outer_product(normal, normal);
-    
-            for (uint j = 0; j < 4; j++)
-            {
-                Float3 force;
-                Float3x3 hessian;
-                force = k1 * weight[j] * normal;
-                hessian = k2 * weight[j] * weight[j] * nnT;
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_ee->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
 
-                // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
-                atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
-                atomic_add_float3(sa_cgB, indices[j], force);
-            }
-        };
-    });
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_ee_weight(pair);
+            
+            // const Float stiff = CollisionPair::get_stiff(pair);
+            const Float2 stiff = CollisionPair::get_ee_stiff(pair);
+            const Float k1 = stiff[0];
+            const Float k2 = stiff[1];
+
+            {
+                // const Float C = thickness + d_hat - d;
+                const Float3x3 nnT = outer_product(normal, normal);
+        
+                for (uint j = 0; j < 4; j++)
+                {
+                    Float3 force;
+                    Float3x3 hessian;
+                    force = k1 * weight[j] * normal;
+                    hessian = k2 * weight[j] * weight[j] * nnT;
+
+                    // device_log("VF pair {} on vert {} : force = {}, diff = {}, stiff = {}, weight = {}, d = {}/{}", pair_idx, indices[j], force, diff, stiff, weight, d, dot_vec(diff, normal));
+                    atomic_add_float3x3(sa_cgA_diag, indices[j], hessian);
+                    atomic_add_float3(sa_cgB, indices[j], force);
+                }
+            };
+        });
 
     // SpMV
-    fn_atomic_add_spmv_vf = device.compile<1>(
-    [
-        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    , &atomic_add_float3](
-        Var<BufferView<float3>> input_array, 
-        Var<BufferView<float3>> output_array
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_vf->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        Float3 input_vec[4] = {
-            input_array.read(indices[0]),
-            input_array.read(indices[1]),
-            input_array.read(indices[2]),
-            input_array.read(indices[3]),
-        }; 
-        Float3 output_vec[4] = {
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-        }; 
-
-        const Float stiff = CollisionPair::get_vf_k2(pair);
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_vf_weight(pair);
-        const Float3x3 xxT = stiff * outer_product(normal, normal);
-
-        for (uint j = 0; j < 4; j++)
+    compiler.compile<1>(
+        fn_atomic_add_spmv_vf,
+        [
+            narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+        , &atomic_add_float3](
+            Var<Buffer<float3>> input_array, 
+            Var<Buffer<float3>> output_array
+        )
         {
-            for (uint jj = 0; jj < 4; jj++)
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_vf->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
+
+            Float3 input_vec[4] = {
+                input_array.read(indices[0]),
+                input_array.read(indices[1]),
+                input_array.read(indices[2]),
+                input_array.read(indices[3]),
+            }; 
+            Float3 output_vec[4] = {
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+            }; 
+
+            const Float stiff = CollisionPair::get_vf_k2(pair);
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_vf_weight(pair);
+            const Float3x3 xxT = stiff * outer_product(normal, normal);
+
+            for (uint j = 0; j < 4; j++)
             {
-                if (j != jj)
+                for (uint jj = 0; jj < 4; jj++)
                 {
-                    Float3x3 hessian = weight[j] * weight[jj] * xxT;
-                    output_vec[j] += hessian * input_vec[jj];
+                    if (j != jj)
+                    {
+                        Float3x3 hessian = weight[j] * weight[jj] * xxT;
+                        output_vec[j] += hessian * input_vec[jj];
+                    }
                 }
             }
-        }
 
-        atomic_add_float3(output_array, indices[0], output_vec[0]);
-        atomic_add_float3(output_array, indices[1], output_vec[1]);
-        atomic_add_float3(output_array, indices[2], output_vec[2]);
-        atomic_add_float3(output_array, indices[3], output_vec[3]); 
-    });
+            atomic_add_float3(output_array, indices[0], output_vec[0]);
+            atomic_add_float3(output_array, indices[1], output_vec[1]);
+            atomic_add_float3(output_array, indices[2], output_vec[2]);
+            atomic_add_float3(output_array, indices[3], output_vec[3]); 
+        });
 
-    fn_atomic_add_spmv_ee = device.compile<1>(
-    [
-        narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
-    , &atomic_add_float3](
-        Var<BufferView<float3>> input_array, 
-        Var<BufferView<float3>> output_array
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_ee->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        Float3 input_vec[4] = {
-            input_array.read(indices[0]),
-            input_array.read(indices[1]),
-            input_array.read(indices[2]),
-            input_array.read(indices[3]),
-        }; 
-        Float3 output_vec[4] = {
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-            make_float3(0.0f),
-        }; 
-
-        const Float stiff = CollisionPair::get_vf_k2(pair);
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_ee_weight(pair);
-        const Float3x3 xxT = stiff * outer_product(normal, normal);
-
-        for (uint j = 0; j < 4; j++)
+    compiler.compile<1>(
+        fn_atomic_add_spmv_ee,
+        [
+            narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
+        , &atomic_add_float3](
+            Var<Buffer<float3>> input_array, 
+            Var<Buffer<float3>> output_array
+        )
         {
-            for (uint jj = 0; jj < 4; jj++)
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_ee->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
+
+            Float3 input_vec[4] = {
+                input_array.read(indices[0]),
+                input_array.read(indices[1]),
+                input_array.read(indices[2]),
+                input_array.read(indices[3]),
+            }; 
+            Float3 output_vec[4] = {
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+            }; 
+
+            const Float stiff = CollisionPair::get_vf_k2(pair);
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_ee_weight(pair);
+            const Float3x3 xxT = stiff * outer_product(normal, normal);
+
+            for (uint j = 0; j < 4; j++)
             {
-                if (j != jj)
+                for (uint jj = 0; jj < 4; jj++)
                 {
-                    Float3x3 hessian = weight[j] * weight[jj] * xxT;
-                    output_vec[j] += hessian * input_vec[jj];
+                    if (j != jj)
+                    {
+                        Float3x3 hessian = weight[j] * weight[jj] * xxT;
+                        output_vec[j] += hessian * input_vec[jj];
+                    }
                 }
             }
-        }
 
-        atomic_add_float3(output_array, indices[0], output_vec[0]);
-        atomic_add_float3(output_array, indices[1], output_vec[1]);
-        atomic_add_float3(output_array, indices[2], output_vec[2]);
-        atomic_add_float3(output_array, indices[3], output_vec[3]); 
-    });
+            atomic_add_float3(output_array, indices[0], output_vec[0]);
+            atomic_add_float3(output_array, indices[1], output_vec[1]);
+            atomic_add_float3(output_array, indices[2], output_vec[2]);
+            atomic_add_float3(output_array, indices[3], output_vec[3]); 
+        });
     
 }
 
@@ -1164,7 +1161,7 @@ void NarrowPhasesDetector::device_spmv(Stream& stream, const Buffer<float3>& inp
 namespace lcs // Compute barrier energy
 {
 
-void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device, const ContactEnergyType contact_energy_type)
+void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
 {
     using namespace luisa::compute;
 
@@ -1173,116 +1170,118 @@ void NarrowPhasesDetector::compile_energy(luisa::compute::Device& device, const 
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
 
-    fn_compute_repulsion_energy_from_vf = device.compile<1>(
-    [
-        contact_energy = collision_data->contact_energy.view(offset_vf, 1),
-        narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
-    , contact_energy_type]( 
-        Var<BufferView<float3>> sa_x_left, 
-        Var<BufferView<float3>> sa_x_right,
-        Float d_hat,
-        Float thickness,
-        Float kappa
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_vf->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_vf_weight(pair);
-        const Float3 diff = 
-            weight[0] * sa_x_left.read(indices[0]) + 
-            weight[1] * sa_x_right.read(indices[1]) + 
-            weight[2] * sa_x_right.read(indices[2]) + 
-            weight[3] * sa_x_right.read(indices[3]);
-        const Float d2 = length_squared_vec(diff);
-        const Float d = sqrt_scalar(d2);
-        // const Float d = dot_vec(diff, normal);
-
-        Float energy = 0.0f;
-
-        $if (d < thickness + d_hat)
+    compiler.compile<1>(
+        fn_compute_repulsion_energy_from_vf,
+        [
+            contact_energy = collision_data->contact_energy.view(offset_vf, 1),
+            narrowphase_list_vf = collision_data->narrow_phase_list_vf.view()
+        , contact_energy_type]( 
+            Var<BufferView<float3>> sa_x_left, 
+            Var<BufferView<float3>> sa_x_right,
+            Float d_hat,
+            Float thickness,
+            Float kappa
+        )
         {
-            const Float area = CollisionPair::get_area(pair);
-            if (contact_energy_type == ContactEnergyType::Quadratic)
-            {
-                Float C = thickness + d_hat - d;
-                const Float stiff = kappa * area; // k2 = stiffness * area
-                energy = 0.5f * stiff * C * C;
-                // device_log("VF energy : Pair {} , weight = {}, diff = {}, normal = {} d = {}, proj = {}, C = {}, E = {} ", pair_idx, weight, diff, normal, length_vec(diff), d, C, energy);
-            }
-            else if (contact_energy_type == ContactEnergyType::Barrier)
-            {
-                cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
-            }
-        };
-        
-        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_vf->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
 
-        $if (pair_idx % 256 == 0)
-        {
-            $if (energy != 0.0f) 
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_vf_weight(pair);
+            const Float3 diff = 
+                weight[0] * sa_x_left.read(indices[0]) + 
+                weight[1] * sa_x_right.read(indices[1]) + 
+                weight[2] * sa_x_right.read(indices[2]) + 
+                weight[3] * sa_x_right.read(indices[3]);
+            const Float d2 = length_squared_vec(diff);
+            const Float d = sqrt_scalar(d2);
+            // const Float d = dot_vec(diff, normal);
+
+            Float energy = 0.0f;
+
+            $if (d < thickness + d_hat)
             {
-                contact_energy->atomic(0).fetch_add(energy);
+                const Float area = CollisionPair::get_area(pair);
+                if (contact_energy_type == ContactEnergyType::Quadratic)
+                {
+                    Float C = thickness + d_hat - d;
+                    const Float stiff = kappa * area; // k2 = stiffness * area
+                    energy = 0.5f * stiff * C * C;
+                    // device_log("VF energy : Pair {} , weight = {}, diff = {}, normal = {} d = {}, proj = {}, C = {}, E = {} ", pair_idx, weight, diff, normal, length_vec(diff), d, C, energy);
+                }
+                else if (contact_energy_type == ContactEnergyType::Barrier)
+                {
+                    cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
+                }
             };
-        };
-    });
+            
+            energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-    fn_compute_repulsion_energy_from_ee = device.compile<1>(
-    [
-        contact_energy = collision_data->contact_energy.view(offset_ee, 1),
-        narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
-    , contact_energy_type](
-        Var<BufferView<float3>> sa_x_left, 
-        Var<BufferView<float3>> sa_x_right,
-        Float d_hat,
-        Float thickness,
-        Float kappa
-    )
-    {
-        const Uint pair_idx = dispatch_x();
-        const auto& pair = narrowphase_list_ee->read(pair_idx);
-        const auto indices = CollisionPair::get_indices(pair);
-
-        const Float3 normal = CollisionPair::get_direction(pair);
-        const Float4 weight = CollisionPair::get_ee_weight(pair);
-        const Float3 diff = 
-            weight[0] * sa_x_left.read(indices[0]) + 
-            weight[1] * sa_x_left.read(indices[1]) + 
-            weight[2] * sa_x_right.read(indices[2]) + 
-            weight[3] * sa_x_right.read(indices[3]);
-        const Float d2 = length_squared_vec(diff);
-        const Float d = sqrt_scalar(d2);
-        // const Float d = dot_vec(diff, normal);
-
-        Float energy = 0.0f;
-
-        $if (d < thickness + d_hat)
-        {
-            const Float area = CollisionPair::get_area(pair);
-            if (contact_energy_type == ContactEnergyType::Quadratic)
+            $if (pair_idx % 256 == 0)
             {
-                Float C = thickness + d_hat - d;
-                const Float stiff = kappa * area; // k2 = stiffness * area
-                energy = 0.5f * stiff * C * C;
-            }
-            else if (contact_energy_type == ContactEnergyType::Barrier)
-            {
-                cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
-            }    
-        };
-
-        energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-        
-        $if (pair_idx % 256 == 0)
-        {
-            $if (energy != 0.0f) 
-            {
-                contact_energy->atomic(0).fetch_add(energy);
+                $if (energy != 0.0f) 
+                {
+                    contact_energy->atomic(0).fetch_add(energy);
+                };
             };
-        };
-    });
+        });
+
+    compiler.compile<1>(
+        fn_compute_repulsion_energy_from_ee,
+        [
+            contact_energy = collision_data->contact_energy.view(offset_ee, 1),
+            narrowphase_list_ee = collision_data->narrow_phase_list_ee.view()
+        , contact_energy_type](
+            Var<BufferView<float3>> sa_x_left, 
+            Var<BufferView<float3>> sa_x_right,
+            Float d_hat,
+            Float thickness,
+            Float kappa
+        )
+        {
+            const Uint pair_idx = dispatch_x();
+            const auto& pair = narrowphase_list_ee->read(pair_idx);
+            const auto indices = CollisionPair::get_indices(pair);
+
+            const Float3 normal = CollisionPair::get_direction(pair);
+            const Float4 weight = CollisionPair::get_ee_weight(pair);
+            const Float3 diff = 
+                weight[0] * sa_x_left.read(indices[0]) + 
+                weight[1] * sa_x_left.read(indices[1]) + 
+                weight[2] * sa_x_right.read(indices[2]) + 
+                weight[3] * sa_x_right.read(indices[3]);
+            const Float d2 = length_squared_vec(diff);
+            const Float d = sqrt_scalar(d2);
+            // const Float d = dot_vec(diff, normal);
+
+            Float energy = 0.0f;
+
+            $if (d < thickness + d_hat)
+            {
+                const Float area = CollisionPair::get_area(pair);
+                if (contact_energy_type == ContactEnergyType::Quadratic)
+                {
+                    Float C = thickness + d_hat - d;
+                    const Float stiff = kappa * area; // k2 = stiffness * area
+                    energy = 0.5f * stiff * C * C;
+                }
+                else if (contact_energy_type == ContactEnergyType::Barrier)
+                {
+                    cipc::KappaBarrier(energy, area * kappa, d2, d_hat, thickness);
+                }    
+            };
+
+            energy = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            
+            $if (pair_idx % 256 == 0)
+            {
+                $if (energy != 0.0f) 
+                {
+                    contact_energy->atomic(0).fetch_add(energy);
+                };
+            };
+        });
 
 }
 

@@ -81,10 +81,9 @@ function install_lc()
         ------------------------------ Extensions ------------------------------
         add_git_job("implot", path.join(ext_path, "implot"), "https://github.com/epezent/implot.git")
         add_git_job("nlohmann_json", path.join(ext_path, "nlohmann_json"), "https://github.com/nlohmann/json.git")
-        add_git_job("eigen", path.join(ext_path, "eigen"), "https://github.com/PX4/eigen.git")
-        add_git_job("polyscope", path.join(ext_path, "polyscope"), "https://github.com/nmwsharp/polyscope.git")
+        add_git_job("eigen", path.join(ext_path, "eigen"), "https://github.com/MaxwellGengYF/eigen.git", "3.4")
+        add_git_job("polyscope", path.join(ext_path, "polyscope"), "https://github.com/MaxwellGengYF/polyscope.git")
         add_git_job("glm", path.join(ext_path, "glm"), "https://github.com/icaven/glm.git")
-        add_git_job("libdispatch", path.join(ext_path, "libdispatch"), "https://github.com/MaxwellGengYF/libdispatch.git")
 
 
         runjobs("git", jobs, {

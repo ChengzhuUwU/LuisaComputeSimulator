@@ -6,9 +6,9 @@
 namespace lcs
 {
 
-#define Identity2x2 luisa::make_float2x2(1.0f)
-#define Identity3x3 luisa::make_float3x3(1.0f)
-#define Identity4x4 luisa::make_float4x4(1.0f)
+#define Identity2x2 luisa::float2x2::eye(1.0f)
+#define Identity3x3 luisa::float3x3::eye(1.0f)
+#define Identity4x4 luisa::float4x4::eye(1.0f)
 
 #define Zero3x3 luisa::make_float3x3(0.0f)
 #define Zero4x4 luisa::make_float4x4(0.0f)
@@ -295,9 +295,9 @@ template<size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
 }
 // When N == L
 template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
-[[nodiscard]] luisa::Matrix<N> mult(const XMatrix<M, N>& left, const XMatrix<L, M>& right) 
+[[nodiscard]] luisa::Matrix<float, N> mult(const XMatrix<M, N>& left, const XMatrix<L, M>& right) 
 {
-    luisa::Matrix<N> output;
+    luisa::Matrix<float, N> output;
     for (uint j = 0; j < N; ++j) {
         for (uint i = 0; i < N; ++i) {
             output[j][i] = 0.0f;
@@ -308,8 +308,8 @@ template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
     }
     return output;
 }
-template luisa::Matrix<3> mult(const XMatrix<2, 3>&, const XMatrix<3, 2>&);
-template luisa::Matrix<2> mult(const XMatrix<3, 2>&, const XMatrix<2, 3>&);
+template luisa::Matrix<float, 3> mult(const XMatrix<2, 3>&, const XMatrix<3, 2>&);
+template luisa::Matrix<float, 2> mult(const XMatrix<3, 2>&, const XMatrix<2, 3>&);
 
 
 // When N != L
@@ -329,9 +329,9 @@ template<size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
 }
 // When N == L
 template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
-[[nodiscard]] Var<luisa::Matrix<N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
+[[nodiscard]] Var<luisa::Matrix<float, N>> mult(const Var<XMatrix<M, N>>& left, const Var<XMatrix<L, M>>& right) 
 {
-    Var<luisa::Matrix<N>> output;
+    Var<luisa::Matrix<float, N>> output;
     for (uint j = 0; j < N; ++j) {
         for (uint i = 0; i < N; ++i) {
             output[j][i] = 0.0f;
@@ -342,8 +342,8 @@ template<size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
     }
     return output;
 }
-template Var<luisa::Matrix<3>> mult(const Var<XMatrix<2, 3>>&, const Var<XMatrix<3, 2>>&);
-template Var<luisa::Matrix<2>> mult(const Var<XMatrix<3, 2>>&, const Var<XMatrix<2, 3>>&);
+template Var<luisa::Matrix<float, 3>> mult(const Var<XMatrix<2, 3>>&, const Var<XMatrix<3, 2>>&);
+template Var<luisa::Matrix<float, 2>> mult(const Var<XMatrix<3, 2>>&, const Var<XMatrix<2, 3>>&);
 
 template<size_t M, size_t N>
 [[nodiscard]] luisa::Vector<float, N> mult(const XMatrix<M, N>& left, const luisa::Vector<float, M>& right) 
@@ -438,7 +438,7 @@ inline Var<float3> get_diag(const Var<float3x3>& mat) { return luisa::compute::m
 inline Var<float4> get_diag(const Var<float4x4>& mat) { return luisa::compute::make_float4(mat[0][0], mat[1][1], mat[2][2], mat[3][3]);  }
 
 template<size_t N>
-static inline auto trace_mat(luisa::Matrix<N> mat) 
+static inline auto trace_mat(luisa::Matrix<float, N> mat) 
 {
     return sum_vec(get_diag(mat));
 }

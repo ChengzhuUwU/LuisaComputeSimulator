@@ -42,15 +42,22 @@ end
 -- add_requires("luisa-compute[cuda]", "eigen", "tbb", "polyscope")
 
 target("luisa-compute-solver-lib")
-    set_kind("static")
+    add_rules("lc_basic_settings", {
+        project_kind = "static",
+        enable_exception = true
+    })
     add_files("Solver/**.cpp", "Solver/**.cc")
     add_includedirs("Solver", {public = true})
-    add_defines("LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH", {public = true})
     add_defines(format([[LCSV_RESOURCE_PATH="%s"]], path.unix(path.join(os.scriptdir(), "Resources"))), {public = true})
-    add_deps("lc-dsl", "lc-runtime", "lc-backends-dummy", "lc-vstl", "eigen", "libdispatch")
+    add_deps("lc-dsl", "lc-runtime", "lc-backends-dummy", "lc-vstl", "eigen")
+    set_pcxxheader("Solver/zzpch.h")
 
 target("app-simulation")
-    set_kind("binary")
+    add_rules("lc_basic_settings", {
+        project_kind = "binary",
+        enable_exception = true
+    })
     add_files("Application/*.cpp|app_test_features.cpp")
 
-    add_deps("luisa-compute-solver-lib")
+    add_deps("luisa-compute-solver-lib", "polyscope")
+    set_pcxxheader("Application/zzpch.h")

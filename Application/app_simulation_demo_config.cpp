@@ -342,7 +342,7 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().pcg_iter_count = 500;;
     lcs::get_scene_params().nonlinear_iter_count = 3;
     lcs::get_scene_params().use_ccd_linesearch = true;
-    lcs::get_scene_params().stiffness_bending_ui = 0.0;
+    lcs::get_scene_params().stiffness_bending_ui = 0.5;
     lcs::get_scene_params().use_self_collision = true;
     lcs::get_scene_params().use_energy_linesearch = false;
     lcs::get_scene_params().gravity = luisa::make_float3(0.0f);

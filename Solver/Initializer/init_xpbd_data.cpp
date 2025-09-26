@@ -28,6 +28,10 @@ std::array<luisa::ushort, N * (N - 1)> get_offsets_in_adjlist_from_adjacent_list
             {
                 const uint adj_vid = element[jj];
                 const uint offset = std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), adj_vid));
+                if (offset >= adj_list.size())
+                {
+                    LUISA_ERROR("Offset in adjlist not found! vid = {}, adj_vid = {}, adj_list_size = {}", vid, adj_vid, adj_list.size());
+                }
                 offsets[idx] = luisa::ushort(offset);
                 idx += 1;
             }
