@@ -11,12 +11,12 @@
 #ifdef LCGS_SHARED_LIBRARY
 #ifdef _MSC_VER
 #ifdef LCGS_DLL_EXPORTS
-    #define LCGS_API __declspec(dllexport)
+#define LCGS_API __declspec(dllexport)
 #else
-    #define LCGS_API __declspec(dllimport)
+#define LCGS_API __declspec(dllimport)
 #endif
 #else
-    #define LCGS_API __attribute__((visibility("default")))
+#define LCGS_API __attribute__((visibility("default")))
 #endif
 #else
 #define LCGS_API
@@ -36,14 +36,14 @@ template <typename F>
 using UCallable = U<luisa::compute::Callable<F>>;
 
 template <size_t I, typename F, typename... Args>
-inline void lazy_compile(
-    luisa::compute::Device& device, U<luisa::compute::Shader<I, Args...>>& ushader, F&& func,
-    const luisa::compute::ShaderOption& option = {
+inline void lazy_compile(luisa::compute::Device&                device,
+                         U<luisa::compute::Shader<I, Args...>>& ushader,
+                         F&&                                    func,
+                         const luisa::compute::ShaderOption&    option = {
 #ifndef NDEBUG
-        .enable_debug_info = true
+                             .enable_debug_info = true
 #endif
-    }
-) noexcept
+                         }) noexcept
 {
     using S = luisa::compute::Shader<I, Args...>;
     if (!ushader)
@@ -54,7 +54,7 @@ inline void lazy_compile(
 
 class LuisaModule : public vstd::IOperatorNewBase
 {
-protected:
+  protected:
     using Context = luisa::compute::Context;
     template <typename T>
     using Buffer = luisa::compute::Buffer<T>;
@@ -88,4 +88,4 @@ protected:
     using Type        = luisa::compute::Type;
 };
 
-} // namespace lcs
+}  // namespace lcs

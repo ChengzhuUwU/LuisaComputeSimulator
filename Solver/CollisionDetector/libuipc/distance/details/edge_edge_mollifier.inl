@@ -5,8 +5,7 @@
 namespace uipc::backend::cuda::distance::details
 {
 template <typename T>
-inline void g_EECN2(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, T g[12])
+inline void g_EECN2(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, T g[12])
 {
     T t8;
     T t9;
@@ -65,8 +64,7 @@ inline void g_EECN2(
     g[11] = -t28 - t30;
 }
 template <typename T>
-inline void H_EECN2(
-    T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, T H[144])
+inline void H_EECN2(T v01, T v02, T v03, T v11, T v12, T v13, T v21, T v22, T v23, T v31, T v32, T v33, T H[144])
 {
     T t8;
     T t9;
@@ -359,10 +357,10 @@ namespace uipc::backend::cuda::distance
 {
 template <typename T>
 inline bool need_mollify(const Eigen::Vector<T, 3>& ea0,
-                               const Eigen::Vector<T, 3>& ea1,
-                               const Eigen::Vector<T, 3>& eb0,
-                               const Eigen::Vector<T, 3>& eb1,
-                               T                          eps_x)
+                         const Eigen::Vector<T, 3>& ea1,
+                         const Eigen::Vector<T, 3>& eb0,
+                         const Eigen::Vector<T, 3>& eb1,
+                         T                          eps_x)
 {
     T EECrossSqNorm;
     edge_edge_cross_norm2(ea0, ea1, eb0, eb1, EECrossSqNorm);
@@ -371,10 +369,10 @@ inline bool need_mollify(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_cross_norm2(const Eigen::Vector<T, 3>& ea0,
-                                        const Eigen::Vector<T, 3>& ea1,
-                                        const Eigen::Vector<T, 3>& eb0,
-                                        const Eigen::Vector<T, 3>& eb1,
-                                        T&                         result)
+                                  const Eigen::Vector<T, 3>& ea1,
+                                  const Eigen::Vector<T, 3>& eb0,
+                                  const Eigen::Vector<T, 3>& eb1,
+                                  T&                         result)
 {
     result = (ea1 - ea0).cross(eb1 - eb0).squaredNorm();
 }
@@ -382,33 +380,22 @@ inline void edge_edge_cross_norm2(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_cross_norm2_gradient(const Eigen::Vector<T, 3>& ea0,
-                                                 const Eigen::Vector<T, 3>& ea1,
-                                                 const Eigen::Vector<T, 3>& eb0,
-                                                 const Eigen::Vector<T, 3>& eb1,
-                                                 Eigen::Vector<T, 12>& grad)
+                                           const Eigen::Vector<T, 3>& ea1,
+                                           const Eigen::Vector<T, 3>& eb0,
+                                           const Eigen::Vector<T, 3>& eb1,
+                                           Eigen::Vector<T, 12>&      grad)
 {
-    details::g_EECN2(ea0[0],
-                     ea0[1],
-                     ea0[2],
-                     ea1[0],
-                     ea1[1],
-                     ea1[2],
-                     eb0[0],
-                     eb0[1],
-                     eb0[2],
-                     eb1[0],
-                     eb1[1],
-                     eb1[2],
-                     grad.data());
+    details::g_EECN2(
+        ea0[0], ea0[1], ea0[2], ea1[0], ea1[1], ea1[2], eb0[0], eb0[1], eb0[2], eb1[0], eb1[1], eb1[2], grad.data());
 }
 
 
 template <typename T>
 inline void edge_edge_cross_norm2_hessian(const Eigen::Vector<T, 3>& ea0,
-                                                const Eigen::Vector<T, 3>& ea1,
-                                                const Eigen::Vector<T, 3>& eb0,
-                                                const Eigen::Vector<T, 3>& eb1,
-                                                Eigen::Matrix<T, 12, 12>& Hessian)
+                                          const Eigen::Vector<T, 3>& ea1,
+                                          const Eigen::Vector<T, 3>& eb0,
+                                          const Eigen::Vector<T, 3>& eb1,
+                                          Eigen::Matrix<T, 12, 12>&  Hessian)
 {
     details::H_EECN2(ea0[0],
                      ea0[1],
@@ -428,15 +415,15 @@ inline void edge_edge_cross_norm2_hessian(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_mollifier(const Eigen::Vector<T, 3>& ea0,
-                                      const Eigen::Vector<T, 3>& ea1,
-                                      const Eigen::Vector<T, 3>& eb0,
-                                      const Eigen::Vector<T, 3>& eb1,
-                                      T                          eps_x,
-                                      T&                         e)
+                                const Eigen::Vector<T, 3>& ea1,
+                                const Eigen::Vector<T, 3>& eb0,
+                                const Eigen::Vector<T, 3>& eb1,
+                                T                          eps_x,
+                                T&                         e)
 {
     T EECrossSqNorm;
     edge_edge_cross_norm2(ea0, ea1, eb0, eb1, EECrossSqNorm);
-    if(EECrossSqNorm < eps_x)
+    if (EECrossSqNorm < eps_x)
     {
         details::EEM(EECrossSqNorm, eps_x, e);
     }
@@ -448,15 +435,15 @@ inline void edge_edge_mollifier(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_mollifier_gradient(const Eigen::Vector<T, 3>& ea0,
-                                               const Eigen::Vector<T, 3>& ea1,
-                                               const Eigen::Vector<T, 3>& eb0,
-                                               const Eigen::Vector<T, 3>& eb1,
-                                               T                          eps_x,
-                                               Eigen::Vector<T, 12>&      g)
+                                         const Eigen::Vector<T, 3>& ea1,
+                                         const Eigen::Vector<T, 3>& eb0,
+                                         const Eigen::Vector<T, 3>& eb1,
+                                         T                          eps_x,
+                                         Eigen::Vector<T, 12>&      g)
 {
     T EECrossSqNorm;
     edge_edge_cross_norm2(ea0, ea1, eb0, eb1, EECrossSqNorm);
-    if(EECrossSqNorm < eps_x)
+    if (EECrossSqNorm < eps_x)
     {
         T q_g;
         details::g_EEM(EECrossSqNorm, eps_x, q_g);
@@ -471,15 +458,15 @@ inline void edge_edge_mollifier_gradient(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_mollifier_hessian(const Eigen::Vector<T, 3>& ea0,
-                                              const Eigen::Vector<T, 3>& ea1,
-                                              const Eigen::Vector<T, 3>& eb0,
-                                              const Eigen::Vector<T, 3>& eb1,
-                                              T                          eps_x,
-                                              Eigen::Matrix<T, 12, 12>&  H)
+                                        const Eigen::Vector<T, 3>& ea1,
+                                        const Eigen::Vector<T, 3>& eb0,
+                                        const Eigen::Vector<T, 3>& eb1,
+                                        T                          eps_x,
+                                        Eigen::Matrix<T, 12, 12>&  H)
 {
     T EECrossSqNorm;
     edge_edge_cross_norm2(ea0, ea1, eb0, eb1, EECrossSqNorm);
-    if(EECrossSqNorm < eps_x)
+    if (EECrossSqNorm < eps_x)
     {
         T q_g, q_H;
         details::g_EEM(EECrossSqNorm, eps_x, q_g);
@@ -500,23 +487,22 @@ inline void edge_edge_mollifier_hessian(const Eigen::Vector<T, 3>& ea0,
 
 template <typename T>
 inline void edge_edge_mollifier_threshold(const Eigen::Vector<T, 3>& ea0_rest,
-                                                const Eigen::Vector<T, 3>& ea1_rest,
-                                                const Eigen::Vector<T, 3>& eb0_rest,
-                                                const Eigen::Vector<T, 3>& eb1_rest,
-                                                T& eps_x)
+                                          const Eigen::Vector<T, 3>& ea1_rest,
+                                          const Eigen::Vector<T, 3>& eb0_rest,
+                                          const Eigen::Vector<T, 3>& eb1_rest,
+                                          T&                         eps_x)
 {
     edge_edge_mollifier_threshold(ea0_rest, ea1_rest, eb0_rest, eb1_rest, 1.0e-3, eps_x);
 }
 
 template <typename T>
 inline void edge_edge_mollifier_threshold(const Eigen::Vector<T, 3>& ea0_rest,
-                                                const Eigen::Vector<T, 3>& ea1_rest,
-                                                const Eigen::Vector<T, 3>& eb0_rest,
-                                                const Eigen::Vector<T, 3>& eb1_rest,
-                                                float coeff,
-                                                T&    eps_x)
+                                          const Eigen::Vector<T, 3>& ea1_rest,
+                                          const Eigen::Vector<T, 3>& eb0_rest,
+                                          const Eigen::Vector<T, 3>& eb1_rest,
+                                          float                      coeff,
+                                          T&                         eps_x)
 {
-    eps_x = coeff * (ea0_rest - ea1_rest).squaredNorm()
-            * (eb0_rest - eb1_rest).squaredNorm();
+    eps_x = coeff * (ea0_rest - ea1_rest).squaredNorm() * (eb0_rest - eb1_rest).squaredNorm();
 }
 }  // namespace uipc::backend::cuda::distance

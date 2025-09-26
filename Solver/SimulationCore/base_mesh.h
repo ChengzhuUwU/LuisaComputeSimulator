@@ -11,18 +11,18 @@ namespace lcs
 {
 
 struct BaseClothMeshData
-{    
-    using uint = unsigned int;
+{
+    using uint  = unsigned int;
     using uchar = unsigned char;
 
-public:
+  public:
     std::string mesh_name;
-    uint num_verts = 0;
-    uint num_faces = 0;
-    uint num_edges = 0;
-    uint num_bending_edges = 0;
+    uint        num_verts         = 0;
+    uint        num_faces         = 0;
+    uint        num_edges         = 0;
+    uint        num_bending_edges = 0;
 
-public:
+  public:
     std::vector<luisa::float3> rest_x;
     std::vector<luisa::float3> rest_v;
     std::vector<luisa::float2> rest_uv;
@@ -36,18 +36,18 @@ public:
     std::vector<uchar> is_fixed;
 };
 
-template<template<typename...> typename BufferType>
+template <template <typename...> typename BufferType>
 struct MeshData : SimulationType
 {
     uint num_meshes = 0;
-    uint num_verts = 0;
-    uint num_faces = 0;
-    uint num_edges = 0;
-    
-    uint num_dihedral_edges = 0;
-    uint num_tets = 0;
+    uint num_verts  = 0;
+    uint num_faces  = 0;
+    uint num_edges  = 0;
 
-    // Input 
+    uint num_dihedral_edges = 0;
+    uint num_tets           = 0;
+
+    // Input
     BufferType<float3> sa_rest_x;
     BufferType<float3> sa_rest_v;
     BufferType<float3> sa_model_x;
@@ -60,10 +60,10 @@ struct MeshData : SimulationType
     // Mesh attrubution
     BufferType<float> sa_vert_mass;
     BufferType<float> sa_vert_mass_inv;
-    BufferType<uint> sa_is_fixed; // TODO: uchar
-    BufferType<uint> sa_vert_mesh_id;
-    BufferType<uint> sa_vert_mesh_type;
-    
+    BufferType<uint>  sa_is_fixed;  // TODO: uchar
+    BufferType<uint>  sa_vert_mesh_id;
+    BufferType<uint>  sa_vert_mesh_type;
+
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;
     BufferType<float> sa_rest_face_area;
@@ -74,10 +74,10 @@ struct MeshData : SimulationType
     BufferType<float3> sa_rest_rotation;
 
     // Adjacent
-    BufferType<uint> sa_vert_adj_verts_csr; 
-    BufferType<uint> sa_vert_adj_faces_csr; 
-    BufferType<uint> sa_vert_adj_edges_csr; 
-    BufferType<uint> sa_vert_adj_dihedral_edges_csr; 
+    BufferType<uint>  sa_vert_adj_verts_csr;
+    BufferType<uint>  sa_vert_adj_faces_csr;
+    BufferType<uint>  sa_vert_adj_edges_csr;
+    BufferType<uint>  sa_vert_adj_dihedral_edges_csr;
     BufferType<uint2> edge_adj_faces;
     BufferType<uint3> face_adj_edges;
     BufferType<uint3> face_adj_faces;
@@ -96,13 +96,11 @@ struct MeshData : SimulationType
     std::vector<uint> prefix_num_edges;
     std::vector<uint> prefix_num_dihedral_edges;
 
-    std::vector< std::vector<uint> > vert_adj_verts;
-    std::vector< std::vector<uint> > vert_adj_faces;
-    std::vector< std::vector<uint> > vert_adj_edges;
-    std::vector< std::vector<uint> > vert_adj_dihedral_edges;
+    std::vector<std::vector<uint>> vert_adj_verts;
+    std::vector<std::vector<uint>> vert_adj_faces;
+    std::vector<std::vector<uint>> vert_adj_edges;
+    std::vector<std::vector<uint>> vert_adj_dihedral_edges;
 };
-
-
 
 
 /*
@@ -170,4 +168,4 @@ public:
 */
 
 
-} // namespace lcs
+}  // namespace lcs

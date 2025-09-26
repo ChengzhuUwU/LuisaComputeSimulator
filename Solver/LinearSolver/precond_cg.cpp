@@ -6,21 +6,22 @@
 #include "Utils/reduce_helper.h"
 #include "luisa/core/logging.h"
 
-namespace lcs 
+namespace lcs
 {
 
-template<typename T>
+template <typename T>
 void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
-template<typename T>
+template <typename T>
 void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
 
-void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
+void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
+{
     using namespace luisa::compute;
 
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
@@ -34,15 +35,15 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
     // auto& sa_cgR = sim_data->sa_cgR;
     // auto& sa_cgZ = sim_data->sa_cgZ;
 
-    compiler.compile<1>(fn_reset_float3, [](Var<luisa::compute::BufferView<float3>> buffer) {
-        buffer->write(dispatch_id().x, luisa::compute::make_float3(0.0f));
-    });
-    compiler.compile<1>(fn_reset_float, [](Var<luisa::compute::BufferView<float>> buffer) {
-        buffer->write(dispatch_id().x, Float(0.0f));
-    });
-    compiler.compile<1>(fn_reset_uint, [](Var<luisa::compute::BufferView<uint>> buffer) {
-        buffer->write(dispatch_id().x, Uint(0u));
-    });
+    compiler.compile<1>(fn_reset_float3,
+                        [](Var<luisa::compute::BufferView<float3>> buffer)
+                        { buffer->write(dispatch_id().x, luisa::compute::make_float3(0.0f)); });
+    compiler.compile<1>(fn_reset_float,
+                        [](Var<luisa::compute::BufferView<float>> buffer)
+                        { buffer->write(dispatch_id().x, Float(0.0f)); });
+    compiler.compile<1>(fn_reset_uint,
+                        [](Var<luisa::compute::BufferView<uint>> buffer)
+                        { buffer->write(dispatch_id().x, Uint(0u)); });
 
     // 0 : old_dot_rr
     // 1 : new_dot_rz
@@ -54,7 +55,8 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
     // 7 : new energy
 
     // These lambda function should captured by value
-    luisa::compute::Callable fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr) {
+    luisa::compute::Callable fn_save_dot_rr = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rr)
+    {
         const Float normR = sqrt_scalar(dot_rr);
         // Save current rTr
         sa_convergence->write(4, normR);
@@ -64,45 +66,43 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
         sa_convergence->write(10 + iteration_idx, normR);
         sa_convergence->write(8, as<Float>(iteration_idx + 1));
     };
-    luisa::compute::Callable fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]() {
-        return sa_convergence->read(1);
-    };
-    luisa::compute::Callable fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz) {
-        sa_convergence->write(1, dot_rz);
-    };
+    luisa::compute::Callable fn_read_rz = [sa_convergence = sim_data->sa_convergence.view()]()
+    { return sa_convergence->read(1); };
+    luisa::compute::Callable fn_update_dot_rz = [sa_convergence = sim_data->sa_convergence.view()](const Float dot_rz)
+    { sa_convergence->write(1, dot_rz); };
 
-    luisa::compute::Callable fn_save_alpha = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq) {
+    luisa::compute::Callable fn_save_alpha =
+        [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq)
+    {
         Float delta = fn_read_rz();
-        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq);// alpha = delta / dot(p, q)
+        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq);  // alpha = delta / dot(p, q)
         sa_convergence->write(2, alpha);
     };
-    luisa::compute::Callable fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]() {
-        return sa_convergence->read(2);
-    };
+    luisa::compute::Callable fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]()
+    { return sa_convergence->read(2); };
 
-    luisa::compute::Callable fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_rz_old, const Float dot_rz) {
+    luisa::compute::Callable fn_save_beta = [sa_convergence = sim_data->sa_convergence.view(),
+                                             fn_read_rz](const Float dot_rz_old, const Float dot_rz)
+    {
         // Float delta_old = fn_read_rz();
         Float delta_old = dot_rz_old;
-        Float beta = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
+        Float beta      = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
         sa_convergence->write(3, beta);
     };
-    luisa::compute::Callable fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]() {
-        return sa_convergence->read(3);
-    };
+    luisa::compute::Callable fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]()
+    { return sa_convergence->read(3); };
 
     // PCG kernels
     compiler.compile<1>(
         fn_pcg_init,
-        [
-            sa_cgB = sim_data->sa_cgB.view(),
-            sa_cgQ = sim_data->sa_cgQ.view(),
-            sa_cgR = sim_data->sa_cgR.view(),
-            sa_cgP = sim_data->sa_cgP.view(),
-            sa_block_result = sim_data->sa_block_result.view()
-        ]() 
+        [sa_cgB          = sim_data->sa_cgB.view(),
+         sa_cgQ          = sim_data->sa_cgQ.view(),
+         sa_cgR          = sim_data->sa_cgR.view(),
+         sa_cgP          = sim_data->sa_cgP.view(),
+         sa_block_result = sim_data->sa_block_result.view()]()
         {
-            const UInt vid = dispatch_id().x;
-            Float dot_rr = 0.0f;
+            const UInt vid    = dispatch_id().x;
+            Float      dot_rr = 0.0f;
             {
                 Float3 b = sa_cgB->read(vid);
                 Float3 q = sa_cgQ->read(vid);
@@ -115,111 +115,105 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
             };
             dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (vid % 256 == 0) {
+            $if(vid % 256 == 0)
+            {
                 const Uint blockIdx = vid / 256;
                 sa_block_result->write(blockIdx, dot_rr);
             };
         },
         default_option);
 
-    compiler.compile<1>(
-        fn_pcg_init_second_pass,
-        [
-            sa_block_result = sim_data->sa_block_result.view(),
-            sa_convergence = sim_data->sa_convergence.view()
-        ]()
-        {
-            const UInt vid = dispatch_id().x;
+    compiler.compile<1>(fn_pcg_init_second_pass,
+                        [sa_block_result = sim_data->sa_block_result.view(),
+                         sa_convergence  = sim_data->sa_convergence.view()]()
+                        {
+                            const UInt vid = dispatch_id().x;
 
-            Float dot_rr = 0.0f;
-            {
-                dot_rr = sa_block_result->read(vid);
-            };
-            dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                            Float dot_rr = 0.0f;
+                            {
+                                dot_rr = sa_block_result->read(vid);
+                            };
+                            dot_rr = ParallelIntrinsic::block_intrinsic_reduce(
+                                vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (vid == 0)
-            {
-                sa_convergence->write(0, dot_rr);// rTr_0
-                sa_convergence->write(1, 0.0f);  // rTz
-                sa_convergence->write(2, 0.0f);  // alpha
-                sa_convergence->write(3, 0.0f);  // beta
+                            $if(vid == 0)
+                            {
+                                sa_convergence->write(0, dot_rr);  // rTr_0
+                                sa_convergence->write(1, 0.0f);    // rTz
+                                sa_convergence->write(2, 0.0f);    // alpha
+                                sa_convergence->write(3, 0.0f);    // beta
 
-                sa_convergence->write(8, as<Float>(Uint(0)));// iteration count
-                sa_convergence->write(9, dot_rr);
-            };
-        });
+                                sa_convergence->write(8, as<Float>(Uint(0)));  // iteration count
+                                sa_convergence->write(9, dot_rr);
+                            };
+                        });
 
-    compiler.compile<1>(
-        fn_dot_pq,
-        [
-            sa_cgP = sim_data->sa_cgP.view(),
-            sa_cgQ = sim_data->sa_cgQ.view(),
-            sa_block_result = sim_data->sa_block_result.view()
-        ]()
-        {
-            const UInt vid = dispatch_id().x;
+    compiler.compile<1>(fn_dot_pq,
+                        [sa_cgP          = sim_data->sa_cgP.view(),
+                         sa_cgQ          = sim_data->sa_cgQ.view(),
+                         sa_block_result = sim_data->sa_block_result.view()]()
+                        {
+                            const UInt vid = dispatch_id().x;
 
-            Float dot_pq = 0.0f;
-            {
-                Float3 p = sa_cgP->read(vid);
-                Float3 q = sa_cgQ->read(vid);
-                dot_pq = dot_vec(p, q);
-            };
+                            Float dot_pq = 0.0f;
+                            {
+                                Float3 p = sa_cgP->read(vid);
+                                Float3 q = sa_cgQ->read(vid);
+                                dot_pq   = dot_vec(p, q);
+                            };
 
-            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(
+                                vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (vid % 256 == 0) {
-                sa_block_result->write(vid / 256, dot_pq);
-            };
-        });
+                            $if(vid % 256 == 0)
+                            {
+                                sa_block_result->write(vid / 256, dot_pq);
+                            };
+                        });
 
     // Write 2 <- alpha
-    compiler.compile<1>(
-        fn_dot_pq_second_pass,
-        [
-            sa_block_result = sim_data->sa_block_result.view(),
-            fn_save_alpha
-        ]()
-        {
-            const UInt vid = dispatch_id().x;
+    compiler.compile<1>(fn_dot_pq_second_pass,
+                        [sa_block_result = sim_data->sa_block_result.view(), fn_save_alpha]()
+                        {
+                            const UInt vid = dispatch_id().x;
 
-            Float dot_pq = 0.0f;
-            {
-                dot_pq = sa_block_result->read(vid);
-            };
+                            Float dot_pq = 0.0f;
+                            {
+                                dot_pq = sa_block_result->read(vid);
+                            };
 
-            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                            dot_pq = ParallelIntrinsic::block_intrinsic_reduce(
+                                vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
-            $if (vid == 0) { fn_save_alpha(dot_pq); };
-        });
+                            $if(vid == 0)
+                            {
+                                fn_save_alpha(dot_pq);
+                            };
+                        });
 
     compiler.compile<1>(
         fn_pcg_update_p,
-        [
-            sa_cgP = sim_data->sa_cgP.view(),
-            sa_cgZ = sim_data->sa_cgZ.view(),
-            sa_convergence = sim_data->sa_convergence.view(),
-            fn_read_beta
-        ]() 
+        [sa_cgP         = sim_data->sa_cgP.view(),
+         sa_cgZ         = sim_data->sa_cgZ.view(),
+         sa_convergence = sim_data->sa_convergence.view(),
+         fn_read_beta]()
         {
-            const UInt vid = dispatch_id().x;
-            const Float beta = fn_read_beta();
-            const Float3 p = sa_cgP->read(vid);
+            const UInt   vid  = dispatch_id().x;
+            const Float  beta = fn_read_beta();
+            const Float3 p    = sa_cgP->read(vid);
             sa_cgP->write(vid, sa_cgZ->read(vid) + beta * p);
         },
         default_option);
 
     compiler.compile<1>(
         fn_pcg_step,
-        [
-            sa_cgX = sim_data->sa_cgX.view(),
-            sa_cgR = sim_data->sa_cgR.view(),
-            sa_cgP = sim_data->sa_cgP.view(),
-            sa_cgQ = sim_data->sa_cgQ.view(),
-            fn_read_alpha
-        ]()
-         {
-            const UInt vid = dispatch_id().x;
+        [sa_cgX = sim_data->sa_cgX.view(),
+         sa_cgR = sim_data->sa_cgR.view(),
+         sa_cgP = sim_data->sa_cgP.view(),
+         sa_cgQ = sim_data->sa_cgQ.view(),
+         fn_read_alpha]()
+        {
+            const UInt  vid   = dispatch_id().x;
             const Float alpha = fn_read_alpha();
             sa_cgX->write(vid, sa_cgX->read(vid) + alpha * sa_cgP->read(vid));
             sa_cgR->write(vid, sa_cgR->read(vid) - alpha * sa_cgQ->read(vid));
@@ -229,39 +223,37 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
     // Preconditioner
     compiler.compile<1>(
         fn_pcg_make_preconditioner,
-        [
-            sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-            sa_cgMinv = sim_data->sa_cgMinv.view(),
-            sa_is_fixed = mesh_data->sa_is_fixed.view()
-        ]()
+        [sa_cgA_diag = sim_data->sa_cgA_diag.view(),
+         sa_cgMinv   = sim_data->sa_cgMinv.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view()]()
         {
-            const UInt vid = dispatch_id().x;
-            Float3x3 diagA = sa_cgA_diag->read(vid);
-            Float3x3 inv_M = inverse(diagA);
+            const UInt vid   = dispatch_id().x;
+            Float3x3   diagA = sa_cgA_diag->read(vid);
+            Float3x3   inv_M = inverse(diagA);
             sa_cgMinv->write(vid, inv_M);
         },
         default_option);
 
     compiler.compile<1>(
         fn_pcg_apply_preconditioner,
-        [
-            sa_cgR = sim_data->sa_cgR.view(),
-            sa_cgZ = sim_data->sa_cgZ.view(),
-            sa_cgMinv = sim_data->sa_cgMinv.view(),
-            sa_block_result = sim_data->sa_block_result.view()
-        ]() {
-            const UInt vid = dispatch_id().x;
-            const Float3 r = sa_cgR->read(vid);
+        [sa_cgR          = sim_data->sa_cgR.view(),
+         sa_cgZ          = sim_data->sa_cgZ.view(),
+         sa_cgMinv       = sim_data->sa_cgMinv.view(),
+         sa_block_result = sim_data->sa_block_result.view()]()
+        {
+            const UInt     vid   = dispatch_id().x;
+            const Float3   r     = sa_cgR->read(vid);
             const Float3x3 inv_M = sa_cgMinv->read(vid);
-            Float3 z = inv_M * r;
+            Float3         z     = inv_M * r;
             sa_cgZ->write(vid, z);
 
-            Float dot_rz = dot_vec(r, z);
-            Float dot_rr = dot_vec(r, r);
+            Float  dot_rz    = dot_vec(r, z);
+            Float  dot_rr    = dot_vec(r, r);
             Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
-            dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
-            $if (vid % 256 == 0)
-             {
+            dot_rr_rz        = ParallelIntrinsic::block_intrinsic_reduce(
+                vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+            $if(vid % 256 == 0)
+            {
                 const Uint blockIdx = vid / 256;
                 sa_block_result->write(2 * blockIdx + 0, dot_rr_rz[0]);
                 sa_block_result->write(2 * blockIdx + 1, dot_rr_rz[1]);
@@ -273,19 +265,18 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
     // Write 3 <- beta
     compiler.compile<1>(
         fn_pcg_apply_preconditioner_second_pass,
-        [
-            sa_block_result = sim_data->sa_block_result.view(),
-            fn_update_dot_rz, fn_save_dot_rr, fn_save_beta, fn_read_rz
-        ]() {
+        [sa_block_result = sim_data->sa_block_result.view(), fn_update_dot_rz, fn_save_dot_rr, fn_save_beta, fn_read_rz]()
+        {
             const UInt vid = dispatch_id().x;
 
-            Float dot_rr = sa_block_result->read(2 * vid + 0);
-            Float dot_rz = sa_block_result->read(2 * vid + 1);
+            Float  dot_rr    = sa_block_result->read(2 * vid + 0);
+            Float  dot_rz    = sa_block_result->read(2 * vid + 1);
             Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
 
-            dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+            dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(
+                vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
 
-            $if (vid == 0)
+            $if(vid == 0)
             {
                 dot_rr = dot_rr_rz[0];
                 dot_rz = dot_rr_rz[1];
@@ -298,160 +289,169 @@ void ConjugateGradientSolver::compile(AsyncCompiler &compiler) {
         });
 }
 
-static inline float fast_dot(const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr) 
+static inline float fast_dot(const std::vector<float3>& left_ptr, const std::vector<float3>& right_ptr)
 {
-    return CpuParallel::parallel_for_and_reduce_sum<float>(0, left_ptr.size(), [&](const uint vid)
-    {
-        return luisa::dot(left_ptr[vid], right_ptr[vid]);
-    });
+    return CpuParallel::parallel_for_and_reduce_sum<float>(
+        0, left_ptr.size(), [&](const uint vid) { return luisa::dot(left_ptr[vid], right_ptr[vid]); });
 };
 static inline float fast_norm(const std::vector<float3>& ptr)
 {
-    float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(0, ptr.size(), [&](const uint vid)
-    {
-        return luisa::dot(ptr[vid], ptr[vid]);
-    });
+    float tmp = CpuParallel::parallel_for_and_reduce_sum<float>(
+        0, ptr.size(), [&](const uint vid) { return luisa::dot(ptr[vid], ptr[vid]); });
     return sqrt(tmp);
 };
-static inline float fast_infinity_norm(const std::vector<float3>& ptr) // Min value in array
+static inline float fast_infinity_norm(const std::vector<float3>& ptr)  // Min value in array
 {
-    return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-    {
-        return luisa::length(ptr[vid]);
-    }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+    return CpuParallel::parallel_for_and_reduce(
+        0,
+        ptr.size(),
+        [&](const uint vid) { return luisa::length(ptr[vid]); },
+        [](const float left, const float right) { return max_scalar(left, right); },
+        -1e9f);
 };
 
-void ConjugateGradientSolver::host_solve(
-    luisa::compute::Stream& stream, 
-    std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
-    std::function<double(const std::vector<float3>&)> func_compute_energy
-)
+void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
+                                         std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
+                                         std::function<double(const std::vector<float3>&)> func_compute_energy)
 {
-    std::vector<float3>& sa_cgX = host_sim_data->sa_cgX;
-    std::vector<float3>& sa_cgB = host_sim_data->sa_cgB;
+    std::vector<float3>&   sa_cgX      = host_sim_data->sa_cgX;
+    std::vector<float3>&   sa_cgB      = host_sim_data->sa_cgB;
     std::vector<float3x3>& sa_cgA_diag = host_sim_data->sa_cgA_diag;
- 
+
     std::vector<float3x3>& sa_cgMinv = host_sim_data->sa_cgMinv;
-    std::vector<float3>& sa_cgP = host_sim_data->sa_cgP;
-    std::vector<float3>& sa_cgQ = host_sim_data->sa_cgQ;
-    std::vector<float3>& sa_cgR = host_sim_data->sa_cgR;
-    std::vector<float3>& sa_cgZ = host_sim_data->sa_cgZ;
-    
-    std::vector<float3>& sa_x = host_sim_data->sa_x;
+    std::vector<float3>&   sa_cgP    = host_sim_data->sa_cgP;
+    std::vector<float3>&   sa_cgQ    = host_sim_data->sa_cgQ;
+    std::vector<float3>&   sa_cgR    = host_sim_data->sa_cgR;
+    std::vector<float3>&   sa_cgZ    = host_sim_data->sa_cgZ;
+
+    std::vector<float3>& sa_x            = host_sim_data->sa_x;
     std::vector<float3>& sa_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& sa_x_tilde = host_sim_data->sa_x_tilde;
+    std::vector<float3>& sa_x_tilde      = host_sim_data->sa_x_tilde;
 
     const uint num_verts = sa_cgX.size();
-    
-    auto get_dot_rz_rr = [&]() -> float2 // [0] = r^T z, [1] = r^T r
+
+    auto get_dot_rz_rr = [&]() -> float2  // [0] = r^T z, [1] = r^T r
     {
-        return CpuParallel::parallel_for_and_reduce_sum<float2>(0, sa_cgR.size(), [&](const uint vid) -> float2
-        {
-            float3 r = sa_cgR[vid];
-            float3 z = sa_cgZ[vid];
-            return luisa::make_float2(luisa::dot(r, z), luisa::dot(r, r));
-        });
+        return CpuParallel::parallel_for_and_reduce_sum<float2>(
+            0,
+            sa_cgR.size(),
+            [&](const uint vid) -> float2
+            {
+                float3 r = sa_cgR[vid];
+                float3 z = sa_cgZ[vid];
+                return luisa::make_float2(luisa::dot(r, z), luisa::dot(r, r));
+            });
     };
     auto read_beta = [](const uint vid, std::vector<float>& sa_converage) -> float
     {
         float delta_old = sa_converage[0];
-        float delta = sa_converage[2];
-        float beta = delta_old == 0.0f ? 0.0f : delta / delta_old;
-        if (vid == 0)  
-        { 
-            sa_converage[1] = 0; 
-            uint iteration_idx = uint(sa_converage[8]);
+        float delta     = sa_converage[2];
+        float beta      = delta_old == 0.0f ? 0.0f : delta / delta_old;
+        if (vid == 0)
+        {
+            sa_converage[1]                 = 0;
+            uint iteration_idx              = uint(sa_converage[8]);
             sa_converage[9 + iteration_idx] = delta;
-            sa_converage[8] = float(iteration_idx + 1); 
+            sa_converage[8]                 = float(iteration_idx + 1);
         }
         return beta;
     };
     auto save_dot_pq = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_pq) -> void
     {
-        sa_converage[1] = dot_pq; /// <= reduce
+        sa_converage[1] = dot_pq;  /// <= reduce
         if (blockIdx == 0)
         {
-            float delta_old = sa_converage[2];
+            float delta_old     = sa_converage[2];
             float delta_old_old = sa_converage[0];
-            sa_converage[2] = 0;
-            sa_converage[0] = delta_old;
-            sa_converage[4] = delta_old_old;
+            sa_converage[2]     = 0;
+            sa_converage[0]     = delta_old;
+            sa_converage[4]     = delta_old_old;
         }
     };
     auto read_alpha = [](std::vector<float>& sa_converage) -> float
     {
-        float delta = sa_converage[0];
+        float delta  = sa_converage[0];
         float dot_pq = sa_converage[1];
-        float alpha = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
+        float alpha  = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
         return alpha;
     };
     auto save_dot_rz = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_rz) -> void
     {
-        sa_converage[2] = dot_rz; /// <= reduce
+        sa_converage[2] = dot_rz;  /// <= reduce
     };
-    
+
     auto pcg_make_preconditioner_jacobi = [&]()
     {
         auto* sa_is_fixed = host_mesh_data->sa_is_fixed.data();
 
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            float3x3 diagA = sa_cgA_diag[vid];
-            float3x3 inv_M = luisa::inverse(diagA);
+        CpuParallel::parallel_for(0,
+                                  num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      float3x3 diagA = sa_cgA_diag[vid];
+                                      float3x3 inv_M = luisa::inverse(diagA);
 
-            // Not available
-            // const bool is_fixed = sa_is_fixed[vid];
-            // if (is_fixed)
-            // {
-            //     inv_M = luisa::make_float3x3(0.0f);
-            // }
+                                      // Not available
+                                      // const bool is_fixed = sa_is_fixed[vid];
+                                      // if (is_fixed)
+                                      // {
+                                      //     inv_M = luisa::make_float3x3(0.0f);
+                                      // }
 
-            // float3x3 inv_M = luisa::make_float3x3(
-            //     luisa::make_float3(1.0f / diagA[0][0], 0.0f, 0.0f), 
-            //     luisa::make_float3(0.0f, 1.0f / diagA[1][1], 0.0f), 
-            //     luisa::make_float3(0.0f, 0.0f, 1.0f / diagA[2][2])
-            // );
-            sa_cgMinv[vid] = inv_M;
-        });
+                                      // float3x3 inv_M = luisa::make_float3x3(
+                                      //     luisa::make_float3(1.0f / diagA[0][0], 0.0f, 0.0f),
+                                      //     luisa::make_float3(0.0f, 1.0f / diagA[1][1], 0.0f),
+                                      //     luisa::make_float3(0.0f, 0.0f, 1.0f / diagA[2][2])
+                                      // );
+                                      sa_cgMinv[vid] = inv_M;
+                                  });
     };
     auto pcg_apply_preconditioner_jacobi = [&]()
     {
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            const float3 r = sa_cgR[vid];
-            const float3x3 inv_M = sa_cgMinv[vid];
-            float3 z = inv_M * r;
-            sa_cgZ[vid] = z;
-        });
+        CpuParallel::parallel_for(0,
+                                  num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      const float3   r     = sa_cgR[vid];
+                                      const float3x3 inv_M = sa_cgMinv[vid];
+                                      float3         z     = inv_M * r;
+                                      sa_cgZ[vid]          = z;
+                                  });
     };
 
     auto pcg_init = [&]()
     {
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            const float3 b = sa_cgB[vid];
-            const float3 q = sa_cgQ[vid];
-            const float3 r = b - q;  // r = b - q = b - A * x
-            sa_cgR[vid] = r;
-            sa_cgP[vid] = Zero3;
-            sa_cgQ[vid] = Zero3;
-        });
+        CpuParallel::parallel_for(0,
+                                  num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      const float3 b = sa_cgB[vid];
+                                      const float3 q = sa_cgQ[vid];
+                                      const float3 r = b - q;  // r = b - q = b - A * x
+                                      sa_cgR[vid]    = r;
+                                      sa_cgP[vid]    = Zero3;
+                                      sa_cgQ[vid]    = Zero3;
+                                  });
     };
     auto pcg_update_p = [&](const float beta)
     {
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            const float3 p = sa_cgP[vid];
-            sa_cgP[vid] = sa_cgZ[vid] + beta * p;
-        });
+        CpuParallel::parallel_for(0,
+                                  num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      const float3 p = sa_cgP[vid];
+                                      sa_cgP[vid]    = sa_cgZ[vid] + beta * p;
+                                  });
     };
     auto pcg_step = [&](const float alpha)
     {
-        CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-        {
-            sa_cgX[vid] = sa_cgX[vid] + alpha * sa_cgP[vid];
-            sa_cgR[vid] = sa_cgR[vid] - alpha * sa_cgQ[vid];
-        });
+        CpuParallel::parallel_for(0,
+                                  num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      sa_cgX[vid] = sa_cgX[vid] + alpha * sa_cgP[vid];
+                                      sa_cgR[vid] = sa_cgR[vid] - alpha * sa_cgQ[vid];
+                                  });
     };
 
     auto& sa_convergence = host_sim_data->sa_convergence;
@@ -461,11 +461,11 @@ void ConjugateGradientSolver::host_solve(
     CpuParallel::parallel_set(sa_cgQ, luisa::make_float3(0.0f));
 
     pcg_init();
-    
+
     pcg_make_preconditioner_jacobi();
 
     float normR_0 = 0.0f;
-    float normR = 0.0f;
+    float normR   = 0.0f;
 
     uint iter = 0;
     for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
@@ -481,31 +481,37 @@ void ConjugateGradientSolver::host_solve(
 
         pcg_apply_preconditioner_jacobi();
 
-        float2 dot_rr_rz = get_dot_rz_rr(); 
-        float dot_rz = dot_rr_rz[0];
-        normR = std::sqrt(dot_rr_rz[1]); if (iter == 0) normR_0 = normR;
+        float2 dot_rr_rz = get_dot_rz_rr();
+        float  dot_rz    = dot_rr_rz[0];
+        normR            = std::sqrt(dot_rr_rz[1]);
+        if (iter == 0)
+            normR_0 = normR;
         save_dot_rz(0, sa_convergence, dot_rz);
 
-        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
-        // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f) 
-        // if (dot_rz == 0.0f) 
-        if (dot_rz < 1e-8) 
+        if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz))
+        {
+            LUISA_ERROR("Exist NAN/INF in PCG iteration");
+            exit(0);
+        }
+        // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f)
+        // if (dot_rz == 0.0f)
+        if (dot_rz < 1e-8)
         {
             break;
         }
 
         const float beta = read_beta(0, sa_convergence);
         pcg_update_p(beta);
-    
+
         func_spmv(sa_cgP, sa_cgQ);
         float dot_pq = fast_dot(sa_cgP, sa_cgQ);
-        save_dot_pq(0, sa_convergence, dot_pq);   
-        
+        save_dot_pq(0, sa_convergence, dot_pq);
+
         const float alpha = read_alpha(sa_convergence);
 
-        // LUISA_INFO("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}", 
+        // LUISA_INFO("   In pcg iter {:3} : rTr = {}, beta = {}, alpha = {}",
         //         iter, normR, beta, alpha);
-        
+
         pcg_step(alpha);
     }
 
@@ -514,11 +520,13 @@ void ConjugateGradientSolver::host_solve(
     {
         LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
-        get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, infinity_norm, ""
-    );
-            
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}",
+               get_scene_params().current_nonlinear_iter,
+               iter,
+               normR / normR_0,
+               infinity_norm,
+               "");
+
     /*
     for (uint iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
     {
@@ -571,78 +579,75 @@ void ConjugateGradientSolver::host_solve(
         return x;
     };
     */
-
 }
-void ConjugateGradientSolver::device_solve( // TODO: input sa_x
-    luisa::compute::Stream& stream, 
+void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
+    luisa::compute::Stream& stream,
     std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
-    std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy
-)
+    std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy)
 {
-    auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float // Min value in array
+    auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float  // Min value in array
     {
-        return CpuParallel::parallel_for_and_reduce(0, ptr.size(), [&](const uint vid)
-        {
-            return luisa::length(ptr[vid]);
-        }, [](const float left, const float right) { return max_scalar(left, right); }, -1e9f); 
+        return CpuParallel::parallel_for_and_reduce(
+            0,
+            ptr.size(),
+            [&](const uint vid) { return luisa::length(ptr[vid]); },
+            [](const float left, const float right) { return max_scalar(left, right); },
+            -1e9f);
     };
-    
-    std::vector<float3>& host_x = host_sim_data->sa_x;
+
+    std::vector<float3>& host_x            = host_sim_data->sa_x;
     std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
-    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
+    std::vector<float3>& host_x_tilde      = host_sim_data->sa_x_tilde;
+    std::vector<float3>& host_cgX          = host_sim_data->sa_cgX;
 
     // auto device_pcg = [&]()
-    const uint num_verts = host_cgX.size();
+    const uint num_verts        = host_cgX.size();
     const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
 
-    stream 
-        << fn_reset_float(sim_data->sa_convergence).dispatch(sim_data->sa_convergence.size())
-        ;
+    stream << fn_reset_float(sim_data->sa_convergence).dispatch(sim_data->sa_convergence.size());
 
     // pcg_spmv(sim_data->sa_cgX, sim_data->sa_cgQ);
 
-    stream 
+    stream
         // << sim_data->sa_cgR.copy_from(sim_data->sa_cgB) // Cause cgX is set to zero...
         // << mp_buffer_filler->fill(device, sim_data->sa_cgQ, luisa::make_float3(0.0f))
-        << fn_reset_float3(sim_data->sa_cgQ).dispatch(num_verts)
-        << fn_pcg_init().dispatch(num_verts) 
-        << fn_pcg_init_second_pass().dispatch(num_blocks_verts)
-        << fn_pcg_make_preconditioner().dispatch(num_verts)
-        
+        << fn_reset_float3(sim_data->sa_cgQ).dispatch(num_verts) << fn_pcg_init().dispatch(num_verts)
+        << fn_pcg_init_second_pass().dispatch(num_blocks_verts) << fn_pcg_make_preconditioner().dispatch(num_verts)
+
         // << sim_data->sa_convergence.copy_to(host_sim_data->sa_convergence.data())
         // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
         // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
         // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
         // << luisa::compute::synchronize();
         ;
-    
-    // LUISA_INFO("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}", 
+
+    // LUISA_INFO("   PCG init info: rTr = {} / {}, bTb = {}, pTp = {}",
     //     host_norm(host_sim_data->sa_cgR), host_sim_data->sa_convergence[4],
     //     host_norm(host_sim_data->sa_cgB),
     //     host_norm(host_sim_data->sa_cgP)
     // );
 
     float normR_0 = 0.0f;
-    float normR = 0.0f; float beta = 0.0f; float alpha = 0.0f;
-    float dot_rz = 0.0f;
+    float normR   = 0.0f;
+    float beta    = 0.0f;
+    float alpha   = 0.0f;
+    float dot_rz  = 0.0f;
 
     uint iter = 0;
     for (iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
     {
         lcs::get_scene_params().current_pcg_it = iter;
 
-        stream 
-            << fn_pcg_apply_preconditioner().dispatch(num_verts)
-            << fn_pcg_apply_preconditioner_second_pass().dispatch(num_blocks_verts) // Compute beta
+        stream << fn_pcg_apply_preconditioner().dispatch(num_verts)
+               << fn_pcg_apply_preconditioner_second_pass().dispatch(num_blocks_verts)  // Compute beta
             ;
 
         // 0 : old_dot_rr
         // 1 : new_dot_rz
-        // 2 : alpha 
+        // 2 : alpha
         // 3 : beta
         // 4 : new_dot_rr
-        // 
+        //
         // 6 : init energy
         // 7 : new energy
 
@@ -653,87 +658,86 @@ void ConjugateGradientSolver::device_solve( // TODO: input sa_x
             //     << luisa::compute::synchronize();
             // LUISA_INFO("rTr = {}", normR);
             // if (iter == 0) normR_0 = normR;
-            // if (normR == 0.0f) 
+            // if (normR == 0.0f)
             // {
             //     break;
             // }
 
-            if (iter == 0) stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR_0);
-            stream
-                << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz)
-                << luisa::compute::synchronize();
+            if (iter == 0)
+                stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR_0);
+            stream << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz) << luisa::compute::synchronize();
             // LUISA_INFO("dot_rz = {}", dot_rz);
-            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz)) { LUISA_ERROR("Exist NAN/INF in PCG iteration"); exit(0); }
-            // if (dot_rz == 0.0f) 
-            if (dot_rz < 1e-8) 
+            if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz))
+            {
+                LUISA_ERROR("Exist NAN/INF in PCG iteration");
+                exit(0);
+            }
+            // if (dot_rz == 0.0f)
+            if (dot_rz < 1e-8)
             {
                 break;
             }
         }
 
-        stream 
-            << fn_pcg_update_p().dispatch(num_verts);
+        stream << fn_pcg_update_p().dispatch(num_verts);
 
         func_spmv(sim_data->sa_cgP, sim_data->sa_cgQ);
-        stream 
-            << fn_dot_pq().dispatch(num_verts)
-            << fn_dot_pq_second_pass().dispatch(num_blocks_verts) // Compute alpha
+        stream << fn_dot_pq().dispatch(num_verts)
+               << fn_dot_pq_second_pass().dispatch(num_blocks_verts)  // Compute alpha
 
-            // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
-            // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
-            // << sim_data->sa_cgQ.copy_to(host_sim_data->sa_cgQ.data())
-            // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
-            // << sim_data->sa_cgZ.copy_to(host_sim_data->sa_cgZ.data())
-            // << sim_data->sa_convergence.view(2, 1).copy_to(&alpha)
-            // << sim_data->sa_convergence.view(3, 1).copy_to(&beta)
+               // << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
+               // << sim_data->sa_cgP.copy_to(host_sim_data->sa_cgP.data())
+               // << sim_data->sa_cgQ.copy_to(host_sim_data->sa_cgQ.data())
+               // << sim_data->sa_cgR.copy_to(host_sim_data->sa_cgR.data())
+               // << sim_data->sa_cgZ.copy_to(host_sim_data->sa_cgZ.data())
+               // << sim_data->sa_convergence.view(2, 1).copy_to(&alpha)
+               // << sim_data->sa_convergence.view(3, 1).copy_to(&beta)
 
-            << fn_pcg_step().dispatch(num_verts)
+               << fn_pcg_step().dispatch(num_verts)
 
             // << luisa::compute::synchronize()
             ;
 
-        // LUISA_INFO("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}", 
-        //         iter, 
+        // LUISA_INFO("   In pcg iter {:3} : bTb = {}, sqrt(rTr) = {}, beta = {}, alpha = {}, pTq = {}, rTz = {}",
+        //         iter,
         //         host_dot(host_sim_data->sa_cgB, host_sim_data->sa_cgB),
         //         normR, beta, alpha,
         //         host_dot(host_sim_data->sa_cgP, host_sim_data->sa_cgQ),
         //         host_dot(host_sim_data->sa_cgR, host_sim_data->sa_cgZ) );
     }
 
-    stream 
-        << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
-        << sim_data->sa_cgX.copy_to(host_sim_data->sa_cgX.data())
-        << luisa::compute::synchronize();
+    stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+           << sim_data->sa_cgX.copy_to(host_sim_data->sa_cgX.data()) << luisa::compute::synchronize();
 
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
         LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}", 
-        get_scene_params().current_nonlinear_iter,
-        iter, normR / normR_0, infinity_norm, ""
-    );
+    LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}",
+               get_scene_params().current_nonlinear_iter,
+               iter,
+               normR / normR_0,
+               infinity_norm,
+               "");
 }
 
-void ConjugateGradientSolver::eigen_solve(
-    const Eigen::SparseMatrix<float>& eigen_cgA, 
-    Eigen::VectorXf& eigen_cgX,
-    const Eigen::VectorXf& eigen_cgB, 
-    std::function<double(const std::vector<float3>&)> func_compute_energy
-)
+void ConjugateGradientSolver::eigen_solve(const Eigen::SparseMatrix<float>& eigen_cgA,
+                                          Eigen::VectorXf&                  eigen_cgX,
+                                          const Eigen::VectorXf&            eigen_cgB,
+                                          std::function<double(const std::vector<float3>&)> func_compute_energy)
 {
-    std::vector<float3>& host_x = host_sim_data->sa_x;
+    std::vector<float3>& host_x            = host_sim_data->sa_x;
     std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& host_x_tilde = host_sim_data->sa_x_tilde;
-    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
+    std::vector<float3>& host_x_tilde      = host_sim_data->sa_x_tilde;
+    std::vector<float3>& host_cgX          = host_sim_data->sa_cgX;
 
     const uint num_verts = host_cgX.size();
 
     auto eigen_iter_solve = [&]()
     {
         // Solve cgA * dx = cg_b_vec for dx using Conjugate Gradient
-        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver; // Eigen::IncompleteCholesky<float>
+        Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver;  // Eigen::IncompleteCholesky<float>
 
         // solver.setMaxIterations(128);
         solver.setTolerance(1e-2f);
@@ -752,17 +756,22 @@ void ConjugateGradientSolver::eigen_solve(
         //     eigen_cgB.norm(), eigen_cgR.norm(), eigen_cgM_inv.norm(), eigen_cgZ.norm(), eigen_cgQ.norm());
 
         solver._solve_impl(eigen_cgB, eigen_cgX);
-        if (solver.info() != Eigen::Success) { LUISA_ERROR("Eigen: Solve failed in {} iterations", solver.iterations()); }
-        else 
+        if (solver.info() != Eigen::Success)
         {
-            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-            {
-                host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
-            });
+            LUISA_ERROR("Eigen: Solve failed in {} iterations", solver.iterations());
+        }
+        else
+        {
+            CpuParallel::parallel_for(0,
+                                      num_verts,
+                                      [&](const uint vid)
+                                      { host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid)); });
 
-            LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}", 
-                get_scene_params().current_nonlinear_iter, solver.iterations(),
-                solver.error(), fast_infinity_norm(host_cgX)); // from normR_0 -> normR
+            LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}",
+                       get_scene_params().current_nonlinear_iter,
+                       solver.iterations(),
+                       solver.error(),
+                       fast_infinity_norm(host_cgX));  // from normR_0 -> normR
         }
     };
     auto eigen_decompose_solve = [&]()
@@ -784,19 +793,19 @@ void ConjugateGradientSolver::eigen_solve(
         else
         {
             float error = (eigen_cgB - eigen_cgA * eigen_cgX).norm();
-            CpuParallel::parallel_for(0, num_verts, [&](const uint vid)
-            {
-                host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid));
-            });
-            LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}", 
-                get_scene_params().current_nonlinear_iter, 
-                error, fast_infinity_norm(host_cgX)); // from normR_0 -> normR
+            CpuParallel::parallel_for(0,
+                                      num_verts,
+                                      [&](const uint vid)
+                                      { host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid)); });
+            LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}",
+                       get_scene_params().current_nonlinear_iter,
+                       error,
+                       fast_infinity_norm(host_cgX));  // from normR_0 -> normR
         }
     };
 
     eigen_iter_solve();
-
 }
 
 
-} // namespace lcs 
+}  // namespace lcs

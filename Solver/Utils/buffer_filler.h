@@ -32,11 +32,11 @@ class LCGS_API BufferFiller
     using uint2       = luisa::uint2;
     using uint3       = luisa::uint3;
     using uint4       = luisa::uint4;
-    using float3x3      = luisa::float3x3;
-    using float3x4      = lcs::float3x4;
-    using float4x3      = lcs::float4x3;
+    using float3x3    = luisa::float3x3;
+    using float3x4    = lcs::float3x4;
+    using float4x3    = lcs::float4x3;
 
-public:
+  public:
     uint block_size = 256u;
 
     // clang-format off
@@ -75,6 +75,6 @@ protected:\
     filler_shader(float3x3);
     filler_shader(float3x4);
     filler_shader(float4x3);
-}; // namespace inno
+};  // namespace inno
 
-} // namespace lcs
+}  // namespace lcs

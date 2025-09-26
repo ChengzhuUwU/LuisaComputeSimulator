@@ -1,7 +1,7 @@
 #include <vector>
 #include "scene_params.h"
 
-namespace lcs 
+namespace lcs
 {
 
 // std::vector<SceneParams> scene_params;
@@ -24,4 +24,4 @@ SceneParams& get_scene_params()
 //     return scene_params;
 // }
 
-}
+}  // namespace lcs

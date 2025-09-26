@@ -4,7 +4,7 @@
 #include "SimulationCore/simulation_data.h"
 #include "Initializer/initializer_utils.h"
 
-namespace lcs::Initializer 
+namespace lcs::Initializer
 {
 
 

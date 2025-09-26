@@ -6,9 +6,9 @@ namespace uipc::backend::cuda::distance
 {
 template <typename T>
 inline void point_edge_distance2(const Eigen::Vector<T, 3>& p,
-                                       const Eigen::Vector<T, 3>& e0,
-                                       const Eigen::Vector<T, 3>& e1,
-                                       T&                         dist2)
+                                 const Eigen::Vector<T, 3>& e0,
+                                 const Eigen::Vector<T, 3>& e1,
+                                 T&                         dist2)
 {
     dist2 = (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
 }
@@ -156,50 +156,50 @@ namespace details
         t19      = ((-(t17 * t18 * t31 * 2.0) + t75) + -t72) + t90;
         t102_tmp = t17 * t22 * t32 * t34;
         t76      = t15 * t22 * t32 * t34;
-        t22 = (((-(t15 * t17 * t31 * 2.0) + t62) + -t65) + t76 * 2.0) + t102_tmp * 2.0;
-        t33 = t18 * t21 * t32 * t34;
-        t20 = t16 * t21 * t32 * t34;
-        t79 = (((-(t16 * t18 * t31 * 2.0) + t62) + -t64) + -(t20 * 2.0)) + -(t33 * 2.0);
-        t77   = (((t15 * t18 * t31 * 2.0 + t60) + t68) + -t75) + -t90;
-        t78   = (((t16 * t17 * t31 * 2.0 + -t60) + t72) + -t71) + -t90;
-        H[0]  = t24 * t31 * 2.0;
-        H[1]  = t59;
-        H[2]  = t35;
-        H[3]  = t97;
-        H[4]  = t92;
-        H[5]  = t99;
-        H[6]  = t59;
-        H[7]  = t23 * t31 * 2.0;
-        H[8]  = t96;
-        H[9]  = t94;
-        H[10] = t98;
-        H[11] = t93;
-        H[12] = t35;
-        H[13] = t96;
-        t35   = -t62 + t64;
-        H[14] = (t35 + t18 * t18 * t31 * 2.0) + t33 * 4.0;
-        H[15] = t19;
-        H[16] = t79;
-        H[17] = t77;
-        H[18] = t97;
-        H[19] = t94;
-        H[20] = t19;
-        t33   = -t62 + t65;
-        H[21] = (t33 + t17 * t17 * t31 * 2.0) - t102_tmp * 4.0;
-        H[22] = t78;
-        H[23] = t22;
-        H[24] = t92;
-        H[25] = t98;
-        H[26] = t79;
-        H[27] = t78;
-        H[28] = (t35 + t16 * t16 * t31 * 2.0) + t20 * 4.0;
-        H[29] = t100;
-        H[30] = t99;
-        H[31] = t93;
-        H[32] = t77;
-        H[33] = t22;
-        H[34] = t100;
-        H[35] = (t33 + t15 * t15 * t31 * 2.0) - t76 * 4.0;
+        t22      = (((-(t15 * t17 * t31 * 2.0) + t62) + -t65) + t76 * 2.0) + t102_tmp * 2.0;
+        t33      = t18 * t21 * t32 * t34;
+        t20      = t16 * t21 * t32 * t34;
+        t79      = (((-(t16 * t18 * t31 * 2.0) + t62) + -t64) + -(t20 * 2.0)) + -(t33 * 2.0);
+        t77      = (((t15 * t18 * t31 * 2.0 + t60) + t68) + -t75) + -t90;
+        t78      = (((t16 * t17 * t31 * 2.0 + -t60) + t72) + -t71) + -t90;
+        H[0]     = t24 * t31 * 2.0;
+        H[1]     = t59;
+        H[2]     = t35;
+        H[3]     = t97;
+        H[4]     = t92;
+        H[5]     = t99;
+        H[6]     = t59;
+        H[7]     = t23 * t31 * 2.0;
+        H[8]     = t96;
+        H[9]     = t94;
+        H[10]    = t98;
+        H[11]    = t93;
+        H[12]    = t35;
+        H[13]    = t96;
+        t35      = -t62 + t64;
+        H[14]    = (t35 + t18 * t18 * t31 * 2.0) + t33 * 4.0;
+        H[15]    = t19;
+        H[16]    = t79;
+        H[17]    = t77;
+        H[18]    = t97;
+        H[19]    = t94;
+        H[20]    = t19;
+        t33      = -t62 + t65;
+        H[21]    = (t33 + t17 * t17 * t31 * 2.0) - t102_tmp * 4.0;
+        H[22]    = t78;
+        H[23]    = t22;
+        H[24]    = t92;
+        H[25]    = t98;
+        H[26]    = t79;
+        H[27]    = t78;
+        H[28]    = (t35 + t16 * t16 * t31 * 2.0) + t20 * 4.0;
+        H[29]    = t100;
+        H[30]    = t99;
+        H[31]    = t93;
+        H[32]    = t77;
+        H[33]    = t22;
+        H[34]    = t100;
+        H[35]    = (t33 + t15 * t15 * t31 * 2.0) - t76 * 4.0;
     }
 
     template <class T>
@@ -527,20 +527,19 @@ namespace details
 
 template <typename T>
 inline void point_edge_distance2_gradient(const Eigen::Vector<T, 3>& p,
-                                                const Eigen::Vector<T, 3>& e0,
-                                                const Eigen::Vector<T, 3>& e1,
-                                                Eigen::Vector<T, 9>&       grad)
+                                          const Eigen::Vector<T, 3>& e0,
+                                          const Eigen::Vector<T, 3>& e1,
+                                          Eigen::Vector<T, 9>&       grad)
 {
     details::g_PE3D(p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], grad.data());
 }
 
 template <typename T>
 inline void point_edge_distance2_hessian(const Eigen::Vector<T, 3>& p,
-                                               const Eigen::Vector<T, 3>& e0,
-                                               const Eigen::Vector<T, 3>& e1,
-                                               Eigen::Matrix<T, 9, 9>& Hessian)
+                                         const Eigen::Vector<T, 3>& e0,
+                                         const Eigen::Vector<T, 3>& e1,
+                                         Eigen::Matrix<T, 9, 9>&    Hessian)
 {
-    details::H_PE3D(
-        p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], Hessian.data());
+    details::H_PE3D(p[0], p[1], p[2], e0[0], e0[1], e0[2], e1[0], e1[1], e1[2], Hessian.data());
 }
 }  // namespace uipc::backend::cuda::distance

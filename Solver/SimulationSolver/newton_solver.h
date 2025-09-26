@@ -14,22 +14,24 @@ namespace lcs
 class NewtonSolver : public lcs::SolverInterface
 {
 
-template<typename T>
-using Buffer = luisa::compute::Buffer<T>;
+    template <typename T>
+    using Buffer = luisa::compute::Buffer<T>;
 
 
-public:
-    NewtonSolver() : lcs::SolverInterface() {}
+  public:
+    NewtonSolver()
+        : lcs::SolverInterface()
+    {
+    }
     ~NewtonSolver() {}
 
-public:    
+  public:
     void physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(AsyncCompiler &compiler);
+    void compile(AsyncCompiler& compiler);
 
-private:
-    
-private:
+  private:
+  private:
     // Host functions
     void host_apply_dx(const float alpha);
     void host_predict_position();
@@ -43,54 +45,56 @@ private:
     void host_evaluete_spring();
     void host_evaluete_bending();
     void host_material_energy_assembly();
-    void host_solve_amgcl(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
-    void host_solve_eigen(luisa::compute::Stream& stream, std::function<double(const std::vector<float3>&)> func_compute_energy);
+    void host_solve_amgcl(luisa::compute::Stream&                           stream,
+                          std::function<double(const std::vector<float3>&)> func_compute_energy);
+    void host_solve_eigen(luisa::compute::Stream&                           stream,
+                          std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_line_search(luisa::compute::Stream& stream);
-    
+
     // Device functions
     void device_broadphase_ccd(luisa::compute::Stream& stream);
     void device_broadphase_dcd(luisa::compute::Stream& stream);
     void device_narrowphase_ccd(luisa::compute::Stream& stream);
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
-    void device_update_contact_list(luisa::compute::Stream& stream) ;
+    void device_update_contact_list(luisa::compute::Stream& stream);
     void device_ccd_line_search(luisa::compute::Stream& stream);
-    void device_SpMV(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& input_array, luisa::compute::Buffer<float3>& output_array);
+    void device_SpMV(luisa::compute::Stream&               stream,
+                     const luisa::compute::Buffer<float3>& input_array,
+                     luisa::compute::Buffer<float3>&       output_array);
     float device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
     // void device_line_search(luisa::compute::Stream& stream);
 
     void host_test_affine_body(luisa::compute::Stream& stream);
 
-private:
+  private:
     void collision_detection(luisa::compute::Stream& stream);
     void predict_position(luisa::compute::Stream& stream);
     void update_velocity(luisa::compute::Stream& stream);
 
-private:
-    template<typename... Args>
+  private:
+    template <typename... Args>
     using Shader = luisa::compute::Shader<1, Args...>;
-    
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>> fn_reset_vector;
+
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>>   fn_reset_vector;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3x3>> fn_reset_float3x3;
 
-    luisa::compute::Shader<1, float, float3> fn_predict_position ; // const Float substep_dt
-    luisa::compute::Shader<1, float, bool, float> fn_update_velocity; // const Float substep_dt, const Bool fix_scene, const Float damping
-    luisa::compute::Shader<1, float, float> fn_evaluate_inertia; // Float substep_dt, Float stiffness_dirichlet
-    luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet; // Float substep_dt, stiffness_dirichlet
-    luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision; // Float substep_dt
-    luisa::compute::Shader<1, float> fn_evaluate_spring; // Float stiffness_stretch
-    luisa::compute::Shader<1, float> fn_evaluate_bending; // Float stiffness_bending
-    luisa::compute::Shader<1> fn_material_energy_assembly;
+    luisa::compute::Shader<1, float, float3> fn_predict_position;  // const Float substep_dt
+    luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
+    luisa::compute::Shader<1, float, float> fn_evaluate_inertia;  // Float substep_dt, Float stiffness_dirichlet
+    luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet;  // Float substep_dt, stiffness_dirichlet
+    luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision;  // Float substep_dt
+    luisa::compute::Shader<1, float> fn_evaluate_spring;   // Float stiffness_stretch
+    luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
+    luisa::compute::Shader<1>        fn_material_energy_assembly;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag ;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part;
 
-    luisa::compute::Shader<1, float> fn_apply_dx;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;;
-    
-
-    
+    luisa::compute::Shader<1, float>                             fn_apply_dx;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;
+    ;
 };
 
 
-} // namespace lcs 
+}  // namespace lcs

@@ -58,26 +58,21 @@ namespace sym::codim_ipc_simplex_contact
     //     return coeff.kappa;
     // }
 
-    
-    using Vector3 = Eigen::Vector3f;
-    using Vector6 = Eigen::Matrix<float, 6, 1>;
-    using Vector9 = Eigen::Matrix<float, 9, 1>;
-    using Vector12 = Eigen::Matrix<float, 12, 1>;
-    using Matrix3x3 = Eigen::Matrix<float, 3, 3>;
-    using Matrix6x6 = Eigen::Matrix<float, 6, 6>;
-    using Matrix9x9 = Eigen::Matrix<float, 9, 9>;
-    using Matrix12x12 = Eigen::Matrix<float, 12, 12>;
-    using Vector2i = Eigen::Vector2i;
-    using Vector3i = Eigen::Vector3i;
-    using Vector4i = Eigen::Vector4i;
 
-    inline  float PT_barrier_energy(float          kappa,
-                                              float          d_hat,
-                                              float          thickness,
-                                              const Vector3& P,
-                                              const Vector3& T0,
-                                              const Vector3& T1,
-                                              const Vector3& T2)
+    using Vector3     = Eigen::Vector3f;
+    using Vector6     = Eigen::Matrix<float, 6, 1>;
+    using Vector9     = Eigen::Matrix<float, 9, 1>;
+    using Vector12    = Eigen::Matrix<float, 12, 1>;
+    using Matrix3x3   = Eigen::Matrix<float, 3, 3>;
+    using Matrix6x6   = Eigen::Matrix<float, 6, 6>;
+    using Matrix9x9   = Eigen::Matrix<float, 9, 9>;
+    using Matrix12x12 = Eigen::Matrix<float, 12, 12>;
+    using Vector2i    = Eigen::Vector2i;
+    using Vector3i    = Eigen::Vector3i;
+    using Vector4i    = Eigen::Vector4i;
+
+    inline float PT_barrier_energy(
+        float kappa, float d_hat, float thickness, const Vector3& P, const Vector3& T0, const Vector3& T1, const Vector3& T2)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -88,14 +83,14 @@ namespace sym::codim_ipc_simplex_contact
         return B;
     }
 
-    inline  float PT_barrier_energy(const Vector4i& flag,
-                                              float           kappa,
-                                              float           d_hat,
-                                              float           thickness,
-                                              const Vector3&  P,
-                                              const Vector3&  T0,
-                                              const Vector3&  T1,
-                                              const Vector3&  T2)
+    inline float PT_barrier_energy(const Vector4i& flag,
+                                   float           kappa,
+                                   float           d_hat,
+                                   float           thickness,
+                                   const Vector3&  P,
+                                   const Vector3&  T0,
+                                   const Vector3&  T1,
+                                   const Vector3&  T2)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -106,15 +101,15 @@ namespace sym::codim_ipc_simplex_contact
         return B;
     }
 
-    inline  void PT_barrier_gradient_hessian(Vector12&      G,
-                                                       Matrix12x12&   H,
-                                                       float          kappa,
-                                                       float          d_hat,
-                                                       float          thickness,
-                                                       const Vector3& P,
-                                                       const Vector3& T0,
-                                                       const Vector3& T1,
-                                                       const Vector3& T2)
+    inline void PT_barrier_gradient_hessian(Vector12&      G,
+                                            Matrix12x12&   H,
+                                            float          kappa,
+                                            float          d_hat,
+                                            float          thickness,
+                                            const Vector3& P,
+                                            const Vector3& T0,
+                                            const Vector3& T1,
+                                            const Vector3& T2)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -147,16 +142,16 @@ namespace sym::codim_ipc_simplex_contact
         H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
     }
 
-    inline  void PT_barrier_gradient_hessian(Vector12&       G,
-                                                       Matrix12x12&    H,
-                                                       const Vector4i& flag,
-                                                       float           kappa,
-                                                       float           d_hat,
-                                                       float          thickness,
-                                                       const Vector3& P,
-                                                       const Vector3& T0,
-                                                       const Vector3& T1,
-                                                       const Vector3& T2)
+    inline void PT_barrier_gradient_hessian(Vector12&       G,
+                                            Matrix12x12&    H,
+                                            const Vector4i& flag,
+                                            float           kappa,
+                                            float           d_hat,
+                                            float           thickness,
+                                            const Vector3&  P,
+                                            const Vector3&  T0,
+                                            const Vector3&  T1,
+                                            const Vector3&  T2)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -190,18 +185,18 @@ namespace sym::codim_ipc_simplex_contact
     }
 
 
-    inline  float mollified_EE_barrier_energy(const Vector4i& flag,
-                                                        float           kappa,
-                                                        float           d_hat,
-                                                        float thickness,
-                                                        const Vector3& t0_Ea0,
-                                                        const Vector3& t0_Ea1,
-                                                        const Vector3& t0_Eb0,
-                                                        const Vector3& t0_Eb1,
-                                                        const Vector3& Ea0,
-                                                        const Vector3& Ea1,
-                                                        const Vector3& Eb0,
-                                                        const Vector3& Eb1)
+    inline float mollified_EE_barrier_energy(const Vector4i& flag,
+                                             float           kappa,
+                                             float           d_hat,
+                                             float           thickness,
+                                             const Vector3&  t0_Ea0,
+                                             const Vector3&  t0_Ea1,
+                                             const Vector3&  t0_Eb0,
+                                             const Vector3&  t0_Eb1,
+                                             const Vector3&  Ea0,
+                                             const Vector3&  Ea1,
+                                             const Vector3&  Eb0,
+                                             const Vector3&  Eb1)
     {
         // using mollifier to improve the smoothness of the edge-edge barrier
         using namespace codim_ipc_contact;
@@ -220,20 +215,20 @@ namespace sym::codim_ipc_simplex_contact
         return ek * B;
     }
 
-    inline  void mollified_EE_barrier_gradient_hessian(Vector12&    G,
-                                                                 Matrix12x12& H,
-                                                                 const Vector4i& flag,
-                                                                 float kappa,
-                                                                 float d_hat,
-                                                                 float thickness,
-                                                                 const Vector3& t0_Ea0,
-                                                                 const Vector3& t0_Ea1,
-                                                                 const Vector3& t0_Eb0,
-                                                                 const Vector3& t0_Eb1,
-                                                                 const Vector3& Ea0,
-                                                                 const Vector3& Ea1,
-                                                                 const Vector3& Eb0,
-                                                                 const Vector3& Eb1)
+    inline void mollified_EE_barrier_gradient_hessian(Vector12&       G,
+                                                      Matrix12x12&    H,
+                                                      const Vector4i& flag,
+                                                      float           kappa,
+                                                      float           d_hat,
+                                                      float           thickness,
+                                                      const Vector3&  t0_Ea0,
+                                                      const Vector3&  t0_Ea1,
+                                                      const Vector3&  t0_Eb0,
+                                                      const Vector3&  t0_Eb1,
+                                                      const Vector3&  Ea0,
+                                                      const Vector3&  Ea1,
+                                                      const Vector3&  Eb0,
+                                                      const Vector3&  Eb1)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -296,13 +291,8 @@ namespace sym::codim_ipc_simplex_contact
         H = Hessek * B + Gradek * GradB.transpose() + GradB * Gradek.transpose() + ek * HessB;
     }
 
-    inline  float PE_barrier_energy(const Vector3i& flag,
-                                              float           kappa,
-                                              float           d_hat,
-                                              float           thickness,
-                                              const Vector3&  P,
-                                              const Vector3&  E0,
-                                              const Vector3&  E1)
+    inline float PE_barrier_energy(
+        const Vector3i& flag, float kappa, float d_hat, float thickness, const Vector3& P, const Vector3& E0, const Vector3& E1)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -313,15 +303,15 @@ namespace sym::codim_ipc_simplex_contact
         return E;
     }
 
-    inline  void PE_barrier_gradient_hessian(Vector9&        G,
-                                                       Matrix9x9&      H,
-                                                       const Vector3i& flag,
-                                                       float           kappa,
-                                                       float           d_hat,
-                                                       float          thickness,
-                                                       const Vector3& P,
-                                                       const Vector3& E0,
-                                                       const Vector3& E1)
+    inline void PE_barrier_gradient_hessian(Vector9&        G,
+                                            Matrix9x9&      H,
+                                            const Vector3i& flag,
+                                            float           kappa,
+                                            float           d_hat,
+                                            float           thickness,
+                                            const Vector3&  P,
+                                            const Vector3&  E0,
+                                            const Vector3&  E1)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -354,12 +344,8 @@ namespace sym::codim_ipc_simplex_contact
         H = ddBddD * GradD * GradD.transpose() + dBdD * HessD;
     }
 
-    inline  float PP_barrier_energy(const Vector2i& flag,
-                                              float           kappa,
-                                              float           d_hat,
-                                              float           thickness,
-                                              const Vector3&  P0,
-                                              const Vector3&  P1)
+    inline float PP_barrier_energy(
+        const Vector2i& flag, float kappa, float d_hat, float thickness, const Vector3& P0, const Vector3& P1)
     {
         using namespace codim_ipc_contact;
         using namespace distance;
@@ -370,14 +356,14 @@ namespace sym::codim_ipc_simplex_contact
         return E;
     }
 
-    inline  void PP_barrier_gradient_hessian(Vector6&        G,
-                                                       Matrix6x6&      H,
-                                                       const Vector2i& flag,
-                                                       float           kappa,
-                                                       float           d_hat,
-                                                       float          thickness,
-                                                       const Vector3& P0,
-                                                       const Vector3& P1)
+    inline void PP_barrier_gradient_hessian(Vector6&        G,
+                                            Matrix6x6&      H,
+                                            const Vector2i& flag,
+                                            float           kappa,
+                                            float           d_hat,
+                                            float           thickness,
+                                            const Vector3&  P0,
+                                            const Vector3&  P1)
     {
         using namespace codim_ipc_contact;
         using namespace distance;

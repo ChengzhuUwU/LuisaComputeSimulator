@@ -34,7 +34,9 @@ inline void write_float3(luisa::compute::BufferVar<float>& buffer, luisa::comput
     buffer.write(3 * idx + 2, value.z);
 }
 
-inline void atomic_add_float3(luisa::compute::BufferVar<float>& buffer, luisa::compute::Int idx, luisa::compute::Float3 value) noexcept
+inline void atomic_add_float3(luisa::compute::BufferVar<float>& buffer,
+                              luisa::compute::Int               idx,
+                              luisa::compute::Float3            value) noexcept
 {
     buffer.atomic(idx * 3 + 0).fetch_add(value.x);
     buffer.atomic(idx * 3 + 1).fetch_add(value.y);
@@ -43,7 +45,8 @@ inline void atomic_add_float3(luisa::compute::BufferVar<float>& buffer, luisa::c
 
 inline luisa::compute::Float4 read_float4(luisa::compute::BufferVar<float>& buffer, luisa::compute::Int idx) noexcept
 {
-    return make_float4(buffer.read(4 * idx + 0), buffer.read(4 * idx + 1), buffer.read(4 * idx + 2), buffer.read(4 * idx + 3));
+    return make_float4(
+        buffer.read(4 * idx + 0), buffer.read(4 * idx + 1), buffer.read(4 * idx + 2), buffer.read(4 * idx + 3));
 }
 
 inline void write_float4(luisa::compute::BufferVar<float>& buffer, luisa::compute::Int idx, luisa::compute::Float4 value) noexcept
@@ -63,11 +66,8 @@ template <typename T>
 luisa::compute::BufferView<T> soa_element_buf_view(luisa::compute::SOAView<T> view)
 {
     return view.buffer()
-        .subview(
-            view.soa_offset() + view.element_offset() * view.element_stride,
-            view.element_size()
-        )
+        .subview(view.soa_offset() + view.element_offset() * view.element_stride, view.element_size())
         .template as<T>();
 }
 
-} // namespace lcs
+}  // namespace lcs

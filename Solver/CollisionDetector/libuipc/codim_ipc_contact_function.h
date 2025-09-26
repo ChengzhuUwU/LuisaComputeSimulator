@@ -15,14 +15,14 @@ namespace sym::codim_ipc_contact
 
 #include "codim_ipc_contact.inl"
 
-    using Float = float;
-    using Vector2 = Eigen::Vector2f;
+    using Float     = float;
+    using Vector2   = Eigen::Vector2f;
     using Matrix2x2 = Eigen::Matrix2f;
-    
+
     // C1 clamping
     inline void f0(Float x2, Float epsvh, Float& f0)
     {
-        if(x2 >= epsvh * epsvh)
+        if (x2 >= epsvh * epsvh)
         {
             //tex: $$y$$
             f0 = std::sqrt(x2);
@@ -36,7 +36,7 @@ namespace sym::codim_ipc_contact
 
     inline void f1_div_rel_dx_norm(Float x2, Float epsvh, Float& result)
     {
-        if(x2 >= epsvh * epsvh)
+        if (x2 >= epsvh * epsvh)
         {
             //tex: $$ \frac{1}{y}$$
             result = 1 / std::sqrt(x2);
@@ -69,35 +69,35 @@ namespace sym::codim_ipc_contact
         G2 = mu * lambda * f1_val * tan_rel_x;
     }
 
-    template<int N>
+    template <int N>
     void make_spd(Eigen::Matrix<float, N, N>& orig_matrix)
     {
         Eigen::SelfAdjointEigenSolver<Eigen::Matrix<float, N, N>> eigensolver(orig_matrix);
-        Eigen::Matrix<float, N, 1> eigenvalues = eigensolver.eigenvalues();
+        Eigen::Matrix<float, N, 1> eigenvalues  = eigensolver.eigenvalues();
         Eigen::Matrix<float, N, N> eigenvectors = eigensolver.eigenvectors();
 
-        for (int i = 0; i < N; ++i) 
+        for (int i = 0; i < N; ++i)
         {
             eigenvalues[i] = std::max(0.0f, eigenvalues[i]);
         }
 
         Eigen::Matrix<float, N, N> D = eigenvalues.asDiagonal();
-        orig_matrix = eigenvectors * D * eigenvectors.transpose();
+        orig_matrix                  = eigenvectors * D * eigenvectors.transpose();
     }
 
-//     inline void make_spd(Matrix2x2& mat)
-//     {
-//         Vector2   eigen_values;
-//         Matrix2x2 eigen_vectors;
-//         muda::eigen::template evd(mat, eigen_values, eigen_vectors);
-// #pragma unroll
-//         for(int i = 0; i < 2; ++i)
-//         {
-//             auto& v = eigen_values(i);
-//             v       = v < 0.0 ? 0.0 : v;
-//         }
-//         mat = eigen_vectors * eigen_values.asDiagonal() * eigen_vectors.transpose();
-//     };
+    //     inline void make_spd(Matrix2x2& mat)
+    //     {
+    //         Vector2   eigen_values;
+    //         Matrix2x2 eigen_vectors;
+    //         muda::eigen::template evd(mat, eigen_values, eigen_vectors);
+    // #pragma unroll
+    //         for(int i = 0; i < 2; ++i)
+    //         {
+    //             auto& v = eigen_values(i);
+    //             v       = v < 0.0 ? 0.0 : v;
+    //         }
+    //         mat = eigen_vectors * eigen_values.asDiagonal() * eigen_vectors.transpose();
+    //     };
 
     inline void friction_hessian(Matrix2x2& H2x2, Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x)
     {
@@ -106,17 +106,16 @@ namespace sym::codim_ipc_contact
         Float f1_div_rel_dx_norm_val;
         f1_div_rel_dx_norm(tan_rel_x.squaredNorm(), eps_vh, f1_div_rel_dx_norm_val);
 
-        if(sq_norm >= epsvh2)
+        if (sq_norm >= epsvh2)
         {
 
             // no SPD projection needed
             Vector2 ubar(-tan_rel_x[1], tan_rel_x[0]);
-            H2x2 = ubar * (mu * lambda * f1_div_rel_dx_norm_val / sq_norm)
-                   * ubar.transpose();
+            H2x2 = ubar * (mu * lambda * f1_div_rel_dx_norm_val / sq_norm) * ubar.transpose();
         }
         else
         {
-            if(sq_norm == 0.0)
+            if (sq_norm == 0.0)
             {
                 // no SPD projection needed
                 H2x2 = (mu * lambda * f1_div_rel_dx_norm_val) * Matrix2x2::Identity();

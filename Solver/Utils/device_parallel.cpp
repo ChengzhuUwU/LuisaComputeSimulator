@@ -32,7 +32,7 @@ void DeviceParallel::get_temp_size_scan(size_t& temp_storage_size, size_t num_it
     auto         block_size       = m_block_size;
     unsigned int max_num_elements = num_items;
     temp_storage_size             = 0;
-    unsigned int num_elements     = max_num_elements; // input segment size
+    unsigned int num_elements     = max_num_elements;  // input segment size
     int          level            = 0;
     do
     {
@@ -48,4 +48,4 @@ void DeviceParallel::get_temp_size_scan(size_t& temp_storage_size, size_t num_it
     temp_storage_size += 1;
 }
 
-} // namespace lcgs
+}  // namespace lcs

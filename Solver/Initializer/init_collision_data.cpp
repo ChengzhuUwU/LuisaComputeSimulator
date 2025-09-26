@@ -1,8 +1,7 @@
 #include "Initializer/init_collision_data.h"
 
-namespace lcs::Initializer 
+namespace lcs::Initializer
 {
 
 
-    
 }
