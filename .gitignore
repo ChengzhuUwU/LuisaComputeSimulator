@@ -18,6 +18,8 @@ lc_options.generated.lua
 /compute
 .scripts
 /Resources/OutputMesh/*.obj
+/Resources/OutputMesh/*.json
+/Resources/OutputImage/
 /Resources/SimulationState/
 .polyscope.ini
 imgui.ini

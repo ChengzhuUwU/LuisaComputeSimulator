@@ -1,6 +1,6 @@
 # LuisaComputeSolver: Physics Simulation Based-on LuisaCompute
 
-![Teasor](Resources/OutputImage/README1.png)
+![Teasor](Document/README1.png)
 
 ## How to start
 
