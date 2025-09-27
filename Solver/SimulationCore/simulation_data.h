@@ -599,12 +599,52 @@ namespace CollisionPair
 namespace lcs
 {
 
+namespace CollisionPair
+{
+    namespace CollisionCount
+    {
+        inline constexpr uint vv_offset()
+        {
+            return 0;
+        }
+        inline constexpr uint ve_offset()
+        {
+            return 1;
+        }
+        inline constexpr uint vf_offset()
+        {
+            return 2;
+        }
+        inline constexpr uint ee_offset()
+        {
+            return 3;
+        }
+        inline constexpr uint per_vert_vv_offset()
+        {
+            return 4;
+        }
+        inline constexpr uint per_vert_ve_offset()
+        {
+            return 5;
+        }
+        inline constexpr uint per_vert_vf_offset()
+        {
+            return 6;
+        }
+        inline constexpr uint per_vert_ee_offset()
+        {
+            return 7;
+        }
+    }  // namespace CollisionCount
+}  // namespace CollisionPair
 
 template <template <typename...> typename BufferType>
 struct CollisionData : SimulationType
 {
     BufferType<uint> broad_phase_collision_count;   // 0: VV, 1: VE, 2: VF, 3: EE
     BufferType<uint> narrow_phase_collision_count;  // 0: VV, 1: VE, 2: VF, 3: EE
+                                                    // 4: PerVertVV, 5: PerVertVE,
+                                                    // 6: PerVertVF, 6: PervertEE
 
     BufferType<uint>  broad_phase_list_vf;
     BufferType<uint>  broad_phase_list_ee;
@@ -630,6 +670,10 @@ struct CollisionData : SimulationType
     BufferType<uint>                       per_vert_prefix_narrow_phase_ve;
     BufferType<uint>                       per_vert_prefix_narrow_phase_vf;
     BufferType<uint>                       per_vert_prefix_narrow_phase_ee;
+    BufferType<ushort>                     narrow_phase_vf_pair_offset_in_vert;
+    BufferType<ushort>                     narrow_phase_ee_pair_offset_in_vert;
+    BufferType<uint>                       vert_adj_vf_pairs_csr;
+    BufferType<uint>                       vert_adj_ee_pairs_csr;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
 
@@ -650,7 +694,7 @@ struct CollisionData : SimulationType
 
         constexpr bool use_vv_ve = false;
         lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 4);
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 8);
         lcs::Initializer::resize_buffer(device, this->contact_energy, 4);
         lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts);
         lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts);
@@ -667,6 +711,10 @@ struct CollisionData : SimulationType
             lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1);
         lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts);
         lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges);
+        lcs::Initializer::resize_buffer(device, this->vert_adj_vf_pairs_csr, 4 * per_element_count_NP * num_verts);
+        lcs::Initializer::resize_buffer(device, this->vert_adj_ee_pairs_csr, 4 * per_element_count_NP * num_edges);
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_vf_pair_offset_in_vert, 4 * per_element_count_NP * num_verts);
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_ee_pair_offset_in_vert, 4 * per_element_count_NP * num_edges);
         lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_vf, per_element_count_NP * num_verts);
         lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_ee, per_element_count_NP * num_edges);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
@@ -675,10 +723,10 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ve, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vf, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ee, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts + 1);
         this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 
@@ -688,6 +736,10 @@ struct CollisionData : SimulationType
             + sizeof(CollisionPairVE) * this->narrow_phase_list_ve.size()
             + sizeof(CollisionPairVF) * this->narrow_phase_list_vf.size()
             + sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size()
+            + sizeof(uint) * this->vert_adj_vf_pairs_csr.size()
+            + sizeof(uint) * this->vert_adj_ee_pairs_csr.size()
+            + sizeof(ushort) * this->narrow_phase_vf_pair_offset_in_vert.size()
+            + sizeof(ushort) * this->narrow_phase_ee_pair_offset_in_vert.size()
             + sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_vf.size()
             + sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_ee.size();
 

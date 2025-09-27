@@ -1609,6 +1609,7 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
 {
     mp_narrowphase_detector->reset_broadphase_count(stream);
     mp_narrowphase_detector->reset_narrowphase_count(stream);
+    mp_narrowphase_detector->reset_pervert_collision_count(stream);
 
     device_broadphase_dcd(stream);
 
@@ -1618,6 +1619,7 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
         device_narrowphase_dcd(stream);
 
     mp_narrowphase_detector->download_narrowphase_collision_count(stream);
+    mp_narrowphase_detector->construct_pervert_adj_list(stream);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 {
@@ -1672,7 +1674,7 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
 
     stream << fn_pcg_spmv_offdiag_material_part(input_ptr, output_ptr).dispatch(host_sim_data->num_verts_soft);
 
-    mp_narrowphase_detector->device_spmv(stream, input_ptr, output_ptr);
+    mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
@@ -1772,7 +1774,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
     }
 
     // Off-diag: Collision hessian
-    mp_narrowphase_detector->host_spmv_repulsion(stream, input_ptr, output_ptr);
+    mp_narrowphase_detector->host_perVert_spmv(stream, input_ptr, output_ptr);
 }
 void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
                                     std::function<double(const std::vector<float3>&)> func_compute_energy)
@@ -2248,13 +2250,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         device_update_contact_list(stream);
         mp_narrowphase_detector->download_narrowphase_list(stream);
+        mp_narrowphase_detector->download_pervert_adjacent_list(stream);
     };
     auto evaluate_contact = [&]()
     {
         stream << sim_data->sa_cgB.copy_from(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_from(host_sim_data->sa_cgA_diag.data());
 
-        mp_narrowphase_detector->compute_repulsion_gradiant_hessian_and_assemble(
+        mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
             stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
 
         stream << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
@@ -2495,14 +2498,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     const float thickness          = get_scene_params().thickness;
     const float d_hat              = get_scene_params().d_hat;
-    auto        update_contact_set = [&]()
+    auto        update_contact_set = [&]() { device_update_contact_list(stream); };
+    auto        evaluate_contact   = [&]()
     {
-        device_update_contact_list(stream);
-        mp_narrowphase_detector->download_narrowphase_list(stream);
-    };
-    auto evaluate_contact = [&]()
-    {
-        mp_narrowphase_detector->compute_repulsion_gradiant_hessian_and_assemble(
+        mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
             stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
     };
     auto ccd_get_toi = [&]() -> float

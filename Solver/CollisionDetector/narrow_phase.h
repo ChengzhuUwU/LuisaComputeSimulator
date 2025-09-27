@@ -34,8 +34,9 @@ class NarrowPhasesDetector
     void compile_ccd(AsyncCompiler& compiler);
     void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
     void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-    void compile_prefix_sum(AsyncCompiler& compiler);
-    void compile_assemble(AsyncCompiler& compiler);
+    void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
+    void compile_assemble_atomic(AsyncCompiler& compiler);
+    void compile_assemble_non_conflict(AsyncCompiler& compiler);
 
   public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
@@ -54,10 +55,12 @@ class NarrowPhasesDetector
     void  host_reset_toi(Stream& stream);
     void  reset_broadphase_count(Stream& stream);
     void  reset_narrowphase_count(Stream& stream);
+    void  reset_pervert_collision_count(Stream& stream);
     float get_global_toi(Stream& stream);
     void  download_broadphase_collision_count(Stream& stream);
     void  download_narrowphase_collision_count(Stream& stream);
     void  download_narrowphase_list(Stream& stream);
+    void  download_pervert_adjacent_list(Stream& stream);
     void  upload_spd_narrowphase_list(Stream& stream);
 
   public:
@@ -131,16 +134,26 @@ class NarrowPhasesDetector
                                 const float           thickness,
                                 const float           kappa);
 
-    void compute_repulsion_gradiant_hessian_and_assemble(Stream&               stream,
-                                                         const Buffer<float3>& sa_x_left,
-                                                         const Buffer<float3>& sa_x_right,
-                                                         const float           d_hat,
-                                                         const float           thickness,
-                                                         Buffer<float3>&       sa_cgB,
-                                                         Buffer<float3x3>&     sa_cgA_diag);
+    void device_perPair_evaluate_gradient_hessian(Stream&               stream,
+                                                  const Buffer<float3>& sa_x_left,
+                                                  const Buffer<float3>& sa_x_right,
+                                                  const float           d_hat,
+                                                  const float           thickness,
+                                                  Buffer<float3>&       sa_cgB,
+                                                  Buffer<float3x3>&     sa_cgA_diag);
+    void device_perVert_evaluate_gradient_hessian(Stream&               stream,
+                                                  const Buffer<float3>& sa_x_left,
+                                                  const Buffer<float3>& sa_x_right,
+                                                  const float           d_hat,
+                                                  const float           thickness,
+                                                  Buffer<float3>&       sa_cgB,
+                                                  Buffer<float3x3>&     sa_cgA_diag);
 
-    void host_spmv_repulsion(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
-    void device_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
+    void construct_pervert_adj_list(Stream& stream);
+    void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+    void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+    void device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
+    void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
 
   public:
     // Compute barrier energy
@@ -237,9 +250,21 @@ class NarrowPhasesDetector
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy_from_ee;
 
+    // Scan
+    luisa::compute::Shader<1> fn_calc_pervert_collion_count_vf;
+    luisa::compute::Shader<1> fn_calc_pervert_collion_count_ee;
+    luisa::compute::Shader<1> fn_calc_pervert_prefix_sum_vf_ee;
+    luisa::compute::Shader<1> fn_fill_in_vf_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1> fn_fill_in_ee_pairs_in_vert_adjacent;
+
     // Assemble
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_assemble_repulsion_hessian_gradient_vf;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_assemble_repulsion_hessian_gradient_ee;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian_vf;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian_ee;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian_vf;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian_ee;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_vf;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_ee;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_assembled;
 
     // AtomicAdd SpMV
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_atomic_add_spmv_vf;

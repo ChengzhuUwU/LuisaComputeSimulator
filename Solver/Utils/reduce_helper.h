@@ -11,7 +11,7 @@
 //         set_op(cache_aabb[tid], thread_value)                                           \
 //             luisa::compute::sync_block();                                               \
 //             luisa::compute::Uint s = dim >> 1;                                          \
-//             $while(true) {	                                                            \
+//             $while(true) {                                                               \
 //                 $if (s == 0) { $break; };                                               \
 //                 $if(tid < s) {                                                          \
 //                     reduce_op(cache_aabb[tid], cache_aabb[tid + s]);                    \
@@ -76,24 +76,31 @@ namespace ParallelIntrinsic
 
 
     template <typename T>
-    inline Var<T> warp_reduce_op_sum(Var<T>& lane_value)
+    inline Var<T> warp_reduce_op_sum(const Var<T>& lane_value)
     {
         return luisa::compute::warp_active_sum(lane_value);
     };
     template <typename T>
-    inline Var<T> warp_reduce_op_min(Var<T>& lane_value)
+    inline Var<T> warp_reduce_op_min(const Var<T>& lane_value)
     {
         return luisa::compute::warp_active_min(lane_value);
     };
     template <typename T>
-    inline Var<T> warp_reduce_op_max(Var<T>& lane_value)
+    inline Var<T> warp_reduce_op_max(const Var<T>& lane_value)
     {
         return luisa::compute::warp_active_max(lane_value);
+    };
+
+    template <typename T>
+    inline Var<T> warp_scan_op(const Var<T>& lane_value)
+    {
+        return luisa::compute::warp_prefix_sum(lane_value);
     };
 
     constexpr uint warp_dim = 32;
     constexpr uint warp_num = 32;
 
+    // !!!Only the first warp will get block reduce result
     template <typename T, typename ReduceOp>
     inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary)
     {
@@ -130,6 +137,51 @@ namespace ParallelIntrinsic
             block_value = warp_reduce_op_binary(cache[threadIdx]);
         };
         return block_value;
+    }
+
+    template <typename T>
+    inline Var<T> block_intrinsic_scan_exclusive(const luisa::compute::UInt& vid,
+                                                 const Var<T>&               thread_value,
+                                                 Var<T>&                     output_block_sum)
+    {
+        using Uint = luisa::compute::UInt;
+        luisa::compute::set_block_size(reduce_block_dim);
+
+        const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+        const luisa::compute::UInt warpIdx   = threadIdx / warp_dim;
+        const luisa::compute::UInt laneIdx   = threadIdx % warp_dim;
+
+        Var<T> warp_prefix = warp_scan_op<T>(thread_value);
+
+        luisa::compute::Shared<uint> cache_active_warp_count(1);
+        luisa::compute::Shared<T>    cache_block_sum(1);
+        luisa::compute::Shared<T>    cache(warp_num);
+
+        $if(threadIdx == 0)
+        {
+            cache_active_warp_count[0] = 0;
+        };
+        luisa::compute::sync_block();
+
+        $if(laneIdx == luisa::compute::warp_active_count_bits(true) - 1)  // Is the last active thread in the warp
+        {
+            cache[warpIdx] = warp_prefix + thread_value;
+            cache_active_warp_count.atomic(0).fetch_add(1u);
+        };
+        luisa::compute::sync_block();
+
+        $if(threadIdx < cache_active_warp_count[0])
+        {
+            Var<T> warp_val  = cache[threadIdx];
+            cache[threadIdx] = warp_scan_op<T>(warp_val);  // Get warp's prefix in block
+            $if(threadIdx == cache_active_warp_count[0] - 1)
+            {
+                cache_block_sum[0] = cache[threadIdx] + warp_val;
+            };
+        };
+        luisa::compute::sync_block();
+        output_block_sum = cache_block_sum[0];
+        return cache[warpIdx] + warp_prefix;
     }
 
     template <typename T>
