@@ -154,6 +154,11 @@ target_link_libraries(app-simulation PRIVATE
     polyscope 
     luisa-compute-solver-lib)
 
+# renderer
+add_executable(app-offline-renderer Application/app_offline_renderer.cpp)
+target_link_libraries(app-offline-renderer PRIVATE 
+    luisa::compute)
+target_compile_definitions(app-offline-renderer PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
 
 add_executable(app-test-features Application/app_test_features.cpp)

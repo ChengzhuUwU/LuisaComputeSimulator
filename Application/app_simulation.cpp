@@ -466,7 +466,6 @@ int main(int argc, char** argv)
 
         polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
 
-
         auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
@@ -536,7 +535,6 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                ImGui::InputScalar("Optimize Frames", ImGuiDataType_U32, &optimize_frames);
                 ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcs::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().nonlinear_iter_count);
                 ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().pcg_iter_count);
@@ -576,15 +574,16 @@ int main(int argc, char** argv)
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
                 }
-                if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
+                if (ImGui::Button("Simulate Single Frame", ImVec2(-1, 0)))
                 {
                     fn_single_step_with_ui();
                 }
-                if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
+                if (ImGui::Button("Simulate Some Frames", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
                     max_frame         = lcs::get_scene_params().current_frame + optimize_frames;
                 }
+                ImGui::InputScalar("Simulate Frame Count", ImGuiDataType_U32, &optimize_frames);
                 if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
@@ -642,6 +641,29 @@ int main(int argc, char** argv)
                 }
             }
         };
+
+        // Add UI to display camera parameters
+        {
+            const std::string filename = std::format("scene_{}.json", lcs::get_scene_params().scene_id);
+            std::string   full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
+            std::string   full_path      = full_directory + filename;
+            std::ofstream json_file(full_path);
+            if (json_file.is_open())
+            {
+                json_file << polyscope::view::getViewAsJson();
+                json_file.close();
+                polyscope::view::getCameraWorldPosition();
+                LUISA_INFO("Camera json saved to {}", full_path);
+                LUISA_INFO("Camera 's position = {}",
+                           luisa::make_float3(polyscope::state::center().x,
+                                              polyscope::state::center().y,
+                                              polyscope::state::center().z));
+            }
+            else
+            {
+                LUISA_WARNING("Failed to save camera json to {}", full_path);
+            }
+        }
         polyscope::show();
     }
 

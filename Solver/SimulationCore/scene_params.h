@@ -68,6 +68,7 @@ struct SceneParams
     bool use_obstacle_animation = true;
 
     // Iteration info
+    uint scene_id             = 0;
     uint num_iteration        = 96;
     uint num_substep          = 1;
     uint nonlinear_iter_count = 8;

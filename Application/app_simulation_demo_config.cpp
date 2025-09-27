@@ -317,8 +317,8 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 }
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
-    const uint case_number = 3;
-
+    const uint case_number           = 3;
+    lcs::get_scene_params().scene_id = case_number;
     switch (case_number)
     {
         case 0: {
