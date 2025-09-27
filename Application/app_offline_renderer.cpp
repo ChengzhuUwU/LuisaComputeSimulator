@@ -1,6 +1,6 @@
 #include <MacTypes.h>
 #include <iostream>
-
+#include <filesystem>
 #include <stb/stb_image_write.h>
 
 #include <luisa/luisa-compute.h>
@@ -113,11 +113,18 @@ class FPVCameraController
 };
 
 static const char* cornel_box_string = R"(
-# Bottom Face
-v	-0.53  0.00   0.09
-v	 0.04  0.00  -0.09
-v	-0.14  0.00  -0.67
-v	-0.71  0.00  -0.49
+g floor
+v  -1.01  -1.00   0.99
+v   1.00  -1.00   0.99
+v   1.00  -1.00  -1.04
+v  -0.99  -1.00  -1.04
+f -4 -3 -2 -1
+
+g backWall
+v  -0.99  -1.00  -1.04
+v   1.00  -1.00  -1.04
+v   1.00  1.99  -1.04
+v  -1.02  1.99  -1.04
 f -4 -3 -2 -1
 
 g light
@@ -143,71 +150,115 @@ int main(int argc, char* argv[])
     Device device = context.create_device(backend);
 
     // load the Cornell Box scene
-    const std::string        obj_mesh_path   = std::string(LCSV_RESOURCE_PATH) + "/OutputMesh/";
-    const std::string        img_output_path = std::string(LCSV_RESOURCE_PATH) + "/OutputImage/";
-    tinyobj::ObjReaderConfig obj_reader_config;
-    tinyobj::ObjReader       obj_reader;
-    const std::string        obj_full_path = obj_mesh_path + "frame_2013.obj";
-    const std::string        img_full_path = img_output_path + "frame_2013.png";
-    obj_reader_config.mtl_search_path      = std::filesystem::path(obj_full_path).parent_path().string();
+    const std::string obj_mesh_path   = std::string(LCSV_RESOURCE_PATH) + "/OutputMesh/";
+    const std::string img_output_path = std::string(LCSV_RESOURCE_PATH) + "/OutputImage/";
+    std::vector<std::pair<tinyobj::ObjReader, tinyobj::ObjReaderConfig>> obj_readers;
 
-    if (!obj_reader.ParseFromString(cornel_box_string, "", obj_reader_config))
+    std::vector<float3> materials_color;
+
+    auto load_mesh = [&](const std::string& path, const float3& color)
     {
-        luisa::string_view error_message = "unknown error.";
-        if (auto&& e = obj_reader.Error(); !e.empty())
+        tinyobj::ObjReaderConfig obj_reader_config;
+        tinyobj::ObjReader       obj_reader;
+
+        if (!obj_reader.ParseFromFile(path, obj_reader_config))
         {
-            error_message = e;
+            luisa::string_view error_message = "unknown error.";
+            if (auto&& e = obj_reader.Error(); !e.empty())
+            {
+                error_message = e;
+            }
+            LUISA_ERROR_WITH_LOCATION("Failed to load OBJ file: {}", error_message);
         }
-        LUISA_ERROR_WITH_LOCATION("Failed to load OBJ file: {}", error_message);
-    }
-
-    if (!obj_reader.ParseFromFile(obj_full_path, obj_reader_config))
-    {
-        luisa::string_view error_message = "unknown error.";
-        if (auto&& e = obj_reader.Error(); !e.empty())
+        if (auto&& e = obj_reader.Warning(); !e.empty())
         {
-            error_message = e;
+            LUISA_WARNING_WITH_LOCATION("{}", e);
         }
-        LUISA_ERROR_WITH_LOCATION("Failed to load OBJ file: {}", error_message);
-    }
+        obj_readers.push_back(std::make_pair(obj_reader, obj_reader_config));
+        materials_color.push_back(color);
+    };
 
-    if (auto&& e = obj_reader.Warning(); !e.empty())
+    // const std::string obj_full_path = obj_mesh_path + "frame_1801.obj";
+    const std::string obj_full_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/Cylinder/cylinder7K.obj";
+
+    load_mesh(obj_full_path, make_float3(0.2, 0.408, 0.8));
+    load_mesh(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/Background/background copy.obj", make_float3(1.0f));
+    load_mesh(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/Background/light.obj", make_float3(1.0f));
+
+    constexpr float3 light_position = make_float3(-0.24f, 1.98f, 0.16f);
+    // constexpr float3 light_position = make_float3(0.4f, -2.3f, 0.1f);
+    constexpr float3 light_u        = make_float3(-0.24f, 1.98f, -0.22f) - light_position;
+    constexpr float3 light_v        = make_float3(0.23f, 1.98f, 0.16f) - light_position;
+    constexpr float3 light_emission = make_float3(15.0f, 15.0f, 15.0f);
+
+    if (false)
     {
-        LUISA_WARNING_WITH_LOCATION("{}", e);
+        tinyobj::ObjReaderConfig obj_reader_config;
+        tinyobj::ObjReader       obj_reader;
+        if (!obj_reader.ParseFromString(cornel_box_string, "", obj_reader_config))
+        {
+            luisa::string_view error_message = "unknown error.";
+            if (auto&& e = obj_reader.Error(); !e.empty())
+            {
+                error_message = e;
+            }
+            LUISA_ERROR_WITH_LOCATION("Failed to load OBJ file: {}", error_message);
+        }
+        if (auto&& e = obj_reader.Warning(); !e.empty())
+        {
+            LUISA_WARNING_WITH_LOCATION("{}", e);
+        }
+        obj_readers.push_back(std::make_pair(obj_reader, obj_reader_config));
+
+        materials_color.push_back(make_float3(1, 1, 1));                 // floor
+        materials_color.push_back(make_float3(1, 1, 1));                 // back wall
+        materials_color.push_back(make_float3(0.000f, 0.000f, 0.000f));  // light
     }
 
-    auto&&                p = obj_reader.GetAttrib().vertices;
+
     luisa::vector<float3> vertices;
-    vertices.reserve(p.size() / 3u);
-    for (uint i = 0u; i < p.size(); i += 3u)
+    // vertices.reserve(p.size() / 3u);
+    for (auto& pair : obj_readers)
     {
-        vertices.emplace_back(float3{p[i + 0u], p[i + 1u], p[i + 2u]});
+        auto&  obj_reader = pair.first;
+        auto&& p          = obj_reader.GetAttrib().vertices;
+        LUISA_INFO("Loaded mesh with {} shape(s) and {} vertices.", obj_reader.GetShapes().size(), p.size());
+        for (uint i = 0u; i < p.size(); i += 3u)
+        {
+            vertices.emplace_back(float3{p[i + 0u], p[i + 1u], p[i + 2u]});
+        }
     }
-    LUISA_INFO("Loaded mesh with {} shape(s) and {} vertices.", obj_reader.GetShapes().size(), vertices.size());
-
-    BindlessArray  heap          = device.create_bindless_array();
-    Stream         stream        = device.create_stream(StreamTag::GRAPHICS);
     Buffer<float3> vertex_buffer = device.create_buffer<float3>(vertices.size());
+    Stream         stream        = device.create_stream(StreamTag::GRAPHICS);
     stream << vertex_buffer.copy_from(vertices.data());
+
+
+    BindlessArray                   heap = device.create_bindless_array();
     luisa::vector<Mesh>             meshes;
     luisa::vector<Buffer<Triangle>> triangle_buffers;
-    for (auto&& shape : obj_reader.GetShapes())
+    uint                            prefix_vid = 0;
+    for (auto& pair : obj_readers)
     {
-        uint                                 index          = static_cast<uint>(meshes.size());
-        std::vector<tinyobj::index_t> const& t              = shape.mesh.indices;
-        uint                                 triangle_count = t.size() / 3u;
-        LUISA_INFO("Processing shape '{}' at index {} with {} triangle(s).", shape.name, index, triangle_count);
-        luisa::vector<uint> indices;
-        indices.reserve(t.size());
-        for (tinyobj::index_t i : t)
+        LUISA_INFO("Current prefix to {}", prefix_vid);
+        auto& obj_reader = pair.first;
+        for (auto&& shape : obj_reader.GetShapes())
         {
-            indices.emplace_back(i.vertex_index);
+            uint                                 index          = static_cast<uint>(meshes.size());
+            std::vector<tinyobj::index_t> const& t              = shape.mesh.indices;
+            uint                                 triangle_count = t.size() / 3u;
+            LUISA_INFO("Processing shape '{}' at index {} with {} triangle(s).", shape.name, index, triangle_count);
+            luisa::vector<uint> indices;
+            for (tinyobj::index_t i : t)
+            {
+                indices.emplace_back(prefix_vid + i.vertex_index);
+            }
+            Buffer<Triangle>& triangle_buffer =
+                triangle_buffers.emplace_back(device.create_buffer<Triangle>(triangle_count));
+            Mesh& mesh = meshes.emplace_back(device.create_mesh(vertex_buffer, triangle_buffer));
+            heap.emplace_on_update(index, triangle_buffer);
+            stream << triangle_buffer.copy_from(indices.data()) << mesh.build();
         }
-        Buffer<Triangle>& triangle_buffer =
-            triangle_buffers.emplace_back(device.create_buffer<Triangle>(triangle_count));
-        Mesh& mesh = meshes.emplace_back(device.create_mesh(vertex_buffer, triangle_buffer));
-        heap.emplace_on_update(index, triangle_buffer);
-        stream << triangle_buffer.copy_from(indices.data()) << mesh.build();
+        prefix_vid += obj_reader.GetAttrib().vertices.size() / 3u;
     }
 
     Accel accel = device.create_accel({});
@@ -217,16 +268,68 @@ int main(int argc, char* argv[])
     }
     stream << heap.update() << accel.build() << synchronize();
 
-    Constant materials{
-        make_float3(0.725f, 0.710f, 0.680f),  // floor
-        make_float3(0.725f, 0.710f, 0.680f),  // ceiling
-        make_float3(0.725f, 0.710f, 0.680f),  // back wall
-        make_float3(0.140f, 0.450f, 0.091f),  // right wall
-        make_float3(0.630f, 0.065f, 0.050f),  // left wall
-        make_float3(0.725f, 0.710f, 0.680f),  // short box
-        make_float3(0.725f, 0.710f, 0.680f),  // tall box
-        make_float3(0.000f, 0.000f, 0.000f),  // light
-    };
+    Camera camera;
+    {
+        std::string    json_path = obj_mesh_path + "scene_3.json";
+        nlohmann::json scene_json;
+        {
+            std::ifstream ifs(json_path);
+            if (!ifs)
+            {
+                std::cerr << "Failed to open JSON file: " << json_path << std::endl;
+                std::exit(1);
+            }
+            ifs >> scene_json;
+        }
+
+        // Set camera parameters from JSON
+        // Default values
+        camera.position = make_float3(0.0f, 0.0f, 2.0f);
+        // camera.position = make_float3(0.0f, 1.0f, 5.0f);
+        camera.front = make_float3(0.0f, 0.0f, -1.0f);
+        camera.up    = make_float3(0.0f, 1.0f, 0.0f);
+        camera.right = normalize(cross(camera.front, camera.up));
+        camera.fov   = 45.0f;
+        // camera.fov = 27.8;
+
+        // Use values from JSON if available
+        if (false && scene_json.contains("fov"))
+        {
+            camera.fov = scene_json["fov"].get<float>();
+        }
+
+        // If viewMat is present and valid, extract camera orientation and position
+        if (false && scene_json.contains("viewMat") && scene_json["viewMat"].is_array()
+            && scene_json["viewMat"].size() == 16)
+        {
+            LUISA_INFO("Reading json...");
+            // Read the view matrix (row-major order)
+            float viewMat[16];
+            for (int i = 0; i < 16; ++i)
+            {
+                if (scene_json["viewMat"][i].is_null())
+                    viewMat[i] = (i % 5 == 0) ? 1.0f : 0.0f;  // identity fallback
+                else
+                    viewMat[i] = scene_json["viewMat"][i].get<float>();
+            }
+            // Invert the view matrix to get the camera-to-world matrix
+            // (Assume the matrix is affine, so we can invert rotation/translation separately)
+            float3 right = make_float3(viewMat[0], viewMat[4], viewMat[8]);
+            float3 up    = make_float3(viewMat[1], viewMat[5], viewMat[9]);
+            float3 front = -make_float3(viewMat[2], viewMat[6], viewMat[10]);
+            float3 trans = make_float3(viewMat[12], viewMat[13], viewMat[14]);
+            // The camera position in world space is -R^T * T
+            float3 position = make_float3(-(right.x * trans.x + up.x * trans.y + front.x * trans.z),
+                                          -(right.y * trans.x + up.y * trans.y + front.y * trans.z),
+                                          -(right.z * trans.x + up.z * trans.y + front.z * trans.z));
+            camera.position = position;
+            camera.right    = normalize(right);
+            camera.up       = normalize(up);
+            camera.front    = normalize(front);
+        }
+    }
+
+    Constant materials(materials_color.data(), static_cast<uint>(materials_color.size()));
 
     Callable linear_to_srgb = [](Var<float3> x) noexcept
     {
@@ -283,22 +386,18 @@ int main(int argc, char* argv[])
         [&](ImageFloat image, ImageUInt seed_image, Var<Camera> camera, AccelVar accel, UInt2 resolution) noexcept
     {
         set_block_size(16u, 16u, 1u);
-        UInt2            coord      = dispatch_id().xy();
-        Float            frame_size = min(resolution.x, resolution.y).cast<float>();
-        UInt             state      = seed_image.read(coord).x;
-        Float            rx         = lcg(state);
-        Float            ry         = lcg(state);
-        Float2           pixel = (make_float2(coord) + make_float2(rx, ry)) / frame_size * 2.0f - 1.0f;
-        Float3           radiance       = def(make_float3(0.0f));
-        Var<Ray>         ray            = camera->generate_ray(pixel * make_float2(1.0f, -1.0f));
-        Float3           beta           = def(make_float3(1.0f));
-        Float            pdf_bsdf       = def(0.0f);
-        constexpr float3 light_position = make_float3(-0.24f, 1.98f, 0.16f);
-        constexpr float3 light_u        = make_float3(-0.24f, 1.98f, -0.22f) - light_position;
-        constexpr float3 light_v        = make_float3(0.23f, 1.98f, 0.16f) - light_position;
-        constexpr float3 light_emission = make_float3(17.0f, 12.0f, 4.0f);
-        Float            light_area     = length(cross(light_u, light_v));
-        Float3           light_normal   = normalize(cross(light_u, light_v));
+        UInt2    coord        = dispatch_id().xy();
+        Float    frame_size   = min(resolution.x, resolution.y).cast<float>();
+        UInt     state        = seed_image.read(coord).x;
+        Float    rx           = lcg(state);
+        Float    ry           = lcg(state);
+        Float2   pixel        = (make_float2(coord) + make_float2(rx, ry)) / frame_size * 2.0f - 1.0f;
+        Float3   radiance     = def(make_float3(0.0f));
+        Var<Ray> ray          = camera->generate_ray(pixel * make_float2(1.0f, -1.0f));
+        Float3   beta         = def(make_float3(1.0f));
+        Float    pdf_bsdf     = def(0.0f);
+        Float    light_area   = length(cross(light_u, light_v));
+        Float3   light_normal = normalize(cross(light_u, light_v));
         $for(depth, 10u)
         {
             // trace
@@ -433,77 +532,8 @@ int main(int argc, char* argv[])
     Image<float>           framebuffer = device.create_image<float>(PixelStorage::HALF4, resolution);
     Image<float>           accum_image = device.create_image<float>(PixelStorage::FLOAT4, resolution);
     luisa::vector<std::array<uint8_t, 4u>> host_image(resolution.x * resolution.y);
-    Image<uint> seed_image = device.create_image<uint>(PixelStorage::INT1, resolution);
-
-    // Camera parameters from JSON
-    // float camera_fov       = 45.0f;   // from "fov"
-    // float camera_near_clip = 0.005f;  // from "nearClipRatio"
-    // float camera_far_clip  = 20.0f;   // from "farClipRatio"
-    // int   window_width     = 1705;    // from "windowWidth"
-    // int   window_height    = 777;     // from "windowHeight"
-
-    Camera camera;
-    {
-        std::string    json_path = obj_mesh_path + "scene_3.json";
-        nlohmann::json scene_json;
-        {
-            std::ifstream ifs(json_path);
-            if (!ifs)
-            {
-                std::cerr << "Failed to open JSON file: " << json_path << std::endl;
-                std::exit(1);
-            }
-            ifs >> scene_json;
-        }
-
-        // Set camera parameters from JSON
-        // Default values
-        camera.position = make_float3(0.0f, 0.0f, 2.0f);
-        camera.front    = make_float3(0.0f, 0.0f, -1.0f);
-        camera.up       = make_float3(0.0f, 1.0f, 0.0f);
-        camera.right    = normalize(cross(camera.front, camera.up));
-        camera.fov      = 45.0f;
-
-        // Use values from JSON if available
-        if (false && scene_json.contains("fov"))
-        {
-            camera.fov = scene_json["fov"].get<float>();
-        }
-
-        // If viewMat is present and valid, extract camera orientation and position
-        if (false && scene_json.contains("viewMat") && scene_json["viewMat"].is_array()
-            && scene_json["viewMat"].size() == 16)
-        {
-            LUISA_INFO("Reading json...");
-            // Read the view matrix (row-major order)
-            float viewMat[16];
-            for (int i = 0; i < 16; ++i)
-            {
-                if (scene_json["viewMat"][i].is_null())
-                    viewMat[i] = (i % 5 == 0) ? 1.0f : 0.0f;  // identity fallback
-                else
-                    viewMat[i] = scene_json["viewMat"][i].get<float>();
-            }
-            // Invert the view matrix to get the camera-to-world matrix
-            // (Assume the matrix is affine, so we can invert rotation/translation separately)
-            float3 right = make_float3(viewMat[0], viewMat[4], viewMat[8]);
-            float3 up    = make_float3(viewMat[1], viewMat[5], viewMat[9]);
-            float3 front = -make_float3(viewMat[2], viewMat[6], viewMat[10]);
-            float3 trans = make_float3(viewMat[12], viewMat[13], viewMat[14]);
-            // The camera position in world space is -R^T * T
-            float3 position = make_float3(-(right.x * trans.x + up.x * trans.y + front.x * trans.z),
-                                          -(right.y * trans.x + up.y * trans.y + front.y * trans.z),
-                                          -(right.z * trans.x + up.z * trans.y + front.z * trans.z));
-            camera.position = position;
-            camera.right    = normalize(right);
-            camera.up       = normalize(up);
-            camera.front    = normalize(front);
-        }
-    }
-    // Set camera parameters
-
-
-    Image<float> ldr_image = device.create_image<float>(PixelStorage::BYTE4, resolution);
+    Image<uint>  seed_image = device.create_image<uint>(PixelStorage::INT1, resolution);
+    Image<float> ldr_image  = device.create_image<float>(PixelStorage::BYTE4, resolution);
 
     double last_time   = 0.0;
     uint   frame_count = 0u;
@@ -514,10 +544,12 @@ int main(int argc, char* argv[])
     CommandList cmd_list;
     cmd_list << make_sampler_shader(seed_image).dispatch(resolution);
 
+    for (uint iter = 0; iter < 100; iter++)
     {
+        LUISA_INFO("Rendering iter {}", iter);
         cmd_list << raytracing_shader(framebuffer, seed_image, camera, accel, resolution).dispatch(resolution)
                  << accumulate_shader(accum_image, framebuffer).dispatch(resolution);
-        cmd_list << hdr2ldr_shader(accum_image, ldr_image, 1.0f, true).dispatch(resolution);
+        cmd_list << hdr2ldr_shader(accum_image, ldr_image, 1.0f, false).dispatch(resolution);
         stream << cmd_list.commit();
         delta_time = clock.toc() - last_time;
         last_time  = clock.toc();
@@ -526,6 +558,19 @@ int main(int argc, char* argv[])
     stream << ldr_image.copy_to(host_image.data()) << synchronize();
 
     LUISA_INFO("FPS: {}", frame_count / clock.toc() * 1000);
+
+    std::string obj_filename  = std::filesystem::path(obj_full_path).filename().string();
+    std::string img_filename  = obj_filename.substr(0, obj_filename.find_last_of('.')) + ".png";
+    std::string img_full_path = img_output_path + img_filename;
+    auto        output_dir    = std::filesystem::path(img_full_path).parent_path();
+    if (!std::filesystem::exists(output_dir))
+    {
+        if (!std::filesystem::create_directories(output_dir))
+        {
+            std::cerr << "Failed to create output directory: " << output_dir << std::endl;
+            std::exit(1);
+        }
+    }
     stbi_write_png(img_full_path.c_str(), resolution.x, resolution.y, 4, host_image.data(), 0);
     LUISA_INFO("Saved image to {}", img_full_path);
 }
