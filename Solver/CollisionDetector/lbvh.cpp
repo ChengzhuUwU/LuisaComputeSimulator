@@ -275,8 +275,36 @@ void LBVH::compile(AsyncCompiler& compiler)
 
                             $if(vid % 256 == 0)
                             {
-                                const Uint blockIdx = vid / 256;
-                                sa_block_aabb->write(blockIdx, reduced_aabb);
+                                // const Uint blockIdx = vid / 256;
+                                const Uint blockIdx = 0;
+                                sa_block_aabb->write(blockIdx, reduced_aabb);  // Work
+                                // sa_block_aabb->write(0, reduced_aabb);        // Not work
+                            };
+                        });
+
+    compiler.compile<1>(fn_reduce_aabb_2_pass_atomic,
+                        [sa_block_aabb = lbvh_data->sa_block_aabb.view()]()
+                        {
+                            luisa::compute::set_block_size(256);
+                            const Uint  vid     = luisa::compute::dispatch_id().x;
+                            auto        aabb    = sa_block_aabb->read(vid);
+                            Var<float3> min_pos = AABB::get_aabb_min(aabb);
+                            Var<float3> max_pos = AABB::get_aabb_max(aabb);
+                            min_pos             = ParallelIntrinsic::block_intrinsic_reduce(
+                                vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+                            max_pos = ParallelIntrinsic::block_intrinsic_reduce(
+                                vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+                            auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
+
+                            $if(vid % 256 == 0)
+                            {
+                                const Uint blockIdx = 0;
+                                sa_block_aabb->atomic(blockIdx).cols[0][0].fetch_min(reduced_aabb.cols[0][0]);
+                                sa_block_aabb->atomic(blockIdx).cols[0][1].fetch_min(reduced_aabb.cols[0][1]);
+                                sa_block_aabb->atomic(blockIdx).cols[0][2].fetch_min(reduced_aabb.cols[0][2]);
+                                sa_block_aabb->atomic(blockIdx).cols[1][0].fetch_max(reduced_aabb.cols[1][0]);
+                                sa_block_aabb->atomic(blockIdx).cols[1][1].fetch_max(reduced_aabb.cols[1][1]);
+                                sa_block_aabb->atomic(blockIdx).cols[1][2].fetch_max(reduced_aabb.cols[1][2]);
                             };
                         });
 
@@ -773,28 +801,33 @@ void LBVH::reduce_vert_tree_aabb(Stream& stream, const Buffer<float3>& input_pos
         LUISA_ERROR("Buffer size out of reduce range");
         exit(0);
     }
-    stream << fn_reduce_vert_tree_global_aabb(input_position).dispatch(input_position.size())
-           << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_position.size(), 256));
+    stream << fn_reduce_vert_tree_global_aabb(input_position).dispatch(input_position.size());
+
+    const uint dispatch_size = get_dispatch_block(input_position.size(), 256);
+    if (dispatch_size < 256)
+        stream << fn_reduce_aabb_2_pass().dispatch(dispatch_size);
+    else
+        stream << fn_reduce_aabb_2_pass_atomic().dispatch(dispatch_size);
 }
 void LBVH::reduce_edge_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint2>& input_edges)
 {
-    if (input_edges.size() > 256 * 256)
-    {
-        LUISA_ERROR("Buffer size out of reduce range");
-        exit(0);
-    }
-    stream << fn_reduce_edge_tree_global_aabb(input_position, input_edges).dispatch(input_edges.size())
-           << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_edges.size(), 256));
+    stream << fn_reduce_edge_tree_global_aabb(input_position, input_edges).dispatch(input_edges.size());
+
+    const uint dispatch_size = get_dispatch_block(input_position.size(), 256);
+    if (dispatch_size < 256)
+        stream << fn_reduce_aabb_2_pass().dispatch(dispatch_size);
+    else
+        stream << fn_reduce_aabb_2_pass_atomic().dispatch(dispatch_size);
 }
 void LBVH::reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces)
 {
-    if (input_faces.size() > 256 * 256)
-    {
-        LUISA_ERROR("Buffer size out of reduce range");
-        exit(0);
-    }
-    stream << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_faces.size())
-           << fn_reduce_aabb_2_pass().dispatch(get_dispatch_block(input_faces.size(), 256));
+    stream << fn_reduce_face_tree_global_aabb(input_position, input_faces).dispatch(input_faces.size());
+
+    const uint dispatch_size = get_dispatch_block(input_position.size(), 256);
+    if (dispatch_size < 256)
+        stream << fn_reduce_aabb_2_pass().dispatch(dispatch_size);
+    else
+        stream << fn_reduce_aabb_2_pass_atomic().dispatch(dispatch_size);
 }
 void LBVH::construct_tree(Stream& stream)
 {

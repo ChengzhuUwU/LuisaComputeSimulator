@@ -176,6 +176,7 @@ class LBVH
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>> fn_reduce_edge_tree_global_aabb;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>> fn_reduce_face_tree_global_aabb;
     luisa::compute::Shader<1> fn_reduce_aabb_2_pass;
+    luisa::compute::Shader<1> fn_reduce_aabb_2_pass_atomic;
     luisa::compute::Shader<1> fn_reset_tree;
     luisa::compute::Shader<1> fn_compute_mortons;
 
