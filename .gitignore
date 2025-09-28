@@ -25,5 +25,6 @@ imgui.ini
 .VSCodeCounter
 ext/*
 !ext/xmake.lua
+!ext/polyscope_pch.h
 !.vscode/settings.json.for_xmake
 .obsidian

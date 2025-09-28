@@ -63,7 +63,7 @@ function install_lc()
             return job
         end
         ------------------------------ LuisaCompute And Extensions ------------------------------
-        add_git_job("LuisaCompute", lc_path, "https://github.com/LuisaGroup/LuisaCompute.git", "next")
+        add_git_job("LuisaCompute", lc_path, "https://github.com/LuisaGroup/LuisaCompute.git", "stable")
         add_lc_ext_git_job("xxhash", path.join(lc_path, "src/ext/xxhash"), "https://github.com/Cyan4973/xxHash.git")
         add_lc_ext_git_job("spdlog", path.join(lc_path, "src/ext/spdlog"), "https://github.com/LuisaGroup/spdlog.git")
         add_lc_ext_git_job("mimalloc", path.join(lc_path, "src/ext/EASTL/packages/mimalloc"), "https://github.com/LuisaGroup/mimalloc.git")
