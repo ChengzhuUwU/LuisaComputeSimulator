@@ -25,7 +25,7 @@ if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG next
+        GIT_TAG stable
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
     )
@@ -73,62 +73,69 @@ if (NOT TARGET luisa::compute)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
 
-if (NOT TARGET polyscope)
-    FetchContent_Declare(
-        polyscope
-        # https://github.com/nmwsharp/polyscope.git
-        # https://gitee.com/celeste-huohuo/polyscope.git
-        GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
-        SOURCE_DIR ${EXT_PATH}/polyscope
-    )
-    set(POLYSCOPE_USE_EXTERNAL_GLFW ON CACHE BOOL "" FORCE)
-    set(POLYSCOPE_BACKEND_OPENGL3_GLFW ON CACHE BOOL "" FORCE)
-    set(POLYSCOPE_BACKEND_OPENGL_MOCK ON CACHE BOOL "" FORCE)
-    FetchContent_Populate(polyscope)
-    add_subdirectory(${EXT_PATH}/polyscope)
+option(LUISA_COMPUTE_SOLVER_USE_GUI "Enable GUI support" OFF)
+if(LUISA_COMPUTE_SOLVER_USE_GUI)
+    if (NOT TARGET polyscope)
+        FetchContent_Declare(
+            polyscope
+            # https://github.com/nmwsharp/polyscope.git
+            # https://gitee.com/celeste-huohuo/polyscope.git
+            GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
+            SOURCE_DIR ${EXT_PATH}/polyscope
+        )
+        set(POLYSCOPE_USE_EXTERNAL_GLFW ON CACHE BOOL "" FORCE)
+        set(POLYSCOPE_BACKEND_OPENGL3_GLFW ON CACHE BOOL "" FORCE)
+        set(POLYSCOPE_BACKEND_OPENGL_MOCK ON CACHE BOOL "" FORCE)
+        FetchContent_Populate(polyscope)
+        add_subdirectory(${EXT_PATH}/polyscope)
+    endif()
 endif()
 
-if (NOT TARGET libdispatch)
-    FetchContent_Declare(
-        libdispatch
-        GIT_REPOSITORY https://github.com/MaxwellGengYF/libdispatch.git
-        SOURCE_DIR ${EXT_PATH}/libdispatch
-    )
-    FetchContent_Populate(libdispatch)
-endif()
-
-
-option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" ON)
+option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
 if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
     target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR=1)
-    find_package(TBB CONFIG)
-    if (TBB_FOUND)
-        message("Host parallel function use TBB")
+    find_package(TBB CONFIG QUIET)
+    if (TBB_FOUND AND TARGET TBB::tbb)
+        message(STATUS "Host parallel function use TBB")
         target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_TBB=1)
         target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb)
     else()
         # use libdispatch or TBB for parallel_for on non-Apple Unix systems if available
         if (UNIX AND NOT APPLE)
+
+            if (NOT TARGET libdispatch)
+                FetchContent_Declare(
+                    libdispatch
+                    GIT_REPOSITORY https://github.com/MaxwellGengYF/libdispatch.git
+                    SOURCE_DIR ${EXT_PATH}/libdispatch
+                )
+                FetchContent_Populate(libdispatch)
+            endif()
+
             # libdispatch
             find_library(DISPATCH_LIB dispatch)
             find_path(DISPATCH_INCLUDE_DIR dispatch/dispatch.h) # Apple use native libdispatch
             if (DISPATCH_LIB AND DISPATCH_INCLUDE_DIR)
-                message("Host parallel function use package libdispatch")
+                message(STATUS "Host parallel function use package libdispatch")
                 target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
                 target_link_libraries(luisa-compute-solver-lib PUBLIC ${DISPATCH_LIB})
                 target_include_directories(luisa-compute-solver-lib PUBLIC ${DISPATCH_INCLUDE_DIR})
             endif ()
-        else() 
+        else() # Windows or Apple
             if (APPLE)
                 # Use native libdispatch
                 target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
                 message("Host parallel function use native libdispatch")
             else ()
-                message(WARNING "TBB and libdispatch not found. Performance of the fallback backend may be affected.")
+                target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
+                message("Host parallel function use luisa::fiber")
             endif ()
         endif()
     endif()
-endif ()
+else()
+    target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
+    message("Host parallel function use luisa::fiber")
+endif()
 
 
 find_package(Eigen3 REQUIRED)
@@ -151,10 +158,11 @@ target_link_libraries(test-xtypes PRIVATE luisa::compute luisa-compute-solver-li
 add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
 target_link_libraries(app-simulation PRIVATE 
     luisa::compute 
-    polyscope 
     luisa-compute-solver-lib)
-
-
+if (LUISA_COMPUTE_SOLVER_USE_GUI)
+    target_link_libraries(app-simulation PRIVATE polyscope)
+    target_compile_definitions(app-simulation PRIVATE SIMULATION_APP_USE_GUI=1)
+endif()
 
 add_executable(app-test-features Application/app_test_features.cpp)
 target_link_libraries(app-test-features PRIVATE 
