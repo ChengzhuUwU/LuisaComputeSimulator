@@ -21,6 +21,7 @@
 #include "luisa/dsl/stmt.h"
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/stream.h"
+#include "luisa/core/clock.h"
 #include <luisa/dsl/sugar.h>
 #include <vector>
 
@@ -2470,6 +2471,23 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 }
 void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
+    constexpr bool profile_time = false;
+    using SystemClock           = std::chrono::high_resolution_clock;
+    using Tick                  = std::chrono::high_resolution_clock::time_point;
+    std::vector<std::pair<std::string, Tick>> time_stamps;
+
+    auto ADD_DEVICE_TIME_STAMP = [&](const std::string& task_name)
+    {
+        if constexpr (profile_time)
+            stream << [&] { time_stamps.emplace_back(std::make_pair(task_name, SystemClock::now())); };
+    };
+    auto ADD_HOST_TIME_STAMP = [&](const std::string& task_name)
+    {
+        if constexpr (profile_time)
+            time_stamps.emplace_back(std::make_pair(task_name, SystemClock::now()));
+    };
+
+    ADD_HOST_TIME_STAMP("Init");
     lcs::SolverInterface::physics_step_prev_operation();
     // Get frame start position and velocity
     CpuParallel::parallel_for(0,
@@ -2542,6 +2560,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     // Init LBVH
     {
+        ADD_HOST_TIME_STAMP("Init LBVH");
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
         mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
         mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
@@ -2563,6 +2582,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
         for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         {
+            ADD_HOST_TIME_STAMP("Calc Force");
             get_scene_params().current_nonlinear_iter = iter;
 
             stream << sim_data->sa_x_iter_start.copy_to(host_sim_data->sa_x_iter_start.data())
@@ -2602,6 +2622,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     prev_state_energy = compute_energy_interface(sim_data->sa_x);
             }
 
+            stream << luisa::compute::synchronize();
+            ADD_HOST_TIME_STAMP("PCG");
             pcg_solver->device_solve(stream, pcg_spmv, compute_energy_interface);
 
             float alpha   = 1.0f;
@@ -2609,6 +2631,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             host_apply_dx(alpha);
             device_apply_dx(alpha);
 
+            ADD_HOST_TIME_STAMP("CCD");
             if (get_scene_params().use_ccd_linesearch)
             {
                 ccd_toi = ccd_get_toi();
@@ -2616,6 +2639,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 host_apply_dx(alpha);
                 device_apply_dx(alpha);
             }
+            ADD_HOST_TIME_STAMP("End CCD");
 
             // Non-linear iteration break condition
             {
@@ -2707,6 +2731,35 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                                   host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
                               });
     lcs::SolverInterface::physics_step_post_operation();
+
+    {
+        if constexpr (profile_time)
+        {
+            if (!time_stamps.empty())
+            {
+                // Aggregate durations (ms) per task name
+                std::unordered_map<std::string, double> agg;
+                double                                  total_ms = 0.0;
+                for (size_t i = 0; i + 1 < time_stamps.size(); ++i)
+                {
+                    const auto& curr = time_stamps[i];
+                    const auto& next = time_stamps[i + 1];
+                    double delta = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
+                                       next.second - curr.second)
+                                       .count();
+                    agg[curr.first] += delta;
+                    total_ms += delta;
+                }
+
+                LUISA_INFO("Profiling merged timestamps (sum of deltas per task):");
+                for (const auto& p : agg)
+                {
+                    LUISA_INFO("  {:<30} : {:8.3f} ms", p.first, p.second);
+                }
+                LUISA_INFO("  {:<30} : {:8.3f} ms (total)", "TOTAL", total_ms);
+            }
+        }
+    }
 }
 
 }  // namespace lcs
