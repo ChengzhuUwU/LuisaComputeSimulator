@@ -2,6 +2,7 @@
 
 #include "Core/float_n.h"
 #include "Core/xbasic_types.h"
+#include "luisa/core/basic_traits.h"
 #include <luisa/luisa-compute.h>
 
 class SimulationType
@@ -18,6 +19,7 @@ class SimulationType
     // using float3x3    = lcs::float3x3;
     // using float4x4    = lcs::float4x4;
     // using float4x3    = lcs::float4x3;
+    using ushort   = luisa::ushort;
     using uint   = luisa::uint;
     using uint2  = luisa::uint2;
     using uint3  = luisa::uint3;

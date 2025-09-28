@@ -21,11 +21,13 @@
 #include "Initializer/init_xpbd_data.h"
 #include "app_simulation_demo_config.h"
 #include "luisa/core/basic_types.h"
-#include "polyscope/volume_grid.h"
 
+#if defined(SIMULATION_APP_USE_GUI)
+#include "polyscope/volume_grid.h"
 #include <polyscope/polyscope.h>
 #include <polyscope/surface_mesh.h>
 #include <Eigen/Dense>
+#endif
 
 template <typename T>
 using Buffer = luisa::compute::Buffer<T>;
@@ -65,8 +67,6 @@ enum SolverType
     SolverTypeVBD_CPU,
     SolverTypeVBD_async,
 };
-
-#include <glm/glm.hpp>
 
 int main(int argc, char** argv)
 {
@@ -254,9 +254,9 @@ int main(int argc, char** argv)
                 const auto  rotated_pos  = matrix * luisa::make_float4(relative_vec, 1.0f);
                 return fixed_point.rotCenter + rotated_pos.xyz();
             };
-            auto fn_translate =
-                [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
-            {
+            auto fn_translate = [](const lcs::Initializer::FixedPointInfo& fixed_point,
+                                   const float                             time,
+                                   const lcs::float3&                      pos) {
                 return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
             };
             auto new_pos = pos;
@@ -427,7 +427,7 @@ int main(int argc, char** argv)
         }
     };
 
-    if constexpr (!use_ui)
+#if !defined(SIMULATION_APP_USE_GUI)
     {
         auto fn_single_step_without_ui = [&]()
         {
@@ -438,7 +438,7 @@ int main(int argc, char** argv)
 
         // solver.lcs::SolverInterface::restart_system();
 
-        // for (uint frame = 0; frame < max_frame; frame++)
+        for (uint frame = 0; frame < 10; frame++)
         {
             fn_single_step_without_ui();
         }
@@ -447,7 +447,7 @@ int main(int argc, char** argv)
             sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
         // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, "");
     }
-    else
+#else
     {
         // Init Polyscope
         polyscope::init("openGL3_glfw");
@@ -664,6 +664,6 @@ int main(int argc, char** argv)
         };
         polyscope::show();
     }
-
+#endif
     return 0;
 }

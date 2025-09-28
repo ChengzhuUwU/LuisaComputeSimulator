@@ -134,7 +134,8 @@ namespace lcs
 using float2   = luisa::float2;
 using float3   = luisa::float3;
 using float4   = luisa::float4;
-using uint     = unsigned int;  // luisa::uint;
+using ushort   = luisa::ushort;
+using uint     = luisa::uint;
 using int2     = luisa::int2;
 using int3     = luisa::int3;
 using int4     = luisa::int4;
