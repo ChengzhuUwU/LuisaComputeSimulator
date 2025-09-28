@@ -1,4 +1,4 @@
-#include "Initializer/init_xpbd_data.h"
+#include "Initializer/init_sim_data.h"
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
@@ -46,16 +46,16 @@ std::array<luisa::ushort, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
     return offsets;
 }
 
-void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* xpbd_data)
+void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* sim_data)
 {
-    xpbd_data->sa_x_tilde.resize(mesh_data->num_verts);
-    xpbd_data->sa_x.resize(mesh_data->num_verts);
-    xpbd_data->sa_v.resize(mesh_data->num_verts);
-    CpuParallel::parallel_copy(mesh_data->sa_rest_v, xpbd_data->sa_v);
-    xpbd_data->sa_v_step_start.resize(mesh_data->num_verts);
-    CpuParallel::parallel_copy(mesh_data->sa_rest_v, xpbd_data->sa_v_step_start);
-    xpbd_data->sa_x_step_start.resize(mesh_data->num_verts);
-    xpbd_data->sa_x_iter_start.resize(mesh_data->num_verts);
+    sim_data->sa_x_tilde.resize(mesh_data->num_verts);
+    sim_data->sa_x.resize(mesh_data->num_verts);
+    sim_data->sa_v.resize(mesh_data->num_verts);
+    CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_v);
+    sim_data->sa_v_step_start.resize(mesh_data->num_verts);
+    CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_v_step_start);
+    sim_data->sa_x_step_start.resize(mesh_data->num_verts);
+    sim_data->sa_x_iter_start.resize(mesh_data->num_verts);
 
     // Count for stretch springs, stretch faces, bending edges
     std::vector<uint> stretch_spring_indices(mesh_data->num_edges, -1u);
@@ -170,38 +170,38 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         },
         0);
 
-    xpbd_data->num_verts_soft    = num_verts_soft;
-    xpbd_data->num_verts_rigid   = mesh_data->num_verts - num_verts_soft;
-    xpbd_data->num_affine_bodies = num_affine_bodies;
+    sim_data->num_verts_soft    = num_verts_soft;
+    sim_data->num_verts_rigid   = mesh_data->num_verts - num_verts_soft;
+    sim_data->num_affine_bodies = num_affine_bodies;
 
     LUISA_INFO("NumVertSoft = {}, Num Affine Bodies {}", num_verts_soft, num_affine_bodies);
 
     // Init energy
     {
-        xpbd_data->sa_system_energy.resize(10240);
+        sim_data->sa_system_energy.resize(10240);
         // Rest spring length
-        xpbd_data->sa_stretch_springs.resize(num_stretch_springs);
-        xpbd_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
-        xpbd_data->sa_stretch_springs_gradients.resize(num_stretch_springs * 2);
-        xpbd_data->sa_stretch_springs_hessians.resize(num_stretch_springs * 4);
+        sim_data->sa_stretch_springs.resize(num_stretch_springs);
+        sim_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
+        sim_data->sa_stretch_springs_gradients.resize(num_stretch_springs * 2);
+        sim_data->sa_stretch_springs_hessians.resize(num_stretch_springs * 4);
         CpuParallel::parallel_for(0,
                                   num_stretch_springs,
                                   [&](const uint eid)
                                   {
-                                      const uint orig_eid                = stretch_spring_indices[eid];
-                                      uint2      edge                    = mesh_data->sa_edges[orig_eid];
-                                      float3     x1                      = mesh_data->sa_rest_x[edge[0]];
-                                      float3     x2                      = mesh_data->sa_rest_x[edge[1]];
-                                      xpbd_data->sa_stretch_springs[eid] = edge;  ///
-                                      xpbd_data->sa_stretch_spring_rest_state_length[eid] =
+                                      const uint orig_eid               = stretch_spring_indices[eid];
+                                      uint2      edge                   = mesh_data->sa_edges[orig_eid];
+                                      float3     x1                     = mesh_data->sa_rest_x[edge[0]];
+                                      float3     x2                     = mesh_data->sa_rest_x[edge[1]];
+                                      sim_data->sa_stretch_springs[eid] = edge;  ///
+                                      sim_data->sa_stretch_spring_rest_state_length[eid] =
                                           lcs::length_vec(x1 - x2);  ///
                                   });
 
         // Rest stretch face length
-        xpbd_data->sa_stretch_faces.resize(num_stretch_faces);
-        xpbd_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
-        xpbd_data->sa_stretch_face_gradients.resize(num_stretch_faces * 3);
-        xpbd_data->sa_stretch_face_hessians.resize(num_stretch_faces * 9);
+        sim_data->sa_stretch_faces.resize(num_stretch_faces);
+        sim_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
+        sim_data->sa_stretch_face_gradients.resize(num_stretch_faces * 3);
+        sim_data->sa_stretch_face_hessians.resize(num_stretch_faces * 9);
         CpuParallel::parallel_for(0,
                                   num_stretch_faces,
                                   [&](const uint fid)
@@ -224,17 +224,17 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                                       float2 uv2  = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
                                       float2 duv0 = uv1 - uv0;
                                       float2 duv1 = uv2 - uv0;
-                                      const float2x2 duv                      = float2x2(duv0, duv1);
-                                      xpbd_data->sa_stretch_faces[fid]        = face;
-                                      xpbd_data->sa_stretch_faces_Dm_inv[fid] = luisa::inverse(duv);
+                                      const float2x2 duv                     = float2x2(duv0, duv1);
+                                      sim_data->sa_stretch_faces[fid]        = face;
+                                      sim_data->sa_stretch_faces_Dm_inv[fid] = luisa::inverse(duv);
                                   });
 
         // Rest bending info
-        xpbd_data->sa_bending_edges.resize(num_bending_edges);
-        xpbd_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
-        xpbd_data->sa_bending_edges_Q.resize(num_bending_edges);
-        xpbd_data->sa_bending_edges_gradients.resize(num_bending_edges * 4);
-        xpbd_data->sa_bending_edges_hessians.resize(num_bending_edges * 16);
+        sim_data->sa_bending_edges.resize(num_bending_edges);
+        sim_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
+        sim_data->sa_bending_edges_Q.resize(num_bending_edges);
+        sim_data->sa_bending_edges_gradients.resize(num_bending_edges * 4);
+        sim_data->sa_bending_edges_hessians.resize(num_bending_edges * 16);
         CpuParallel::parallel_for(
             0,
             num_bending_edges,
@@ -260,8 +260,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     if (luisa::isnan(angle))
                         LUISA_ERROR("is nan rest angle {}", eid);
 
-                    xpbd_data->sa_bending_edges[eid]            = edge;
-                    xpbd_data->sa_bending_edges_rest_angle[eid] = angle;
+                    sim_data->sa_bending_edges[eid]            = edge;
+                    sim_data->sa_bending_edges_rest_angle[eid] = angle;
                 }
 
                 // Rest state Q
@@ -290,39 +290,39 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     const float A_1 = 0.5f * luisa::length(luisa::cross(e0, e2));
                     // if (is_nan_vec<float4>(K) || is_inf_vec<float4>(K)) fast_print_err("Q of Bending is Illigal");
                     const float4x4 m_Q = (3.f / (A_0 + A_1)) * lcs::outer_product(K, K);  // Q = 3 qq^T / (A0+A1) ==> Q is symmetric
-                    xpbd_data->sa_bending_edges_Q[eid] = m_Q;  // See : A quadratic bending model for inextensible surfaces.
+                    sim_data->sa_bending_edges_Q[eid] = m_Q;  // See : A quadratic bending model for inextensible surfaces.
                 }
             });
 
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
-        xpbd_data->sa_affine_bodies.resize(num_affine_bodies);
+        sim_data->sa_affine_bodies.resize(num_affine_bodies);
 
-        xpbd_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_rest_q_v.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_gravity.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_v.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_tilde.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_iter_start.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_step_start.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_outer.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
-        xpbd_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_rest_q_v.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_gravity.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_v.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_tilde.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_iter_start.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_step_start.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_outer.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
 
-        xpbd_data->sa_affine_bodies_mass_matrix_diag.resize(num_affine_bodies * 4);
-        xpbd_data->sa_affine_bodies_mass_matrix_compressed_offdiag.resize(num_affine_bodies);
+        sim_data->sa_affine_bodies_mass_matrix_diag.resize(num_affine_bodies * 4);
+        sim_data->sa_affine_bodies_mass_matrix_compressed_offdiag.resize(num_affine_bodies);
 
-        xpbd_data->sa_cgA_offdiag_affine_body.resize(num_affine_bodies * 6);
-        xpbd_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
+        sim_data->sa_cgA_offdiag_affine_body.resize(num_affine_bodies * 6);
+        sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
 
         CpuParallel::single_thread_for(
             0,
             num_affine_bodies,
             [&](const uint body_idx)
             {
-                const uint meshIdx                    = affine_body_indices[body_idx];
-                xpbd_data->sa_affine_bodies[body_idx] = meshIdx;
+                const uint meshIdx                   = affine_body_indices[body_idx];
+                sim_data->sa_affine_bodies[body_idx] = meshIdx;
 
                 {
                     float3 init_translation = mesh_data->sa_rest_translate[meshIdx];
@@ -337,14 +337,14 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     float3   init_p;
                     AffineBodyDynamics::extract_Ap_from_q(rest_q.cols, init_A, init_p);
                     // LUISA_INFO("init p = {}, ATA-I={}, |ATA-I| = {}", init_p, init_A * luisa::transpose(init_A) - Identity3x3, luisa::transpose(init_A));
-                    xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 0] = rest_q[0];  // = init_transform_matrix[0].xyz()
-                    xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 1] = rest_q[1];  // = init_transform_matrix[1].xyz()
-                    xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 2] = rest_q[2];  // = init_transform_matrix[2].xyz()
-                    xpbd_data->sa_affine_bodies_rest_q[4 * body_idx + 3] = rest_q[3];  // = init_transform_matrix[3].xyz()
-                    xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 0] = Zero3;
-                    xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 1] = Zero3;
-                    xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 2] = Zero3;
-                    xpbd_data->sa_affine_bodies_rest_q_v[4 * body_idx + 3] = Zero3;
+                    sim_data->sa_affine_bodies_rest_q[4 * body_idx + 0] = rest_q[0];  // = init_transform_matrix[0].xyz()
+                    sim_data->sa_affine_bodies_rest_q[4 * body_idx + 1] = rest_q[1];  // = init_transform_matrix[1].xyz()
+                    sim_data->sa_affine_bodies_rest_q[4 * body_idx + 2] = rest_q[2];  // = init_transform_matrix[2].xyz()
+                    sim_data->sa_affine_bodies_rest_q[4 * body_idx + 3] = rest_q[3];  // = init_transform_matrix[3].xyz()
+                    sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 0] = Zero3;
+                    sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 1] = Zero3;
+                    sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 2] = Zero3;
+                    sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 3] = Zero3;
                     // LUISA_INFO("Affine Body {} Rest q = {}", body_idx, rest_q);
                 }
 
@@ -371,16 +371,16 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     << std::endl;
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
                 // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
-                xpbd_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
-                xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0] =
+                sim_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
+                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0] =
                     eigen3x3_to_float3x3(body_mass.block<3, 3>(0, 0));
-                xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1] =
+                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1] =
                     eigen3x3_to_float3x3(body_mass.block<3, 3>(3, 3));
-                xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2] =
+                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2] =
                     eigen3x3_to_float3x3(body_mass.block<3, 3>(6, 6));
-                xpbd_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 3] =
+                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 3] =
                     eigen3x3_to_float3x3(body_mass.block<3, 3>(9, 9));
-                xpbd_data->sa_affine_bodies_mass_matrix_compressed_offdiag[body_idx] =
+                sim_data->sa_affine_bodies_mass_matrix_compressed_offdiag[body_idx] =
                     luisa::make_float3x3(eigen3_to_float3(body_mass.block<3, 1>(3, 0)),
                                          eigen3_to_float3(body_mass.block<3, 1>(6, 1)),
                                          eigen3_to_float3(body_mass.block<3, 1>(9, 2)));
@@ -391,12 +391,12 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                     next_prefix,
                     [&](const uint vid)
                     {
-                        xpbd_data->sa_vert_affine_bodies_id[vid] = body_idx;
+                        sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
                         return (mesh_data->sa_rest_vert_area[vid]);
                     });
 
-                const float defulat_density                  = 10.0f;
-                xpbd_data->sa_affine_bodies_volume[body_idx] = area;
+                const float defulat_density                 = 10.0f;
+                sim_data->sa_affine_bodies_volume[body_idx] = area;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
                 CpuParallel::single_thread_for(curr_prefix,
@@ -412,27 +412,27 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                                                });  // / area_mass[1];
 
                 EigenFloat12 body_gravity = body_mass.inverse() * gravity_sum;
-                xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 0] =
+                sim_data->sa_affine_bodies_gravity[4 * body_idx + 0] =
                     eigen3_to_float3(body_gravity.block<3, 1>(0, 0));
-                xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 1] =
+                sim_data->sa_affine_bodies_gravity[4 * body_idx + 1] =
                     eigen3_to_float3(body_gravity.block<3, 1>(3, 0));
-                xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 2] =
+                sim_data->sa_affine_bodies_gravity[4 * body_idx + 2] =
                     eigen3_to_float3(body_gravity.block<3, 1>(6, 0));
-                xpbd_data->sa_affine_bodies_gravity[4 * body_idx + 3] =
+                sim_data->sa_affine_bodies_gravity[4 * body_idx + 3] =
                     eigen3_to_float3(body_gravity.block<3, 1>(9, 0));
                 // LUISA_INFO("Affine body {} : Area = {}, Gravity = {}", body_idx, area, body_gravity);
             });
 
-        CpuParallel::parallel_copy(xpbd_data->sa_affine_bodies_rest_q, xpbd_data->sa_affine_bodies_q_outer);
-        CpuParallel::parallel_copy(xpbd_data->sa_affine_bodies_rest_q_v, xpbd_data->sa_affine_bodies_q_v_outer);
+        CpuParallel::parallel_copy(sim_data->sa_affine_bodies_rest_q, sim_data->sa_affine_bodies_q_outer);
+        CpuParallel::parallel_copy(sim_data->sa_affine_bodies_rest_q_v, sim_data->sa_affine_bodies_q_v_outer);
     }
 
     // Init Energy Adjacent List
     {
-        xpbd_data->vert_adj_material_force_verts.resize(mesh_data->num_verts);
-        xpbd_data->vert_adj_stretch_springs.resize(mesh_data->num_verts);
-        xpbd_data->vert_adj_stretch_faces.resize(mesh_data->num_verts);
-        xpbd_data->vert_adj_bending_edges.resize(mesh_data->num_verts);
+        sim_data->vert_adj_material_force_verts.resize(mesh_data->num_verts);
+        sim_data->vert_adj_stretch_springs.resize(mesh_data->num_verts);
+        sim_data->vert_adj_stretch_faces.resize(mesh_data->num_verts);
+        sim_data->vert_adj_bending_edges.resize(mesh_data->num_verts);
 
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
         {
@@ -447,13 +447,13 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
         };
 
         // Vert adj faces
-        for (uint fid = 0; fid < xpbd_data->sa_stretch_faces.size(); fid++)
+        for (uint fid = 0; fid < sim_data->sa_stretch_faces.size(); fid++)
         {
-            auto face = xpbd_data->sa_stretch_faces[fid];
+            auto face = sim_data->sa_stretch_faces[fid];
 
             for (uint j = 0; j < 3; j++)
             {
-                xpbd_data->vert_adj_stretch_faces[face[j]].push_back(fid);
+                sim_data->vert_adj_stretch_faces[face[j]].push_back(fid);
             }
 
             for (uint ii = 0; ii < 3; ii++)
@@ -462,20 +462,20 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(xpbd_data->vert_adj_material_force_verts, face[ii], face[jj]);
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, face[ii], face[jj]);
                     }
                 }
             }
         }
-        upload_2d_csr_from(xpbd_data->sa_vert_adj_stretch_faces_csr, xpbd_data->vert_adj_stretch_faces);
+        upload_2d_csr_from(sim_data->sa_vert_adj_stretch_faces_csr, sim_data->vert_adj_stretch_faces);
 
         // Vert adj stretch springs
-        for (uint eid = 0; eid < xpbd_data->sa_stretch_springs.size(); eid++)
+        for (uint eid = 0; eid < sim_data->sa_stretch_springs.size(); eid++)
         {
-            auto edge = xpbd_data->sa_stretch_springs[eid];
+            auto edge = sim_data->sa_stretch_springs[eid];
             for (uint j = 0; j < 2; j++)
             {
-                xpbd_data->vert_adj_stretch_springs[edge[j]].push_back(eid);
+                sim_data->vert_adj_stretch_springs[edge[j]].push_back(eid);
             }
 
             for (uint ii = 0; ii < 2; ii++)
@@ -484,20 +484,20 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(xpbd_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
                     }
                 }
             }
         }
-        upload_2d_csr_from(xpbd_data->sa_vert_adj_stretch_springs_csr, xpbd_data->vert_adj_stretch_springs);
+        upload_2d_csr_from(sim_data->sa_vert_adj_stretch_springs_csr, sim_data->vert_adj_stretch_springs);
 
         // Vert adj bending edges
-        for (uint eid = 0; eid < xpbd_data->sa_bending_edges.size(); eid++)
+        for (uint eid = 0; eid < sim_data->sa_bending_edges.size(); eid++)
         {
-            auto edge = xpbd_data->sa_bending_edges[eid];
+            auto edge = sim_data->sa_bending_edges[eid];
             for (uint j = 0; j < 4; j++)
             {
-                xpbd_data->vert_adj_bending_edges[edge[j]].push_back(eid);
+                sim_data->vert_adj_bending_edges[edge[j]].push_back(eid);
             }
 
             for (uint ii = 0; ii < 4; ii++)
@@ -506,75 +506,75 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(xpbd_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
                     }
                 }
             }
         }
-        upload_2d_csr_from(xpbd_data->sa_vert_adj_bending_edges_csr, xpbd_data->vert_adj_bending_edges);
+        upload_2d_csr_from(sim_data->sa_vert_adj_bending_edges_csr, sim_data->vert_adj_bending_edges);
 
         // Vert adj material-force-verts
         CpuParallel::parallel_for(0,
                                   mesh_data->num_verts,
                                   [&](const uint vid)
                                   {
-                                      std::vector<uint>& adj_list = xpbd_data->vert_adj_material_force_verts[vid];
+                                      std::vector<uint>& adj_list = sim_data->vert_adj_material_force_verts[vid];
                                       std::sort(adj_list.begin(), adj_list.end());
                                       if (adj_list.size() > 255)
                                           LUISA_ERROR("Adjacent count out of range {}");
                                   });
-        upload_2d_csr_from(xpbd_data->sa_vert_adj_material_force_verts_csr, xpbd_data->vert_adj_material_force_verts);
+        upload_2d_csr_from(sim_data->sa_vert_adj_material_force_verts_csr, sim_data->vert_adj_material_force_verts);
 
         // Final off-diag hessian
-        xpbd_data->sa_cgA_offdiag.resize(xpbd_data->sa_vert_adj_material_force_verts_csr.size());  //  - mesh_data->num_verts - 1
+        sim_data->sa_cgA_offdiag.resize(sim_data->sa_vert_adj_material_force_verts_csr.size());  //  - mesh_data->num_verts - 1
     }
 
     // Find material-force-offset
     {
-        const std::vector<std::vector<uint>>& reference_adj_list = xpbd_data->vert_adj_material_force_verts;
+        const std::vector<std::vector<uint>>& reference_adj_list = sim_data->vert_adj_material_force_verts;
 
         // Spring energy
-        xpbd_data->sa_stretch_springs_offsets_in_adjlist.resize(xpbd_data->sa_stretch_springs.size() * 2);
+        sim_data->sa_stretch_springs_offsets_in_adjlist.resize(sim_data->sa_stretch_springs.size() * 2);
         CpuParallel::parallel_for(0,
-                                  xpbd_data->sa_stretch_springs.size(),
+                                  sim_data->sa_stretch_springs.size(),
                                   [&](const uint eid)
                                   {
-                                      auto edge = xpbd_data->sa_stretch_springs[eid];
+                                      auto edge = sim_data->sa_stretch_springs[eid];
                                       auto mask = get_offsets_in_adjlist_from_adjacent_list<2>(reference_adj_list,
                                                                                                edge);  // size = 2
-                                      std::memcpy(xpbd_data->sa_stretch_springs_offsets_in_adjlist.data() + eid * 2,
+                                      std::memcpy(sim_data->sa_stretch_springs_offsets_in_adjlist.data() + eid * 2,
                                                   mask.data(),
                                                   sizeof(ushort) * 2);
                                   });
-        for (uint i = 0; i < xpbd_data->sa_stretch_springs_offsets_in_adjlist.size(); i++)
+        for (uint i = 0; i < sim_data->sa_stretch_springs_offsets_in_adjlist.size(); i++)
         {
-            auto adj_offset = xpbd_data->sa_stretch_springs_offsets_in_adjlist[i];
+            auto adj_offset = sim_data->sa_stretch_springs_offsets_in_adjlist[i];
         }
 
         // Stretch face energy
-        xpbd_data->sa_stretch_face_offsets_in_adjlist.resize(xpbd_data->sa_stretch_faces.size() * 6);
+        sim_data->sa_stretch_face_offsets_in_adjlist.resize(sim_data->sa_stretch_faces.size() * 6);
         CpuParallel::parallel_for(0,
-                                  xpbd_data->sa_stretch_faces.size(),
+                                  sim_data->sa_stretch_faces.size(),
                                   [&](const uint fid)
                                   {
-                                      auto face = xpbd_data->sa_stretch_faces[fid];
+                                      auto face = sim_data->sa_stretch_faces[fid];
                                       auto mask = get_offsets_in_adjlist_from_adjacent_list<3>(reference_adj_list,
                                                                                                face);  // size = 6
-                                      std::memcpy(xpbd_data->sa_stretch_face_offsets_in_adjlist.data() + fid * 6,
+                                      std::memcpy(sim_data->sa_stretch_face_offsets_in_adjlist.data() + fid * 6,
                                                   mask.data(),
                                                   sizeof(ushort) * 6);
                                   });
 
         // Bending angle energy
-        xpbd_data->sa_bending_edges_offsets_in_adjlist.resize(xpbd_data->sa_bending_edges.size() * 12);
+        sim_data->sa_bending_edges_offsets_in_adjlist.resize(sim_data->sa_bending_edges.size() * 12);
         CpuParallel::parallel_for(0,
-                                  xpbd_data->sa_bending_edges.size(),
+                                  sim_data->sa_bending_edges.size(),
                                   [&](const uint eid)
                                   {
-                                      auto edge = xpbd_data->sa_bending_edges[eid];
+                                      auto edge = sim_data->sa_bending_edges[eid];
                                       auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
                                                                                                edge);  // size = 12
-                                      std::memcpy(xpbd_data->sa_bending_edges_offsets_in_adjlist.data() + eid * 12,
+                                      std::memcpy(sim_data->sa_bending_edges_offsets_in_adjlist.data() + eid * 12,
                                                   mask.data(),
                                                   sizeof(ushort) * 12);
                                   });
@@ -583,18 +583,18 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     // Constraint Graph Coloring
     std::vector<std::vector<uint>> tmp_clusterd_constraint_stretch_mass_spring;
     std::vector<std::vector<uint>> tmp_clusterd_constraint_bending;
-    auto*                          colored_data = &xpbd_data->colored_data;
+    auto*                          colored_data = &sim_data->colored_data;
     {
         fn_graph_coloring_per_constraint("Distance  Spring Constraint",
                                          tmp_clusterd_constraint_stretch_mass_spring,
-                                         xpbd_data->vert_adj_stretch_springs,
-                                         xpbd_data->sa_stretch_springs,
+                                         sim_data->vert_adj_stretch_springs,
+                                         sim_data->sa_stretch_springs,
                                          2);
 
         fn_graph_coloring_per_constraint("Bending   Angle  Constraint",
                                          tmp_clusterd_constraint_bending,
-                                         xpbd_data->vert_adj_bending_edges,
-                                         xpbd_data->sa_bending_edges,
+                                         sim_data->vert_adj_bending_edges,
+                                         sim_data->sa_bending_edges,
                                          4);
 
         colored_data->num_clusters_springs       = tmp_clusterd_constraint_stretch_mass_spring.size();
@@ -610,8 +610,8 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     // Init Newton Coloring
     {
         const uint num_verts = mesh_data->num_verts;
-        const auto& vert_adj_verts = xpbd_data->vert_adj_material_force_verts;  // Not considering Obstacle
-        std::vector<uint2> upper_matrix_elements;                               //
+        const auto& vert_adj_verts = sim_data->vert_adj_material_force_verts;  // Not considering Obstacle
+        std::vector<uint2> upper_matrix_elements;                              //
         upper_matrix_elements.reserve(num_verts * 10);
         std::vector<std::vector<uint>> vert_adj_upper_verts(num_verts);
         for (uint vid = 0; vid < num_verts; vid++)
@@ -666,7 +666,7 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                 num_stretch_springs,
                 [&](const uint eid)
                 {
-                    auto edge        = xpbd_data->sa_stretch_springs[eid];
+                    auto edge        = sim_data->sa_stretch_springs[eid];
                     uint edge_offset = 0;
                     for (uint ii = 0; ii < 2; ii++)
                     {
@@ -699,10 +699,10 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
     {
         // Graph Coloring
         const uint num_verts_total = mesh_data->num_verts;
-        xpbd_data->sa_Hf.resize(mesh_data->num_verts * 12);
-        xpbd_data->sa_Hf1.resize(mesh_data->num_verts);
+        sim_data->sa_Hf.resize(mesh_data->num_verts * 12);
+        sim_data->sa_Hf1.resize(mesh_data->num_verts);
 
-        const std::vector<std::vector<uint>>& vert_adj_verts = xpbd_data->vert_adj_material_force_verts;
+        const std::vector<std::vector<uint>>& vert_adj_verts = sim_data->vert_adj_material_force_verts;
         std::vector<std::vector<uint>>        clusterd_vertices_bending;
         std::vector<uint>                     prefix_vertices_bending;
 
@@ -748,14 +748,14 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                                               const uint eid = curr_cluster[i];
                                               {
                                                   colored_data->sa_merged_stretch_springs[prefix + i] =
-                                                      xpbd_data->sa_stretch_springs[eid];
+                                                      sim_data->sa_stretch_springs[eid];
                                                   colored_data->sa_merged_stretch_spring_rest_length[prefix + i] =
-                                                      xpbd_data->sa_stretch_spring_rest_state_length[eid];
+                                                      sim_data->sa_stretch_spring_rest_state_length[eid];
                                               }
                                           });
                 prefix += curr_cluster.size();
             }
-            if (prefix != xpbd_data->sa_stretch_springs.size())
+            if (prefix != sim_data->sa_stretch_springs.size())
                 LUISA_ERROR("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
         }
 
@@ -777,25 +777,25 @@ void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<s
                                               const uint eid = curr_cluster[i];
                                               {
                                                   colored_data->sa_merged_bending_edges[prefix + i] =
-                                                      xpbd_data->sa_bending_edges[eid];
+                                                      sim_data->sa_bending_edges[eid];
                                                   colored_data->sa_merged_bending_edges_angle[prefix + i] =
-                                                      xpbd_data->sa_bending_edges_rest_angle[eid];
+                                                      sim_data->sa_bending_edges_rest_angle[eid];
                                                   colored_data->sa_merged_bending_edges_Q[prefix + i] =
-                                                      xpbd_data->sa_bending_edges_Q[eid];
+                                                      sim_data->sa_bending_edges_Q[eid];
                                               }
                                           });
                 prefix += curr_cluster.size();
             }
-            if (prefix != xpbd_data->sa_bending_edges.size())
+            if (prefix != sim_data->sa_bending_edges.size())
                 LUISA_ERROR("Sum of Bending Cluster Is Not Equal Than Orig");
         }
     }
 }
 
-void upload_xpbd_buffers(luisa::compute::Device&                      device,
-                         luisa::compute::Stream&                      stream,
-                         lcs::SimulationData<std::vector>*            input_data,
-                         lcs::SimulationData<luisa::compute::Buffer>* output_data)
+void upload_sim_buffers(luisa::compute::Device&                      device,
+                        luisa::compute::Stream&                      stream,
+                        lcs::SimulationData<std::vector>*            input_data,
+                        lcs::SimulationData<luisa::compute::Buffer>* output_data)
 {
     output_data->colored_data.num_clusters_springs = input_data->colored_data.num_clusters_springs;
     output_data->colored_data.num_clusters_bending_edges = input_data->colored_data.num_clusters_bending_edges;

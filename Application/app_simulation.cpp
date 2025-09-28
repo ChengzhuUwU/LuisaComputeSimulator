@@ -18,7 +18,7 @@
 #include "SimulationSolver/descent_solver.h"
 
 #include "Initializer/init_mesh_data.h"
-#include "Initializer/init_xpbd_data.h"
+#include "Initializer/init_sim_data.h"
 #include "app_simulation_demo_config.h"
 #include "luisa/core/basic_types.h"
 #include "polyscope/volume_grid.h"
@@ -128,8 +128,8 @@ int main(int argc, char** argv)
     lcs::SimulationData<std::vector>            host_xpbd_data;
     lcs::SimulationData<luisa::compute::Buffer> xpbd_data;
     {
-        lcs::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
-        lcs::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
+        lcs::Initializer::init_sim_data(&host_mesh_data, &host_xpbd_data);
+        lcs::Initializer::upload_sim_buffers(device, stream, &host_xpbd_data, &xpbd_data);
         lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
         lcs::Initializer::init_simulation_params();
     }
