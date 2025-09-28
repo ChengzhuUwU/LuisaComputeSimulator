@@ -350,12 +350,13 @@ bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, st
 // template<typename Vert, typename Face>
 bool saveToOBJ_combined(std::vector<std::vector<Float3>> sa_rendering_vertices,
                         std::vector<std::vector<Int3>>   sa_rendering_faces,
+                        const std::string&               addition_path,
                         const std::string&               addition_str,
                         const uint                       frame)
 {
-    const std::string filename       = std::format("frame_{}{}.obj", frame, addition_str);
-    std::string       full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
-    std::string       full_path      = full_directory + filename;
+    const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/") + addition_path + "/";
+    std::string full_path = full_directory + filename;
 
     // Ensure the directory exists
     {

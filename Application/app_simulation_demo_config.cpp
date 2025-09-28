@@ -315,9 +315,41 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
 }
+void ccd_rotation_cylinder_highres(std::vector<lcs::Initializer::ShellInfo>& shell_list)
+{
+    shell_list.push_back({.model_name       = obj_mesh_path + "Cylinder/cylinder88K.obj",
+                          .fixed_point_list = {lcs::Initializer::FixedPointInfo{
+                                                   .is_fixed_point_func = [](const luisa::float3& norm_pos)
+                                                   { return (norm_pos.x < 0.001f); },
+                                                   .use_rotate   = true,
+                                                   .rotCenter    = luisa::make_float3(0.005, 0, 0),
+                                                   .rotAxis      = luisa::make_float3(1, 0, 0),
+                                                   .rotAngVelDeg = -72,
+                                               },
+                                               lcs::Initializer::FixedPointInfo{
+                                                   .is_fixed_point_func = [](const luisa::float3& norm_pos)
+                                                   { return (norm_pos.x > 0.999f); },
+                                                   .use_rotate   = true,
+                                                   .rotCenter    = luisa::make_float3(-0.005, 0, 0),
+                                                   .rotAxis      = luisa::make_float3(1, 0, 0),
+                                                   .rotAngVelDeg = 72,
+                                               }}});
+    ;
+    lcs::get_scene_params().pcg_iter_count        = 200;
+    lcs::get_scene_params().nonlinear_iter_count  = 3;
+    lcs::get_scene_params().use_ccd_linesearch    = true;
+    lcs::get_scene_params().stiffness_bending_ui  = 0.5;
+    lcs::get_scene_params().use_self_collision    = true;
+    lcs::get_scene_params().use_energy_linesearch = false;
+    lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
+    lcs::get_scene_params().use_gpu               = true;
+    lcs::get_scene_params().use_floor             = false;
+    lcs::get_scene_params().d_hat                 = 1e-3;
+}
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
-    const uint case_number = 3;
+    const uint case_number           = 7;
+    lcs::get_scene_params().scene_id = case_number;
 
     switch (case_number)
     {
@@ -335,6 +367,10 @@ void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
         };
         case 3: {
             ccd_rotation_cylinder(shell_list);
+            break;
+        };
+        case 7: {
+            ccd_rotation_cylinder_highres(shell_list);
             break;
         };
         case 4: {

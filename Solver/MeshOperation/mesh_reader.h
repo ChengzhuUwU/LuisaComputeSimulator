@@ -427,6 +427,7 @@ bool read_mesh_file(std::string mesh_name, TriangleMeshData& meshes);
 // template<typename Vert, typename Face>
 bool saveToOBJ_combined(std::vector<std::vector<Float3>> sa_rendering_vertices,
                         std::vector<std::vector<Int3>>   sa_rendering_faces,
+                        const std::string&               addition_path,
                         const std::string&               addition_str,
                         const uint                       frame);
 };  // namespace SimMesh

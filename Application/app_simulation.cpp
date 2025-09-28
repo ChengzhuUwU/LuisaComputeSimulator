@@ -416,8 +416,6 @@ int main(int argc, char** argv)
         }
     };
 
-    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "_init", 0);
-
     if constexpr (!use_ui)
     {
         auto fn_single_step_without_ui = [&]()
@@ -435,7 +433,7 @@ int main(int argc, char** argv)
         }
         fn_update_rendering_vertices();
         SimMesh::saveToOBJ_combined(
-            sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
+            sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
         // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, "");
     }
     else
@@ -613,8 +611,9 @@ int main(int argc, char** argv)
                 if (ImGui::Button("Save mesh", ImVec2(-1, 0)))
                 {
                     SimMesh::saveToOBJ_combined(
-                        sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
+                        sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
                 }
+                ImGui::Checkbox("Output Each Frame", &lcs::get_scene_params().output_per_frame);
                 if (ImGui::Button("Save State", ImVec2(-1, 0)))
                 {
                     solver.lcs::SolverInterface::save_current_frame_state_to_host(lcs::get_scene_params().current_frame,
@@ -635,10 +634,17 @@ int main(int argc, char** argv)
             if (is_simulate_frame)
             {
                 fn_single_step_with_ui();
+                if (lcs::get_scene_params().output_per_frame)
+                {
+                    SimMesh::saveToOBJ_combined(sa_rendering_vertices,
+                                                sa_rendering_faces,
+                                                std::format("0{}", lcs::get_scene_params().scene_id),
+                                                "",
+                                                lcs::get_scene_params().current_frame);
+                }
                 if (lcs::get_scene_params().current_frame >= max_frame)
                 {
                     is_simulate_frame = false;
-                    // SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, "", lcs::get_scene_params().current_frame);
                 }
             }
         };

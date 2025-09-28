@@ -66,6 +66,9 @@ struct SceneParams
     // Animation
     bool use_stretch_animation  = false;
     bool use_obstacle_animation = true;
+    bool output_per_frame       = false;
+    bool output_per_iteration   = false;
+    uint scene_id               = 0;
 
     // Iteration info
     uint num_iteration        = 96;
