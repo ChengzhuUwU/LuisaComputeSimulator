@@ -541,6 +541,9 @@ int main(int argc, char** argv)
                 ImGui::SliderFloat("Implicit Timestep", &lcs::get_scene_params().implicit_dt, 0.0001f, 0.2f);
                 ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
                 ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
+                if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier))
+                    lcs::get_scene_params().use_ccd_linesearch = true;
+
 
                 // ImGui::Checkbox("Use Bending", &lcs::get_scene_params().use_bending);
                 // ImGui::Checkbox("Use Quadratic Bending", &lcs::get_scene_params().use_quadratic_bending_model);

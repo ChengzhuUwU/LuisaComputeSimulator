@@ -1,4 +1,5 @@
 #include "app_simulation_demo_config.h"
+#include "CollisionDetector/narrow_phase.h"
 #include "Core/constant_value.h"
 #include "Core/float_n.h"
 #include "SimulationCore/scene_params.h"
@@ -344,7 +345,8 @@ void ccd_rotation_cylinder_highres(std::vector<lcs::Initializer::ShellInfo>& she
     lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
-    lcs::get_scene_params().d_hat                 = 1e-3;
+    lcs::get_scene_params().d_hat                 = 2e-3;
+    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
 }
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
