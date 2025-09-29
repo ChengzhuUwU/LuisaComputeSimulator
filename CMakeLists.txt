@@ -138,10 +138,24 @@ else()
 endif()
 
 
-find_package(Eigen3 REQUIRED)
-# find_package(TBB CONFIG REQUIRED)
-target_link_libraries(luisa-compute-solver-lib PUBLIC 
-    Eigen3::Eigen)
+# find_package(Eigen3 REQUIRED)
+# target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
+if (NOT TARGET Eigen3::Eigen)
+    FetchContent_Declare(
+        eigen
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG 3.4.0
+        SOURCE_DIR ${EXT_PATH}/eigen
+    )
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(EIGEN_MPL2_ONLY ON CACHE BOOL "" FORCE)
+    set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
+    set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(eigen)
+endif()
+target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
+
 if (USE_AMGCL_FOR_SIM)
     target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_AMGCL_FOR_SIM)
     target_link_libraries(luisa-compute-solver-lib PUBLIC amgcl::amgcl)
