@@ -1,56 +1,74 @@
-# LuisaComputeSolver: Physics Simulation Based-on LuisaCompute
+# LuisaComputeSolver: Physics Simulation Based on LuisaCompute
 
-![Teasor](Document/README1.png)
+![Teaser](Document/README1.png)
 
-## How to start
+<!-- [![actions status linux](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/linux/cmake.svg)](https://github.com/nmwsharp/polyscope/actions)
+[![actions status macOS](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/macOS/cmake.svg)](https://github.com/nmwsharp/polyscope/actions)
+[![actions status windows](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/windows/cmake.svg)](https://github.com/nmwsharp/polyscope/actions) -->
 
-1. Clone the repository: `git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git --recursive`
+## Getting Started
 
-2. Download required packages: (`brew install` or `vcpkg install`) ` Eigen3, tbb, glfw3`
-    - (For windows user: You may need to set `CMAKE_PREFIX_PATH` in `CmakeLists.txt` with your cmake path)
+### Cmake
 
-3. Configure: `cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`
+1. **Clone the repository:**  
+    `git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git`
 
-> Or you can specify the compiler using `-DCMAKE_C_COMPILER=/usr/bin/clang`
+2. **Install required packages:**  
+    - For Linux users:  
+      `sudo apt-get -y install build-essential uuid-dev`
+    - For Linux and Windows users: If you want to use cuda backend, you need to install cuda-toolkit. Otherwise you need to enable `LUISA_COMPUTE_ENABLE_DX` option or other backend in CMake.
 
-4. Build: `cmake --build build -j`
+3. **Configure the project:**  
+    `cmake -S . -B build`  
+    - Optionally, specify the compiler:  
+      `-D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++`  
+      or  
+      `-D CMAKE_C_COMPILER=/usr/bin/clang`  
+    - Specify the generator:  
+      `-G Ninja`
 
-5. Run: `build/bin/app-simulation` or `build/bin/app-simulation.exe`
+4. **Build the project:**  
+    `cmake --build build -j`
 
-> Recommend Compiler: [Clang 15~18](https://github.com/llvm/llvm-project/releases/tag/llvmorg-18.1.8)
-> 
-> Recommend Generator: ninja (Use [pre-build](https://github.com/ninja-build/ninja/releases/tag/v1.13.1) or [build from source](https://github.com/ninja-build/ninja))
+5. **Run the application:**  
+    `build/bin/app-simulation` (Linux/macOS)  
+    `build/bin/app-simulation.exe` (Windows)
 
-6. Choose scenes: In `Application -> app_simulation_demo_config.cpp -> load_scene()`, change the 
+6. **Select a scene:**  
+    Edit `Application/app_simulation_demo_config.cpp` in the `load_scene()` function and modify the `case_number` value.
 
-## Reference
+### Xmake
 
-Contact energy: [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [libuipc](https://github.com/spiriMirror/libuipc), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-toturial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
 
-DCD & CCD: [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver)
 
-PCG (Linear equation solver): [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl)
+## Additional Configuration
 
-Framework: [libshell](https://github.com/legionus/libshell)
+1. The default backend is `cuda` on Windows and Linux, and `metal` on macOS.  
+    To use other backends such as `dx`, `vulkan`, or `fallback (TBB)`, update the compile options in the main CMake file and set the desired backend in `Application/app_simulation.cpp` (`main() > backend`).  
+    *(Dynamic backend selection may be supported in the future.)*
 
-LBVH: libuipc
+2. The GUI is disabled by default for broader platform compatibility.  
+    To enable the GUI (using [polyscope](https://github.com/nmwsharp/polyscope)), set the `LUISA_COMPUTE_SOLVER_USE_GUI` option in CMake.
 
-Dirichlet boundary energy: solid-sim-toturial
+## References
 
-GPU Intrinsic: [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting)
+- **Contact energy:**  
+  [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [libuipc](https://github.com/spiriMirror/libuipc), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
+- **DCD & CCD:**  
+  [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver)
+- **PCG (Linear equation solver):**  
+  [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl)
+- **Framework:**  
+  [libshell](https://github.com/legionus/libshell), [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting)
+- **LBVH:**  
+  libuipc
+- **Dirichlet boundary energy:**  
+  solid-sim-tutorial
+- **GPU Intrinsic:**  
+  LuisaComputeGaussSplatting
+- **Affine body dynamics:**  
+  [abd-warp](https://github.com/Luke-Skycrawler/abd-warp), libuipc ([documentation](https://spirimirror.github.io/libuipc-doc/specification/constitutions/affine_body/), [theory derivation](https://github.com/spiriMirror/libuipc/blob/main/scripts/symbol_calculation/affine_body_quantity.ipynb))
 
-Affine body dynamics: [abd-warp](https://github.com/Luke-Skycrawler/abd-warp), libuipc (And its [document](https://spirimirror.github.io/libuipc-doc/specification/constitutions/affine_body/) and [theory derivation](https://github.com/spiriMirror/libuipc/blob/main/scripts/symbol_calculation/affine_body_quantity.ipynb))
+## Other
 
-## 其他
-
-纠结了一下决定还是先开源一版了！
-
-为什么想做这个：狗蛋、minchen、kim、mike、anka、suika、zihang、kemeng、yupeng、xinlei、chenjiong 等老师的开源之光太耀眼了
-
-项目还是非常早期的阶段，速度也很慢（主要是 PCG 的 稀疏矩阵-向量乘的部分还在用没装配过的逐约束的原子加，有点过于丑陋了，LBVH 也可以进一步优化），这里仅供学习参考，更完整、严谨的 IPC 仿真框架可以参考 [libuipc](https://github.com/spiriMirror/libuipc) 
-
-- LuisaCompute 的优势：没人能拒绝跨平台！写起来也很方便，不用天天手动绑定 Buffer 了（我永远忘不了上个项目写 Metal 的时候绑定参数的痛，即使是bindless 也很难确保不出错）。slang 本质上没有什么区别，调用起来仍然得走传统 API 的范式。LuisCompute 虽然默认是jit，但感觉改成aot问题也不大，是可以用于生产中
-
-- LuisaCompute 的劣势：线性代数部分得自己写，还是有点麻烦的（比如 12x12 的矩阵乘法，稀疏线性系统求解器等），不知道有没有人想一起写 lcm （不过短期内还是还得先忙论文，毕业压力好大 T T ）
-
-下次更新可能是明年了，希望下一篇工作不会又拖得太久
+Thanks to...

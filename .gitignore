@@ -25,6 +25,7 @@ imgui.ini
 .VSCodeCounter
 ext/*
 !ext/xmake.lua
+!ext/CMakeLists.txt
 !ext/polyscope_pch.h
 !ext/glad_ogl33
 !.vscode/settings.json.for_xmake

@@ -633,7 +633,7 @@ void NewtonSolver::host_update_velocity()
                                       return;
                                   };
 
-                                  vel *= exp(-damping * substep_dt);
+                                  vel *= luisa::exp(-damping * substep_dt);
 
                                   sa_v[vid]            = vel;
                                   sa_v_step_start[vid] = vel;
@@ -651,7 +651,8 @@ void NewtonSolver::host_update_velocity()
                                   float3 q_step_begin = host_sim_data->sa_affine_bodies_q_step_start[block_idx];
                                   float3 q_step_end = host_sim_data->sa_affine_bodies_q[block_idx];
 
-                                  float3 vq = (q_step_end - q_step_begin) / substep_dt * exp(-damping * substep_dt);
+                                  float3 vq = (q_step_end - q_step_begin) / substep_dt
+                                              * luisa::exp(-damping * substep_dt);
                                   host_sim_data->sa_affine_bodies_q_v[block_idx]          = vq;
                                   host_sim_data->sa_affine_bodies_q_step_start[block_idx] = q_step_end;
                                   // LUISA_INFO("Body {} 's block {} : vel = {} = from {} to {}", block_idx / 4, block_idx, vq, q_step_begin, q_step_end);
