@@ -30,8 +30,8 @@ if (NOT TARGET luisa::compute)
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
     )
     FetchContent_Populate(luisa_compute)
-    set(LuisaCompute_SOURCE_DIR ${EXT_PATH}/LuisaCompute)
-    # set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
+    # set(LuisaCompute_SOURCE_DIR ${EXT_PATH}/LuisaCompute)
+    set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
     message(STATUS "LuisaCompute source dir: ${LuisaCompute_SOURCE_DIR}")
     include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
 
@@ -152,6 +152,17 @@ if (NOT TARGET Eigen3::Eigen)
     set(EIGEN_MPL2_ONLY ON CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+    
+    # Disable compiler feature tests that slow down configuration
+    set(EIGEN_TEST_CXX11 OFF CACHE BOOL "" FORCE)
+    set(EIGEN_TEST_COMPILER_FEATURES OFF CACHE BOOL "" FORCE)
+    
+    # Set known compiler capabilities to skip detection tests
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(EIGEN_COMPILER_SUPPORT_CPP11 ON CACHE BOOL "" FORCE)
+        set(COMPILER_SUPPORT_CPP11 ON CACHE BOOL "" FORCE)
+    endif()
+    
     FetchContent_MakeAvailable(eigen)
 endif()
 target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
