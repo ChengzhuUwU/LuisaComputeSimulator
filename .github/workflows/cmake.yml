@@ -40,11 +40,11 @@ jobs:
         sudo apt-get -y install build-essential uuid-dev
         # cmake ninja-build 
         
-    - name: "Install CUDA Dependencies (Ubuntu and Windows)"
-      if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
-      uses: nvidia/setup-cuda@v2
-      with:
-        cuda-version: 12.1
+    # - name: "Install CUDA Dependencies (Ubuntu and Windows)"
+    #   if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+    #   uses: nvidia/setup-cuda@v2
+    #   with:
+    #     cuda-version: 12.1
 
     - name: Set reusable strings
       id: strings
