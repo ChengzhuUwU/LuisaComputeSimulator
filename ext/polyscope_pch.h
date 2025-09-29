@@ -1,6 +1,4 @@
-#include <array>
-#include <tuple>
-#include <cstdint>
-#include <memory>
-#include <vector>
-#include <nlohmann/json.h>
+#include "polyscope/polyscope.h"
+#include "nlohmann/json.hpp"
+#include "imgui.h"
+#include "implot.h"

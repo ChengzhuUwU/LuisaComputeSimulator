@@ -92,7 +92,18 @@ int main(int argc, char** argv)
     {
         LUISA_INFO("Device {}: {}", i, device_names[i]);
     }
-    luisa::compute::Device device = context.create_device(backend);
+    if (argc >= 2)
+    {
+        backend = argv[1];
+    }
+    luisa::compute::Device device = context.create_device(backend,
+                                                          nullptr,
+#ifndef NDEBUG
+                                                          false
+#else
+                                                          true
+#endif
+    );
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
     lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
@@ -243,9 +254,9 @@ int main(int argc, char** argv)
                 const auto  rotated_pos  = matrix * luisa::make_float4(relative_vec, 1.0f);
                 return fixed_point.rotCenter + rotated_pos.xyz();
             };
-            auto fn_translate = [](const lcs::Initializer::FixedPointInfo& fixed_point,
-                                   const float                             time,
-                                   const lcs::float3&                      pos) {
+            auto fn_translate =
+                [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
+            {
                 return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
             };
             auto new_pos = pos;

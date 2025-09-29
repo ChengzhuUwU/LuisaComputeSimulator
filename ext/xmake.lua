@@ -110,18 +110,10 @@ target("glad")
 add_rules("lc_basic_settings", {
     project_kind = "static"
 })
-add_files("glad/src/**.c")
-add_includedirs("glad/include", {
+add_files("glad_ogl33/src/**.c")
+add_includedirs("glad_ogl33/include", {
     public = true
 })
-on_load(function(target)
-    if (not os.exists(path.join(os.scriptdir(), "glad/src"))) or
-        (not os.exists(path.join(os.scriptdir(), "glad/include"))) then
-        os.execv("python", {path.join(os.scriptdir(), "glad/glad"), "--api", "gl:core=3.3", "--out-path",
-                            path.join(os.scriptdir(), "glad")})
-    end
-    --  python glad --api gl:core=3.3 --out-path .
-end)
 target_end()
 
 target("imgui")

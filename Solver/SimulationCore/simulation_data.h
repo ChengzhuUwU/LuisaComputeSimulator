@@ -12,7 +12,7 @@
 
 namespace lcs
 {
-
+using ushort = uint16_t;
 template <template <typename...> typename BufferType>
 struct ColoredData : SimulationType
 {

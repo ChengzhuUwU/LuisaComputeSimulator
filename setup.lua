@@ -84,6 +84,7 @@ function install_lc()
         add_git_job("eigen", path.join(ext_path, "eigen"), "https://github.com/MaxwellGengYF/eigen.git", "3.4")
         add_git_job("polyscope", path.join(ext_path, "polyscope"), "https://github.com/MaxwellGengYF/polyscope.git")
         add_git_job("glm", path.join(ext_path, "glm"), "https://github.com/icaven/glm.git")
+        add_git_job("glad", path.join(ext_path, "glad"), "https://github.com/Dav1dde/glad.git")
 
 
         runjobs("git", jobs, {

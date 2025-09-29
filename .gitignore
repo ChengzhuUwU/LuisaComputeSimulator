@@ -26,5 +26,6 @@ imgui.ini
 ext/*
 !ext/xmake.lua
 !ext/polyscope_pch.h
+!ext/glad_ogl33
 !.vscode/settings.json.for_xmake
 .obsidian
