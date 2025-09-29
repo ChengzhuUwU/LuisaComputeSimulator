@@ -1,0 +1,68 @@
+name: cmake
+
+on:
+  push: 
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Release]
+        # c_compiler: [gcc, clang, cl]
+        compiler:
+          - { cpp_compiler: g++, c_compiler: gcc, version: 11 }
+          - { cpp_compiler: g++, c_compiler: gcc, version: 15 }
+          - { cpp_compiler: clang++, c_compiler: clang, version: 14 }
+          - { cpp_compiler: clang++, c_compiler: clang, version: 18 }
+          - { cpp_compiler: cl, c_compiler: cl }
+          # - { name: clang-cl }
+        exclude:
+          - os: ubuntu-latest
+            c_compiler: cl
+          - os: macos-latest
+            c_compiler: cl
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "Install Package Dependencies (Ubuntu)"
+      # Install dependencies for building on Ubuntu
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install build-essential uuid-dev
+        # cmake ninja-build 
+        
+    - name: "Install CUDA Dependencies (Ubuntu and Windows)"
+      if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+      uses: nvidia/setup-cuda@v2
+      with:
+        cuda-version: 12.1
+
+    - name: Set reusable strings
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+    - name: Configure CMake
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }}-${{ matrix.compiler.version }}
+        -DCMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }}-${{ matrix.compiler.version }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -S ${{ github.workspace }}
+
+    - name: Build
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      run: ctest --build-config ${{ matrix.build_type }}
