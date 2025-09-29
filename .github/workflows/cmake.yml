@@ -17,10 +17,12 @@ jobs:
         build_type: [Release]
         # c_compiler: [gcc, clang, cl]
         compiler:
-          - { cpp_compiler: g++, c_compiler: gcc, version: 11 }
-          - { cpp_compiler: g++, c_compiler: gcc, version: 15 }
-          - { cpp_compiler: clang++, c_compiler: clang, version: 14 }
-          - { cpp_compiler: clang++, c_compiler: clang, version: 18 }
+          - { cpp_compiler: g++, c_compiler: gcc}
+          - { cpp_compiler: clang++, c_compiler: clang}
+          # - { cpp_compiler: g++, c_compiler: gcc, version: 11 }
+          # - { cpp_compiler: g++, c_compiler: gcc, version: 15 }
+          # - { cpp_compiler: clang++, c_compiler: clang, version: 14 }
+          # - { cpp_compiler: clang++, c_compiler: clang, version: 18 }
           - { cpp_compiler: cl, c_compiler: cl }
           # - { name: clang-cl }
         exclude:
@@ -28,6 +30,9 @@ jobs:
             compiler: { cpp_compiler: cl, c_compiler: cl }
           - os: macos-latest
             compiler: { cpp_compiler: cl, c_compiler: cl }
+          # Exclude GCC 15 on macOS as it's less stable/available
+          - os: macos-latest
+            compiler: { cpp_compiler: g++, c_compiler: gcc, version: 15 }
 
     steps:
     - uses: actions/checkout@v4
@@ -39,6 +44,17 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install build-essential uuid-dev
         # cmake ninja-build 
+        
+    # - name: "Install Compiler Dependencies (macOS)"
+    #   if: matrix.os == 'macos-latest'
+    #   run: |
+    #     if [ "${{ matrix.compiler.cpp_compiler }}" = "clang++" ]; then
+    #       if [ "${{ matrix.compiler.version }}" = "14" ] || [ "${{ matrix.compiler.version }}" = "18" ]; then
+    #         brew install llvm@${{ matrix.compiler.version }}
+    #       fi
+    #     elif [ "${{ matrix.compiler.cpp_compiler }}" = "g++" ]; then
+    #       brew install gcc@${{ matrix.compiler.version }}
+    #     fi
         
     # - name: "Install CUDA Dependencies (Ubuntu and Windows)"
     #   if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
@@ -53,12 +69,71 @@ jobs:
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
+      shell: bash
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }}-${{ matrix.compiler.version }}
-        -DCMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }}-${{ matrix.compiler.version }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -S ${{ github.workspace }}
+        
+      # run: |
+      #   if [ "${{ matrix.os }}" = "macos-latest" ]; then
+      #     if [ "${{ matrix.compiler.cpp_compiler }}" = "clang++" ]; then
+      #       if [ -n "${{ matrix.compiler.version }}" ] && ([ "${{ matrix.compiler.version }}" = "14" ] || [ "${{ matrix.compiler.version }}" = "18" ]); then
+      #         CXX_COMPILER="/opt/homebrew/opt/llvm@${{ matrix.compiler.version }}/bin/clang++"
+      #         C_COMPILER="/opt/homebrew/opt/llvm@${{ matrix.compiler.version }}/bin/clang"
+      #       else
+      #         CXX_COMPILER="clang++"
+      #         C_COMPILER="clang"
+      #       fi
+      #     elif [ "${{ matrix.compiler.cpp_compiler }}" = "g++" ]; then
+      #       if [ -n "${{ matrix.compiler.version }}" ]; then
+      #         CXX_COMPILER="g++-${{ matrix.compiler.version }}"
+      #         C_COMPILER="gcc-${{ matrix.compiler.version }}"
+      #       else
+      #         CXX_COMPILER="g++"
+      #         C_COMPILER="gcc"
+      #       fi
+      #     fi
+      #   elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+      #     if [ "${{ matrix.compiler.cpp_compiler }}" = "cl" ]; then
+      #       CXX_COMPILER="cl"
+      #       C_COMPILER="cl"
+      #     else
+      #       if [ -n "${{ matrix.compiler.version }}" ]; then
+      #         CXX_COMPILER="${{ matrix.compiler.cpp_compiler }}-${{ matrix.compiler.version }}"
+      #         C_COMPILER="${{ matrix.compiler.c_compiler }}-${{ matrix.compiler.version }}"
+      #       else
+      #         CXX_COMPILER="${{ matrix.compiler.cpp_compiler }}"
+      #         C_COMPILER="${{ matrix.compiler.c_compiler }}"
+      #       fi
+      #     fi
+      #   else
+      #     # Ubuntu - use versioned compilers
+      #     if [ -n "${{ matrix.compiler.version }}" ]; then
+      #       CXX_COMPILER="${{ matrix.compiler.cpp_compiler }}-${{ matrix.compiler.version }}"
+      #       C_COMPILER="${{ matrix.compiler.c_compiler }}-${{ matrix.compiler.version }}"
+      #     else
+      #       CXX_COMPILER="${{ matrix.compiler.cpp_compiler }}"
+      #       C_COMPILER="${{ matrix.compiler.c_compiler }}"
+      #     fi
+      #   fi
+        
+      #   # Debug: Show which compilers we're using
+      #   echo "Using C++ compiler: ${CXX_COMPILER}"
+      #   echo "Using C compiler: ${C_COMPILER}"
+        
+      #   if [ "${{ matrix.os }}" != "windows-latest" ] || [ "${{ matrix.compiler.cpp_compiler }}" != "cl" ]; then
+      #     which "${CXX_COMPILER}" || echo "Warning: CXX compiler not found in PATH"
+      #     which "${C_COMPILER}" || echo "Warning: C compiler not found in PATH"
+      #   fi
+
+        # cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+        #   -DCMAKE_CXX_COMPILER="${CXX_COMPILER}" \
+        #   -DCMAKE_C_COMPILER="${C_COMPILER}" \
+        #   -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+        #   -S ${{ github.workspace }}
 
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
