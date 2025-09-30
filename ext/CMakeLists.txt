@@ -2,44 +2,24 @@ set(FETCHCONTENT_QUIET OFF)
 set(FETCHCONTENT_VERBOSE ON)
 include(FetchContent)
 
-
 if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
-        GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
+        GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git
         GIT_TAG stable
-        # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
     )
     FetchContent_Populate(luisa_compute)
-    # set(LuisaCompute_SOURCE_DIR ${EXT_PATH}/LuisaCompute)
     set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
     message(STATUS "LuisaCompute source dir: ${LuisaCompute_SOURCE_DIR}")
-    include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
+    # include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
 
-    # FetchContent_Declare(
-    #     spdlog
-    #     GIT_REPOSITORY https://github.com/LuisaGroup/spdlog.git
-    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/spdlog
-    # )
-    # FetchContent_Populate(spdlog)
+    # set(LUISA_COMPUTE_ENABLE_CUDA ON CACHE BOOL "" FORCE)
+    # set(LUISA_COMPUTE_ENABLE_METAL ON CACHE BOOL "" FORCE)
+    # set(LUISA_COMPUTE_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    # set(LUISA_COMPUTE_ENABLE_DX OFF CACHE BOOL "" FORCE)
+    # set(LUISA_COMPUTE_ENABLE_FALLBACK OFF CACHE BOOL "" FORCE)
 
-    # FetchContent_Declare(
-    #     imgui
-    #     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    #     GIT_TAG docking
-    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/imgui
-    # )
-    # FetchContent_Populate(imgui)
-
-    # FetchContent_Declare(
-    #     glfw
-    #     GIT_REPOSITORY https://github.com/glfw/glfw.git
-    #     SOURCE_DIR ${LuisaCompute_SOURCE_DIR}/src/ext/glfw
-    # )
-    # FetchContent_Populate(glfw)
-
-    # add LuisaCompute as a subdirectory
     set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_DOWNLOAD_NVCOMP OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_USE_SYSTEM_STL ON CACHE BOOL "" FORCE)
@@ -47,12 +27,10 @@ if (NOT TARGET luisa::compute)
     set(LUISA_COMPUTE_ENABLE_REMOTE OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_WAYLAND ON CACHE BOOL "" FORCE)
+    set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
 
-
-# find_package(Eigen3 REQUIRED)
-# target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
 if (NOT TARGET Eigen3::Eigen)
     FetchContent_Declare(
         eigen
@@ -67,7 +45,6 @@ if (NOT TARGET Eigen3::Eigen)
     set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
     
-    # Disable compiler feature tests that slow down configuration
     set(EIGEN_TEST_CXX11 OFF CACHE BOOL "" FORCE)
     set(EIGEN_TEST_COMPILER_FEATURES OFF CACHE BOOL "" FORCE)
     

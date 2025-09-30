@@ -5,31 +5,37 @@ set(CMAKE_CXX_STANDARD 20)
 project(LuisaComputeSolver)
 
 
-# lib
+# Global options
+option(LUISA_COMPUTE_SOLVER_USE_GUI "Enable GUI support" OFF)
+option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
+
+option(LUISA_COMPUTE_ENABLE_CUDA "Enable CUDA backend" ON)
+option(LUISA_COMPUTE_ENABLE_METAL "Enable Metal backend" ON)
+option(LUISA_COMPUTE_ENABLE_VULKAN "Enable Vulkan backend" OFF)
+option(LUISA_COMPUTE_ENABLE_DX "Enable DirectX backend" OFF)
+option(LUISA_COMPUTE_ENABLE_FALLBACK "Enable Fallback (CPU TBB) backend" OFF)
+
+# Solver
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cpp Solver/*.cc)
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
 add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
-if(WIN32)
-set(CMAKE_PREFIX_PATH   "C:/Applications/vcpkg/installed/x64-windows")
-endif()
 
-
+# External
 set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/ext)
 
-set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
-set(LUISA_COMPUTE_ENABLE_DX  OFF CACHE BOOL "" FORCE)
-set(LUISA_COMPUTE_ENABLE_CUDA  ON CACHE BOOL "" FORCE)
-set(LUISA_COMPUTE_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
-set(LUISA_COMPUTE_ENABLE_FALLBACK OFF CACHE BOOL "" FORCE)
 
-option(LUISA_COMPUTE_SOLVER_USE_GUI "Enable GUI support" OFF)
-option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
+set(FETCHCONTENT_QUIET OFF)
+set(FETCHCONTENT_VERBOSE ON)
+include(FetchContent)
 
-add_subdirectory(ext)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext)
+include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
+
+# Rousource
 set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
