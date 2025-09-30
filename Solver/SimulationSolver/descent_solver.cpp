@@ -631,7 +631,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
                                           return;
                                       };
 
-                                      vel *= exp(-damping * substep_dt);
+                                      vel *= luisa::exp(-damping * substep_dt);
 
                                       sa_vert_velocity[vid]       = vel;
                                       sa_velocity_start[vid]      = vel;

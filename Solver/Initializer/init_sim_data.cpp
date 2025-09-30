@@ -386,14 +386,9 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                          eigen3_to_float3(body_mass.block<3, 1>(9, 2)));
                 body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
 
-                float area = CpuParallel::parallel_for_and_reduce_sum<float>(
-                    curr_prefix,
-                    next_prefix,
-                    [&](const uint vid)
-                    {
-                        sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
-                        return (mesh_data->sa_rest_vert_area[vid]);
-                    });
+                float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
+                                         mesh_data->sa_rest_vert_area.begin() + next_prefix,
+                                         0.0f);
 
                 const float defulat_density                 = 10.0f;
                 sim_data->sa_affine_bodies_volume[body_idx] = area;
@@ -403,6 +398,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                                next_prefix,
                                                [&](const uint vid)
                                                {
+                                                   sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
                                                    float  mass   = mesh_data->sa_vert_mass[vid];
                                                    float3 rest_x = mesh_data->sa_model_x[vid];
                                                    auto J = AffineBodyDynamics::get_jacobian_dxdq(rest_x);
@@ -526,7 +522,47 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         upload_2d_csr_from(sim_data->sa_vert_adj_material_force_verts_csr, sim_data->vert_adj_material_force_verts);
 
         // Final off-diag hessian
-        sim_data->sa_cgA_offdiag.resize(sim_data->sa_vert_adj_material_force_verts_csr.size());  //  - mesh_data->num_verts - 1
+        const uint orig_hessian_nnz = sim_data->sa_vert_adj_material_force_verts_csr.size();  //  - mesh_data->num_verts - 1
+        // const uint alinged_nnz      = (orig_hessian_nnz + 31) / 32 * 32;
+        const uint alinged_nnz = orig_hessian_nnz;
+        sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
+        sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, luisa::make_uint3(0));
+        CpuParallel::parallel_for(
+            0,
+            mesh_data->num_verts,
+            [&](const uint vid)
+            {
+                const uint curr_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid];
+                const uint next_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
+                for (uint idx = curr_prefix; idx < next_prefix; idx++)
+                {
+                    const uint adj_vid          = sim_data->sa_vert_adj_material_force_verts_csr[idx];
+                    uint       triplet_property = 0;
+                    if (idx == curr_prefix)
+                    {
+                        triplet_property |= (MatrixTriplet::is_first_col_in_row());  // First in row
+                    }
+                    if ((idx == (next_prefix - 1)) || (idx % 32 == 31))
+                    {
+                        triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
+                        if (idx / 32 == curr_prefix / 32)  // In the same warp -> Read the first column
+                        {
+                            const uint first_lane_id = curr_prefix % 32;
+                            triplet_property |=
+                                MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(first_lane_id);
+                        }
+                        else  // Not in the same warp -> Read the first lane
+                        {
+                            triplet_property |= MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(0);
+                        }
+                    }
+                    if (curr_prefix / 32 != next_prefix / 32)
+                    {
+                        triplet_property |= MatrixTriplet::write_use_atomic();
+                    }
+                    sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] = uint3(vid, adj_vid, triplet_property);
+                }
+            });
     }
 
     // Find material-force-offset
@@ -914,7 +950,8 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                              input_data->colored_data.sa_hessian_slot_per_edge);
     }
     stream
-        << upload_buffer(device, output_data->sa_cgA_offdiag, input_data->sa_cgA_offdiag)
+        << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet, input_data->sa_cgA_fixtopo_offdiag_triplet)
+        << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet_info, input_data->sa_cgA_fixtopo_offdiag_triplet_info)
         << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)

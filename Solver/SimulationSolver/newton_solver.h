@@ -78,6 +78,7 @@ class NewtonSolver : public lcs::SolverInterface
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>>   fn_reset_vector;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3x3>> fn_reset_float3x3;
+    luisa::compute::Shader<1>                                       fn_reset_cgA_offdiag_triplet;
 
     luisa::compute::Shader<1, float, float3> fn_predict_position;  // const Float substep_dt
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
@@ -89,7 +90,8 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1>        fn_material_energy_assembly;
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part;
+    // luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part_perVert;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part_perTriplet;
 
     luisa::compute::Shader<1, float>                             fn_apply_dx;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;

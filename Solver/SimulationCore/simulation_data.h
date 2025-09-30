@@ -2,13 +2,13 @@
 
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
+#include "Core/matrix_triplet.h"
 #include "SimulationCore/simulation_type.h"
 #include "Utils/buffer_allocator.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
 // #include <glm/glm.hpp>
-
 
 namespace lcs
 {
@@ -155,11 +155,12 @@ struct SimulationData : SimulationType
     BufferType<float4x3> sa_Hf1;
 
     // PCG
-    BufferType<float3>   sa_cgX;
-    BufferType<float3>   sa_cgB;
-    BufferType<float3x3> sa_cgA_diag;
-    BufferType<float3x3> sa_cgA_offdiag;
-    BufferType<float3x3> sa_cgA_offdiag_affine_body;
+    BufferType<float3>           sa_cgX;
+    BufferType<float3>           sa_cgB;
+    BufferType<float3x3>         sa_cgA_diag;
+    BufferType<MatrixTriplet3x3> sa_cgA_fixtopo_offdiag_triplet;
+    BufferType<uint3>            sa_cgA_fixtopo_offdiag_triplet_info;
+    BufferType<float3x3>         sa_cgA_offdiag_affine_body;
 
     BufferType<float3x3> sa_cgMinv;
     BufferType<float3>   sa_cgP;
