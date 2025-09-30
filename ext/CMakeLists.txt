@@ -62,6 +62,7 @@ if (NOT TARGET Eigen3::Eigen)
     )
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(EIGEN_LEAVE_TEST_IN_ALL_TARGET OFF CACHE BOOL "" FORCE)
     set(EIGEN_MPL2_ONLY ON CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
@@ -69,12 +70,6 @@ if (NOT TARGET Eigen3::Eigen)
     # Disable compiler feature tests that slow down configuration
     set(EIGEN_TEST_CXX11 OFF CACHE BOOL "" FORCE)
     set(EIGEN_TEST_COMPILER_FEATURES OFF CACHE BOOL "" FORCE)
-    
-    # Set known compiler capabilities to skip detection tests
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(EIGEN_COMPILER_SUPPORT_CPP11 ON CACHE BOOL "" FORCE)
-        set(COMPILER_SUPPORT_CPP11 ON CACHE BOOL "" FORCE)
-    endif()
     
     FetchContent_MakeAvailable(eigen)
 endif()

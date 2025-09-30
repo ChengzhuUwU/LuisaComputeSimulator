@@ -1,7 +1,8 @@
-name: cmake
+name: cmake-macos
 
 on:
   push:
+    branches: [ master ]
   pull_request:
     branches: [ "main" ]
 
@@ -10,21 +11,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
       fail-fast: false
 
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [macos-latest]
         build_type: [Release]
         compiler:
           - { cpp_compiler: g++, c_compiler: gcc}
           - { cpp_compiler: clang++, c_compiler: clang}
-          - { cpp_compiler: cl, c_compiler: cl }
-        exclude:
-          - os: ubuntu-latest
-            compiler: { cpp_compiler: cl, c_compiler: cl }
-          - os: macos-latest
-            compiler: { cpp_compiler: cl, c_compiler: cl }
 
     steps:
     - uses: actions/checkout@v4
@@ -34,13 +28,6 @@ jobs:
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-
-    - name: "Install Package Dependencies (Ubuntu)"
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install build-essential uuid-dev
-        # cmake ninja-build
 
     - name: Configure CMake
       run: >

@@ -2,46 +2,37 @@
 
 ![Teaser](Document/README1.png)
 
-<!-- [![actions status linux](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/linux/cmake.svg)](https://github.com/nmwsharp/polyscope/actions)
-[![actions status macOS](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/macOS/cmake.svg)](https://github.com/nmwsharp/polyscope/actions)
-[![actions status windows](https://github.com/ChengzhuUwU/LuisaComputeSimulator/workflows/windows/cmake.svg)](https://github.com/nmwsharp/polyscope/actions) -->
+[![linux](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_linux.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_linux.yml)
+[![windows](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_windows.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_windows.yml)
+[![macos](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml)
 
 ## Getting Started
 
-### Cmake
+- **Clone the repository:**
+    ```git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git```
 
-1. **Clone the repository:**  
-    `git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git`
-
-2. **Install required packages:**  
+- **Install required packages:**  
     - For Linux users:  
-      `sudo apt-get -y install build-essential uuid-dev`
-    - For Linux and Windows users: If you want to use cuda backend, you need to install cuda-toolkit. Otherwise you need to enable `LUISA_COMPUTE_ENABLE_DX` option or other backend in CMake.
+      ```sudo apt-get -y install build-essential uuid-dev```
+    - For Linux and Windows users: If you want to use cuda backend, you need to install cuda-toolkit. Otherwise you need to enable `LUISA_COMPUTE_ENABLE_DX` option or other backend in Cmake or Xmake.
 
-3. **Configure the project:**  
-    `cmake -S . -B build`  
-    - Optionally, specify the compiler:  
-      `-D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++`  
-      or  
-      `-D CMAKE_C_COMPILER=/usr/bin/clang`  
-    - Specify the generator:  
-      `-G Ninja`
+- **You can build with Cmake:**  
+  - Congiure: ```cmake -S . -B build```
+  - Build   : ```cmake --build build -j```
+  - Optionally, you can specify your favorite generators, compilers, or build types like `-G Ninja`, `-D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++` (or `-D CMAKE_C_COMPILER=/usr/bin/clang-15`) and `-D CMAKE_BUILD_TYPE=Release`.
 
-4. **Build the project:**  
-    `cmake --build build -j`
+- **You can also build with Xmake:**  
+  - Congiure: ```xmake l setup.lua```
+  - Build   : ```xmake build```
 
-5. **Run the application:**  
+- **Run the application:**  
     `build/bin/app-simulation` (Linux/macOS)  
     `build/bin/app-simulation.exe` (Windows)
 
-6. **Select a scene:**  
+- You can select other scenarios:
     Edit `Application/app_simulation_demo_config.cpp` in the `load_scene()` function and modify the `case_number` value.
 
-### Xmake
-
-
-
-## Additional Configuration
+### Other Configuration
 
 1. The default backend is `cuda` on Windows and Linux, and `metal` on macOS.  
     To use other backends such as `dx`, `vulkan`, or `fallback (TBB)`, update the compile options in the main CMake file and set the desired backend in `Application/app_simulation.cpp` (`main() > backend`).  
