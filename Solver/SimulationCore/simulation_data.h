@@ -109,6 +109,8 @@ struct SimulationData : SimulationType
     uint              num_verts_soft    = 0;
     uint              num_verts_rigid   = 0;
     uint              num_affine_bodies = 0;
+    uint              num_dof           = 0;  // Degree of freedom, actually is DOF / 3
+    BufferType<uint>  sa_num_dof;
     BufferType<float> sa_system_energy;
 
     BufferType<uint2>    sa_stretch_springs;

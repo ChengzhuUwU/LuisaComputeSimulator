@@ -170,11 +170,15 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         },
         0);
 
+    const uint num_dof          = num_verts_soft + num_affine_bodies * 4;
     sim_data->num_verts_soft    = num_verts_soft;
     sim_data->num_verts_rigid   = mesh_data->num_verts - num_verts_soft;
     sim_data->num_affine_bodies = num_affine_bodies;
+    sim_data->num_dof           = num_dof;
+    sim_data->sa_num_dof.resize(1);
+    sim_data->sa_num_dof[0] = num_dof;
 
-    LUISA_INFO("NumVertSoft = {}, Num Affine Bodies {}", num_verts_soft, num_affine_bodies);
+    LUISA_INFO("DOF = {}, NumVertSoft = {}, NumAffineBodies {}", num_dof, num_verts_soft, num_affine_bodies);
 
     // Init energy
     {
@@ -363,7 +367,9 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                                    // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
                                                    body_mass += mass * J.transpose() * J;
                                                });
-                // TODO: weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
+                // TODO: Weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
+                // TODO: Mass distribution
+                // TODO: Integrate mass matrix with tetrahedral element
                 std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
                 std::cout
                     << "Sum of mass = \n"
@@ -425,10 +431,11 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
     // Init Energy Adjacent List
     {
-        sim_data->vert_adj_material_force_verts.resize(mesh_data->num_verts);
-        sim_data->vert_adj_stretch_springs.resize(mesh_data->num_verts);
-        sim_data->vert_adj_stretch_faces.resize(mesh_data->num_verts);
-        sim_data->vert_adj_bending_edges.resize(mesh_data->num_verts);
+        // num_variables_in_system
+        sim_data->vert_adj_material_force_verts.resize(num_dof);
+        sim_data->vert_adj_stretch_springs.resize(num_dof);
+        sim_data->vert_adj_stretch_faces.resize(num_dof);
+        sim_data->vert_adj_bending_edges.resize(num_dof);
 
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
         {
@@ -511,7 +518,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Vert adj material-force-verts
         CpuParallel::parallel_for(0,
-                                  mesh_data->num_verts,
+                                  num_dof,
                                   [&](const uint vid)
                                   {
                                       std::vector<uint>& adj_list = sim_data->vert_adj_material_force_verts[vid];
@@ -529,7 +536,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, luisa::make_uint3(0));
         CpuParallel::parallel_for(
             0,
-            mesh_data->num_verts,
+            num_dof,
             [&](const uint vid)
             {
                 const uint curr_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid];
@@ -645,12 +652,11 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
     // Init Newton Coloring
     {
-        const uint num_verts = mesh_data->num_verts;
         const auto& vert_adj_verts = sim_data->vert_adj_material_force_verts;  // Not considering Obstacle
         std::vector<uint2> upper_matrix_elements;                              //
-        upper_matrix_elements.reserve(num_verts * 10);
-        std::vector<std::vector<uint>> vert_adj_upper_verts(num_verts);
-        for (uint vid = 0; vid < num_verts; vid++)
+        upper_matrix_elements.reserve(num_dof * 10);
+        std::vector<std::vector<uint>> vert_adj_upper_verts(num_dof);
+        for (uint vid = 0; vid < num_dof; vid++)
         {
             for (const uint adj_vid : vert_adj_verts[vid])
             {
@@ -671,9 +677,9 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         fn_get_prefix(colored_data->sa_prefix_merged_hessian_pairs, tmp_clusterd_hessian_set);
         upload_2d_csr_from(colored_data->sa_clusterd_hessian_pairs, tmp_clusterd_hessian_set);
 
-        std::vector<std::vector<uint>> hessian_insert_indices(num_verts);
+        std::vector<std::vector<uint>> hessian_insert_indices(num_dof);
         CpuParallel::parallel_for(0,
-                                  num_verts,
+                                  num_dof,
                                   [&](const uint vid)
                                   { hessian_insert_indices[vid].resize(vert_adj_verts[vid].size(), -1u); });
         CpuParallel::parallel_for(0,
@@ -734,9 +740,9 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
     // Vertex Block Descent Coloring
     {
         // Graph Coloring
-        const uint num_verts_total = mesh_data->num_verts;
-        sim_data->sa_Hf.resize(mesh_data->num_verts * 12);
-        sim_data->sa_Hf1.resize(mesh_data->num_verts);
+        const uint num_verts_total = num_dof;
+        sim_data->sa_Hf.resize(num_dof * 12);
+        sim_data->sa_Hf1.resize(num_dof);
 
         const std::vector<std::vector<uint>>& vert_adj_verts = sim_data->vert_adj_material_force_verts;
         std::vector<std::vector<uint>>        clusterd_vertices_bending;
@@ -748,7 +754,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         upload_2d_csr_from(colored_data->clusterd_per_vertex_with_material_constraints, clusterd_vertices_bending);
 
         // Reverse map
-        colored_data->per_vertex_bending_cluster_id.resize(mesh_data->num_verts);
+        colored_data->per_vertex_bending_cluster_id.resize(num_dof);
         for (uint cluster = 0; cluster < colored_data->num_clusters_per_vertex_with_material_constraints; cluster++)
         {
             const uint next_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
@@ -833,13 +839,18 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                         lcs::SimulationData<std::vector>*            input_data,
                         lcs::SimulationData<luisa::compute::Buffer>* output_data)
 {
+    output_data->num_dof                           = input_data->num_dof;
+    output_data->num_affine_bodies                 = input_data->num_affine_bodies;
+    output_data->num_verts_rigid                   = input_data->num_verts_rigid;
+    output_data->num_verts_soft                    = input_data->num_verts_soft;
     output_data->colored_data.num_clusters_springs = input_data->colored_data.num_clusters_springs;
     output_data->colored_data.num_clusters_bending_edges = input_data->colored_data.num_clusters_bending_edges;
     output_data->colored_data.num_clusters_per_vertex_with_material_constraints =
         input_data->colored_data.num_clusters_per_vertex_with_material_constraints;
     output_data->colored_data.num_clusters_hessian_pairs = input_data->colored_data.num_clusters_hessian_pairs;
 
-    stream << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
+    stream << upload_buffer(device, output_data->sa_num_dof, input_data->sa_num_dof)
+           << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
            << upload_buffer(device, output_data->sa_x, input_data->sa_x)
            << upload_buffer(device, output_data->sa_v, input_data->sa_v)
            << upload_buffer(device, output_data->sa_v_step_start, input_data->sa_v_step_start)
@@ -981,7 +992,7 @@ void resize_pcg_data(luisa::compute::Device&                      device,
     const uint num_bending_edges = host_data->sa_bending_edges.size();
     const uint num_faces         = host_data->sa_stretch_faces.size();
     const uint num_affine_bodies = host_data->num_affine_bodies;
-    const uint num_verts         = host_data->num_verts_soft + num_affine_bodies * 4;
+    const uint num_verts         = host_data->num_dof;
 
     // const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
 
