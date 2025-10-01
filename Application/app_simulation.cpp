@@ -115,13 +115,13 @@ int main(int argc, char** argv)
     std::vector<lcs::Initializer::ShellInfo> shell_list;
     Demo::Simulation::load_scene(shell_list);
 
-
+    // TODO: Move it to solver class
     LUISA_INFO("Init mesh data...");
     // Init data
     lcs::MeshData<std::vector>            host_mesh_data;
     lcs::MeshData<luisa::compute::Buffer> mesh_data;
     {
-        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);
+        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);  // TODO: Input with readed mesh data
         lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
@@ -139,6 +139,8 @@ int main(int argc, char** argv)
     {
         lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace, lcs::LBVHUpdateTypeCloth);
         lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge, lcs::LBVHUpdateTypeCloth);
+        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_face);
+        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_edge);
         // lbvh_cloth_vert.unit_test(device, stream);
     }
 

@@ -11,9 +11,10 @@ struct MatrixTriplet3x3
     std::array<uint, 3>  triplet_info;
     std::array<float, 9> values;  // column major
 
-    const uint            get_row_idx() const { return triplet_info[0]; }
-    const uint            get_col_idx() const { return triplet_info[1]; }
-    const uint            get_matrix_property() const { return triplet_info[2]; }
+    const uint get_row_idx() const { return triplet_info[0]; }
+    const uint get_col_idx() const { return triplet_info[1]; }
+    const uint get_matrix_property() const { return triplet_info[2]; }
+
     const luisa::float3x3 get_matrix() const
     {
         return luisa::make_float3x3(
@@ -26,13 +27,16 @@ struct MatrixTriplet3x3
 // clang-format off
 LUISA_STRUCT(lcs::MatrixTriplet3x3, triplet_info, values) 
 { 
-    const luisa::compute::Var<uint> get_row_idx() const {return triplet_info[0]; }
+    const luisa::compute::Var<uint> get_row_idx() const { return triplet_info[0]; }
     const luisa::compute::Var<uint> get_col_idx() const { return triplet_info[1]; }
     const luisa::compute::Var<uint> get_matrix_property() const { return triplet_info[2]; }
+    
     const luisa::compute::Var<luisa::float3x3> get_matrix() const
     {
         return luisa::compute::make_float3x3(
-            values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
+            values[0], values[1], values[2], 
+            values[3], values[4], values[5], 
+            values[6], values[7], values[8]);
         ;
     }
 };
