@@ -1156,7 +1156,7 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
         });
 
     compiler.compile<1>(
-        fn_pervert_spmv_assembled,
+        fn_pervert_spmv_vf_ee,
         [per_vert_num_narrow_phase_vf    = collision_data->per_vert_num_narrow_phase_vf.view(),
          per_vert_num_narrow_phase_ee    = collision_data->per_vert_num_narrow_phase_ee.view(),
          per_vert_prefix_narrow_phase_vf = collision_data->per_vert_prefix_narrow_phase_vf.view(),
@@ -1663,7 +1663,7 @@ void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<floa
     const uint num_vf = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee = host_count[collision_data->get_ee_count_offset()];
 
-    stream << fn_pervert_spmv_assembled(input_array, output_array).dispatch(input_array.size());
+    stream << fn_pervert_spmv_vf_ee(input_array, output_array).dispatch(input_array.size());
 }
 
 }  // namespace lcs

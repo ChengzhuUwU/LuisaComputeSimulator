@@ -8,6 +8,7 @@
 #include "LinearSolver/precond_cg.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
+#include "SimulationCore/collision_data.h"
 #include "Utils/buffer_filler.h"
 #include "Utils/device_parallel.h"
 #include "luisa/runtime/buffer.h"

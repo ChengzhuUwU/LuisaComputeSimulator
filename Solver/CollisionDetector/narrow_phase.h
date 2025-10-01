@@ -3,6 +3,7 @@
 #include "CollisionDetector/lbvh.h"
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_data.h"
+#include "SimulationCore/collision_data.h"
 #include "SimulationCore/simulation_type.h"
 #include <vector>
 #include <string>
@@ -264,7 +265,7 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian_ee;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_vf;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_ee;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_assembled;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_vf_ee;
 
     // AtomicAdd SpMV
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_atomic_add_spmv_vf;
