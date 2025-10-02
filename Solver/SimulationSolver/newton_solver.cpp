@@ -1675,7 +1675,8 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
     mp_narrowphase_detector->reset_narrowphase_count(stream);
     mp_narrowphase_detector->reset_pervert_collision_count(stream);
 
-    device_broadphase_dcd(stream);
+    if (get_scene_params().use_self_collision)
+        device_broadphase_dcd(stream);
 
     mp_narrowphase_detector->download_broadphase_collision_count(stream);
 
@@ -1702,30 +1703,17 @@ float NewtonSolver::device_compute_contact_energy(luisa::compute::Stream&       
     const float kappa     = get_scene_params().stiffness_collision;
 
     mp_narrowphase_detector->reset_energy(stream);
-    mp_narrowphase_detector->compute_penalty_energy_from_vf(stream,
-                                                            curr_x,
-                                                            curr_x,
-                                                            mesh_data->sa_rest_x,
-                                                            mesh_data->sa_rest_x,
-                                                            mesh_data->sa_rest_vert_area,
-                                                            mesh_data->sa_rest_face_area,
-                                                            mesh_data->sa_faces,
-                                                            d_hat,
-                                                            thickness,
-                                                            kappa);
-
-    mp_narrowphase_detector->compute_penalty_energy_from_ee(stream,
-                                                            curr_x,
-                                                            curr_x,
-                                                            mesh_data->sa_rest_x,
-                                                            mesh_data->sa_rest_x,
-                                                            mesh_data->sa_rest_edge_area,
-                                                            mesh_data->sa_rest_edge_area,
-                                                            mesh_data->sa_edges,
-                                                            mesh_data->sa_edges,
-                                                            d_hat,
-                                                            thickness,
-                                                            kappa);
+    mp_narrowphase_detector->compute_contact_energy_from_iter_start_list(stream,
+                                                                         curr_x,
+                                                                         curr_x,
+                                                                         mesh_data->sa_rest_x,
+                                                                         mesh_data->sa_rest_x,
+                                                                         mesh_data->sa_rest_vert_area,
+                                                                         mesh_data->sa_rest_face_area,
+                                                                         mesh_data->sa_faces,
+                                                                         d_hat,
+                                                                         thickness,
+                                                                         kappa);
 
     return mp_narrowphase_detector->download_energy(stream);
     // return 0.0f;
@@ -1741,6 +1729,7 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
                   .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
     mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
+    // mp_narrowphase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
@@ -1897,331 +1886,6 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
                infinity_norm,
                print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : "");
 }
-void NewtonSolver::host_solve_amgcl(luisa::compute::Stream& stream,
-                                    std::function<double(const std::vector<float3>&)> func_compute_energy)
-{
-    const uint num_verts = host_sim_data->sa_cgX.size();
-    const uint num_dof   = 3 * num_verts;
-
-    auto assmble_amgcl_system =
-        [&](std::vector<uint>& ptr, std::vector<uint>& col, std::vector<EigenFloat3x3>& val, std::vector<EigenFloat3>& rhs)
-    {
-        const uint  offset_vf  = host_collision_data->get_vf_count_offset();
-        const uint  offset_ee  = host_collision_data->get_ee_count_offset();
-        const auto& host_count = host_collision_data->narrow_phase_collision_count;
-        const uint  num_vf     = host_count[offset_vf];
-        const uint  num_ee     = host_count[offset_ee];
-
-        rhs.resize(num_verts);
-        ptr.resize(num_verts + 1);
-        ptr[0] = 0;
-
-        // Init with material constraints adjacency
-        std::vector<std::vector<uint>> adjacency(host_sim_data->vert_adj_material_force_verts);
-        {
-            // Add collision adjacency
-            for (uint pair_idx = 0; pair_idx < num_vf + num_ee; pair_idx++)
-            {
-                uint4 indices;
-                if (pair_idx < host_count[offset_vf])
-                {
-                    indices = host_collision_data->narrow_phase_list_vf[pair_idx].indices;
-                }
-                else
-                {
-                    indices = host_collision_data->narrow_phase_list_ee[pair_idx - num_vf].indices;
-                }
-                for (uint j = 0; j < 3; j++)
-                {
-                    for (uint jj = 0; jj < 3; jj++)
-                    {
-                        if (indices[j] != indices[jj])
-                        {
-                            adjacency[indices[j]].push_back(indices[jj]);
-                            adjacency[indices[jj]].push_back(indices[j]);
-                        }
-                    }
-                }
-            }
-
-            // Remove duplicate
-            CpuParallel::parallel_for(0,
-                                      num_verts,
-                                      [&](const uint vid)
-                                      {
-                                          auto& adj_list = adjacency[vid];
-                                          std::sort(adj_list.begin(), adj_list.end());
-                                          adj_list.erase(unique(adj_list.begin(), adj_list.end()),
-                                                         adj_list.end());
-                                          adj_list.insert(adj_list.begin(), vid);  // Add diag entry
-                                          // std::cout << "Vert " << vid << " has " << adj_list.size() << " adjacency: "; for (auto v : adj_list) std::cout << v << ", "; std::cout << std::endl;
-                                      });
-
-            CpuParallel::parallel_for_and_scan<uint>(
-                0,
-                num_verts,
-                [&](const uint vid) { return adjacency[vid].size(); },
-                [&](const uint vid, const uint block_prefix, const uint parallel_result)
-                { ptr[vid + 1] = block_prefix; },
-                0);
-
-            uint hessian_block_count = ptr.back();  // LUISA_INFO("Total hessian non-zero block count: {}", hessian_block_count);
-
-            col.resize(hessian_block_count);
-            val.resize(hessian_block_count);
-        }
-
-        // CpuParallel::parallel_set(val, total_off_diag_count, EigenFloat3x3::Zero());
-        CpuParallel::parallel_for(0,
-                                  num_verts,
-                                  [&](const uint vid)
-                                  {
-                                      const uint  prefix   = ptr[vid];
-                                      const auto& adj_list = adjacency[vid];
-                                      for (uint j = 0; j < adj_list.size(); j++)
-                                      {
-                                          col[prefix + j] = adj_list[j];
-                                          val[prefix + j] = EigenFloat3x3::Zero();
-                                      }
-                                  });
-
-        {
-            // Diag part
-            CpuParallel::parallel_for(0,
-                                      num_verts,
-                                      [&](const uint vid)
-                                      {
-                                          const uint  prefix   = ptr[vid];
-                                          const auto& adj_list = adjacency[vid];
-                                          const uint  offset =
-                                              std::distance(adj_list.begin(),
-                                                            std::find(adj_list.begin(), adj_list.end(), vid));
-                                          if (offset != 0)
-                                          {
-                                              LUISA_ERROR("Vert {} diag not found in adjacency list", vid);
-                                          }
-                                          const auto diag_hessian = host_sim_data->sa_cgA_diag[vid];
-                                          val[prefix + offset]    = float3x3_to_eigen3x3(diag_hessian);
-                                          rhs[vid] = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
-                                          // LUISA_INFO("Vert {} diag offset = {}", vid, offset);
-                                      });
-
-            // Off-diag part
-            CpuParallel::single_thread_for(
-                0,
-                host_sim_data->sa_stretch_springs.size(),
-                [sa_edges    = host_sim_data->sa_stretch_springs.data(),
-                 hessian_ptr = host_sim_data->sa_stretch_springs_hessians.data(),
-                 ptr         = ptr.data(),
-                 adjacency   = adjacency.data(),
-                 val         = val.data()](const uint eid)
-                {
-                    const uint2 edge = sa_edges[eid];
-                    uint        idx  = 0;
-                    for (uint j = 0; j < 2; j++)
-                    {
-                        const uint  left     = edge[j];
-                        const uint  prefix   = ptr[left];
-                        const auto& adj_list = adjacency[left];
-                        for (uint jj = 0; jj < 2; jj++)
-                        {
-                            // if (j != jj)
-                            {
-                                float3x3 negHe = hessian_ptr[4 * eid + idx];
-                                idx += 1;
-                                const uint right = edge[jj];
-                                const uint offset =
-                                    std::distance(adj_list.begin(),
-                                                  std::find(adj_list.begin(), adj_list.end(), right));
-                                // LUISA_INFO("Edge {}: ({}, {}) -> ({}, {}), offset = {}", eid, edge[0], edge[1], left, right, offset);
-                                val[prefix + offset] += float3x3_to_eigen3x3(negHe);
-                            }
-                        }
-                    }
-                });
-
-            CpuParallel::single_thread_for(
-                0,
-                num_vf + num_ee,
-                [narrow_phase_list_vf = host_collision_data->narrow_phase_list_vf.data(),
-                 narrow_phase_list_ee = host_collision_data->narrow_phase_list_ee.data(),
-                 ptr                  = ptr.data(),
-                 adjacency            = adjacency.data(),
-                 val                  = val.data(),
-                 num_vf,
-                 num_ee](const uint pair_idx)
-                {
-                    uint4  indices;
-                    float4 weight;
-                    float3 normal;
-                    float  k2;
-                    if (pair_idx < num_vf)
-                    {
-                        auto pair = narrow_phase_list_vf[pair_idx];
-                        indices   = pair.indices;
-                        weight    = CollisionPair::get_vf_weight(pair);
-                        normal    = CollisionPair::get_direction(pair);
-                        k2        = CollisionPair::get_vf_stiff(pair)[1];
-                    }
-                    else
-                    {
-                        auto pair = narrow_phase_list_ee[pair_idx - num_vf];
-                        indices   = pair.indices;
-                        weight    = CollisionPair::get_ee_weight(pair);
-                        normal    = CollisionPair::get_direction(pair);
-                        k2        = CollisionPair::get_ee_stiff(pair)[1];
-                    }
-
-                    EigenFloat3 normal_eigen = float3_to_eigen3(normal);
-                    const auto  xxT          = k2 * normal_eigen * normal_eigen.transpose();
-                    for (uint j = 0; j < 4; j++)
-                    {
-                        const uint  left     = indices[j];
-                        const uint  prefix   = ptr[left];
-                        const auto& adj_list = adjacency[left];
-                        for (uint jj = 0; jj < 4; jj++)
-                        {
-                            if (j != jj)
-                            {
-                                const uint right = indices[jj];
-                                const uint offset =
-                                    std::distance(adj_list.begin(),
-                                                  std::find(adj_list.begin(), adj_list.end(), right));
-                                auto hessian = weight[j] * weight[jj] * xxT;
-                                val[prefix + offset] += hessian;
-                                // LUISA_INFO("Collision Pair {}: ({}, {}, {}, {}) -> ({}, {}), offset = {}", pair_idx, indices[0], indices[1], indices[2], indices[3], left, right, offset);
-                            }
-                        }
-                    }
-                });
-        }
-    };
-
-    auto convert_block_into_amgcl_system = [&](std::vector<uint>&          ptr1,
-                                               std::vector<uint>&          col1,
-                                               std::vector<EigenFloat3x3>& val1,
-                                               std::vector<EigenFloat3>&   rhs1,
-                                               std::vector<uint>&          ptr2,
-                                               std::vector<uint>&          col2,
-                                               std::vector<float>&         val2,
-                                               std::vector<float>&         rhs2)
-    {
-        const uint hessian_block_count = val1.size();
-
-        ptr2.resize(num_dof + 1);
-        ptr2.back() = hessian_block_count * 9;
-        col2.resize(hessian_block_count * 9);
-        val2.resize(hessian_block_count * 9, 0.0f);
-        rhs2.resize(num_dof, 0.0f);
-
-        CpuParallel::parallel_for(0,
-                                  num_verts,
-                                  [&](const uint vid)
-                                  {
-                                      const auto& b         = rhs1[vid];
-                                      const uint  prefix    = ptr1[vid];
-                                      const uint  adj_count = ptr1[vid + 1] - ptr1[vid];
-                                      rhs2[3 * vid + 0]     = b[0];
-                                      rhs2[3 * vid + 1]     = b[1];
-                                      rhs2[3 * vid + 2]     = b[2];
-                                      ptr2[3 * vid + 0]     = 9 * prefix + 0 * adj_count * 3;
-                                      ptr2[3 * vid + 1]     = 9 * prefix + 1 * adj_count * 3;
-                                      ptr2[3 * vid + 2]     = 9 * prefix + 2 * adj_count * 3;
-                                      // LUISA_INFO("Vert {} prefix = {}, adj_count = {}, row Prefix = {} / {} / {}", vid, prefix, adj_count, ptr2[3 * vid + 0], ptr2[3 * vid + 1], ptr2[3 * vid + 2]);
-
-                                      for (uint j = 0; j < adj_count; j++)
-                                      {
-                                          for (uint ii = 0; ii < 3; ii++)
-                                          {
-                                              const uint  adj_vid = col1[prefix + j];
-                                              const auto& hessian = val1[prefix + j];
-                                              for (uint jj = 0; jj < 3; jj++)
-                                              {
-                                                  const uint index =
-                                                      (9 * prefix + ii * adj_count * 3 + j * 3 + jj);
-                                                  col2[index] = 3 * adj_vid + jj;
-                                                  val2[index] = hessian(ii, jj);
-                                                  // LUISA_INFO("Hessian ({}, {}) -> ({}, {}), index = {}, val = {}", vid, ii, adj_vid, jj, index, val2[index]);
-                                              }
-                                          }
-                                      }
-                                  });
-    };
-
-    auto solve_amgcl_system = [&](const std::vector<uint>&  ptr,
-                                  const std::vector<uint>&  col,
-                                  const std::vector<float>& val,
-                                  const std::vector<float>& rhs,
-                                  std::vector<float>&       lhs)
-    {
-#if defined(USE_AMGCL_FOR_SIM) && USE_AMGCL_FOR_SIM
-        lhs.resize(num_dof, 0.0f);
-
-        using Backend = amgcl::backend::builtin<float>;
-
-        using Solver =
-            amgcl::make_solver<amgcl::amg<Backend, amgcl::coarsening::smoothed_aggregation, amgcl::relaxation::spai0>,  // Use AMG as preconditioner:
-                               amgcl::solver::cg<Backend>  // And BiCGStab as iterative solver:
-                               >;
-
-        boost::property_tree::ptree prm;
-        prm.put("solver.tol", 1e-3);
-        Solver solver(std::tie(num_dof, ptr, col, val), prm);
-        return solver(rhs, lhs);
-        // std::cout << "CG finished in " << iters << " iterations, resid = " << error << std::endl;
-#else
-        LUISA_ERROR("AMGCL is not enabled in this build");
-        return std::make_tuple(0u, 0.0f);
-#endif
-    };
-    std::vector<EigenFloat3>   rhs;
-    std::vector<uint>          ptr;
-    std::vector<uint>          col;
-    std::vector<EigenFloat3x3> val;
-    assmble_amgcl_system(ptr, col, val, rhs);
-
-    // for (auto prefix : ptr) { LUISA_INFO("Prefix = {}", prefix); }
-    // for (auto adj_vid : col) { LUISA_INFO("adj_vid = {}", adj_vid); }
-    // for (auto hess : val) { LUISA_INFO("hess = {}", hess); }
-
-    std::vector<uint>  ptr2;
-    std::vector<uint>  col2;
-    std::vector<float> val2;
-    std::vector<float> rhs2;
-    convert_block_into_amgcl_system(ptr, col, val, rhs, ptr2, col2, val2, rhs2);
-
-    std::vector<float> lhs2;
-    uint               iter;
-    float              error;
-    std::tie(iter, error) = solve_amgcl_system(ptr2, col2, val2, rhs2, lhs2);
-
-    CpuParallel::parallel_for(0,
-                              num_verts,
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_cgX[vid] =
-                                      luisa::make_float3(lhs2[3 * vid + 0], lhs2[3 * vid + 1], lhs2[3 * vid + 2]);
-                              });
-
-    constexpr bool print_energy = false;
-    double         curr_energy  = 0.0;
-    if constexpr (print_energy)
-    {
-        host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(host_sim_data->sa_x);
-    }
-    const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
-    if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
-    {
-        LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
-    }
-    LUISA_INFO("  In non-linear iter {:2}, PCG : iter-count = {:3}, rTr error = {:7.6f}, max_element(p) = {:6.5f}{}",
-               get_scene_params().current_nonlinear_iter,
-               iter,
-               error,
-               infinity_norm,
-               print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : "");
-}
 void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
 {
 }
@@ -2369,7 +2033,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         if constexpr (false)
         {
             host_solve_eigen(stream, compute_energy_interface);
-            // host_solve_amgcl(stream, compute_energy_interface);
         }
         else
         {
@@ -2585,6 +2248,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto        update_contact_set = [&]() { device_update_contact_list(stream); };
     auto        evaluate_contact   = [&]()
     {
+        // mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(
         mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
             stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
     };

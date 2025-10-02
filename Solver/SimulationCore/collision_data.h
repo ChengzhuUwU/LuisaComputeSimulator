@@ -13,66 +13,6 @@
 namespace lcs
 {
 
-// struct CollisionPairVV
-// {
-//     uint2 indices; // vid1:1, vid2:1
-//     float4 vec1; // normal:3, stiff:1
-//     float3 gradient[2];
-//     float3x3 hessian[3];
-// };
-// struct CollisionPairVE
-// {
-//     uint2 edge;
-//     uint vid;
-//     float bary;
-//     float4 vec1; // normal:3, stiff 1
-//     float3 gradient[3];
-//     float3x3 hessian[6];
-// };
-// struct CollisionPairVF
-// {
-//     uint4 indices; // vid:1, face:3
-//     float4 vec1; // normal:3, stiff:1
-//     float2 bary; // bary
-//     float2 vec2;
-//     float3 gradient[4];
-//     float3x3 hessian[10];
-// };
-// struct CollisionPairEE
-// {
-//     uint4 indices;
-//     float4 vec1; // normal:3, stiff 1
-//     float2 bary; //
-//     float2 vec2;
-//     float3 gradient[4];
-//     float3x3 hessian[10];
-// };
-struct CollisionPairVV
-{
-    uint2  indices;  // vid1:1, vid2:1
-    float4 vec1;     // normal:3, stiff:1
-};
-struct CollisionPairVE
-{
-    uint2  edge;
-    uint   vid;
-    float  bary;
-    float4 vec1;  // normal:3, stiff 1
-};
-struct CollisionPairVF
-{
-    uint4  indices;  // vid:1, face:3
-    float4 vec1;     // normal:3, stiff:1
-    float2 bary;     // bary
-    float2 vec2;
-};
-struct CollisionPairEE
-{
-    uint4  indices;
-    float4 vec1;  // normal:3, stiff 1
-    float2 bary;  //
-    float2 vec2;
-};
 struct ReducedCollisionPairInfo
 {
     std::array<float, 3> weighted_model_pos1;
@@ -90,10 +30,195 @@ struct ReducedCollisionPairInfo
 
 }  // namespace lcs
 
-LUISA_STRUCT(lcs::CollisionPairVV, indices, vec1){};
-LUISA_STRUCT(lcs::CollisionPairVE, edge, vid, bary, vec1){};
-LUISA_STRUCT(lcs::CollisionPairVF, indices, vec1, bary, vec2){};
-LUISA_STRUCT(lcs::CollisionPairEE, indices, vec1, bary, vec2){};
+namespace lcs
+{
+
+constexpr uint mask_collision_type = 1u << 31;
+constexpr uint mask_get_index      = ~mask_collision_type;
+
+namespace CollisionPair
+{
+    // clang-format off
+    constexpr uint type_vv() { return 1 << 0; }
+    constexpr uint type_ve() { return 1 << 1; }
+    constexpr uint type_vf() { return 1 << 2; }
+    constexpr uint type_ee() { return 1 << 3; }
+    // clang-format on
+
+    struct CollisionPairTemplate
+    {
+        uint4  indices;
+        float4 vec1;  // normal:3, area:1
+        float4 vec2;  // stiff:2, bary:2
+
+        uint  get_index(const uint i) const { return indices[i] & mask_get_index; }
+        uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
+
+        float3 get_normal() const { return vec1.xyz(); }
+        float  get_area() const { return vec1[3]; }
+
+        float         get_k1() const { return vec2[0]; }
+        float         get_k2() const { return vec2[1]; }
+        luisa::float2 get_stiff() const { return vec2.xy(); }
+
+        // clang-format off
+        uint get_collision_type() const
+        {
+            return ((indices[0] & lcs::mask_collision_type) >> 31)
+                 + ((indices[1] & lcs::mask_collision_type) >> 30)
+                 + ((indices[2] & lcs::mask_collision_type) >> 29)
+                 + ((indices[3] & lcs::mask_collision_type) >> 28);
+        }
+        void set_collision_type(const uint type)
+        {
+            if      (type == type_vf()) { indices[2] |= mask_collision_type; }
+            else if (type == type_ee()) { indices[3] |= mask_collision_type; }
+            else if (type == type_vv()) [[unlikely]] { indices[0] |= mask_collision_type; } 
+            else if (type == type_ve()) [[unlikely]] { indices[1] |= mask_collision_type; }
+        }
+
+        void make_vv_pair(const uint2& vids, const float3& normal, const float k1, const float k2, const float area)
+        {
+            indices = luisa::make_uint4(vids.x, vids.y, -1u, -1u);
+            vec1 = luisa::make_float4(normal, area);
+            vec2 = luisa::make_float4(k1, k2, 1.0f, 1.0f);
+            set_collision_type(type_vv());
+        }
+        void make_ve_pair(const uint3& vids, const float3& normal, const float k1, const float k2, const float area, const float2& edge_bary)
+        {
+            indices = luisa::make_uint4(vids.x, vids.y, vids.z, -1u);
+            vec1 = luisa::make_float4(normal, area);
+            vec2 = luisa::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
+            set_collision_type(type_ve());
+        }
+        void make_vf_pair(const uint4& vids, const float3& normal, const float k1, const float k2, const float area, const float3& face_bary)
+        {
+            indices = vids;
+            vec1 = luisa::make_float4(normal, area);
+            vec2 = luisa::make_float4(k1, k2, face_bary[0], face_bary[1]);
+            set_collision_type(type_vf());
+        }
+        void make_ee_pair(const uint4& vids, const float3& normal, const float k1, const float k2, const float area, const float2& edge1_bary, const float2& edge2_bary)
+        {
+            indices = vids;
+            vec1 = luisa::make_float4(normal, area);
+            vec2 = luisa::make_float4(k1, k2, edge1_bary[0], edge2_bary[0]);
+            set_collision_type(type_ee());
+        }
+        
+        [[nodiscard]] float4 get_vv_weight() const { return luisa::make_float4(1.0f, -1.0f, 0.0f, 0.0f); }
+        [[nodiscard]] float4 get_ve_weight() const { return luisa::make_float4(1.0f, -vec2[2], -vec2[3], 0.0f); }
+        [[nodiscard]] float4 get_vf_weight() const { return luisa::make_float4(1.0f, -vec2[2], -vec2[3], vec2[2] + vec2[3] - 1.0f); }
+        [[nodiscard]] float4 get_ee_weight() const { return luisa::make_float4(vec2[2], 1.0f - vec2[2], -vec2[3], vec2[3] - 1.0f); }
+        
+        [[nodiscard]] float4 get_weight() const
+        {
+            uint type = get_collision_type();
+            if      (type == type_vf()) { return get_vf_weight(); }
+            else if (type == type_ee()) { return get_ee_weight(); }
+            else if (type == type_vv()) { return get_vv_weight(); } 
+            else if (type == type_ve()) { return get_ve_weight(); }
+            else [[unlikely]] { return luisa::make_float4(0.0f); }
+        }
+        // clang-format on
+    };
+}  // namespace CollisionPair
+};  // namespace lcs
+
+// clang-format off
+LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
+{
+    luisa::compute::Var<uint> get_collision_type() const
+    {
+        return ((indices[0] & lcs::mask_collision_type) >> 31) + 
+               ((indices[1] & lcs::mask_collision_type) >> 30) + 
+               ((indices[2] & lcs::mask_collision_type) >> 29) + 
+               ((indices[3] & lcs::mask_collision_type) >> 28);
+    }
+    void set_collision_type(const luisa::compute::Var<uint>& type)
+    {
+        indices[0] |= ((type >> 0) & 1u) << 31;
+        indices[1] |= ((type >> 1) & 1u) << 31;
+        indices[2] |= ((type >> 2) & 1u) << 31;
+        indices[3] |= ((type >> 3) & 1u) << 31;
+    }
+    void make_vv_pair(const luisa::compute::UInt2&  vids,
+                    const luisa::compute::Float3& normal,
+                    const luisa::compute::Float   k1,
+                    const luisa::compute::Float   k2,
+                    const luisa::compute::Float   area)
+    {
+        indices = luisa::compute::make_uint4(vids.x, vids.y, -1u, -1u);
+        vec1    = luisa::compute::make_float4(normal, area);
+        vec2    = luisa::compute::make_float4(k1, k2, 1.0f, 1.0f);
+        set_collision_type(lcs::CollisionPair::type_vv());
+    }
+    void make_ve_pair(const luisa::compute::UInt3&  vids,
+                    const luisa::compute::Float3& normal,
+                    const luisa::compute::Float   k1,
+                    const luisa::compute::Float   k2,
+                    const luisa::compute::Float   area,
+                    const luisa::compute::Float2& edge_bary)
+    {
+        indices = luisa::compute::make_uint4(vids.x, vids.y, vids.z, -1u);
+        vec1    = luisa::compute::make_float4(normal, area);
+        vec2    = luisa::compute::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
+        set_collision_type(lcs::CollisionPair::type_ve());
+    }
+    void make_vf_pair(const luisa::compute::UInt4&  vids,
+                    const luisa::compute::Float3& normal,
+                    const luisa::compute::Float   k1,
+                    const luisa::compute::Float   k2,
+                    const luisa::compute::Float   area,
+                    const luisa::compute::Float3& face_bary)
+    {
+        indices = vids;
+        vec1    = luisa::compute::make_float4(normal, area);
+        vec2    = luisa::compute::make_float4(k1, k2, face_bary[0], face_bary[1]);
+        set_collision_type(lcs::CollisionPair::type_vf());
+    }
+    void make_ee_pair(const luisa::compute::UInt4&  vids,
+                    const luisa::compute::Float3& normal,
+                    const luisa::compute::Float   k1,
+                    const luisa::compute::Float   k2,
+                    const luisa::compute::Float   area,
+                    const luisa::compute::Float2& edge1_bary,
+                    const luisa::compute::Float2& edge2_bary)
+    {
+        indices = vids;
+        vec1    = luisa::compute::make_float4(normal, area);
+        vec2    = luisa::compute::make_float4(k1, k2, edge1_bary[0], edge2_bary[0]);
+        set_collision_type(lcs::CollisionPair::type_ee());
+    }
+
+    luisa::compute::UInt get_index(const uint i) const { return indices[i] & lcs::mask_get_index; }
+    luisa::compute::UInt get_index(const luisa::compute::Uint& i) const { return indices[i] & lcs::mask_get_index; }
+    luisa::compute::UInt4 get_indices() const { return indices & luisa::compute::make_uint4(lcs::mask_get_index); }
+
+    luisa::compute::Float3 get_normal() const { return vec1.xyz(); }
+    luisa::compute::Float get_area() const { return vec1[3]; }
+
+    luisa::compute::Float get_k1() const { return vec2[0]; }
+    luisa::compute::Float get_k2() const { return vec2[1]; }
+    luisa::compute::Float2 get_stiff() const { return vec2.xy(); }
+
+    luisa::compute::Float4 get_vv_weight() const { return luisa::compute::make_float4(1.0f, -1.0f, 0.0f, 0.0f); }
+    luisa::compute::Float4 get_ve_weight() const { return luisa::compute::make_float4(1.0f, -vec2[2], -vec2[3], 0.0f); }
+    luisa::compute::Float4 get_vf_weight() const { return luisa::compute::make_float4(1.0f, -vec2[2], -vec2[3], vec2[2] + vec2[3] - 1.0f); }
+    luisa::compute::Float4 get_ee_weight() const { return luisa::compute::make_float4(vec2[2], 1.0f - vec2[2], -vec2[3], vec2[3] - 1.0f); }
+
+    luisa::compute::Float4 get_weight() const
+    {
+        luisa::compute::UInt   type   = get_collision_type();
+        luisa::compute::Float4 result = luisa::compute::make_float4(0.0f);
+        $if(  type == lcs::CollisionPair::type_vf()) { result = get_vf_weight(); }
+        $elif(type == lcs::CollisionPair::type_ee()) { result = get_ee_weight(); }
+        $elif(type == lcs::CollisionPair::type_vv()) { result = get_vv_weight(); }
+        $elif(type == lcs::CollisionPair::type_ve()) { result = get_ve_weight(); };
+        return result;
+    }
+};
+// clang-format on
 
 // LUISA_STRUCT(lcs::CollisionPairVV, indices, vec1, gradient, hessian) {};
 // LUISA_STRUCT(lcs::CollisionPairVE, edge, vid, bary, vec1, gradient, hessian) {};
@@ -122,6 +247,8 @@ namespace CollisionPair
 }  // namespace CollisionPair
 
 
+// template <typename T>
+// using BufferType = std::vector<T>;
 template <template <typename...> typename BufferType>
 struct CollisionData : SimulationType
 {
@@ -135,29 +262,19 @@ struct CollisionData : SimulationType
     BufferType<float> toi_per_vert;
     BufferType<float> contact_energy;
 
-    BufferType<CollisionPairVV>          narrow_phase_list_vv;  // 0
-    BufferType<CollisionPairVE>          narrow_phase_list_ve;  // 1
-    BufferType<CollisionPairVF>          narrow_phase_list_vf;  // 2
-    BufferType<CollisionPairEE>          narrow_phase_list_ee;  // 3
-    BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
-    BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
+    BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
+
+    // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
+    // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
     // BufferType<uint> narrow_phase_indices_ef;
 
     BufferType<uint> per_vert_num_broad_phase_vf;
     BufferType<uint> per_vert_num_broad_phase_ee;
 
-    BufferType<uint>                       per_vert_num_narrow_phase_vv;
-    BufferType<uint>                       per_vert_num_narrow_phase_ve;
-    BufferType<uint>                       per_vert_num_narrow_phase_vf;
-    BufferType<uint>                       per_vert_num_narrow_phase_ee;
-    BufferType<uint>                       per_vert_prefix_narrow_phase_vv;
-    BufferType<uint>                       per_vert_prefix_narrow_phase_ve;
-    BufferType<uint>                       per_vert_prefix_narrow_phase_vf;
-    BufferType<uint>                       per_vert_prefix_narrow_phase_ee;
-    BufferType<ushort>                     narrow_phase_vf_pair_offset_in_vert;
-    BufferType<ushort>                     narrow_phase_ee_pair_offset_in_vert;
-    BufferType<uint>                       vert_adj_vf_pairs_csr;
-    BufferType<uint>                       vert_adj_ee_pairs_csr;
+    BufferType<uint>                       per_vert_num_narrow_phase;
+    BufferType<uint>                       per_vert_prefix_narrow_phase;
+    BufferType<ushort>                     narrow_phase_pair_offset_in_vert;
+    BufferType<uint>                       vert_adj_pairs_csr;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
 
@@ -185,47 +302,26 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges);
         // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
         // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
-        if (use_vv_ve)
-            lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
-        if (use_vv_ve)
-            lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
-        if (!use_vv_ve)
-            lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, 1);
-        if (!use_vv_ve)
-            lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, 1);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vf, per_element_count_NP * num_verts);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ee, per_element_count_NP * num_edges);
-        lcs::Initializer::resize_buffer(device, this->vert_adj_vf_pairs_csr, 4 * per_element_count_NP * num_verts);
-        lcs::Initializer::resize_buffer(device, this->vert_adj_ee_pairs_csr, 4 * per_element_count_NP * num_edges);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_vf_pair_offset_in_vert, 4 * per_element_count_NP * num_verts);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_ee_pair_offset_in_vert, 4 * per_element_count_NP * num_edges);
-        lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_vf, per_element_count_NP * num_verts);
-        lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_ee, per_element_count_NP * num_edges);
+
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_list, per_element_count_NP * (num_verts + num_edges));
+        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, 4 * per_element_count_NP * (num_verts + num_edges));
+        lcs::Initializer::resize_buffer(device,
+                                        this->narrow_phase_pair_offset_in_vert,
+                                        4 * per_element_count_NP * (num_verts + num_edges));
+        // lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_vf, per_element_count_NP * num_verts);
+        // lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_ee, per_element_count_NP * num_edges);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vv, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ve, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_vf, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase_ee, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vv, num_verts + 1);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ve, num_verts + 1);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_vf, num_verts + 1);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase_ee, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase, num_verts);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase, num_verts + 1);
         this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 
         const uint collision_pair_bytes =
             sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
-            + sizeof(CollisionPairVV) * this->narrow_phase_list_vv.size()
-            + sizeof(CollisionPairVE) * this->narrow_phase_list_ve.size()
-            + sizeof(CollisionPairVF) * this->narrow_phase_list_vf.size()
-            + sizeof(CollisionPairEE) * this->narrow_phase_list_ee.size()
-            + sizeof(uint) * this->vert_adj_vf_pairs_csr.size()
-            + sizeof(uint) * this->vert_adj_ee_pairs_csr.size()
-            + sizeof(ushort) * this->narrow_phase_vf_pair_offset_in_vert.size()
-            + sizeof(ushort) * this->narrow_phase_ee_pair_offset_in_vert.size()
-            + sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_vf.size()
-            + sizeof(CollisionPairEE) * this->reduced_narrow_phase_list_info_ee.size();
+            + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
+            + sizeof(uint) * this->vert_adj_pairs_csr.size()
+            + sizeof(ushort) * this->narrow_phase_pair_offset_in_vert.size();
 
         LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
         if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)
@@ -235,202 +331,6 @@ struct CollisionData : SimulationType
 };
 
 
-}  // namespace lcs
-
-
-// Matrix free hessian functions
-namespace lcs
-{
-namespace CollisionPair
-{
-
-    // template<typename T> auto get_indices(const T& pair) { return pair.indices; }
-    inline auto get_indices(const CollisionPairVV& pair)
-    {
-        return pair.indices;
-    }
-    inline auto get_indices(const CollisionPairVE& pair)
-    {
-        return luisa::make_uint3(pair.vid, pair.edge[0], pair.edge[1]);
-    }
-    inline auto get_indices(const CollisionPairVF& pair)
-    {
-        return pair.indices;
-    }
-    inline auto get_indices(const CollisionPairEE& pair)
-    {
-        return pair.indices;
-    }
-    inline auto get_indices(const Var<CollisionPairVV>& pair)
-    {
-        return pair.indices;
-    }
-    inline auto get_indices(const Var<CollisionPairVE>& pair)
-    {
-        return luisa::compute::make_uint3(pair.vid, pair.edge[0], pair.edge[1]);
-    }
-    inline auto get_indices(const Var<CollisionPairVF>& pair)
-    {
-        return pair.indices;
-    }
-    inline auto get_indices(const Var<CollisionPairEE>& pair)
-    {
-        return pair.indices;
-    }
-
-    template <typename T>
-    auto get_vv_vid1(const T& pair)
-    {
-        return pair.indices[0];
-    }
-    template <typename T>
-    auto get_vv_vid2(const T& pair)
-    {
-        return pair.indices[1];
-    }
-    template <typename T>
-    auto get_ve_vid(const T& pair)
-    {
-        return pair.vid;
-    }
-    template <typename T>
-    auto get_ve_edge(const T& pair)
-    {
-        return pair.edge;
-    }
-    template <typename T>
-    auto get_vf_vid(const T& pair)
-    {
-        return pair.indices[0];
-    }
-    template <typename T>
-    auto get_vf_face(const T& pair)
-    {
-        return pair.indices.yzw();
-    }
-    template <typename T>
-    auto get_ee_edge1(const T& pair)
-    {
-        return pair.indices.xy();
-    }
-    template <typename T>
-    auto get_ee_edge2(const T& pair)
-    {
-        return pair.indices.zw();
-    }
-
-    // template<typename T> auto get_stiff(const T& pair) { return pair.vec1[3]; }
-    template <typename T>
-    auto get_direction(const T& pair)
-    {
-        return pair.vec1.xyz();
-    }
-    template <typename T>
-    auto get_area(const T& pair)
-    {
-        return pair.vec1[3];
-    }
-
-    // inline auto get_vv_bary(const CollisionPairVV& pair) { return makeFloat2(1.0f, 1.0f); }
-    inline auto get_ve_edge_bary(const CollisionPairVE& pair)
-    {
-        return luisa::make_float2(pair.bary, 1.0f - pair.bary);
-    }
-    inline auto get_vf_face_bary(const CollisionPairVF& pair)
-    {
-        return luisa::make_float3(pair.bary[0], pair.bary[1], 1.0f - pair.bary[0] - pair.bary[1]);
-    }
-    inline auto get_ee_edge1_bary(const CollisionPairEE& pair)
-    {
-        return luisa::make_float2(pair.bary[0], 1.0f - pair.bary[0]);
-    }
-    inline auto get_ee_edge2_bary(const CollisionPairEE& pair)
-    {
-        return luisa::make_float2(pair.bary[1], 1.0f - pair.bary[1]);
-    }
-
-    inline auto get_ve_edge_bary(const Var<CollisionPairVE>& pair)
-    {
-        return luisa::compute::make_float2(pair.bary, 1.0f - pair.bary);
-    }
-    inline auto get_vf_face_bary(const Var<CollisionPairVF>& pair)
-    {
-        return luisa::compute::make_float3(pair.bary[0], pair.bary[1], 1.0f - pair.bary[0] - pair.bary[1]);
-    }
-    inline auto get_ee_edge1_bary(const Var<CollisionPairEE>& pair)
-    {
-        return luisa::compute::make_float2(pair.bary[0], 1.0f - pair.bary[0]);
-    }
-    inline auto get_ee_edge2_bary(const Var<CollisionPairEE>& pair)
-    {
-        return luisa::compute::make_float2(pair.bary[1], 1.0f - pair.bary[1]);
-    }
-
-    template <typename T>
-    auto get_vf_weight(const T& pair)
-    {
-        return makeFloat4(1.0f, -pair.bary[0], -pair.bary[1], pair.bary[0] + pair.bary[1] - 1.0f);
-    }
-    template <typename T>
-    auto get_ee_weight(const T& pair)
-    {
-        return makeFloat4(pair.bary[0], 1.0f - pair.bary[0], -pair.bary[1], pair.bary[1] - 1.0f);
-    }
-    template <typename T, typename Vec3>
-    void write_vf_weight(T& pair, const Vec3& face_bary)
-    {
-        pair.bary = makeFloat2(face_bary[0], face_bary[1]);
-    }
-    template <typename T, typename Vec4>
-    void write_ee_weight(T& pair, const Vec4& edge_bary)
-    {
-        pair.bary = makeFloat2(edge_bary[0], edge_bary[2]);
-    }
-
-    template <typename T>
-    auto get_vf_stiff(const T& pair)
-    {
-        return pair.vec2;
-    }
-    template <typename T>
-    auto get_ee_stiff(const T& pair)
-    {
-        return pair.vec2;
-    }
-
-    template <typename T>
-    auto get_vf_k1(const T& pair)
-    {
-        return pair.vec2[0];
-    }
-    template <typename T>
-    auto get_vf_k2(const T& pair)
-    {
-        return pair.vec2[1];
-    }
-    template <typename T>
-    auto get_ee_k1(const T& pair)
-    {
-        return pair.vec2[0];
-    }
-    template <typename T>
-    auto get_ee_k2(const T& pair)
-    {
-        return pair.vec2[1];
-    }
-
-    template <typename T, typename FloatType>
-    void write_vf_stiff(T& pair, const FloatType& k1, const FloatType& k2)
-    {
-        pair.vec2 = makeFloat2(k1, k2);
-    }
-    template <typename T, typename FloatType>
-    void write_ee_stiff(T& pair, const FloatType& k1, const FloatType& k2)
-    {
-        pair.vec2 = makeFloat2(k1, k2);
-    }
-
-}  // namespace CollisionPair
 }  // namespace lcs
 
 

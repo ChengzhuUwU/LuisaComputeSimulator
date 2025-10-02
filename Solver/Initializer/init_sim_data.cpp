@@ -567,6 +567,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                     {
                         triplet_property |= MatrixTriplet::write_use_atomic();
                     }
+                    // LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
                     sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] = uint3(vid, adj_vid, triplet_property);
                 }
             });
