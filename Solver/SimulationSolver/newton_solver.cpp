@@ -1751,21 +1751,24 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                               });
     // Off-Diag
     {
-        // if (false)
-        // {
-        //     auto& sa_edges = host_sim_data->sa_stretch_springs;
-        //     auto& off_diag_hessian_ptr = host_sim_data->sa_stretch_springs_hessians;
-        //     CpuParallel::single_thread_for(0, sa_edges.size(), [&](const uint eid)
-        //     {
-        //         const uint2 edge = sa_edges[eid];
-        //         float3x3 offdiag_hessian1 = off_diag_hessian_ptr[4 * eid + 2];
-        //         float3x3 offdiag_hessian2 = off_diag_hessian_ptr[4 * eid + 3];
-        //         float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
-        //         float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
-        //         output_ptr[edge[0]] += output_vec0;
-        //         output_ptr[edge[1]] += output_vec1;
-        //     });
-        // }
+        if (false)
+        {
+            auto& sa_edges             = host_sim_data->sa_stretch_springs;
+            auto& off_diag_hessian_ptr = host_sim_data->sa_stretch_springs_hessians;
+            CpuParallel::single_thread_for(0,
+                                           sa_edges.size(),
+                                           [&](const uint eid)
+                                           {
+                                               const uint2 edge = sa_edges[eid];
+                                               float3x3 offdiag_hessian1 = off_diag_hessian_ptr[4 * eid + 2];
+                                               float3x3 offdiag_hessian2 = off_diag_hessian_ptr[4 * eid + 3];
+                                               float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
+                                               float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
+                                               output_ptr[edge[0]] += output_vec0;
+                                               output_ptr[edge[1]] += output_vec1;
+                                           });
+            return;
+        }
 
         // Material Energy
         {
@@ -1780,7 +1783,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                     for (uint j = curr_prefix; j < next_prefix; j++)
                     {
                         const auto triplet = host_sim_data->sa_cgA_fixtopo_offdiag_triplet[j];
-                        const uint adj_vid = triplet.get_row_idx();
+                        const uint adj_vid = triplet.get_col_idx();
                         output_vec += triplet.get_matrix() * input_ptr[adj_vid];
                     }
                     output_ptr[vid] += output_vec;
