@@ -889,9 +889,9 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                     };
                 };
 
-                const Uint tmp = 0;
                 sa_cgA_contact_offdiag_triplet->write(
-                    tmp, make_matrix_triplet(indices[ii], indices[jj], triplet_property, weight[ii] * weight[jj] * hess));
+                    triplet_idx,
+                    make_matrix_triplet(indices[ii], indices[jj], triplet_property, weight[ii] * weight[jj] * hess));
             });
     }
 
@@ -1091,7 +1091,7 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
                             sa_vec_out.write(vid, sa_vec_out.read(vid) + sum_result);
                         });
 
-    compiler.compile<1>(fn_perVert_spmv_reduce_by_key,
+    compiler.compile<1>(fn_perVert_spmv_warp_reduce_by_key,
                         [sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()](
                             Var<Buffer<float3>> sa_input_vec, Var<Buffer<float3>> sa_output_vec)
                         {
@@ -1410,10 +1410,10 @@ void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<floa
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint  num_pairs  = host_count.front();
 
-    if (num_pairs != 0)
-        stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
     // if (num_pairs != 0)
-    //     stream << fn_perVert_spmv_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
+    //     stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
+    if (num_pairs != 0)
+        stream << fn_perVert_spmv_warp_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
 }
 
 }  // namespace lcs

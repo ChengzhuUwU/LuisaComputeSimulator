@@ -87,9 +87,10 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
     luisa::compute::Shader<1>        fn_material_energy_assembly;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_diag;
     // luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part_perVert;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part_perTriplet;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_material_part_perTriplet;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_block_rbk;
 
     luisa::compute::Shader<1, float>                             fn_apply_dx;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;

@@ -530,10 +530,18 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Final off-diag hessian
         const uint orig_hessian_nnz = sim_data->sa_vert_adj_material_force_verts_csr.size();  //  - mesh_data->num_verts - 1
-        // const uint alinged_nnz      = (orig_hessian_nnz + 31) / 32 * 32;
-        const uint alinged_nnz = orig_hessian_nnz;
+
+        constexpr bool use_block_scan = true;
+        constexpr bool use_warp_scan  = false;
+        constexpr uint segment_size   = use_block_scan ? 256 : use_warp_scan ? 32 : 1;
+        const uint     alinged_nnz    = segment_size == 1 ?
+                                            orig_hessian_nnz :
+                                            (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
+        // const uint alinged_nnz = orig_hessian_nnz;
         sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
         sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, luisa::make_uint3(0));
+        std::atomic_uint32_t direct_add_count = 0;
+        std::atomic_uint32_t atomic_add_count = 0;
         CpuParallel::parallel_for(
             0,
             num_dof,
@@ -541,20 +549,21 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
             {
                 const uint curr_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid];
                 const uint next_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
-                for (uint idx = curr_prefix; idx < next_prefix; idx++)
+                for (uint idx = curr_prefix; idx < next_prefix; idx++)  // Outer-of-range part will set to zero
                 {
                     const uint adj_vid          = sim_data->sa_vert_adj_material_force_verts_csr[idx];
                     uint       triplet_property = 0;
-                    if ((idx == curr_prefix) || (idx % 32 == 0))
+
+                    if ((idx == curr_prefix) || (idx % segment_size == 0))
                     {
                         triplet_property |= (MatrixTriplet::is_first_col_in_row());  // First in row
                     }
-                    if ((idx == (next_prefix - 1)) || (idx % 32 == 31))
+                    if ((idx == (next_prefix - 1)) || ((idx % segment_size) == (segment_size - 1)))
                     {
                         triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
-                        if (idx / 32 == curr_prefix / 32)  // In the same warp -> Read the first column
+                        if (idx / segment_size == curr_prefix / segment_size)  // In the same warp -> Read the first column
                         {
-                            const uint first_lane_id = curr_prefix % 32;
+                            const uint first_lane_id = curr_prefix % segment_size;
                             triplet_property |=
                                 MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(first_lane_id);
                         }
@@ -562,16 +571,37 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                         {
                             triplet_property |= MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(0);
                         }
-                    }
-                    if (curr_prefix / 32 != next_prefix / 32)
-                    {
-                        triplet_property |= MatrixTriplet::write_use_atomic();
+                        if (curr_prefix / segment_size != next_prefix / segment_size)
+                        {
+                            triplet_property |= MatrixTriplet::write_use_atomic();
+                            atomic_add_count.fetch_add(1);
+                        }
+                        else
+                        {
+                            direct_add_count.fetch_add(1);
+                        }
                     }
                     // LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
                     sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
                         make_matrix_triplet_info(vid, adj_vid, triplet_property);
                 }
             });
+
+        LUISA_INFO("For {} vertices, direct add count = {}, atomic add count = {}",
+                   num_dof,
+                   direct_add_count.load(),
+                   atomic_add_count.load());
+
+        for (uint idx = 0; idx < sim_data->sa_vert_adj_material_force_verts_csr[0]; idx++)
+        {
+            sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
+                make_matrix_triplet_info(0, 0, MatrixTriplet::is_invalid());
+        }
+        for (uint idx = orig_hessian_nnz; idx < alinged_nnz; idx++)
+        {
+            sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
+                make_matrix_triplet_info(0, 0, MatrixTriplet::is_invalid());
+        }
     }
 
     // Find material-force-offset

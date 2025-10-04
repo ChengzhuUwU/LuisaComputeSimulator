@@ -246,7 +246,8 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_reduce_by_key;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_warp_reduce_by_key;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_block_reduce_by_key;
 
     // AtomicAdd SpMV
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;

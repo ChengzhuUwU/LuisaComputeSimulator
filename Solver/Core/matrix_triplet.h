@@ -59,6 +59,10 @@ namespace MatrixTriplet
     {
         return 1 << 2;
     }
+    constexpr uint is_invalid()
+    {
+        return 1 << 3;
+    }
     template <typename T>
     auto is_first_col_in_row(const T& mask)
     {
@@ -68,6 +72,11 @@ namespace MatrixTriplet
     auto is_last_col_in_row(const T& mask)
     {
         return (mask & is_last_col_in_row()) != 0;
+    }
+    template <typename T>
+    auto is_invalid(const T& mask)
+    {
+        return (mask & is_invalid()) != 0;
     }
     template <typename T>
     auto write_use_atomic(const T& mask)
