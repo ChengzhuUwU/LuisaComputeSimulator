@@ -75,6 +75,17 @@ inline auto resize_buffer(std::vector<T>& dest, const uint size)
     dest.resize(size);
 };
 
+template <typename T>
+inline auto get_buffer_MB(std::vector<T>& dest, const uint size)
+{
+    return dest.size() * sizeof(T) / (1024.0f * 1024.0f);
+};
+template <typename T>
+inline auto get_buffer_MB(luisa::compute::Buffer<T>& dest, const uint size)
+{
+    return dest.buffer_size_bytes() / (1024.0f * 1024.0f);
+};
+
 // template<typename BufferType, typename Element>
 // constexpr auto get_buffer_view_type() { return std::enable_if_t<
 //             std::is_same_v<BufferType<Element>, luisa::compute::Buffer<Element>>,

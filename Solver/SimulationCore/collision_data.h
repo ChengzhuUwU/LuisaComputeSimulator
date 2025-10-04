@@ -263,6 +263,8 @@ struct CollisionData : SimulationType
     BufferType<float> contact_energy;
 
     BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
+    BufferType<MatrixTriplet3x3>                     sa_cgA_contact_offdiag_triplet;
+    BufferType<uint3>                                sa_cgA_contact_offdiag_triplet_info;
 
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
@@ -290,8 +292,10 @@ struct CollisionData : SimulationType
         // const uint num_verts = mesh_data->num_verts;
         // const uint num_edges = mesh_data->num_edges;
 
-        const uint per_element_count_BP = 256;
-        const uint per_element_count_NP = 96;
+        const uint per_element_count_BP        = 128;
+        const uint per_element_count_NP        = 32;
+        const uint per_element_count_NP_culled = 24;
+
 
         constexpr bool use_vv_ve = false;
         lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
@@ -308,8 +312,13 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device,
                                         this->narrow_phase_pair_offset_in_vert,
                                         4 * per_element_count_NP * (num_verts + num_edges));
-        // lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_vf, per_element_count_NP * num_verts);
-        // lcs::Initializer::resize_buffer(device, this->reduced_narrow_phase_list_info_ee, per_element_count_NP * num_edges);
+        lcs::Initializer::resize_buffer(device,
+                                        this->sa_cgA_contact_offdiag_triplet,
+                                        12 * per_element_count_NP * (num_verts + num_edges));  // 12 off-diagonal
+        lcs::Initializer::resize_buffer(device,
+                                        this->sa_cgA_contact_offdiag_triplet_info,
+                                        12 * per_element_count_NP_culled * (num_verts));
+
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase, num_verts);
@@ -317,16 +326,18 @@ struct CollisionData : SimulationType
         this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 
-        const uint collision_pair_bytes =
+        const size_t collision_pair_bytes =
             sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
             + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
             + sizeof(uint) * this->vert_adj_pairs_csr.size()
-            + sizeof(ushort) * this->narrow_phase_pair_offset_in_vert.size();
+            + sizeof(ushort) * this->narrow_phase_pair_offset_in_vert.size()
+            + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
+            + sizeof(uint3) * this->sa_cgA_contact_offdiag_triplet_info.size();
 
         LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
         if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)
             LUISA_INFO("Allocated buffer size for collision pair = {} GB",
-                       collision_pair_bytes / (1024 * 1024 * 1024));
+                       float(collision_pair_bytes) / (1024 * 1024 * 1024));
     }
 };
 
