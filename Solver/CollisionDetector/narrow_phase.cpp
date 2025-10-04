@@ -756,6 +756,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 namespace lcs  // Scan Collision Set
 {
 
+constexpr uint segment_size = 256;
+
 void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -865,17 +867,18 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                 // device_assert(triplet_idx >= curr_prefix, "Prefix larger than triplet Index");
                 // device_assert(triplet_idx <= (curr_count + curr_prefix), "Next Prefix smaller than triplet Index");
 
+
                 Uint triplet_property = 0;
-                $if((offset == 0) | ((triplet_idx % 32) == 0))
+                $if((offset == 0) | ((triplet_idx % segment_size) == 0))
                 {
                     triplet_property |= MatrixTriplet::is_first_col_in_row();
                 };
-                $if((offset == curr_count - 1) | (triplet_idx % 32 == 31))
+                $if((offset == curr_count - 1) | (triplet_idx % segment_size == (segment_size - 1)))
                 {
                     triplet_property |= MatrixTriplet::is_last_col_in_row();
-                    $if(curr_prefix / 32 == triplet_idx / 32)  // In the same warp -> Read the first column
+                    $if(curr_prefix / segment_size == triplet_idx / segment_size)  // In the same warp -> Read the first column
                     {
-                        const Uint first_lane_id = curr_prefix % 32;
+                        const Uint first_lane_id = curr_prefix % segment_size;
                         triplet_property |=
                             MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(first_lane_id);
                     }
@@ -883,7 +886,7 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                     {
                         triplet_property |= MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(0);
                     };
-                    $if(curr_prefix / 32 != (curr_prefix + curr_count) / 32)
+                    $if(curr_prefix / segment_size != (curr_prefix + curr_count) / segment_size)
                     {
                         triplet_property |= MatrixTriplet::write_use_atomic();
                     };
@@ -1117,6 +1120,56 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
                                 const Float3 start_contrib_prefix =
                                     luisa::compute::warp_read_lane(contrib_prefix, target_laneIdx);
                                 const Float3 sum_contrib = contrib_prefix - start_contrib_prefix + contrib;
+                                $if(MatrixTriplet::write_use_atomic(matrix_property))
+                                {
+                                    sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
+                                    sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
+                                    sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
+                                }
+                                $else
+                                {
+                                    sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
+                                };
+                            };
+                        });
+
+    compiler.compile<1>(fn_perVert_spmv_block_reduce_by_key,
+                        [sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()](
+                            Var<Buffer<float3>> sa_input_vec, Var<Buffer<float3>> sa_output_vec)
+                        {
+                            const Uint triplet_idx = dispatch_x();
+                            const Uint threadIdx   = triplet_idx % 256;
+
+                            auto       triplet = sa_cgA_contact_offdiag_triplet->read(triplet_idx);
+                            Uint       vid     = triplet->get_row_idx();
+                            const Uint adj_vid = triplet->get_col_idx();
+                            Uint       matrix_property = triplet->get_matrix_property();
+
+                            Float3 contrib = Zero3;
+                            $if(!MatrixTriplet::is_invalid(matrix_property))
+                            {
+                                const Float3x3 mat   = read_triplet_matrix(triplet);
+                                const Float3   input = sa_input_vec.read(adj_vid);
+                                contrib              = mat * input;
+
+                                // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
+                                // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
+                                // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
+                            };
+
+                            luisa::compute::Shared<float3> cache_contrib(256);
+                            luisa::compute::Shared<float3> cache_warp_sum(ParallelIntrinsic::warp_num);
+
+                            ParallelIntrinsic::sort_detail::block_intrinsic_scan_exclusive(
+                                triplet_idx, contrib, cache_warp_sum, cache_contrib);
+
+                            $if(MatrixTriplet::is_last_col_in_row(matrix_property))
+                            {
+                                const Uint target_threadIdx =
+                                    MatrixTriplet::read_lane_id_of_first_colIdx_in_warp(matrix_property);
+                                const Float3 curr_contrib_prefix  = cache_contrib[threadIdx];
+                                const Float3 start_contrib_prefix = cache_contrib[target_threadIdx];
+                                const Float3 sum_contrib = curr_contrib_prefix - start_contrib_prefix + contrib;
                                 $if(MatrixTriplet::write_use_atomic(matrix_property))
                                 {
                                     sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
@@ -1413,7 +1466,16 @@ void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<floa
     // if (num_pairs != 0)
     //     stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
     if (num_pairs != 0)
-        stream << fn_perVert_spmv_warp_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
+    {
+        if constexpr (segment_size == 32)
+        {
+            stream << fn_perVert_spmv_warp_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
+        }
+        else if constexpr (segment_size == 256)
+        {
+            stream << fn_perVert_spmv_block_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
+        }
+    }
 }
 
 }  // namespace lcs
