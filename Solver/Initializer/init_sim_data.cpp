@@ -534,10 +534,10 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         constexpr bool use_block_scan = true;
         constexpr bool use_warp_scan  = false;
         constexpr uint segment_size   = use_block_scan ? 256 : use_warp_scan ? 32 : 1;
-        const uint     alinged_nnz    = segment_size == 1 ?
-                                            orig_hessian_nnz :
-                                            (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
-        // const uint alinged_nnz = orig_hessian_nnz;
+        // const uint     alinged_nnz    = segment_size == 1 ?
+        //                                     orig_hessian_nnz :
+        //                                     (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
+        const uint alinged_nnz = orig_hessian_nnz;
         sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
         sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, luisa::make_uint3(0));
         std::atomic_uint32_t direct_add_count = 0;
