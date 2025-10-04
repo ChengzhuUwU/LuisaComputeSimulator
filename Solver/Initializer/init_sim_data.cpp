@@ -545,7 +545,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                 {
                     const uint adj_vid          = sim_data->sa_vert_adj_material_force_verts_csr[idx];
                     uint       triplet_property = 0;
-                    if (idx == curr_prefix)
+                    if ((idx == curr_prefix) || (idx % 32 == 0))
                     {
                         triplet_property |= (MatrixTriplet::is_first_col_in_row());  // First in row
                     }
@@ -568,7 +568,8 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                         triplet_property |= MatrixTriplet::write_use_atomic();
                     }
                     // LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
-                    sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] = uint3(vid, adj_vid, triplet_property);
+                    sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
+                        make_matrix_triplet_info(vid, adj_vid, triplet_property);
                 }
             });
     }

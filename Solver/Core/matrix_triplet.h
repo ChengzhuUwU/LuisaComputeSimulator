@@ -89,7 +89,17 @@ namespace MatrixTriplet
 };  // namespace MatrixTriplet
 
 
-inline MatrixTriplet3x3 make_matrix_triplet(const uint matrix_property, const uint row, const uint col, const luisa::float3x3& values)
+inline luisa::uint3 make_matrix_triplet_info(const uint row, const uint col, const uint matrix_property)
+{
+    return luisa::compute::make_uint3(row, col, matrix_property);
+}
+inline luisa::compute::UInt3 make_matrix_triplet_info(const luisa::compute::Var<uint> row,
+                                                      const luisa::compute::Var<uint> col,
+                                                      const luisa::compute::Var<uint> matrix_property)
+{
+    return luisa::compute::make_uint3(row, col, matrix_property);
+}
+inline MatrixTriplet3x3 make_matrix_triplet(const uint row, const uint col, const uint matrix_property, const luisa::float3x3& values)
 {
     MatrixTriplet3x3 triplet;
     triplet.triplet_info[0] = row;
