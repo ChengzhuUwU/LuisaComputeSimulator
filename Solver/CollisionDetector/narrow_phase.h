@@ -240,7 +240,9 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1> fn_calc_pervert_collion_count;
     luisa::compute::Shader<1> fn_calc_pervert_prefix_sum;
     luisa::compute::Shader<1> fn_fill_in_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1> fn_block_level_sort_contact_triplet;
     luisa::compute::Shader<1> fn_assemble_triplet_unsorted;
+    luisa::compute::Shader<1> fn_assemble_triplet_sorted;
 
     // Assemble
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;

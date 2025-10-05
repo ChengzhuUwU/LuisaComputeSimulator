@@ -534,44 +534,91 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         constexpr bool use_block_scan = true;
         constexpr bool use_warp_scan  = false;
         constexpr uint segment_size   = use_block_scan ? 256 : use_warp_scan ? 32 : 1;
-        // const uint     alinged_nnz    = segment_size == 1 ?
-        //                                     orig_hessian_nnz :
-        //                                     (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
-        const uint alinged_nnz = orig_hessian_nnz;
+        const uint     alinged_nnz    = segment_size == 1 ?
+                                            orig_hessian_nnz :
+                                            (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
+        // const uint alinged_nnz = orig_hessian_nnz;
         sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
-        sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, luisa::make_uint3(0));
+        sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, make_matrix_triplet_info(-1u, -1u, 0));
         std::atomic_uint32_t direct_add_count = 0;
         std::atomic_uint32_t atomic_add_count = 0;
+
         CpuParallel::parallel_for(
             0,
             num_dof,
             [&](const uint vid)
             {
-                const uint curr_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid];
-                const uint next_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
+                const uint curr_prefix       = sim_data->sa_vert_adj_material_force_verts_csr[vid];
+                const uint next_prefix       = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
+                const uint first_triplet_idx = curr_prefix;
+                const uint last_triplet_idx  = next_prefix - 1;
                 for (uint idx = curr_prefix; idx < next_prefix; idx++)  // Outer-of-range part will set to zero
                 {
                     const uint adj_vid          = sim_data->sa_vert_adj_material_force_verts_csr[idx];
-                    uint       triplet_property = 0;
+                    uint       triplet_property = MatrixTriplet::is_valid();
+
+                    const uint blockIdx         = idx / 256;
+                    const uint blockStartPrefix = blockIdx * 256;
+                    const uint blockEndPrefix   = blockStartPrefix + 256;
+                    const uint first_triplet_idx_in_block = std::max(blockStartPrefix, first_triplet_idx);
+                    const uint last_triplet_idx_in_block = std::min(blockEndPrefix - 1, last_triplet_idx);
+                    // const uint last_triplet_idx_in_block = blockEndPrefix - 1;
 
                     if ((idx == curr_prefix) || (idx % segment_size == 0))
                     {
-                        triplet_property |= (MatrixTriplet::is_first_col_in_row());  // First in row
+                        triplet_property |= (MatrixTriplet::is_first_col_in_row());
+                        if constexpr (use_block_scan)
+                        {
+                            if (idx / 32 == last_triplet_idx_in_block / 32)  // In the same warp -> Provide using warp intrinsic
+                            {
+                                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+                            }
+                            else  // If not in the same warp -> Write it to the cache
+                            {
+                            }
+                            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to provide value to the next prefix
+                            // else  // Not in the same block -> Try to provide value to the last threadIdx
+                        }
+                        else if constexpr (use_warp_scan)
+                        {
+                            triplet_property |= (MatrixTriplet::is_first_col_in_row());
+                        }
                     }
                     if ((idx == (next_prefix - 1)) || ((idx % segment_size) == (segment_size - 1)))
                     {
                         triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
-                        if (idx / segment_size == curr_prefix / segment_size)  // In the same warp -> Read the first column
+                        if constexpr (use_block_scan)
                         {
-                            const uint first_lane_id = curr_prefix % segment_size;
+                            if (idx / 32 == first_triplet_idx_in_block / 32)  // In the same warp -> Read using warp intrinsic
+                            {
+                                const uint first_lane_id = first_triplet_idx_in_block % 32;
+                                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+                                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
+                            }
+                            else  // If not in the same warp -> Read from the cache
+                            {
+                                const uint first_warp_id = (first_triplet_idx_in_block % segment_size) / 32;
+                                triplet_property |= MatrixTriplet::write_first_col_info(first_warp_id);
+                            }
                             triplet_property |=
-                                MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(first_lane_id);
+                                MatrixTriplet::write_first_col_threadIdx(first_triplet_idx_in_block % 256);
+                            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to get value from the block
+                            // else  // Not in the same block -> Try to get value from the first threadIdx
                         }
-                        else  // Not in the same warp -> Read the first lane
+                        else if constexpr (use_warp_scan)
                         {
-                            triplet_property |= MatrixTriplet::write_lane_id_of_first_colIdx_in_warp_to_mask(0);
+                            if (idx / segment_size == curr_prefix / segment_size)  // In the same warp -> Read the first column
+                            {
+
+                                const uint first_lane_id = curr_prefix % segment_size;
+                                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
+                            }
+                            else  // Not in the same warp -> Read the first lane
+                            {
+                                triplet_property |= MatrixTriplet::write_first_col_info(0);
+                            }
                         }
-                        if (curr_prefix / segment_size != next_prefix / segment_size)
+                        if (first_triplet_idx / segment_size != last_triplet_idx / segment_size)
                         {
                             triplet_property |= MatrixTriplet::write_use_atomic();
                             atomic_add_count.fetch_add(1);
@@ -586,21 +633,150 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                         make_matrix_triplet_info(vid, adj_vid, triplet_property);
                 }
             });
-
         LUISA_INFO("For {} vertices, direct add count = {}, atomic add count = {}",
                    num_dof,
                    direct_add_count.load(),
                    atomic_add_count.load());
+        // Check
+        {
+            std::vector<ushort> is_tirplet_accessed(alinged_nnz, false);
+            CpuParallel::single_thread_for(
+                0,
+                alinged_nnz / 256,
+                [&](const uint blockIdx)
+                {
+                    const uint blockPrefix = blockIdx * 256;
+                    const uint blockEnd    = blockPrefix + 256;
 
-        for (uint idx = 0; idx < sim_data->sa_vert_adj_material_force_verts_csr[0]; idx++)
-        {
-            sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
-                make_matrix_triplet_info(0, 0, MatrixTriplet::is_invalid());
-        }
-        for (uint idx = orig_hessian_nnz; idx < alinged_nnz; idx++)
-        {
-            sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
-                make_matrix_triplet_info(0, 0, MatrixTriplet::is_invalid());
+                    uint              last_start = -1u;
+                    uint              last_end   = -1u;
+                    std::vector<bool> cache_used(32, false);
+                    for (uint idx = blockPrefix; idx < blockEnd; idx++)
+                    {
+                        auto& info     = sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx];
+                        auto  property = info[2];
+                        if (MatrixTriplet::is_first_col_in_row(property))
+                        {
+                            if (last_end != -1u || last_start != -1u)
+                            {
+                                LUISA_ERROR("Last segment not closed");
+                            }
+                            last_start = idx;
+                        }
+                        if (MatrixTriplet::is_last_col_in_row(property))
+                        {
+                            if (last_start == -1u || last_end != -1u)
+                            {
+                                LUISA_ERROR("Last segment not started");
+                            }
+                            last_end = idx;
+                        }
+                        if (last_start != -1u && last_end != -1u)
+                        {
+                            if (info[0] < 10)
+                            {
+                                LUISA_INFO("Vert {}'s triplet (threadIdx from {:3} to {:3}), from {} to {} , same warp ? {}, try to find {} ({})",
+                                           info[0],
+                                           last_start % 256,
+                                           last_end % 256,
+                                           last_start,
+                                           last_end,
+                                           MatrixTriplet::is_first_and_last_col_in_same_warp(info[2]),
+                                           blockPrefix + MatrixTriplet::read_first_col_threadIdx(info[2]),
+                                           MatrixTriplet::read_first_col_threadIdx(info[2]));
+                            }
+                            for (uint i = last_start; i <= last_end; i++)
+                            {
+                                if (is_tirplet_accessed[i])
+                                {
+                                    LUISA_ERROR("Triplet {} has been accessed", i);
+                                }
+                                is_tirplet_accessed[i] = true;
+                            }
+                            const uint start_threadIdx = last_start % 256;
+                            const uint start_warpIdx   = start_threadIdx / 32;
+                            const uint end_threadIdx   = last_end % 256;
+                            const uint end_warpIdx     = end_threadIdx / 32;
+
+                            uint3 info_start = sim_data->sa_cgA_fixtopo_offdiag_triplet_info[last_start];
+                            uint3 info_end   = sim_data->sa_cgA_fixtopo_offdiag_triplet_info[last_end];
+
+                            if (info_start[0] != info_end[0])
+                            {
+                                LUISA_ERROR("RowIdx not match");
+                            }
+                            const uint vert_prefix =
+                                sim_data->sa_vert_adj_material_force_verts_csr[info_start[0]];
+                            const uint vert_suffix =
+                                sim_data->sa_vert_adj_material_force_verts_csr[info_start[0] + 1];
+                            if (MatrixTriplet::is_first_and_last_col_in_same_warp(info_start[2])
+                                != MatrixTriplet::is_first_and_last_col_in_same_warp(info_end[2]))
+                            {
+                                LUISA_ERROR("Reduce mode not match : {} - {} : (Triplet Range {} - {}) startTriplet = {} (threadIdx = {}, warpIdx = {}), endTriplet = {} (threadIdx = {}, warpIdx = {})",
+                                            MatrixTriplet::is_first_and_last_col_in_same_warp(info_start[2]),
+                                            MatrixTriplet::is_first_and_last_col_in_same_warp(info_end[2]),
+                                            vert_prefix,
+                                            vert_suffix - 1,
+                                            last_start,
+                                            start_threadIdx,
+                                            start_warpIdx,
+                                            last_end,
+                                            end_threadIdx,
+                                            end_warpIdx);
+                            }
+                            bool in_same_warp = MatrixTriplet::is_first_and_last_col_in_same_warp(info_start[2]);
+                            if (in_same_warp)
+                            {
+                                if (last_start / 32 != last_end / 32)
+                                {
+                                    LUISA_ERROR("Not in the same warp");
+                                }
+                                const uint start_laneIdx = last_start % 32;
+                                const uint desire_laneIdx = MatrixTriplet::read_first_col_info(info_end[2]);
+                                if (start_laneIdx != desire_laneIdx)
+                                {
+                                    LUISA_ERROR("LaneIdx not match!!");
+                                }
+                            }
+                            else
+                            {
+                                if (last_start / 32 == last_end / 32)
+                                {
+                                    LUISA_ERROR("In the same warp");
+                                }
+                                if (cache_used[start_warpIdx])
+                                {
+                                    LUISA_ERROR("Cache has been used");
+                                }
+                                const uint desire_warpIdx = MatrixTriplet::read_first_col_info(info_end[2]);
+                                if (start_warpIdx != desire_warpIdx)
+                                {
+                                    LUISA_ERROR("WarpIdx not match: startTriplet = {} (threadIdx = {}, warpIdx = {}), endTriplet = {} (threadIdx = {}, Desire for {})",
+                                                last_start,
+                                                start_threadIdx,
+                                                start_warpIdx,
+                                                last_end,
+                                                last_end % 256,
+                                                desire_warpIdx);
+                                }
+                                cache_used[start_warpIdx] = true;
+                            }
+                            last_start = -1u;
+                            last_end   = -1u;
+                        }
+                    }
+                });
+            for (uint triplet_idx = 0; triplet_idx < orig_hessian_nnz; triplet_idx++)
+            {
+                auto triplet_info = sim_data->sa_cgA_fixtopo_offdiag_triplet_info[triplet_idx];
+                if (MatrixTriplet::is_valid(triplet_info[2]))
+                {
+                    if (!is_tirplet_accessed[triplet_idx])
+                    {
+                        LUISA_ERROR("Triplet {} has not been accessed", triplet_idx);
+                    }
+                }
+            }
         }
     }
 

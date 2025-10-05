@@ -59,9 +59,13 @@ namespace MatrixTriplet
     {
         return 1 << 2;
     }
-    constexpr uint is_invalid()
+    constexpr uint is_valid()
     {
         return 1 << 3;
+    }
+    constexpr uint is_first_and_last_col_in_same_warp()
+    {
+        return 1 << 4;
     }
     template <typename T>
     auto is_first_col_in_row(const T& mask)
@@ -74,9 +78,14 @@ namespace MatrixTriplet
         return (mask & is_last_col_in_row()) != 0;
     }
     template <typename T>
-    auto is_invalid(const T& mask)
+    auto is_valid(const T& mask)
     {
-        return (mask & is_invalid()) != 0;
+        return (mask & is_valid()) != 0;
+    }
+    template <typename T>
+    auto is_first_and_last_col_in_same_warp(const T& mask)
+    {
+        return (mask & is_first_and_last_col_in_same_warp()) != 0;
     }
     template <typename T>
     auto write_use_atomic(const T& mask)
@@ -85,14 +94,25 @@ namespace MatrixTriplet
     }
 
     template <typename T>
-    inline T write_lane_id_of_first_colIdx_in_warp_to_mask(const T lane_id)
+    inline T write_first_col_info(const T lane_id)
     {
         return lane_id << 8;
     }
     template <typename T>
-    inline T read_lane_id_of_first_colIdx_in_warp(const T matrix_info)
+    inline T read_first_col_info(const T matrix_info)
     {
         return (matrix_info >> 8) & 0xFF;
+    }
+
+    template <typename T>
+    inline T write_first_col_threadIdx(const T lane_id)
+    {
+        return lane_id << 16;
+    }
+    template <typename T>
+    inline T read_first_col_threadIdx(const T matrix_info)
+    {
+        return (matrix_info >> 16) & 0xFF;
     }
 
 };  // namespace MatrixTriplet

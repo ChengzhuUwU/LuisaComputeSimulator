@@ -480,26 +480,6 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    // compiler.compile(
-    //     fn_pcg_spmv_offdiag_material_part_perVert,
-    //     [sa_vert_adj_material_force_verts_csr = sim_data->sa_vert_adj_material_force_verts_csr.view(),
-    //      sa_cgA_offdiag = sim_data->sa_cgA_offdiag.view()](Var<luisa::compute::BufferView<float3>> sa_input_vec,
-    //                                                        Var<luisa::compute::BufferView<float3>> sa_output_vec)
-    //     {
-    //         const Uint vid = dispatch_x();
-    //         // TODO: Using parallel reduce
-    //         const Uint curr_prefix = sa_vert_adj_material_force_verts_csr->read(vid);
-    //         const Uint next_prefix = sa_vert_adj_material_force_verts_csr->read(vid + 1);
-    //         Float3     output_vec  = sa_output_vec.read(vid);
-    //         $for(j, curr_prefix, next_prefix)
-    //         {
-    //             const Uint adj_vid = sa_vert_adj_material_force_verts_csr->read(j);
-    //             output_vec += sa_cgA_offdiag->read(j) * sa_input_vec.read(adj_vid);
-    //         };
-    //         sa_output_vec.write(vid, output_vec);
-    //     },
-    //     default_option);
-
     compiler.compile(
         fn_reset_cgA_offdiag_triplet,
         [sa_cgA_offdiag_triplet_info = sim_data->sa_cgA_fixtopo_offdiag_triplet_info.view(),
@@ -515,7 +495,29 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         default_option);
 
     compiler.compile(
-        fn_pcg_spmv_offdiag_material_part_perTriplet,
+        fn_pcg_spmv_offdiag_perVert,
+        [sa_vert_adj_material_force_verts_csr = sim_data->sa_vert_adj_material_force_verts_csr.view(),
+         sa_cgA_fixtopo_offdiag_triplet       = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
+            Var<luisa::compute::Buffer<float3>> sa_input_vec, Var<luisa::compute::Buffer<float3>> sa_output_vec)
+        {
+            const Uint vid = dispatch_x();
+            // TODO: Using parallel reduce
+            const Uint curr_prefix = sa_vert_adj_material_force_verts_csr->read(vid);
+            const Uint next_prefix = sa_vert_adj_material_force_verts_csr->read(vid + 1);
+            Float3     output_vec  = sa_output_vec.read(vid);
+            $for(j, curr_prefix, next_prefix)
+            {
+                const Uint adj_vid = sa_vert_adj_material_force_verts_csr->read(j);
+                const auto triplet = sa_cgA_fixtopo_offdiag_triplet->read(j);
+                // const Uint adj_vid = triplet->get_col_idx();
+                output_vec += triplet->get_matrix() * sa_input_vec.read(adj_vid);
+            };
+            sa_output_vec.write(vid, output_vec);
+        },
+        default_option);
+
+    compiler.compile(
+        fn_pcg_spmv_offdiag_warp_rbk,
         [sa_cgA_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
             Var<luisa::compute::Buffer<float3>> sa_input_vec, Var<luisa::compute::Buffer<float3>> sa_output_vec)
         {
@@ -536,7 +538,7 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
 
             $if(MatrixTriplet::is_last_col_in_row(matrix_property))
             {
-                const Uint target_laneIdx = MatrixTriplet::read_lane_id_of_first_colIdx_in_warp(matrix_property);
+                const Uint target_laneIdx = MatrixTriplet::read_first_col_info(matrix_property);
                 const Float3 start_contrib_prefix = luisa::compute::warp_read_lane(contrib_prefix, target_laneIdx);
                 const Float3 sum_contrib = contrib_prefix - start_contrib_prefix + contrib;
                 $if(MatrixTriplet::write_use_atomic(matrix_property))
@@ -553,56 +555,135 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    compiler.compile<1>(fn_pcg_spmv_offdiag_block_rbk,
-                        [sa_cgA_fixtopo_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
-                            Var<luisa::compute::Buffer<float3>> sa_input_vec, Var<luisa::compute::Buffer<float3>> sa_output_vec)
-                        {
-                            const Uint triplet_idx = dispatch_x();
-                            const Uint threadIdx   = triplet_idx % 256;
-                            const Uint lane_idx    = triplet_idx % 32;
+    compiler.compile<1>(
+        fn_pcg_spmv_offdiag_block_rbk,
+        [sa_cgA_fixtopo_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
+            Var<luisa::compute::Buffer<float3>> sa_input_vec, Var<luisa::compute::Buffer<float3>> sa_output_vec)
+        {
+            const Uint triplet_idx = dispatch_x();
+            const Uint threadIdx   = triplet_idx % 256;
+            const Uint warpIdx     = threadIdx / 32;
+            const Uint laneIdx     = threadIdx % 32;
 
-                            auto       triplet = sa_cgA_fixtopo_offdiag_triplet->read(triplet_idx);
-                            Uint       vid     = triplet->get_row_idx();
-                            const Uint adj_vid = triplet->get_col_idx();
-                            Uint       matrix_property = triplet->get_matrix_property();
+            auto       triplet         = sa_cgA_fixtopo_offdiag_triplet->read(triplet_idx);
+            Uint       vid             = triplet->get_row_idx();
+            const Uint adj_vid         = triplet->get_col_idx();
+            Uint       matrix_property = triplet->get_matrix_property();
 
-                            Float3 contrib = Zero3;
-                            $if(!MatrixTriplet::is_invalid(matrix_property))
-                            {
-                                const Float3x3 mat   = read_triplet_matrix(triplet);
-                                const Float3   input = sa_input_vec.read(adj_vid);
-                                contrib              = mat * input;
+            Float3 contrib = Zero3;
+            $if(MatrixTriplet::is_valid(matrix_property))
+            {
+                const Float3x3 mat   = read_triplet_matrix(triplet);
+                const Float3   input = sa_input_vec.read(adj_vid);
+                contrib              = mat * input;
+                // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
+                // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
+                // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
+            };
 
-                                // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
-                                // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
-                                // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
-                            };
 
-                            luisa::compute::Shared<float3> cache_contrib(256);
-                            luisa::compute::Shared<float3> cache_warp_sum(ParallelIntrinsic::warp_num);
+            luisa::compute::set_block_size(256u);
+            luisa::compute::Shared<float3> cache_warp_sum(ParallelIntrinsic::warp_num);
+            luisa::compute::Shared<float3> cache_target_prefix(ParallelIntrinsic::warp_num);
 
-                            ParallelIntrinsic::sort_detail::block_intrinsic_scan_exclusive(
-                                triplet_idx, contrib, cache_warp_sum, cache_contrib);
 
-                            $if(MatrixTriplet::is_last_col_in_row(matrix_property))
-                            {
-                                const Uint target_threadIdx =
-                                    MatrixTriplet::read_lane_id_of_first_colIdx_in_warp(matrix_property);
-                                const Float3 curr_contrib_prefix  = cache_contrib[threadIdx];
-                                const Float3 start_contrib_prefix = cache_contrib[target_threadIdx];
-                                const Float3 sum_contrib = curr_contrib_prefix - start_contrib_prefix + contrib;
-                                $if(MatrixTriplet::write_use_atomic(matrix_property))
-                                {
-                                    sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
-                                    sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
-                                    sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
-                                }
-                                $else
-                                {
-                                    sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
-                                };
-                            };
-                        });
+            const Float3 warp_prefix = luisa::compute::warp_prefix_sum(contrib);
+            $if(laneIdx == 31)
+            {
+                cache_warp_sum[warpIdx] = warp_prefix + contrib;
+            };
+            luisa::compute::sync_block();
+            $if(warpIdx == 0)
+            {
+                cache_warp_sum[threadIdx] = luisa::compute::warp_prefix_sum(cache_warp_sum[threadIdx]);  // Get warp's prefix in block
+            };
+            luisa::compute::sync_block();
+            const Float3 curr_prefix = cache_warp_sum[warpIdx] + warp_prefix;
+
+            luisa::compute::Shared<float3> cache_prefix(256);
+            cache_prefix[threadIdx] = curr_prefix;
+            luisa::compute::sync_block();
+
+            // luisa::compute::Shared<float3> cache_prefix(256);
+            // ParallelIntrinsic::sort_detail::block_intrinsic_scan_exclusive(triplet_idx, contrib, cache_warp_sum, cache_prefix);
+            // const Float3 block_prefix = cache_prefix[threadIdx];
+            // luisa::compute::sync_block();
+
+            // $if(MatrixTriplet::is_last_col_in_row(matrix_property))
+            // {
+            //     const Uint target_threadIdx = MatrixTriplet::read_thread_id_of_first_colIdx_in_warp(matrix_property);
+            //     const Float3 target_block_prefix = cache_prefix[target_threadIdx];
+            //     const Float3 sum_contrib         = block_prefix - target_block_prefix + contrib;
+            //     Uint         target_warpIdx      = 0;
+            //     $if(MatrixTriplet::is_first_and_last_col_in_same_warp(matrix_property))
+            //     {
+            //         target_warpIdx = warpIdx;
+            //     }
+            //     $else
+            //     {
+            //         target_warpIdx = MatrixTriplet::read_lane_id_of_first_colIdx_in_warp(matrix_property);
+            //     };
+            //     device_assert(target_warpIdx == warpIdx, "Error rbk!");
+            //     $if(MatrixTriplet::write_use_atomic(matrix_property))
+            //     {
+            //         sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
+            //         sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
+            //         sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
+            //     }
+            //     $else
+            //     {
+            //         sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
+            //     };
+            // };
+            // return;
+
+            $if(MatrixTriplet::is_first_col_in_row(matrix_property)
+                & !MatrixTriplet::is_first_and_last_col_in_same_warp(matrix_property))
+            {
+                cache_target_prefix[warpIdx] = curr_prefix;
+            };
+            luisa::compute::sync_block();
+
+
+            Float3 target_block_prefix = Zero3;
+            Uint   target_laneIdx      = laneIdx;
+            $if(MatrixTriplet::is_last_col_in_row(matrix_property)
+                & MatrixTriplet::is_first_and_last_col_in_same_warp(matrix_property))
+            {
+                target_laneIdx = MatrixTriplet::read_first_col_info(matrix_property);
+            };
+            target_block_prefix = luisa::compute::warp_read_lane(curr_prefix, target_laneIdx);
+
+            $if(MatrixTriplet::is_last_col_in_row(matrix_property))
+            {
+                const Uint target_threadIdx = MatrixTriplet::read_first_col_threadIdx(matrix_property);
+                const Uint target_index     = MatrixTriplet::read_first_col_info(matrix_property);
+
+                $if(MatrixTriplet::is_first_and_last_col_in_same_warp(matrix_property))
+                {
+                    // ! We can not read it in this condition statement, as target lane is not active, which will cause invalid access
+                    // const Uint target_laneIdx = target_index;
+                    // target_block_prefix = luisa::compute::warp_read_lane(cache_prefix[threadIdx], target_laneIdx);
+                }
+                $else
+                {
+                    const Uint target_warpIdx = target_index;
+                    target_block_prefix       = cache_target_prefix[target_warpIdx];
+                };
+                const Float3 sum_contrib = curr_prefix - target_block_prefix + contrib;
+                device_assert(!is_nan_vec(sum_contrib), "Error NaN detected in SpMV block rbk!");
+                $if(MatrixTriplet::write_use_atomic(matrix_property))
+                {
+                    sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
+                    sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
+                    sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
+                }
+                $else
+                {
+                    sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
+                };
+            };
+        });
 
     // Line search
     // auto fn_reduce_and_add_energy = compiler.compile<1>(
@@ -1775,9 +1856,14 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
 {
     stream << fn_pcg_spmv_diag(input_ptr, output_ptr).dispatch(input_ptr.size());
 
-    // stream << fn_pcg_spmv_offdiag_material_part_perVert(input_ptr, output_ptr).dispatch(host_sim_data->num_verts_soft);
+    // stream << fn_pcg_spmv_offdiag_perVert(input_ptr, output_ptr).dispatch(host_sim_data->num_verts_soft);
+
     // stream << fn_pcg_spmv_offdiag_material_part_perTriplet(input_ptr, output_ptr)
     //               .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
+
+    // stream << fn_pcg_spmv_offdiag_warp_rbk(input_ptr, output_ptr)
+    //               .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
+
     stream << fn_pcg_spmv_offdiag_block_rbk(input_ptr, output_ptr)
                   .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
