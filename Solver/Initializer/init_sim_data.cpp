@@ -548,96 +548,22 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
             num_dof,
             [&](const uint vid)
             {
-                const uint curr_prefix       = sim_data->sa_vert_adj_material_force_verts_csr[vid];
-                const uint next_prefix       = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
-                const uint first_triplet_idx = curr_prefix;
-                const uint last_triplet_idx  = next_prefix - 1;
+                const uint curr_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid];
+                const uint next_prefix = sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
                 for (uint idx = curr_prefix; idx < next_prefix; idx++)  // Outer-of-range part will set to zero
                 {
-                    const uint adj_vid          = sim_data->sa_vert_adj_material_force_verts_csr[idx];
-                    uint       triplet_property = MatrixTriplet::is_valid();
+                    const uint adj_vid = sim_data->sa_vert_adj_material_force_verts_csr[idx];
+                    const uint triplet_property =
+                        MatrixTriplet::make_triplet_property_in_block(idx, curr_prefix, next_prefix - 1);
 
-                    const uint blockIdx         = idx / 256;
-                    const uint blockStartPrefix = blockIdx * 256;
-                    const uint blockEndPrefix   = blockStartPrefix + 256;
-                    const uint first_triplet_idx_in_block = std::max(blockStartPrefix, first_triplet_idx);
-                    const uint last_triplet_idx_in_block = std::min(blockEndPrefix - 1, last_triplet_idx);
-                    // const uint last_triplet_idx_in_block = blockEndPrefix - 1;
-
-                    if ((idx == curr_prefix) || (idx % segment_size == 0))
-                    {
-                        triplet_property |= (MatrixTriplet::is_first_col_in_row());
-                        if constexpr (use_block_scan)
-                        {
-                            if (idx / 32 == last_triplet_idx_in_block / 32)  // In the same warp -> Provide using warp intrinsic
-                            {
-                                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
-                            }
-                            else  // If not in the same warp -> Write it to the cache
-                            {
-                            }
-                            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to provide value to the next prefix
-                            // else  // Not in the same block -> Try to provide value to the last threadIdx
-                        }
-                        else if constexpr (use_warp_scan)
-                        {
-                            triplet_property |= (MatrixTriplet::is_first_col_in_row());
-                        }
-                    }
-                    if ((idx == (next_prefix - 1)) || ((idx % segment_size) == (segment_size - 1)))
-                    {
-                        triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
-                        if constexpr (use_block_scan)
-                        {
-                            if (idx / 32 == first_triplet_idx_in_block / 32)  // In the same warp -> Read using warp intrinsic
-                            {
-                                const uint first_lane_id = first_triplet_idx_in_block % 32;
-                                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
-                                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
-                            }
-                            else  // If not in the same warp -> Read from the cache
-                            {
-                                const uint first_warp_id = (first_triplet_idx_in_block % segment_size) / 32;
-                                triplet_property |= MatrixTriplet::write_first_col_info(first_warp_id);
-                            }
-                            triplet_property |=
-                                MatrixTriplet::write_first_col_threadIdx(first_triplet_idx_in_block % 256);
-                            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to get value from the block
-                            // else  // Not in the same block -> Try to get value from the first threadIdx
-                        }
-                        else if constexpr (use_warp_scan)
-                        {
-                            if (idx / segment_size == curr_prefix / segment_size)  // In the same warp -> Read the first column
-                            {
-
-                                const uint first_lane_id = curr_prefix % segment_size;
-                                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
-                            }
-                            else  // Not in the same warp -> Read the first lane
-                            {
-                                triplet_property |= MatrixTriplet::write_first_col_info(0);
-                            }
-                        }
-                        if (first_triplet_idx / segment_size != last_triplet_idx / segment_size)
-                        {
-                            triplet_property |= MatrixTriplet::write_use_atomic();
-                            atomic_add_count.fetch_add(1);
-                        }
-                        else
-                        {
-                            direct_add_count.fetch_add(1);
-                        }
-                    }
                     // LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
                     sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
                         make_matrix_triplet_info(vid, adj_vid, triplet_property);
                 }
             });
-        LUISA_INFO("For {} vertices, direct add count = {}, atomic add count = {}",
-                   num_dof,
-                   direct_add_count.load(),
-                   atomic_add_count.load());
+
         // Check
+        if constexpr (use_block_scan)
         {
             std::vector<ushort> is_tirplet_accessed(alinged_nnz, false);
             CpuParallel::single_thread_for(

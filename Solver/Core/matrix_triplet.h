@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Core/scalar.h"
 #include <array>
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/struct.h>
+#include <luisa/dsl/sugar.h>
 
 namespace lcs
 {
@@ -116,6 +118,147 @@ namespace MatrixTriplet
     }
 
 };  // namespace MatrixTriplet
+
+
+namespace MatrixTriplet
+{
+    inline uint make_triplet_property_in_block(const uint idx, const uint first_triplet_idx, const uint last_triplet_idx)
+    {
+        uint triplet_property = MatrixTriplet::is_valid();
+
+        constexpr uint blockDim = 256;
+        const uint     blockIdx = idx / blockDim;
+
+        const uint blockStartPrefix           = blockIdx * 256;
+        const uint blockEndPrefix             = blockStartPrefix + 256;
+        const uint first_triplet_idx_in_block = max_scalar(blockStartPrefix, first_triplet_idx);
+        const uint last_triplet_idx_in_block  = min_scalar(blockEndPrefix - 1, last_triplet_idx);
+
+        if (idx == first_triplet_idx_in_block)
+        {
+            triplet_property |= (MatrixTriplet::is_first_col_in_row());
+
+            if (idx / 32 == last_triplet_idx_in_block / 32)  // In the same warp -> Provide using warp intrinsic
+            {
+                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+            }
+            else  // If not in the same warp -> Write it to the cache
+            {
+            }
+            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to provide value to the next prefix
+            // else  // Not in the same block -> Try to provide value to the last threadIdx
+        }
+        if (idx == last_triplet_idx_in_block)
+        {
+            triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
+
+            if (idx / 32 == first_triplet_idx_in_block / 32)  // In the same warp -> Read using warp intrinsic
+            {
+                const uint first_lane_id = first_triplet_idx_in_block % 32;
+                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
+            }
+            else  // If not in the same warp -> Read from the cache
+            {
+                const uint first_warp_id = (first_triplet_idx_in_block % blockDim) / 32;
+                triplet_property |= MatrixTriplet::write_first_col_info(first_warp_id);
+            }
+            triplet_property |= MatrixTriplet::write_first_col_threadIdx(first_triplet_idx_in_block % 256);
+            // if (idx / segment_size == last_triplet_idx / segment_size)  // In the same block -> Try to get value from the block
+            // else  // Not in the same block -> Try to get value from the first threadIdx
+
+            if (first_triplet_idx / blockDim != last_triplet_idx / blockDim)
+            {
+                triplet_property |= MatrixTriplet::write_use_atomic();
+            }
+            else
+            {
+            }
+        }
+        return triplet_property;
+    }
+    inline luisa::compute::UInt make_triplet_property_in_block(const luisa::compute::UInt& idx,
+                                                               const luisa::compute::UInt& first_triplet_idx,
+                                                               const luisa::compute::UInt& last_triplet_idx)
+    {
+        luisa::compute::UInt triplet_property = MatrixTriplet::is_valid();
+
+        const uint                 blockDim = 256;
+        const luisa::compute::UInt blockIdx = idx / blockDim;
+
+        const luisa::compute::UInt blockStartPrefix = blockIdx * 256;
+        const luisa::compute::UInt blockEndPrefix   = blockStartPrefix + 256;
+        const luisa::compute::UInt first_triplet_idx_in_block = max_scalar(blockStartPrefix, first_triplet_idx);
+        const luisa::compute::UInt last_triplet_idx_in_block = min_scalar(blockEndPrefix - 1, last_triplet_idx);
+
+        $if(idx == first_triplet_idx_in_block)
+        {
+            triplet_property |= (MatrixTriplet::is_first_col_in_row());
+
+            $if(idx / 32 == last_triplet_idx_in_block / 32)
+            {
+                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+            };
+        };
+        $if(idx == last_triplet_idx_in_block)
+        {
+            triplet_property |= (MatrixTriplet::is_last_col_in_row());
+
+            $if(idx / 32 == first_triplet_idx_in_block / 32)
+            {
+                const luisa::compute::UInt first_lane_id = first_triplet_idx_in_block % 32;
+                triplet_property |= MatrixTriplet::is_first_and_last_col_in_same_warp();
+                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
+            }
+            $else
+            {
+                const luisa::compute::UInt first_warp_id = (first_triplet_idx_in_block % blockDim) / 32;
+                triplet_property |= MatrixTriplet::write_first_col_info(first_warp_id);
+            };
+            triplet_property |= MatrixTriplet::write_first_col_threadIdx(first_triplet_idx_in_block % 256);
+            $if(first_triplet_idx / blockDim != last_triplet_idx / blockDim)
+            {
+                triplet_property |= MatrixTriplet::write_use_atomic();
+            };
+        };
+        return triplet_property;
+    }
+    inline uint make_triplet_property_in_warp(const uint idx, const uint curr_prefix, const uint next_prefix)
+    {
+        constexpr uint blockDim = 256;
+        const uint     blockIdx = idx / blockDim;
+
+        const uint first_triplet_idx = curr_prefix;
+        const uint last_triplet_idx  = next_prefix - 1;
+
+        const uint first_triplet_idx_in_block = std::max(blockIdx * blockDim, first_triplet_idx);
+        const uint last_triplet_idx_in_block = std::min(blockIdx * blockDim + blockDim - 1, last_triplet_idx);
+
+        uint triplet_property = MatrixTriplet::is_valid();
+        if (idx == first_triplet_idx)
+        {
+            triplet_property |= (MatrixTriplet::is_first_col_in_row());
+        }
+        if (idx == last_triplet_idx)
+        {
+            triplet_property |= (MatrixTriplet::is_last_col_in_row());  // Last in row
+            if (idx / 32 == curr_prefix / 32)  // In the same warp -> Read the first column
+            {
+                const uint first_lane_id = curr_prefix % 32;
+                triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
+            }
+            else  // Not in the same warp -> Read the first lane
+            {
+                triplet_property |= MatrixTriplet::write_first_col_info(0);
+            }
+            if (first_triplet_idx / 32 != last_triplet_idx / 32)
+            {
+                triplet_property |= MatrixTriplet::write_use_atomic();
+            }
+        }
+        return triplet_property;
+    }
+}  // namespace MatrixTriplet
 
 
 inline luisa::uint3 make_matrix_triplet_info(const uint row, const uint col, const uint matrix_property)

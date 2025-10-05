@@ -836,9 +836,19 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
             }
         });
 
+    compiler.compile<1>(fn_reset_triplet,
+                        [sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()]
+                        {
+                            const Uint triplet_idx = dispatch_x();
+                            sa_cgA_contact_offdiag_triplet->write(
+                                triplet_idx,
+                                make_matrix_triplet(Uint(-1u), Uint(-1u), Uint(0u), make_float3x3(0.0f)));
+                        });
+
     compiler.compile<1>(
         fn_assemble_triplet_unsorted,
-        [narrow_phase_list                = collision_data->narrow_phase_list.view(),
+        [narrow_phase_collision_count     = collision_data->narrow_phase_collision_count.view(),
+         narrow_phase_list                = collision_data->narrow_phase_list.view(),
          vert_adj_pairs_csr               = collision_data->vert_adj_pairs_csr.view(),
          per_vert_num_narrow_phase        = collision_data->per_vert_num_narrow_phase.view(),
          per_vert_prefix_narrow_phase     = collision_data->per_vert_prefix_narrow_phase.view(),
@@ -847,8 +857,9 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
          sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()]()
         {
             const Uint triplet_idx = dispatch_x();
-            const Uint pair_info   = vert_adj_pairs_csr->read(triplet_idx / 3);
-            const Uint pair_idx    = pair_info & 0x3FFFFFFF;
+
+            const Uint pair_info = vert_adj_pairs_csr->read(triplet_idx / 3);
+            const Uint pair_idx  = pair_info & 0x3FFFFFFF;
 
             const auto& pair = narrow_phase_list->read(pair_idx);
 
@@ -865,35 +876,9 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
             const Uint  jj           = triplet_info[1] >> 30;
             const Uint  curr_count   = per_vert_num_narrow_phase->read(vid) * 3;
             const Uint  curr_prefix  = per_vert_prefix_narrow_phase->read(vid) * 3;
-            const Uint  offset       = triplet_idx - curr_prefix;
 
-            // device_assert(ii < 4 & jj < 4, "Offset larger than 4");
-            // device_assert(triplet_idx >= curr_prefix, "Prefix larger than triplet Index");
-            // device_assert(triplet_idx <= (curr_count + curr_prefix), "Next Prefix smaller than triplet Index");
-
-            Uint triplet_property = MatrixTriplet::is_valid();
-            $if((offset == 0) | ((triplet_idx % segment_size) == 0))
-            {
-                triplet_property |= MatrixTriplet::is_first_col_in_row();
-            };
-            $if((offset == curr_count - 1) | (triplet_idx % segment_size == (segment_size - 1)))
-            {
-                triplet_property |= MatrixTriplet::is_last_col_in_row();
-                $if(curr_prefix / segment_size == triplet_idx / segment_size)  // In the same warp -> Read the first column
-                {
-                    const Uint first_lane_id = curr_prefix % segment_size;
-                    triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
-                }
-                $else  // Not in the same warp -> Read the first lane
-                {
-                    triplet_property |= MatrixTriplet::write_first_col_info(0);
-                };
-                $if(curr_prefix / segment_size != (curr_prefix + curr_count) / segment_size)
-                {
-                    triplet_property |= MatrixTriplet::write_use_atomic();
-                };
-            };
-
+            Uint triplet_property =
+                MatrixTriplet::make_triplet_property_in_block(triplet_idx, curr_prefix, curr_prefix + curr_count - 1);
             sa_cgA_contact_offdiag_triplet->write(
                 triplet_idx,
                 make_matrix_triplet(indices[ii], indices[jj], triplet_property, weight[ii] * weight[jj] * hess));
@@ -1013,32 +998,8 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
             const Uint  curr_prefix  = per_vert_prefix_narrow_phase->read(vid) * 3;
             const Uint  offset       = triplet_idx - curr_prefix;
 
-            // device_assert(ii < 4 & jj < 4, "Offset larger than 4");
-            // device_assert(triplet_idx >= curr_prefix, "Prefix larger than triplet Index");
-            // device_assert(triplet_idx <= (curr_count + curr_prefix), "Next Prefix smaller than triplet Index");
-
-            Uint triplet_property = MatrixTriplet::is_valid();
-            $if((offset == 0) | ((triplet_idx % segment_size) == 0))
-            {
-                triplet_property |= MatrixTriplet::is_first_col_in_row();
-            };
-            $if((offset == curr_count - 1) | (triplet_idx % segment_size == (segment_size - 1)))
-            {
-                triplet_property |= MatrixTriplet::is_last_col_in_row();
-                $if(curr_prefix / segment_size == triplet_idx / segment_size)  // In the same warp -> Read the first column
-                {
-                    const Uint first_lane_id = curr_prefix % segment_size;
-                    triplet_property |= MatrixTriplet::write_first_col_info(first_lane_id);
-                }
-                $else  // Not in the same warp -> Read the first lane
-                {
-                    triplet_property |= MatrixTriplet::write_first_col_info(0);
-                };
-                $if(curr_prefix / segment_size != (curr_prefix + curr_count) / segment_size)
-                {
-                    triplet_property |= MatrixTriplet::write_use_atomic();
-                };
-            };
+            const Uint triplet_property =
+                MatrixTriplet::make_triplet_property_in_block(triplet_idx, curr_prefix, curr_prefix + curr_count - 1);
 
             sa_cgA_contact_offdiag_triplet->write(
                 triplet_idx,
@@ -1395,9 +1356,11 @@ void NarrowPhasesDetector::device_perVert_evaluate_gradient_hessian(luisa::compu
 
     if (num_pairs != 0)
     {
+        stream << fn_reset_triplet().dispatch(alinged_triplet_count);
         stream << fn_perVert_assemble_gradient_hessian(sa_cgB, sa_cgA_diag)
                       .dispatch(host_collision_data->per_vert_num_narrow_phase.size());
         // stream << fn_block_level_sort_contact_triplet().dispatch(alinged_triplet_count);
+
         stream << fn_assemble_triplet_unsorted().dispatch(triplet_count);
     }
 }

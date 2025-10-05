@@ -557,15 +557,16 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_pcg_spmv_offdiag_block_rbk,
-        [sa_cgA_fixtopo_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
-            Var<luisa::compute::Buffer<float3>> sa_input_vec, Var<luisa::compute::Buffer<float3>> sa_output_vec)
+        [](Var<luisa::compute::Buffer<MatrixTriplet3x3>> sa_cgA_offdiag_triplet,
+           Var<luisa::compute::Buffer<float3>>           sa_input_vec,
+           Var<luisa::compute::Buffer<float3>>           sa_output_vec)
         {
             const Uint triplet_idx = dispatch_x();
             const Uint threadIdx   = triplet_idx % 256;
             const Uint warpIdx     = threadIdx / 32;
             const Uint laneIdx     = threadIdx % 32;
 
-            auto       triplet         = sa_cgA_fixtopo_offdiag_triplet->read(triplet_idx);
+            auto       triplet         = sa_cgA_offdiag_triplet->read(triplet_idx);
             Uint       vid             = triplet->get_row_idx();
             const Uint adj_vid         = triplet->get_col_idx();
             Uint       matrix_property = triplet->get_matrix_property();
@@ -1864,10 +1865,16 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     // stream << fn_pcg_spmv_offdiag_warp_rbk(input_ptr, output_ptr)
     //               .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
-    stream << fn_pcg_spmv_offdiag_block_rbk(input_ptr, output_ptr)
+    stream << fn_pcg_spmv_offdiag_block_rbk(sim_data->sa_cgA_fixtopo_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
-    mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
+    const auto& host_count            = host_collision_data->narrow_phase_collision_count;
+    const uint  num_pairs             = host_count.front();
+    const uint  aligned_diaptch_count = get_dispatch_block(num_pairs * 12, 256) * 256;
+    stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+                  .dispatch(aligned_diaptch_count);
+
+    // mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
     // mp_narrowphase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
