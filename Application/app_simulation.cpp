@@ -464,9 +464,6 @@ int main(int argc, char** argv)
             bounding_boxes.push_back(bounding_box_ptr);
         }
 
-        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-
-
         auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
@@ -603,7 +600,17 @@ int main(int argc, char** argv)
             if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::Checkbox("Use Ground Collision", &lcs::get_scene_params().use_floor);
-                ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f);
+                if (lcs::get_scene_params().use_floor)
+                {
+                    ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f);
+                    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::TileReflection;
+                    polyscope::options::groundPlaneHeightMode = polyscope::GroundPlaneHeightMode::Manual;
+                    polyscope::options::groundPlaneHeight     = lcs::get_scene_params().floor.y;
+                }
+                else
+                {
+                    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+                }
                 const uint offset_vf = host_collision_data.get_vf_count_offset();
                 const uint offset_ee = host_collision_data.get_ee_count_offset();
                 ImGui::Text("Num VF = %d EE = %d",
