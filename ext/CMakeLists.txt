@@ -33,7 +33,9 @@ if (NOT TARGET luisa::compute)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
 
+find_package(Eigen3 QUIET)
 if (NOT TARGET Eigen3::Eigen)
+    message(STATUS "Can not find eigen3 package, download...")
     FetchContent_Declare(
         eigen
         GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
@@ -46,11 +48,11 @@ if (NOT TARGET Eigen3::Eigen)
     set(EIGEN_MPL2_ONLY ON CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
-    
     set(EIGEN_TEST_CXX11 OFF CACHE BOOL "" FORCE)
     set(EIGEN_TEST_COMPILER_FEATURES OFF CACHE BOOL "" FORCE)
-    
     FetchContent_MakeAvailable(eigen)
+else()
+    message(STATUS "Use system Eigen3")
 endif()
 target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
 
@@ -106,16 +108,16 @@ if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
             if (APPLE)
                 # Use native libdispatch
                 target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
-                message("Host parallel function use native libdispatch")
+                message(STATUS "Host parallel function use native libdispatch")
             else ()
                 target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
-                message("Host parallel function use luisa::fiber")
+                message(STATUS "Host parallel function use luisa::fiber")
             endif ()
         endif()
     endif()
 else()
     target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
-    message("Host parallel function use luisa::fiber")
+    message(STATUS "Host parallel function use luisa::fiber")
 endif()
 
 
