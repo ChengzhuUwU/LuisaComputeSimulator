@@ -611,11 +611,12 @@ int main(int argc, char** argv)
                 {
                     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
                 }
-                const uint offset_vf = host_collision_data.get_vf_count_offset();
-                const uint offset_ee = host_collision_data.get_ee_count_offset();
-                ImGui::Text("Num VF = %d EE = %d",
-                            host_collision_data.narrow_phase_collision_count[offset_vf],
-                            host_collision_data.narrow_phase_collision_count[offset_ee]);
+                const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
+                const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
+                ImGui::Text("Num Triplet = %d , Assembled Triplet = %d (Size = %zu)",
+                            host_collision_data.narrow_phase_collision_count[offset_pairs],
+                            host_collision_data.narrow_phase_collision_count[offset_verts],
+                            collision_data.sa_cgA_contact_offdiag_triplet.size());
             }
 
             if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen))

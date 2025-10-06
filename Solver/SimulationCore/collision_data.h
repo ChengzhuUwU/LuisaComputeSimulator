@@ -238,10 +238,8 @@ namespace CollisionPair
         inline constexpr uint ve_offset() { return 1; }
         inline constexpr uint vf_offset() { return 2; }
         inline constexpr uint ee_offset() { return 3; }
-        inline constexpr uint per_vert_vv_offset() { return 4; }
-        inline constexpr uint per_vert_ve_offset() { return 5; }
-        inline constexpr uint per_vert_vf_offset() { return 6; }
-        inline constexpr uint per_vert_ee_offset() { return 7; }
+        inline constexpr uint total_adj_pairs_offset() { return 4; }
+        inline constexpr uint total_adj_verts_offset() { return 5; }
         // clang-format on
     }  // namespace CollisionCount
 }  // namespace CollisionPair

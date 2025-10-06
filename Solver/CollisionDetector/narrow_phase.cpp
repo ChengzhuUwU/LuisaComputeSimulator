@@ -780,27 +780,28 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                             }
                         });
 
-    compiler.compile<1>(fn_calc_pervert_prefix_adj_pairs,
-                        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
-                         per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs.view(),
-                         per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs.view()]()
-                        {
-                            const Uint vid           = dispatch_x();
-                            const Uint num_adj_pairs = per_vert_num_adj_pairs->read(vid);
+    compiler.compile<1>(
+        fn_calc_pervert_prefix_adj_pairs,
+        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
+         per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs.view(),
+         per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs.view()]()
+        {
+            const Uint vid           = dispatch_x();
+            const Uint num_adj_pairs = per_vert_num_adj_pairs->read(vid);
 
-                            Uint vert_count = num_adj_pairs;
-                            Uint block_sum  = 0;
-                            Uint block_offset =
-                                ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
-                            luisa::compute::Shared<uint> block_prefix(1);
-                            $if(vid % 256 == 0)
-                            {
-                                block_prefix[0] = narrow_phase_count->atomic(4).fetch_add(block_sum);
-                            };
-                            luisa::compute::sync_block();
-                            const Uint global_index = block_prefix[0] + block_offset;
-                            per_vert_prefix_adj_pairs->write(vid, global_index);
-                        });
+            Uint vert_count = num_adj_pairs;
+            Uint block_sum  = 0;
+            Uint block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
+            luisa::compute::Shared<uint> block_prefix(1);
+            $if(vid % 256 == 0)
+            {
+                block_prefix[0] =
+                    narrow_phase_count->atomic(CollisionPair::CollisionCount::total_adj_pairs_offset()).fetch_add(block_sum);
+            };
+            luisa::compute::sync_block();
+            const Uint global_index = block_prefix[0] + block_offset;
+            per_vert_prefix_adj_pairs->write(vid, global_index);
+        });
 
     compiler.compile<1>(
         fn_fill_in_pairs_in_vert_adjacent,
@@ -929,22 +930,18 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
 
             using Value = luisa::compute::Var<uint64_t>;
 
-            luisa::compute::Var<uint64_t> value        = ~Value(0);  // Max val
-            Uint3                         triplet_info = make_uint3(0u);
-            Uint                          vid          = -1u;
-            Uint                          adj_vid      = -1u;
+            luisa::compute::Var<uint64_t> value = ~Value(0);  // Max val
             $if(triplet_idx < num_triplets)
             {
-                triplet_info = sa_cgA_contact_offdiag_triplet_info->read(triplet_idx);
-                vid          = triplet_info[0] & 0x3FFFFFFF;
-                adj_vid      = triplet_info[1] & 0x3FFFFFFF;
-                value        = (static_cast<Value>(vid) << 32) | static_cast<Value>(adj_vid);
+                Uint3 triplet_info = sa_cgA_contact_offdiag_triplet_info->read(triplet_idx);
+                Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
+                Uint  adj_vid      = triplet_info[1] & 0x3FFFFFFF;
+                value              = (static_cast<Value>(vid) << 32) | static_cast<Value>(adj_vid);
             };
 
             luisa::compute::Shared<ushort>   cache_offset(ParallelIntrinsic::reduce_block_dim);
             luisa::compute::Shared<ushort>   cache_key(ParallelIntrinsic::reduce_block_dim);
-            luisa::compute::Shared<uint64_t> cache_value(ParallelIntrinsic::reduce_block_dim);
-            // luisa::compute::Shared<uint>     cache_count(ParallelIntrinsic::reduce_block_dim);  // 3.5 MB
+            luisa::compute::Shared<uint64_t> cache_value(ParallelIntrinsic::reduce_block_dim);  // 2.5 MB
             cache_key[threadIdx]    = threadIdx;
             cache_value[threadIdx]  = value;
             cache_offset[threadIdx] = 0;
@@ -953,9 +950,11 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             // Block sort
             ParallelIntrinsic::block_bitonic_sort(cache_key, cache_value, triplet_idx, value);
 
-            // Cull duplicate adjacent
+            // For sorted triplet
             $if(triplet_idx < num_triplets)
             {
+                const Value curr_value = cache_value[threadIdx];
+                const Uint  vid        = curr_value >> 32;
                 Uint contr = (threadIdx == 0);  // Is the first triplet in the triplet-list with the same [rowIdx, colIdx]
                 $if(threadIdx != 0)
                 {
@@ -968,61 +967,63 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                 //            cache_value[threadIdx] >> 32,
                 //            cache_value[threadIdx] & 0xFFFFFFFFul);
 
-                Uint block_sum = 0;
-                const Uint prefix = ParallelIntrinsic::block_intrinsic_scan_exclusive(triplet_idx, contr, block_sum);
+                Uint       block_sum = 0;
+                const Uint prefix_ex =
+                    ParallelIntrinsic::block_intrinsic_scan_exclusive(triplet_idx, contr, block_sum);
+                const Uint prefix_in = prefix_ex + contr;
 
                 $if(contr == 1)
                 {
-                    const Uint offset    = per_vert_num_adj_verts->atomic(vid).fetch_add(1u);
-                    cache_offset[prefix] = offset;
+                    const Uint offset           = per_vert_num_adj_verts->atomic(vid).fetch_add(1u);
+                    cache_offset[prefix_in - 1] = offset;
                 };
                 luisa::compute::sync_block();
 
-                Uint offset = cache_offset[prefix];
+                Uint offset = cache_offset[prefix_in - 1];
                 $if(contr == 1)
                 {
                     offset |= 1 << 31;
                 };
 
-                sa_cgA_contact_offdiag_triplet_info->write(
-                    triplet_idx, make_matrix_triplet_info(triplet_info[0], triplet_info[1], offset));
+                // device_log("Index {} , sorted vid = {}, adj = {}, prefix = {}, is first {} , offset = {}",
+                //            triplet_idx,
+                //            cache_value[threadIdx] >> 32,
+                //            cache_value[threadIdx] & 0xFFFFFFFFul,
+                //            prefix_in - 1,
+                //            contr == 1,
+                //            offset & 0xFFFF);
 
-                // $if(threadIdx == 0)
-                // {
-                //     const Uint global_prefix = narrow_phase_collision_count->atomic(5).fetch_add(block_sum);
-                //     cache_count[0] = global_prefix;
-                // };
-                // luisa::compute::sync_block();
-                // $if(is_first_triplet)
-                // {
-                //     const Uint global_index = cache_count[0] + prefix_in_block;
-                //     sa_cgA_contact_offdiag_triplet_info->write(
-                //         triplet_idx, make_matrix_triplet_info(vid, adj_vid, global_index));
-                // };
+                // Get original index
+                const Uint orig_threadIdx   = Uint(cache_key[threadIdx]);
+                const Uint orig_triplet_idx = blockPrefix + orig_threadIdx;
+                Uint3      triplet_info = sa_cgA_contact_offdiag_triplet_info->read(orig_triplet_idx);
+                sa_cgA_contact_offdiag_triplet_info->write(
+                    orig_triplet_idx, make_matrix_triplet_info(triplet_info[0], triplet_info[1], offset));
             };
         });
 
-    compiler.compile<1>(fn_calc_pervert_prefix_adj_verts,
-                        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
-                         per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
-                         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view()]()
-                        {
-                            const Uint vid           = dispatch_x();
-                            const Uint num_adj_verts = per_vert_num_adj_verts->read(vid);
+    compiler.compile<1>(
+        fn_calc_pervert_prefix_adj_verts,
+        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
+         per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
+         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view()]()
+        {
+            const Uint vid           = dispatch_x();
+            const Uint num_adj_verts = per_vert_num_adj_verts->read(vid);
 
-                            Uint vert_count = num_adj_verts;
-                            Uint block_sum  = 0;
-                            Uint block_offset =
-                                ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
-                            luisa::compute::Shared<uint> block_prefix(1);
-                            $if(vid % 256 == 0)
-                            {
-                                block_prefix[0] = narrow_phase_count->atomic(5).fetch_add(block_sum);
-                            };
-                            luisa::compute::sync_block();
-                            const Uint global_index = block_prefix[0] + block_offset;
-                            per_vert_prefix_adj_verts->write(vid, global_index);
-                        });
+            Uint vert_count = num_adj_verts;
+            Uint block_sum  = 0;
+            Uint block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
+            luisa::compute::Shared<uint> block_prefix(1);
+            $if(vid % 256 == 0)
+            {
+                block_prefix[0] =
+                    narrow_phase_count->atomic(CollisionPair::CollisionCount::total_adj_verts_offset()).fetch_add(block_sum);
+            };
+            luisa::compute::sync_block();
+            const Uint global_index = block_prefix[0] + block_offset;
+            per_vert_prefix_adj_verts->write(vid, global_index);
+        });
 
     compiler.compile<1>(
         fn_assemble_triplet_sorted,
@@ -1078,8 +1079,33 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             atomic_add_triplet_matrix(sa_cgA_contact_offdiag_triplet, target_triplet_idx, weight[ii] * weight[jj] * hess);
         });
 }
+void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& stream)
+{
+    auto&      host_count = host_collision_data->narrow_phase_collision_count;
+    const uint num_pairs  = host_count.front();
 
-void NarrowPhasesDetector::host_global_sort_contact_triplet(luisa::compute::Stream& stream)
+    const uint num_triplet = num_pairs * 12;
+    const uint alinged_num_triplet =
+        segment_size == 1 ? num_triplet : (num_triplet + segment_size - 1) / segment_size * segment_size;
+
+    if (num_triplet != 0)
+    {
+        stream << fn_block_level_sort_contact_triplet().dispatch(alinged_num_triplet);
+        stream << fn_calc_pervert_prefix_adj_verts().dispatch(host_collision_data->per_vert_num_adj_verts.size());
+
+        download_narrowphase_collision_count(stream);
+
+        const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        LUISA_INFO("Host   Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
+
+        const uint alinged_num_triplet_assembled =
+            (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
+        stream << fn_reset_triplet().dispatch(alinged_num_triplet_assembled);
+        stream << fn_assemble_triplet_sorted().dispatch(num_triplet);
+    }
+}
+
+void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& stream)
 {
     auto&      host_count = host_collision_data->narrow_phase_collision_count;
     const uint num_pairs  = host_count.front();
@@ -1207,12 +1233,17 @@ void NarrowPhasesDetector::host_global_sort_contact_triplet(luisa::compute::Stre
 
 
         LUISA_INFO("Host   Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
-        host_count[5] = num_triplet_assembled;
+        host_count[CollisionPair::CollisionCount::total_adj_verts_offset()] = num_triplet_assembled;
         stream << collision_data->sa_cgA_contact_offdiag_triplet_info.view(0, num_triplet)
                       .copy_from(host_collision_data->sa_cgA_contact_offdiag_triplet_info.data())
                << collision_data->per_vert_num_adj_verts.copy_from(per_vert_num_adj_verts.data())
                << collision_data->per_vert_prefix_adj_verts.copy_from(per_vert_prefix_adj_verts.data());
     };
+
+    const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    const uint aligned_num_triplet_assembled = (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
+    stream << fn_reset_triplet().dispatch(aligned_num_triplet_assembled);
+    stream << fn_assemble_triplet_sorted().dispatch(num_triplet);
 }
 
 }  // namespace lcs
@@ -1541,27 +1572,10 @@ void NarrowPhasesDetector::device_perVert_evaluate_gradient_hessian(luisa::compu
     auto&      host_count = host_collision_data->narrow_phase_collision_count;
     const uint num_pairs  = host_count.front();
 
-    const uint num_triplet = num_pairs * 12;
-    const uint alinged_num_triplet =
-        segment_size == 1 ? num_triplet : (num_triplet + segment_size - 1) / segment_size * segment_size;
-
-
     if (num_pairs != 0)
     {
         stream << fn_perVert_assemble_gradient_hessian(sa_cgB, sa_cgA_diag)
                       .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
-
-        host_global_sort_contact_triplet(stream);
-
-        stream << fn_reset_triplet().dispatch(alinged_num_triplet);
-        // stream << fn_init_triplet_info().dispatch(num_triplet);
-        // stream << fn_block_level_sort_contact_triplet().dispatch(alinged_num_triplet);
-        // stream << fn_calc_pervert_prefix_adj_verts().dispatch(host_collision_data->per_vert_num_adj_verts.size());
-        // download_narrowphase_collision_count(stream);
-        // LUISA_INFO("Device Assembled triplet count = {} <- {}", host_count[5], num_triplet);
-
-        stream << fn_assemble_triplet_sorted().dispatch(num_triplet);
-        // stream << fn_assemble_triplet_unsorted().dispatch(triplet_count);
     }
 }
 

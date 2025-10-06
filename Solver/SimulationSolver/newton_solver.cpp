@@ -1873,8 +1873,8 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
     //               .dispatch(aligned_diaptch_count);
 
-    const auto& host_count            = host_collision_data->narrow_phase_collision_count;
-    const uint  reduced_triplet       = host_count[5];
+    const auto& host_count      = host_collision_data->narrow_phase_collision_count;
+    const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
     const uint  aligned_diaptch_count = get_dispatch_block(reduced_triplet, 256) * 256;
     stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(aligned_diaptch_count);
@@ -2405,6 +2405,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         // mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(
         mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
             stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+        mp_narrowphase_detector->device_sort_contact_triplet(stream);
     };
     auto ccd_get_toi = [&]() -> float
     {
@@ -2417,7 +2418,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     const uint num_verts = host_mesh_data->num_verts;
 
     auto pcg_spmv = [&](const luisa::compute::Buffer<float3>& input_ptr, luisa::compute::Buffer<float3>& output_ptr) -> void
-    { device_SpMV(stream, input_ptr, output_ptr); };
+    {
+        //
+        device_SpMV(stream, input_ptr, output_ptr);
+    };
     auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
     {
         // stream << sim_data->sa_x_tilde.copy_to(host_sim_data->sa_x_tilde.data());

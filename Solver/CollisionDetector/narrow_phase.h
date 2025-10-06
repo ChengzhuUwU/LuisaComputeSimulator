@@ -150,15 +150,13 @@ class NarrowPhasesDetector
                                                   const float           thickness,
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
-
     void construct_pervert_adj_list(Stream& stream);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
-
-  private:
-    void host_global_sort_contact_triplet(Stream& stream);
+    void host_sort_contact_triplet(Stream& stream);
+    void device_sort_contact_triplet(Stream& stream);
 
   public:
     // Compute barrier energy
