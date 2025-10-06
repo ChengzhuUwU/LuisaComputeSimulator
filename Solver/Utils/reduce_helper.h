@@ -184,6 +184,308 @@ namespace ParallelIntrinsic
         return cache[warpIdx] + warp_prefix;
     }
 
+    namespace sort_detail
+    {
+        template <typename T>
+        inline void block_intrinsic_scan_exclusive(const luisa::compute::UInt& vid,
+                                                   const Var<T>&               thread_value,
+                                                   luisa::compute::Shared<T>&  cache_warp_sum,
+                                                   luisa::compute::Shared<T>&  cache_output_prefix)
+        {
+            using Uint = luisa::compute::UInt;
+
+            const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+            const luisa::compute::UInt warpIdx   = threadIdx / warp_dim;
+            const luisa::compute::UInt laneIdx   = threadIdx % warp_dim;
+
+            Var<T> warp_offset = warp_scan_op<T>(thread_value);
+            $if(laneIdx == 31)
+            {
+                cache_warp_sum[warpIdx] = warp_offset + thread_value;
+            };
+            luisa::compute::sync_block();
+
+            $if(warpIdx == 0)
+            {
+                Var<T> warp_val           = cache_warp_sum[threadIdx];
+                cache_warp_sum[threadIdx] = warp_scan_op<T>(warp_val);  // Get warp's prefix in block
+            };
+            luisa::compute::sync_block();
+            cache_output_prefix[threadIdx] = cache_warp_sum[warpIdx] + warp_offset;
+            luisa::compute::sync_block();
+        }
+
+        template <typename T>
+        inline void swap_template(Var<T>& a, Var<T>& b)
+        {
+            Var<T> tmp = a;
+            a          = b;
+            b          = tmp;
+        };
+    }  // namespace sort_detail
+
+    template <typename T>
+    inline T block_radix_sort_8bit(const luisa::compute::UInt& vid, const Var<T>& thread_value)
+    {
+        using Uint = luisa::compute::UInt;
+
+        luisa::compute::set_block_size(reduce_block_dim);
+        const Uint threadIdx = vid % reduce_block_dim;
+        const Uint warpIdx   = threadIdx / warp_dim;
+
+        constexpr uint bit_size   = 8;
+        constexpr uint num_pass   = sizeof(T) * 8 / bit_size;
+        constexpr uint num_bucket = 1 << bit_size;
+
+        luisa::compute::Shared<T>      cache_value(reduce_block_dim);
+        luisa::compute::Shared<ushort> cache_index(reduce_block_dim);    // Sorted get original index
+        luisa::compute::Shared<uint>   cache_per_bit_count(num_bucket);  // 2560 KB
+        luisa::compute::Shared<uint>   cache_scan_warp_sum(warp_num);
+
+        cache_value[threadIdx] = thread_value;
+        cache_index[threadIdx] = threadIdx;
+        luisa::compute::sync_block();
+
+        for (uint pass = 0; pass < num_pass; pass++)
+        {
+            cache_per_bit_count[threadIdx] = 0;
+            luisa::compute::sync_block();
+
+            const Uint orig_threadIdx = cache_index[threadIdx];
+            const T    orig_value     = cache_value[orig_threadIdx];
+            const Uint thread_bit     = (orig_value >> (pass * bit_size)) & 0xFF;
+
+            // !Invalid: will loss the order of threads with same bit
+            // const Uint offset = cache_per_bit_count.atomic(thread_bit).fetch_add(1u);
+            // luisa::compute::sync_block();
+
+            Uint offset;  // TODO: (?) How to keep the order of threads with same bit without serialization
+            for (uint wid = 0; wid < 8; wid++)
+            {
+                $if(wid == warpIdx)
+                {
+                    // !Still rely on specific hardware
+                    offset = cache_per_bit_count.atomic(thread_bit).fetch_add(1u);
+                };
+                luisa::compute::sync_block();
+            }
+
+            auto& cache_per_bit_prefix = cache_per_bit_count;
+            sort_detail::block_intrinsic_scan_exclusive<uint>(
+                vid, cache_per_bit_count[threadIdx], cache_scan_warp_sum, cache_per_bit_prefix);
+            const Uint bit_prefix = cache_per_bit_prefix[thread_bit];
+            const Uint insert_idx = bit_prefix + offset;
+            cache_index.write(insert_idx, orig_threadIdx);
+            // cache_value.write(insert_idx, orig_value);
+            luisa::compute::sync_block();
+        }
+
+        const Uint orig_threadIdx = cache_index[threadIdx];
+        const T    sorted_value   = cache_value[orig_threadIdx];
+        return sorted_value;
+    }
+
+    template <typename T>
+    inline Var<T> block_sort_odd_even(const luisa::compute::UInt& vid, const Var<T>& thread_value, bool ascending = true)
+    {
+        luisa::compute::set_block_size(reduce_block_dim);
+        const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+
+        luisa::compute::Shared<T> cache(reduce_block_dim);
+        cache[threadIdx] = thread_value;
+        luisa::compute::sync_block();
+
+        luisa::compute::UInt iter = 0u;
+        $while(true)
+        {
+            $if(iter == reduce_block_dim)
+            {
+                $break;
+            };
+
+            luisa::compute::UInt phase = iter & 1u;  // 0: compare (0,1),(2,3)...  1: compare (1,2),(3,4)...
+            // only threads that are the left element of a pair participate
+            $if((threadIdx + 1u) < reduce_block_dim)
+            {
+                $if(((threadIdx & 1u) == phase))
+                {
+                    Var<T> a = cache[threadIdx];
+                    Var<T> b = cache[threadIdx + 1u];
+                    if (ascending)
+                    {
+                        $if(a > b)
+                        {
+                            cache[threadIdx]      = b;
+                            cache[threadIdx + 1u] = a;
+                        };
+                    }
+                    else
+                    {
+                        $if(a < b)
+                        {
+                            cache[threadIdx]      = b;
+                            cache[threadIdx + 1u] = a;
+                        };
+                    }
+                };
+            };
+            luisa::compute::sync_block();
+            iter = iter + 1u;
+        };
+
+        return cache[threadIdx];
+    }
+
+    template <typename T>
+    inline std::pair<Var<ushort>, Var<T>> block_bitonic_sort(const luisa::compute::UInt& vid,
+                                                             const Var<T>&               thread_value,
+                                                             bool ascending = true)
+    {
+        luisa::compute::set_block_size(reduce_block_dim);
+        const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+
+        luisa::compute::Shared<ushort> cache_key(reduce_block_dim);
+        luisa::compute::Shared<T>      cache_value(reduce_block_dim);
+        cache_key[threadIdx]   = threadIdx;
+        cache_value[threadIdx] = thread_value;
+        luisa::compute::sync_block();
+
+        luisa::compute::UInt k = 2u;
+        // luisa::compute::UInt count = 0u;
+        $while(true)
+        {
+            $if(k > reduce_block_dim)
+            {
+                $break;
+            };
+            luisa::compute::UInt j = k >> 1u;
+            $while(true)
+            {
+                $if(j == 0u)
+                {
+                    $break;
+                };
+
+                // count += 1;
+                luisa::compute::UInt ixj = threadIdx ^ j;
+                $if(ixj > threadIdx)
+                {
+                    luisa::compute::Bool tmp = ((threadIdx & k) == 0u);
+                    $if(((tmp == ascending) & (cache_value[threadIdx] > cache_value[ixj]))
+                        | ((tmp != ascending) & (cache_value[threadIdx] < cache_value[ixj])))
+                    {
+                        sort_detail::swap_template(cache_value[threadIdx], cache_value[ixj]);
+                        sort_detail::swap_template(cache_key[threadIdx], cache_key[ixj]);
+                    };
+                };
+                luisa::compute::sync_block();
+                j = j >> 1u;
+            };
+            k = k << 1u;
+        };
+        // $if (vid == 0) {
+        //     device_log("block_bitonic_sort iters = {}", count);
+        // };
+        return std::make_pair(cache_key[threadIdx], cache_value[threadIdx]);
+    }
+
+    template <typename T>
+    inline void block_bitonic_sort(luisa::compute::Shared<ushort>& cache_key,
+                                   luisa::compute::Shared<T>&      cache_value,
+                                   const luisa::compute::UInt&     vid,
+                                   const Var<T>&                   thread_value,
+                                   bool                            ascending = true)
+    {
+        luisa::compute::set_block_size(reduce_block_dim);
+        const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+
+        luisa::compute::UInt k = 2u;
+        $while(true)
+        {
+            $if(k > reduce_block_dim)
+            {
+                $break;
+            };
+            luisa::compute::UInt j = k >> 1u;
+            $while(true)
+            {
+                $if(j == 0u)
+                {
+                    $break;
+                };
+                luisa::compute::UInt ixj = threadIdx ^ j;
+                $if(ixj > threadIdx)
+                {
+                    luisa::compute::Bool tmp = ((threadIdx & k) == 0u);
+                    $if(((tmp == ascending) & (cache_value[threadIdx] > cache_value[ixj]))
+                        | ((tmp != ascending) & (cache_value[threadIdx] < cache_value[ixj])))
+                    {
+                        sort_detail::swap_template(cache_value[threadIdx], cache_value[ixj]);
+                        sort_detail::swap_template(cache_key[threadIdx], cache_key[ixj]);
+                    };
+                };
+                luisa::compute::sync_block();
+                j = j >> 1u;
+            };
+            k = k << 1u;
+        };
+    }
+
+
+    template <typename T>
+    inline Var<T> block_bitonic_sort_ranged(const luisa::compute::UInt& vid,
+                                            const Var<T>&               thread_value,
+                                            const Var<luisa::uint2>&    range,
+                                            bool                        ascending = true)
+    {
+        luisa::compute::set_block_size(reduce_block_dim);
+        const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
+
+        luisa::compute::Shared<T> cache(reduce_block_dim);
+        cache[threadIdx] = thread_value;
+        luisa::compute::sync_block();
+
+        luisa::compute::UInt k = 2u;
+
+        auto swap = [](Var<T>& a, Var<T>& b)
+        {
+            Var<T> tmp = a;
+            a          = b;
+            b          = tmp;
+        };
+
+        $while(true)
+        {
+            $if(k > reduce_block_dim)
+            {
+                $break;
+            };
+            luisa::compute::UInt j = k >> 1u;
+            $while(true)
+            {
+                $if(j == 0u)
+                {
+                    $break;
+                };
+                luisa::compute::UInt ixj = threadIdx ^ j;
+                $if((ixj > threadIdx) & (ixj >= range.x & ixj < range.y))
+                {
+                    luisa::compute::Bool tmp = (threadIdx & k) == 0u;
+                    $if((tmp == ascending & cache[threadIdx] > cache[ixj])
+                        | (tmp != ascending & cache[threadIdx] < cache[ixj]))
+                    {
+                        swap(cache[threadIdx], cache[ixj]);
+                    };
+                };
+                luisa::compute::sync_block();
+                j = j >> 1u;
+            };
+            k = k << 1u;
+        };
+
+        return (cache[threadIdx]);
+    }
+
     template <typename T>
     inline luisa::compute::Shader<1, luisa::compute::BufferView<T>> generate_fill_shader(luisa::compute::Device& device,
                                                                                          const T& value)

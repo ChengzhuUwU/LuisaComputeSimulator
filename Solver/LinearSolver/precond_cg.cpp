@@ -92,6 +92,18 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
     luisa::compute::Callable fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]()
     { return sa_convergence->read(3); };
 
+    // Considering num_verts outer 256*256
+    auto fn_get_dispatch_block = [sa_num_dof = sim_data->sa_num_dof.view()]()
+    {
+        const Uint idx = 0;
+        return get_dispatch_block(sa_num_dof->read(idx), 256);
+    };
+    auto fn_get_num_dof = [sa_num_dof = sim_data->sa_num_dof.view()]()
+    {
+        const Uint idx = 0;
+        return sa_num_dof->read(idx);
+    };
+
     // PCG kernels
     compiler.compile<1>(
         fn_pcg_init,
@@ -125,14 +137,20 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
 
     compiler.compile<1>(fn_pcg_init_second_pass,
                         [sa_block_result = sim_data->sa_block_result.view(),
-                         sa_convergence  = sim_data->sa_convergence.view()]()
+                         sa_convergence  = sim_data->sa_convergence.view(),
+                         fn_get_dispatch_block]()
                         {
                             const UInt vid = dispatch_id().x;
 
                             Float dot_rr = 0.0f;
                             {
-                                dot_rr = sa_block_result->read(vid);
-                            };
+                                // dot_rr = sa_block_result->read(vid);
+                                $for(blockIdx, vid, fn_get_dispatch_block(), 256u)
+                                {
+                                    // device_log("vid {} read {} (Max = {})", vid, blockIdx, fn_get_dispatch_block());
+                                    dot_rr += sa_block_result->read(blockIdx);
+                                };
+                            }
                             dot_rr = ParallelIntrinsic::block_intrinsic_reduce(
                                 vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
@@ -173,14 +191,18 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
 
     // Write 2 <- alpha
     compiler.compile<1>(fn_dot_pq_second_pass,
-                        [sa_block_result = sim_data->sa_block_result.view(), fn_save_alpha]()
+                        [sa_block_result = sim_data->sa_block_result.view(), fn_save_alpha, fn_get_dispatch_block]()
                         {
                             const UInt vid = dispatch_id().x;
 
                             Float dot_pq = 0.0f;
                             {
-                                dot_pq = sa_block_result->read(vid);
-                            };
+                                // dot_pq = sa_block_result->read(vid);
+                                $for(blockIdx, vid, fn_get_dispatch_block(), 256u)
+                                {
+                                    dot_pq += sa_block_result->read(blockIdx);
+                                };
+                            }
 
                             dot_pq = ParallelIntrinsic::block_intrinsic_reduce(
                                 vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -265,13 +287,22 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
     // Write 3 <- beta
     compiler.compile<1>(
         fn_pcg_apply_preconditioner_second_pass,
-        [sa_block_result = sim_data->sa_block_result.view(), fn_update_dot_rz, fn_save_dot_rr, fn_save_beta, fn_read_rz]()
+        [sa_block_result = sim_data->sa_block_result.view(), fn_update_dot_rz, fn_save_dot_rr, fn_save_beta, fn_read_rz, fn_get_dispatch_block]()
         {
             const UInt vid = dispatch_id().x;
 
-            Float  dot_rr    = sa_block_result->read(2 * vid + 0);
-            Float  dot_rz    = sa_block_result->read(2 * vid + 1);
-            Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
+            Float dot_rr = 0.0f;
+            Float dot_rz = 0.0f;
+            {
+                // dot_rr = sa_block_result->read(2 * vid + 0);
+                // dot_rz = sa_block_result->read(2 * vid + 1);
+                $for(blockIdx, vid, fn_get_dispatch_block(), 256u)
+                {
+                    dot_rr += sa_block_result->read(2 * blockIdx + 0);
+                    dot_rz += sa_block_result->read(2 * blockIdx + 1);
+                };
+            }
+            Float2 dot_rr_rz = make_float2(dot_rr, dot_rz);
 
             dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(
                 vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
@@ -602,7 +633,11 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
 
     // auto device_pcg = [&]()
     const uint num_verts        = host_cgX.size();
-    const uint num_blocks_verts = get_dispatch_block(num_verts, 256);
+    const uint num_blocks_verts = min_scalar(get_dispatch_block(num_verts, 256), 256u);
+    // if (num_blocks_verts > 256)
+    // {
+    //     LUISA_ERROR("Too many vertices for reduce: {}", num_verts);
+    // }
 
     stream << fn_reset_float(sim_data->sa_convergence).dispatch(sim_data->sa_convergence.size());
 

@@ -3,6 +3,7 @@
 #include "CollisionDetector/lbvh.h"
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_data.h"
+#include "SimulationCore/collision_data.h"
 #include "SimulationCore/simulation_type.h"
 #include <vector>
 #include <string>
@@ -35,6 +36,7 @@ class NarrowPhasesDetector
     void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
     void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
     void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
+    void compile_make_contact_triplet(AsyncCompiler& compiler);
     void compile_assemble_atomic(AsyncCompiler& compiler);
     void compile_assemble_non_conflict(AsyncCompiler& compiler);
 
@@ -148,39 +150,27 @@ class NarrowPhasesDetector
                                                   const float           thickness,
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
-
     void construct_pervert_adj_list(Stream& stream);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
+    void host_sort_contact_triplet(Stream& stream);
+    void device_sort_contact_triplet(Stream& stream);
 
   public:
     // Compute barrier energy
-    void compute_penalty_energy_from_vf(Stream&               stream,
-                                        const Buffer<float3>& sa_x_left,
-                                        const Buffer<float3>& sa_x_right,
-                                        const Buffer<float3>& sa_rest_x_left,
-                                        const Buffer<float3>& sa_rest_x_right,
-                                        const Buffer<float>&  sa_rest_area_left,
-                                        const Buffer<float>&  sa_rest_area_right,
-                                        const Buffer<uint3>&  sa_faces_right,
-                                        const float           d_hat,
-                                        const float           thickness,
-                                        const float           kappa);
-
-    void compute_penalty_energy_from_ee(Stream&               stream,
-                                        const Buffer<float3>& sa_x_left,
-                                        const Buffer<float3>& sa_x_right,
-                                        const Buffer<float3>& sa_rest_x_left,
-                                        const Buffer<float3>& sa_rest_x_right,
-                                        const Buffer<float>&  sa_rest_area_left,
-                                        const Buffer<float>&  sa_rest_area_right,
-                                        const Buffer<uint2>&  sa_edges_left,
-                                        const Buffer<uint2>&  sa_edges_right,
-                                        const float           d_hat,
-                                        const float           thickness,
-                                        const float           kappa);
+    void compute_contact_energy_from_iter_start_list(Stream&               stream,
+                                                     const Buffer<float3>& sa_x_left,
+                                                     const Buffer<float3>& sa_x_right,
+                                                     const Buffer<float3>& sa_rest_x_left,
+                                                     const Buffer<float3>& sa_rest_x_right,
+                                                     const Buffer<float>&  sa_rest_area_left,
+                                                     const Buffer<float>&  sa_rest_area_right,
+                                                     const Buffer<uint3>&  sa_faces_right,
+                                                     const float           d_hat,
+                                                     const float           thickness,
+                                                     const float           kappa);
 
   public:
   public:
@@ -246,29 +236,29 @@ class NarrowPhasesDetector
                            float>
         fn_narrow_phase_ee_dcd_query;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy_from_vf;
-
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy_from_ee;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
 
     // Scan
-    luisa::compute::Shader<1> fn_calc_pervert_collion_count_vf;
-    luisa::compute::Shader<1> fn_calc_pervert_collion_count_ee;
-    luisa::compute::Shader<1> fn_calc_pervert_prefix_sum_vf_ee;
-    luisa::compute::Shader<1> fn_fill_in_vf_pairs_in_vert_adjacent;
-    luisa::compute::Shader<1> fn_fill_in_ee_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1> fn_calc_pervert_collion_count;
+    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_pairs;
+    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_verts;
+    luisa::compute::Shader<1> fn_fill_in_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1> fn_block_level_sort_contact_triplet;
+    luisa::compute::Shader<1> fn_assemble_triplet_unsorted;
+    luisa::compute::Shader<1> fn_prepare_triplet_info_sorted;
+    luisa::compute::Shader<1> fn_assemble_triplet_sorted;
+    luisa::compute::Shader<1> fn_reset_triplet;
+    luisa::compute::Shader<1> fn_init_triplet_info;
 
     // Assemble
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian_vf;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian_ee;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian_vf;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian_ee;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_vf;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_ee;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_pervert_spmv_assembled;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_warp_reduce_by_key;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_block_reduce_by_key;
 
     // AtomicAdd SpMV
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_atomic_add_spmv_vf;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_atomic_add_spmv_ee;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
 };
 
 

@@ -3,6 +3,7 @@
 #include "Core/xbasic_types.h"
 #include "Core/constant_value.h"
 #include "luisa/core/mathematics.h"
+#include "luisa/dsl/sugar.h"
 #include "luisa/dsl/var.h"
 
 
@@ -567,29 +568,55 @@ inline constexpr Vec lerp_vec(const Vec& left, const Vec& right, const float ler
     return left + lerp_value * (right - left);
 }
 
-template <typename T, uint N>
+template <typename T, size_t N>
 inline bool is_inf_vec(const luisa::Vector<T, N>& vec)
 {
     bool is_inf = false;
     for (uint i = 0; i < N; i++)
     {
-        if (is_inf_scalar(vec[i]))
+        if (luisa::isinf(vec[i]))
         {
             is_inf = true;
         }
     }
     return is_inf;
 }
-template <typename T, uint N>
+template <typename T, size_t N>
+inline Bool is_inf_vec(const Var<luisa::Vector<T, N>>& vec)
+{
+    Bool is_inf = false;
+    for (uint i = 0; i < N; i++)
+    {
+        $if(luisa::compute::isinf(vec[i]))
+        {
+            is_inf = true;
+        };
+    }
+    return is_inf;
+}
+template <typename T, size_t N>
 inline bool is_nan_vec(const luisa::Vector<T, N>& vec)
 {
     bool is_nan = false;
     for (uint i = 0; i < N; i++)
     {
-        if (is_nan_scalar(vec[i]))
+        if (luisa::isnan(vec[i]))
         {
             is_nan = true;
         }
+    }
+    return is_nan;
+}
+template <typename T, size_t N>
+inline Bool is_nan_vec(const Var<luisa::Vector<T, N>>& vec)
+{
+    Bool is_nan = false;
+    for (uint i = 0; i < N; i++)
+    {
+        $if(luisa::compute::isnan(vec[i]))
+        {
+            is_nan = true;
+        };
     }
     return is_nan;
 }

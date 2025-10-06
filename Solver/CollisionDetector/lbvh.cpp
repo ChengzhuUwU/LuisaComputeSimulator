@@ -225,11 +225,6 @@ void LBVH::compile(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
 
-    const uint num_leaves      = lbvh_data->num_leaves;
-    const uint num_inner_nodes = lbvh_data->num_inner_nodes;
-    const uint num_nodes       = lbvh_data->num_nodes;
-
-
     // Construct
 
     // Should capture by value in asynchronous JIT environment
@@ -253,6 +248,12 @@ void LBVH::compile(AsyncCompiler& compiler)
             const Uint blockIdx = vid / 256;
             sa_block_aabb->write(blockIdx, reduced_aabb);
         };
+    };
+
+    auto fn_get_num_leaves = [sa_num_leaves = lbvh_data->sa_num_leaves.view()]() -> Uint
+    {
+        const Uint offset_num_leaves = 0u;
+        return sa_num_leaves->read(offset_num_leaves);
     };
 
     compiler.compile<1>(fn_reduce_aabb_2_pass,
@@ -390,11 +391,12 @@ void LBVH::compile(AsyncCompiler& compiler)
                          sa_morton_sorted       = lbvh_data->sa_morton_sorted.view(),
                          sa_children            = lbvh_data->sa_children.view(),
                          sa_object_idx          = lbvh_data->sa_object_idx.view(),
-                         num_inner_nodes]()
+                         fn_get_num_leaves]()
                         {
                             const Uint lid      = dispatch_id().x;
                             const Uint orig_vid = sa_sorted_get_original->read(lid);
                             sa_morton_sorted->write(lid, sa_morton->read(orig_vid));
+                            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
                             sa_children->write(num_inner_nodes + lid, make_uint2((orig_vid), (orig_vid)));
                             sa_object_idx->write(num_inner_nodes + lid, orig_vid);
                         });
@@ -404,14 +406,14 @@ void LBVH::compile(AsyncCompiler& compiler)
                          sa_children      = lbvh_data->sa_children.view(),
                          sa_parrent       = lbvh_data->sa_parrent.view(),
                          sa_is_healthy    = lbvh_data->sa_is_healthy.view(),
-                         num_inner_nodes]()
+                         fn_get_num_leaves]()
                         {
                             const Uint nid = dispatch_id().x;
 
-                            Int num_inners = num_inner_nodes;
-                            Int num_leaves = num_inner_nodes + 1;
+                            Int num_leaves = fn_get_num_leaves();
+                            Int num_inners = num_leaves - 1;
 
-                            Uint2 ranges = luisa::compute::make_uint2(0, num_inner_nodes);
+                            Uint2 ranges = luisa::compute::make_uint2(0u, Uint(num_inners));
                             $if(nid != 0)
                             {
                                 ranges = determineRange(nid, sa_morton_sorted, num_leaves);
@@ -476,14 +478,15 @@ void LBVH::compile(AsyncCompiler& compiler)
     compiler.compile(fn_update_vert_tree_leave_aabb,
                      [sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
                       sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
-                      num_inner_nodes](const Var<luisa::compute::BufferView<float3>> sa_x_start,
-                                       const Var<luisa::compute::BufferView<float3>> sa_x_end,
-                                       const Float                                   thickness)
+                      fn_get_num_leaves](const Var<luisa::compute::BufferView<float3>> sa_x_start,
+                                         const Var<luisa::compute::BufferView<float3>> sa_x_end,
+                                         const Float                                   thickness)
                      {
                          const Uint lid  = dispatch_id().x;
                          Uint       vid  = sa_sorted_get_original->read(lid);
                          Float2x3   aabb = AABB::make_aabb(sa_x_start->read(vid), sa_x_end->read(vid));
                          aabb            = AABB::add_thickness(aabb, thickness);
+                         const Uint num_inner_nodes = fn_get_num_leaves() - 1;
                          sa_node_aabb->write(num_inner_nodes + lid, aabb);
                      });
 
@@ -491,10 +494,10 @@ void LBVH::compile(AsyncCompiler& compiler)
         fn_update_edge_tree_leave_aabb,
         [sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
          sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
-         num_inner_nodes](const Var<luisa::compute::BufferView<float3>> sa_x_start,
-                          const Var<luisa::compute::BufferView<float3>> sa_x_end,
-                          const Var<luisa::compute::BufferView<uint2>>  input_edge,
-                          const Float                                   thickness)
+         fn_get_num_leaves](const Var<luisa::compute::BufferView<float3>> sa_x_start,
+                            const Var<luisa::compute::BufferView<float3>> sa_x_end,
+                            const Var<luisa::compute::BufferView<uint2>>  input_edge,
+                            const Float                                   thickness)
         {
             const Uint lid                = dispatch_id().x;
             Uint       eid                = sa_sorted_get_original->read(lid);
@@ -503,7 +506,8 @@ void LBVH::compile(AsyncCompiler& compiler)
             Float3     end_positions[2]   = {sa_x_end->read(edge[0]), sa_x_end->read(edge[1])};
             Float2x3   aabb =
                 AABB::make_aabb(start_positions[0], start_positions[1], end_positions[0], end_positions[1]);
-            aabb = AABB::add_thickness(aabb, thickness);
+            aabb                       = AABB::add_thickness(aabb, thickness);
+            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
             sa_node_aabb->write(num_inner_nodes + lid, aabb);
         });
 
@@ -511,10 +515,10 @@ void LBVH::compile(AsyncCompiler& compiler)
         fn_update_face_tree_leave_aabb,
         [sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
          sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
-         num_inner_nodes](const Var<luisa::compute::BufferView<float3>> sa_x_start,
-                          const Var<luisa::compute::BufferView<float3>> sa_x_end,
-                          const Var<luisa::compute::BufferView<uint3>>  input_face,
-                          const Float                                   thickness)
+         fn_get_num_leaves](const Var<luisa::compute::BufferView<float3>> sa_x_start,
+                            const Var<luisa::compute::BufferView<float3>> sa_x_end,
+                            const Var<luisa::compute::BufferView<uint3>>  input_face,
+                            const Float                                   thickness)
         {
             const Uint lid                = dispatch_id().x;
             Uint       fid                = sa_sorted_get_original->read(lid);
@@ -526,6 +530,7 @@ void LBVH::compile(AsyncCompiler& compiler)
             Float2x3 end_aabb = AABB::make_aabb(end_positions[0], end_positions[1], end_positions[2]);
             Float2x3 aabb     = AABB::add_aabb(start_aabb, end_aabb);
             aabb              = AABB::add_thickness(aabb, thickness);
+            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
             sa_node_aabb->write(num_inner_nodes + lid, aabb);
         });
 
@@ -542,12 +547,13 @@ void LBVH::compile(AsyncCompiler& compiler)
                          sa_children   = lbvh_data->sa_children.view(),
                          sa_node_aabb  = lbvh_data->sa_node_aabb.view(),
                          sa_is_healthy = lbvh_data->sa_is_healthy.view(),
-                         num_inner_nodes]()
+                         fn_get_num_leaves]()
                         {
-                            const Uint lid     = dispatch_id().x;
-                            Uint       current = lid + num_inner_nodes;
-                            Uint       parrent = sa_parrent->read(current);
-                            Uint       loop    = 0;
+                            const Uint lid             = dispatch_id().x;
+                            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
+                            Uint       current         = lid + num_inner_nodes;
+                            Uint       parrent         = sa_parrent->read(current);
+                            Uint       loop            = 0;
 
                             $while(parrent != -1)
                             {
@@ -596,11 +602,10 @@ void LBVH::compile(AsyncCompiler& compiler)
 #else
     auto query_template = [sa_node_aabb  = lbvh_data->sa_node_aabb.view(),
                            sa_children   = lbvh_data->sa_children.view(),
-                           sa_object_idx = lbvh_data->sa_object_idx.view(),
-                           num_leaves](const Float2x3&        input_aabb,
-                                       Var<BufferView<uint>>& broadphase_count,
-                                       Var<BufferView<uint>>& broad_phase_list,
-                                       auto                   is_valid_function)
+                           sa_object_idx = lbvh_data->sa_object_idx.view()](const Float2x3& input_aabb,
+                                                                            Var<BufferView<uint>>& broadphase_count,
+                                                                            Var<BufferView<uint>>& broad_phase_list,
+                                                                            auto is_valid_function)
     {
         const Uint                            vid        = dispatch_id().x;
         constexpr uint                        STACK_SIZE = 32;
@@ -665,11 +670,11 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_verts,
-                        [num_leaves, query_template](Var<BufferView<float3>> sa_x_begin,
-                                                     Var<BufferView<float3>> sa_x_end,
-                                                     Var<BufferView<uint>>   broadphase_count,
-                                                     Var<BufferView<uint>>   broad_phase_list,
-                                                     const Float             thickness)
+                        [query_template](Var<BufferView<float3>> sa_x_begin,
+                                         Var<BufferView<float3>> sa_x_end,
+                                         Var<BufferView<uint>>   broadphase_count,
+                                         Var<BufferView<uint>>   broad_phase_list,
+                                         const Float             thickness)
                         {
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
@@ -683,12 +688,12 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_edges,
-                        [num_leaves, query_template](Var<BufferView<float3>> sa_x_begin,
-                                                     Var<BufferView<float3>> sa_x_end,
-                                                     Var<BufferView<uint2>>  sa_edges,
-                                                     Var<BufferView<uint>>   broadphase_count,
-                                                     Var<BufferView<uint>>   broad_phase_list,
-                                                     const Float             thickness)
+                        [query_template](Var<BufferView<float3>> sa_x_begin,
+                                         Var<BufferView<float3>> sa_x_end,
+                                         Var<BufferView<uint2>>  sa_edges,
+                                         Var<BufferView<uint>>   broadphase_count,
+                                         Var<BufferView<uint>>   broad_phase_list,
+                                         const Float             thickness)
                         {
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);

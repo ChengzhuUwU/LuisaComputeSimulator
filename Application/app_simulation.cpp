@@ -18,7 +18,7 @@
 #include "SimulationSolver/descent_solver.h"
 
 #include "Initializer/init_mesh_data.h"
-#include "Initializer/init_xpbd_data.h"
+#include "Initializer/init_sim_data.h"
 #include "app_simulation_demo_config.h"
 #include "luisa/core/basic_types.h"
 
@@ -126,21 +126,21 @@ int main(int argc, char** argv)
     std::vector<lcs::Initializer::ShellInfo> shell_list;
     Demo::Simulation::load_scene(shell_list);
 
-
+    // TODO: Move it to solver class
     LUISA_INFO("Init mesh data...");
     // Init data
     lcs::MeshData<std::vector>            host_mesh_data;
     lcs::MeshData<luisa::compute::Buffer> mesh_data;
     {
-        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);
+        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);  // TODO: Input with readed mesh data
         lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
     lcs::SimulationData<std::vector>            host_xpbd_data;
     lcs::SimulationData<luisa::compute::Buffer> xpbd_data;
     {
-        lcs::Initializer::init_xpbd_data(&host_mesh_data, &host_xpbd_data);
-        lcs::Initializer::upload_xpbd_buffers(device, stream, &host_xpbd_data, &xpbd_data);
+        lcs::Initializer::init_sim_data(&host_mesh_data, &host_xpbd_data);
+        lcs::Initializer::upload_sim_buffers(device, stream, &host_xpbd_data, &xpbd_data);
         lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
         lcs::Initializer::init_simulation_params();
     }
@@ -150,6 +150,8 @@ int main(int argc, char** argv)
     {
         lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace, lcs::LBVHUpdateTypeCloth);
         lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge, lcs::LBVHUpdateTypeCloth);
+        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_face);
+        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_edge);
         // lbvh_cloth_vert.unit_test(device, stream);
     }
 
@@ -426,6 +428,14 @@ int main(int argc, char** argv)
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
+    auto fn_save_frame_to_obj = [&](const std::string& additional_info = "")
+    {
+        SimMesh::saveToOBJ_combined(sa_rendering_vertices,
+                                    sa_rendering_faces,
+                                    std::format("0{}", lcs::get_scene_params().scene_id),
+                                    additional_info,
+                                    lcs::get_scene_params().current_frame);
+    };
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
@@ -438,13 +448,16 @@ int main(int argc, char** argv)
 
         // solver.lcs::SolverInterface::restart_system();
 
-        for (uint frame = 0; frame < 10; frame++)
+        fn_save_frame_to_obj("_init");
+        for (uint frame = 0; frame < 20; frame++)
         {
             fn_single_step_without_ui();
+
+            fn_update_rendering_vertices();
+            fn_save_frame_to_obj();
         }
-        fn_update_rendering_vertices();
-        SimMesh::saveToOBJ_combined(
-            sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
+        // SimMesh::saveToOBJ_combined(
+        //     sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
         // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, "");
     }
 #else
@@ -472,9 +485,6 @@ int main(int argc, char** argv)
             bounding_box_ptr->setTransparency(0.25f);
             bounding_boxes.push_back(bounding_box_ptr);
         }
-
-        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-
 
         auto fn_update_GUI_vertices = [&]()
         {
@@ -612,12 +622,23 @@ int main(int argc, char** argv)
             if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::Checkbox("Use Ground Collision", &lcs::get_scene_params().use_floor);
-                ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f);
-                const uint offset_vf = host_collision_data.get_vf_count_offset();
-                const uint offset_ee = host_collision_data.get_ee_count_offset();
-                ImGui::Text("Num VF = %d EE = %d",
-                            host_collision_data.narrow_phase_collision_count[offset_vf],
-                            host_collision_data.narrow_phase_collision_count[offset_ee]);
+                if (lcs::get_scene_params().use_floor)
+                {
+                    ImGui::SliderFloat("Floor Y", &lcs::get_scene_params().floor.y, -1.0f, 1.0f);
+                    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::TileReflection;
+                    polyscope::options::groundPlaneHeightMode = polyscope::GroundPlaneHeightMode::Manual;
+                    polyscope::options::groundPlaneHeight     = lcs::get_scene_params().floor.y;
+                }
+                else
+                {
+                    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+                }
+                const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
+                const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
+                ImGui::Text("Num Triplet = %d , Assembled Triplet = %d (Size = %zu)",
+                            host_collision_data.narrow_phase_collision_count[offset_pairs],
+                            host_collision_data.narrow_phase_collision_count[offset_verts],
+                            collision_data.sa_cgA_contact_offdiag_triplet.size());
             }
 
             if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen))
@@ -647,8 +668,21 @@ int main(int argc, char** argv)
 
             if (is_simulate_frame)
             {
+                if (lcs::get_scene_params().output_per_frame && lcs::get_scene_params().current_frame == 0)
+                {
+                    // First frame
+                    SimMesh::saveToOBJ_combined(sa_rendering_vertices,
+                                                sa_rendering_faces,
+                                                std::format("0{}", lcs::get_scene_params().scene_id),
+                                                "start",
+                                                lcs::get_scene_params().current_frame);
+                }
+
                 fn_single_step_with_ui();
-                if (lcs::get_scene_params().output_per_frame)
+
+                const float animation_fps = 60.0f;
+                const uint  output_freq   = (1.0f / animation_fps) / lcs::get_scene_params().implicit_dt;
+                if (lcs::get_scene_params().output_per_frame && lcs::get_scene_params().current_frame % output_freq == 0)
                 {
                     SimMesh::saveToOBJ_combined(sa_rendering_vertices,
                                                 sa_rendering_faces,

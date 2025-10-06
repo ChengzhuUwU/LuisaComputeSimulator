@@ -51,6 +51,7 @@ struct LbvhData
     BufferType<aabbData> sa_node_aabb;
     BufferType<uint>     sa_is_healthy;
     BufferType<uint>     sa_apply_flag;
+    BufferType<uint>     sa_num_leaves;
     // BufferType<AabbData> sa_node_aabb_model_position;
 
     std::vector<morton64> host_morton64;
@@ -89,6 +90,7 @@ struct LbvhData
 
         using Initializer::resize_buffer;
 
+        resize_buffer(device, this->sa_num_leaves, 1);
         resize_buffer(device, this->sa_leaf_center, num_leaves);
         resize_buffer(device, this->sa_block_aabb, get_dispatch_block(num_leaves, 256));
         resize_buffer(device, this->sa_morton, num_leaves);
@@ -110,6 +112,18 @@ struct LbvhData
         this->host_is_healthy.resize(1);
     }
 };
+
+namespace Initializer
+{
+
+    inline void init_lbvh_data(luisa::compute::Device&                device,
+                               luisa::compute::Stream&                stream,
+                               lcs::LbvhData<luisa::compute::Buffer>* device_data)
+    {
+        stream << device_data->sa_num_leaves.copy_from(&device_data->num_leaves);
+    }
+
+}  // namespace Initializer
 
 class LBVH
 {

@@ -8,11 +8,11 @@ namespace lcs::Initializer
 {
 
 
-void init_xpbd_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* xpbd_data);
-void upload_xpbd_buffers(luisa::compute::Device&                      device,
-                         luisa::compute::Stream&                      stream,
-                         lcs::SimulationData<std::vector>*            input_data,
-                         lcs::SimulationData<luisa::compute::Buffer>* output_data);
+void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* sim_data);
+void upload_sim_buffers(luisa::compute::Device&                      device,
+                        luisa::compute::Stream&                      stream,
+                        lcs::SimulationData<std::vector>*            input_data,
+                        lcs::SimulationData<luisa::compute::Buffer>* output_data);
 
 void resize_pcg_data(luisa::compute::Device&                      device,
                      luisa::compute::Stream&                      stream,

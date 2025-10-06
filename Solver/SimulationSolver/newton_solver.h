@@ -45,8 +45,6 @@ class NewtonSolver : public lcs::SolverInterface
     void host_evaluete_spring();
     void host_evaluete_bending();
     void host_material_energy_assembly();
-    void host_solve_amgcl(luisa::compute::Stream&                           stream,
-                          std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_solve_eigen(luisa::compute::Stream&                           stream,
                           std::function<double(const std::vector<float3>&)> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
@@ -78,6 +76,7 @@ class NewtonSolver : public lcs::SolverInterface
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>>   fn_reset_vector;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3x3>> fn_reset_float3x3;
+    luisa::compute::Shader<1>                                       fn_reset_cgA_offdiag_triplet;
 
     luisa::compute::Shader<1, float, float3> fn_predict_position;  // const Float substep_dt
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
@@ -88,8 +87,10 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
     luisa::compute::Shader<1>        fn_material_energy_assembly;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_diag;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>> fn_pcg_spmv_offdiag_material_part;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_diag;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_perVert;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_warp_rbk;
+    luisa::compute::Shader<1, luisa::compute::Buffer<MatrixTriplet3x3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_block_rbk;
 
     luisa::compute::Shader<1, float>                             fn_apply_dx;
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_apply_dx_non_constant;
