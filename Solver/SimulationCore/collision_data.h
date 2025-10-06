@@ -273,8 +273,10 @@ struct CollisionData : SimulationType
     BufferType<uint> per_vert_num_broad_phase_vf;
     BufferType<uint> per_vert_num_broad_phase_ee;
 
-    BufferType<uint>                       per_vert_num_narrow_phase;
-    BufferType<uint>                       per_vert_prefix_narrow_phase;
+    BufferType<uint>                       per_vert_num_adj_pairs;
+    BufferType<uint>                       per_vert_num_adj_verts;
+    BufferType<uint>                       per_vert_prefix_adj_pairs;
+    BufferType<uint>                       per_vert_prefix_adj_verts;
     BufferType<ushort>                     narrow_phase_pair_offset_in_vert;
     BufferType<uint>                       vert_adj_pairs_csr;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
@@ -321,8 +323,10 @@ struct CollisionData : SimulationType
 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_narrow_phase, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_narrow_phase, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_pairs, num_verts);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_verts);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_verts + 1);
         this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 

@@ -36,6 +36,7 @@ class NarrowPhasesDetector
     void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
     void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
     void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
+    void compile_make_contact_triplet(AsyncCompiler& compiler);
     void compile_assemble_atomic(AsyncCompiler& compiler);
     void compile_assemble_non_conflict(AsyncCompiler& compiler);
 
@@ -156,6 +157,9 @@ class NarrowPhasesDetector
     void device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
 
+  private:
+    void host_global_sort_contact_triplet(Stream& stream);
+
   public:
     // Compute barrier energy
     void compute_contact_energy_from_iter_start_list(Stream&               stream,
@@ -238,12 +242,15 @@ class NarrowPhasesDetector
 
     // Scan
     luisa::compute::Shader<1> fn_calc_pervert_collion_count;
-    luisa::compute::Shader<1> fn_calc_pervert_prefix_sum;
+    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_pairs;
+    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_verts;
     luisa::compute::Shader<1> fn_fill_in_pairs_in_vert_adjacent;
     luisa::compute::Shader<1> fn_block_level_sort_contact_triplet;
     luisa::compute::Shader<1> fn_assemble_triplet_unsorted;
+    luisa::compute::Shader<1> fn_prepare_triplet_info_sorted;
     luisa::compute::Shader<1> fn_assemble_triplet_sorted;
     luisa::compute::Shader<1> fn_reset_triplet;
+    luisa::compute::Shader<1> fn_init_triplet_info;
 
     // Assemble
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;

@@ -599,18 +599,18 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                         }
                         if (last_start != -1u && last_end != -1u)
                         {
-                            if (info[0] < 10)
-                            {
-                                LUISA_INFO("Vert {}'s triplet (threadIdx from {:3} to {:3}), from {} to {} , same warp ? {}, try to find {} ({})",
-                                           info[0],
-                                           last_start % 256,
-                                           last_end % 256,
-                                           last_start,
-                                           last_end,
-                                           MatrixTriplet::is_first_and_last_col_in_same_warp(info[2]),
-                                           blockPrefix + MatrixTriplet::read_first_col_threadIdx(info[2]),
-                                           MatrixTriplet::read_first_col_threadIdx(info[2]));
-                            }
+                            // if (info[0] < 10)
+                            // {
+                            //     LUISA_INFO("Vert {}'s triplet (threadIdx from {:3} to {:3}), from {} to {} , same warp ? {}, try to find {} ({})",
+                            //                info[0],
+                            //                last_start % 256,
+                            //                last_end % 256,
+                            //                last_start,
+                            //                last_end,
+                            //                MatrixTriplet::is_first_and_last_col_in_same_warp(info[2]),
+                            //                blockPrefix + MatrixTriplet::read_first_col_threadIdx(info[2]),
+                            //                MatrixTriplet::read_first_col_threadIdx(info[2]));
+                            // }
                             for (uint i = last_start; i <= last_end; i++)
                             {
                                 if (is_tirplet_accessed[i])

@@ -1868,9 +1868,14 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     stream << fn_pcg_spmv_offdiag_block_rbk(sim_data->sa_cgA_fixtopo_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
+    // const uint num_pairs             = host_count.front();
+    // const uint aligned_diaptch_count = get_dispatch_block(num_pairs * 12, 256) * 256;
+    // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+    //               .dispatch(aligned_diaptch_count);
+
     const auto& host_count            = host_collision_data->narrow_phase_collision_count;
-    const uint  num_pairs             = host_count.front();
-    const uint  aligned_diaptch_count = get_dispatch_block(num_pairs * 12, 256) * 256;
+    const uint  reduced_triplet       = host_count[5];
+    const uint  aligned_diaptch_count = get_dispatch_block(reduced_triplet, 256) * 256;
     stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(aligned_diaptch_count);
 

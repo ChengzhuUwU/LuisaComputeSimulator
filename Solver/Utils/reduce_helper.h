@@ -252,7 +252,7 @@ namespace ParallelIntrinsic
             luisa::compute::sync_block();
 
             const Uint orig_threadIdx = cache_index[threadIdx];
-            const T    orig_value     = cache_value.read(orig_threadIdx);
+            const T    orig_value     = cache_value[orig_threadIdx];
             const Uint thread_bit     = (orig_value >> (pass * bit_size)) & 0xFF;
 
             // !Invalid: will loss the order of threads with same bit
@@ -273,7 +273,7 @@ namespace ParallelIntrinsic
             auto& cache_per_bit_prefix = cache_per_bit_count;
             sort_detail::block_intrinsic_scan_exclusive<uint>(
                 vid, cache_per_bit_count[threadIdx], cache_scan_warp_sum, cache_per_bit_prefix);
-            const Uint bit_prefix = cache_per_bit_prefix.read(thread_bit);
+            const Uint bit_prefix = cache_per_bit_prefix[thread_bit];
             const Uint insert_idx = bit_prefix + offset;
             cache_index.write(insert_idx, orig_threadIdx);
             // cache_value.write(insert_idx, orig_value);
@@ -281,7 +281,7 @@ namespace ParallelIntrinsic
         }
 
         const Uint orig_threadIdx = cache_index[threadIdx];
-        const T    sorted_value   = cache_value.read(orig_threadIdx);
+        const T    sorted_value   = cache_value[orig_threadIdx];
         return sorted_value;
     }
 

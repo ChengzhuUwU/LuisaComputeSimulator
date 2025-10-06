@@ -388,19 +388,19 @@ inline void add_triplet_matrix(MatrixTriplet3x3& triplet, const luisa::float3x3&
     triplet.values[7] += values[2][1];
     triplet.values[8] += values[2][2];
 }
-inline void atomic_add_triplet_matrix(luisa::compute::Var<luisa::compute::Buffer<MatrixTriplet3x3>>& triplet,
-                                      const luisa::compute::UInt                  index,
-                                      const luisa::compute::Var<luisa::float3x3>& values)
+inline void atomic_add_triplet_matrix(luisa::compute::BufferView<MatrixTriplet3x3> triplet,
+                                      const luisa::compute::UInt                   index,
+                                      const luisa::compute::Var<luisa::float3x3>&  values)
 {
-    triplet.atomic(index).values[0].fetch_add(values[0][0]);
-    triplet.atomic(index).values[1].fetch_add(values[0][1]);
-    triplet.atomic(index).values[2].fetch_add(values[0][2]);
-    triplet.atomic(index).values[3].fetch_add(values[1][0]);
-    triplet.atomic(index).values[4].fetch_add(values[1][1]);
-    triplet.atomic(index).values[5].fetch_add(values[1][2]);
-    triplet.atomic(index).values[6].fetch_add(values[2][0]);
-    triplet.atomic(index).values[7].fetch_add(values[2][1]);
-    triplet.atomic(index).values[8].fetch_add(values[2][2]);
+    triplet->atomic(index).values[0].fetch_add(values[0][0]);
+    triplet->atomic(index).values[1].fetch_add(values[0][1]);
+    triplet->atomic(index).values[2].fetch_add(values[0][2]);
+    triplet->atomic(index).values[3].fetch_add(values[1][0]);
+    triplet->atomic(index).values[4].fetch_add(values[1][1]);
+    triplet->atomic(index).values[5].fetch_add(values[1][2]);
+    triplet->atomic(index).values[6].fetch_add(values[2][0]);
+    triplet->atomic(index).values[7].fetch_add(values[2][1]);
+    triplet->atomic(index).values[8].fetch_add(values[2][2]);
 }
 
 

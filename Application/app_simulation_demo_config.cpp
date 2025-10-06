@@ -305,16 +305,17 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
                                                    .rotAxis      = luisa::make_float3(1, 0, 0),
                                                    .rotAngVelDeg = 72,
                                                }}});
-    lcs::get_scene_params().pcg_iter_count = 500;
+    lcs::get_scene_params().pcg_iter_count = 50;
     ;
-    lcs::get_scene_params().nonlinear_iter_count  = 3;
-    lcs::get_scene_params().use_ccd_linesearch    = true;
+    lcs::get_scene_params().nonlinear_iter_count  = 1;
+    lcs::get_scene_params().use_ccd_linesearch    = false;
     lcs::get_scene_params().stiffness_bending_ui  = 0.5;
     lcs::get_scene_params().use_self_collision    = true;
     lcs::get_scene_params().use_energy_linesearch = false;
     lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
+    lcs::get_scene_params().load_state_frame      = 106;
 }
 void ccd_rotation_square(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
