@@ -417,6 +417,14 @@ int main(int argc, char** argv)
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
+    auto fn_save_frame_to_obj = [&](const std::string& additional_info = "")
+    {
+        SimMesh::saveToOBJ_combined(sa_rendering_vertices,
+                                    sa_rendering_faces,
+                                    std::format("0{}", lcs::get_scene_params().scene_id),
+                                    additional_info,
+                                    lcs::get_scene_params().current_frame);
+    };
 
     if constexpr (!use_ui)
     {
@@ -429,13 +437,16 @@ int main(int argc, char** argv)
 
         // solver.lcs::SolverInterface::restart_system();
 
-        // for (uint frame = 0; frame < max_frame; frame++)
+        fn_save_frame_to_obj("_init");
+        for (uint frame = 0; frame < 20; frame++)
         {
             fn_single_step_without_ui();
+
+            fn_update_rendering_vertices();
+            fn_save_frame_to_obj();
         }
-        fn_update_rendering_vertices();
-        SimMesh::saveToOBJ_combined(
-            sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
+        // SimMesh::saveToOBJ_combined(
+        //     sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
         // solver.lcs::SolverInterface::save_mesh_to_obj(lcs::get_scene_params().current_frame, "");
     }
     else
@@ -612,7 +623,7 @@ int main(int argc, char** argv)
                     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
                 }
                 const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
-                const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
+                const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
                 ImGui::Text("Num Triplet = %d , Assembled Triplet = %d (Size = %zu)",
                             host_collision_data.narrow_phase_collision_count[offset_pairs],
                             host_collision_data.narrow_phase_collision_count[offset_verts],
@@ -646,8 +657,21 @@ int main(int argc, char** argv)
 
             if (is_simulate_frame)
             {
+                if (lcs::get_scene_params().output_per_frame && lcs::get_scene_params().current_frame == 0)
+                {
+                    // First frame
+                    SimMesh::saveToOBJ_combined(sa_rendering_vertices,
+                                                sa_rendering_faces,
+                                                std::format("0{}", lcs::get_scene_params().scene_id),
+                                                "start",
+                                                lcs::get_scene_params().current_frame);
+                }
+
                 fn_single_step_with_ui();
-                if (lcs::get_scene_params().output_per_frame)
+
+                const float animation_fps = 60.0f;
+                const uint  output_freq   = (1.0f / animation_fps) / lcs::get_scene_params().implicit_dt;
+                if (lcs::get_scene_params().output_per_frame && lcs::get_scene_params().current_frame % output_freq == 0)
                 {
                     SimMesh::saveToOBJ_combined(sa_rendering_vertices,
                                                 sa_rendering_faces,

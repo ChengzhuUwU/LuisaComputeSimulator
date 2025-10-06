@@ -1096,7 +1096,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         download_narrowphase_collision_count(stream);
 
         const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-        LUISA_INFO("Host   Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
+        // LUISA_INFO("Device Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
 
         const uint alinged_num_triplet_assembled =
             (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
@@ -1232,7 +1232,7 @@ void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& str
             });
 
 
-        LUISA_INFO("Host   Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
+        // LUISA_INFO("Host   Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
         host_count[CollisionPair::CollisionCount::total_adj_verts_offset()] = num_triplet_assembled;
         stream << collision_data->sa_cgA_contact_offdiag_triplet_info.view(0, num_triplet)
                       .copy_from(host_collision_data->sa_cgA_contact_offdiag_triplet_info.data())

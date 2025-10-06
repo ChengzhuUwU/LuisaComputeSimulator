@@ -368,7 +368,7 @@ void ccd_rotation_cylinder_highres(std::vector<lcs::Initializer::ShellInfo>& she
                                                    .rotAngVelDeg = 72,
                                                }}});
     ;
-    lcs::get_scene_params().pcg_iter_count        = 200;
+    lcs::get_scene_params().pcg_iter_count        = 100;
     lcs::get_scene_params().nonlinear_iter_count  = 3;
     lcs::get_scene_params().use_ccd_linesearch    = true;
     lcs::get_scene_params().stiffness_bending_ui  = 0.5;
@@ -378,11 +378,11 @@ void ccd_rotation_cylinder_highres(std::vector<lcs::Initializer::ShellInfo>& she
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
     lcs::get_scene_params().d_hat                 = 2e-3;
-    // lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
+    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
 }
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
-    const uint case_number           = 3;
+    const uint case_number           = 7;
     lcs::get_scene_params().scene_id = case_number;
 
     switch (case_number)
