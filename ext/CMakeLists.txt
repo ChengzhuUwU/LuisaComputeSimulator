@@ -32,6 +32,7 @@ if (NOT TARGET luisa::compute)
     set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
+target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
 find_package(Eigen3 QUIET)
 if (NOT TARGET Eigen3::Eigen)

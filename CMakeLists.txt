@@ -20,7 +20,7 @@ file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_SOURCES CONFIGURE_DEPENDS Solver/*.cp
 file(GLOB_RECURSE LUISA_COMPUTE_SOLVER_LIB_HEADERS CONFIGURE_DEPENDS Solver/*.h)
 add_library(luisa-compute-solver-lib STATIC ${LUISA_COMPUTE_SOLVER_LIB_SOURCES} ${LUISA_COMPUTE_SOLVER_LIB_HEADERS})
 target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Solver>)
-target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
+
 
 
 # External
@@ -39,10 +39,6 @@ include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
 set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
-# test
-add_executable(test-xtypes UnitTest/test_xtypes.cpp)
-target_link_libraries(test-xtypes PRIVATE luisa::compute luisa-compute-solver-lib)
-
 # app
 add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
 target_link_libraries(app-simulation PRIVATE 
@@ -53,7 +49,4 @@ if (LUISA_COMPUTE_SOLVER_USE_GUI)
     target_compile_definitions(app-simulation PRIVATE SIMULATION_APP_USE_GUI=1)
 endif()
 
-add_executable(app-test-features Application/app_test_features.cpp)
-target_link_libraries(app-test-features PRIVATE 
-    luisa::compute 
-    luisa-compute-solver-lib)
+add_subdirectory(UnitTest)
