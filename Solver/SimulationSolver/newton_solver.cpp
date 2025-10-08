@@ -2217,8 +2217,15 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         double prev_state_energy = Float_max;
 
-        for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
+        // for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
+        uint iter                      = 0;
+        bool direchlet_point_converged = false;
+        for (iter = 0; iter < 50; iter++)
         {
+            if (iter >= get_scene_params().nonlinear_iter_count && direchlet_point_converged)
+            {
+                break;
+            }
             get_scene_params().current_nonlinear_iter = iter;
 
             host_reset_cgB_cgX_diagA();
@@ -2280,6 +2287,29 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     break;
                 }
             }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
+
+            // Check dirichlet point target
+            {
+                const float direchlet_max_delta = CpuParallel::parallel_for_and_reduce(
+                    0,
+                    host_sim_data->sa_x.size(),
+                    [&](const uint vid)
+                    {
+                        if (host_mesh_data->sa_is_fixed[vid])
+                        {
+                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            return luisa::length(delta);
+                        }
+                        return 0.0f;  // Non-fixed point
+                    },
+                    [](const float left, const float right) { return max_scalar(left, right); },
+                    -1e9f);
+                direchlet_point_converged = direchlet_max_delta < 1e-3;
+                if (!direchlet_point_converged)
+                {
+                    LUISA_INFO("  In non-linear iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
+                }
+            }
 
             if (use_energy_linesearch)
             {
@@ -2468,8 +2498,14 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
         LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame);
 
-        for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
+        uint iter                      = 0;
+        bool direchlet_point_converged = false;
+        for (iter = 0; iter < 50; iter++)
         {
+            if (iter >= get_scene_params().nonlinear_iter_count && direchlet_point_converged)
+            {
+                break;
+            }
             ADD_HOST_TIME_STAMP("Calc Force");
             get_scene_params().current_nonlinear_iter = iter;
 
@@ -2591,6 +2627,29 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     line_search_count++;
                 }
                 prev_state_energy = curr_energy;  // E_prev = E
+            }
+
+            // Check dirichlet point target
+            {
+                const float direchlet_max_delta = CpuParallel::parallel_for_and_reduce(
+                    0,
+                    host_sim_data->sa_x.size(),
+                    [&](const uint vid)
+                    {
+                        if (host_mesh_data->sa_is_fixed[vid])
+                        {
+                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            return luisa::length(delta);
+                        }
+                        return 0.0f;  // Non-fixed point
+                    },
+                    [](const float left, const float right) { return max_scalar(left, right); },
+                    -1e9f);
+                direchlet_point_converged = direchlet_max_delta < 1e-3;
+                if (!direchlet_point_converged)
+                {
+                    LUISA_INFO("  In non-linear iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
+                }
             }
 
             stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())

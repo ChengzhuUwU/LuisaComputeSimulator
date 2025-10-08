@@ -82,13 +82,13 @@ void NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
     if (num_vf_broadphase > collision_data->broad_phase_list_vf.size() / 2)
     {
-        LUISA_ERROR("BroadPhase VF outof range : {} ({})",
+        LUISA_ERROR("BroadPhase VF outof range : {} (Should <= {})",
                     num_vf_broadphase,
                     collision_data->broad_phase_list_vf.size() / 2);
     }
     if (num_ee_broadphase > collision_data->broad_phase_list_ee.size() / 2)
     {
-        LUISA_ERROR("BroadPhase EE outof range : {} ({})",
+        LUISA_ERROR("BroadPhase EE outof range : {} (Should <= {})",
                     num_ee_broadphase,
                     collision_data->broad_phase_list_ee.size() / 2);
     }

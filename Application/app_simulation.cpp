@@ -72,7 +72,7 @@ int main(int argc, char** argv)
 {
     luisa::log_level_info();
     luisa::fiber::scheduler scheduler;
-    std::cout << "Hello, LuisaComputeSimulation!" << std::endl;
+    LUISA_INFO("Hello, LuisaComputeSimulation!");
 
     // Init GPU system
 #if defined(__APPLE__)
@@ -635,9 +635,15 @@ int main(int argc, char** argv)
                 }
                 const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
                 const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
-                ImGui::Text("Num Triplet = %d , Assembled Triplet = %d (Size = %zu)",
+                ImGui::Text("BroadPhase = %u / %u NarrowPhase = %u , Assembled Triplet = %u",
+                            host_collision_data.broad_phase_collision_count[2],
+                            host_collision_data.broad_phase_collision_count[3],
                             host_collision_data.narrow_phase_collision_count[offset_pairs],
-                            host_collision_data.narrow_phase_collision_count[offset_verts],
+                            host_collision_data.narrow_phase_collision_count[offset_verts]);
+                ImGui::Text("MaxBroadPhase = %zu / %zu , MaxNarrowPhase = %zu , Max(MatrixTriplet = %zu)",
+                            host_collision_data.broad_phase_list_vf.size() / 2,
+                            host_collision_data.broad_phase_list_ee.size() / 2,
+                            host_collision_data.narrow_phase_list.size(),
                             collision_data.sa_cgA_contact_offdiag_triplet.size());
             }
 

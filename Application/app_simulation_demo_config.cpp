@@ -286,7 +286,7 @@ void cloth_bottle4(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().pcg_iter_count       = 200;
     lcs::get_scene_params().use_floor            = false;
 }
-void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
+void ccd_rotation_cylinder_7K_quadratic(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({.model_name       = obj_mesh_path + "Cylinder/cylinder7K.obj",
                           .fixed_point_list = {lcs::Initializer::FixedPointInfo{
@@ -308,14 +308,47 @@ void ccd_rotation_cylinder(std::vector<lcs::Initializer::ShellInfo>& shell_list)
     lcs::get_scene_params().pcg_iter_count = 50;
     ;
     lcs::get_scene_params().nonlinear_iter_count  = 1;
-    lcs::get_scene_params().use_ccd_linesearch    = false;
+    lcs::get_scene_params().use_ccd_linesearch    = true;
     lcs::get_scene_params().stiffness_bending_ui  = 0.5;
     lcs::get_scene_params().use_self_collision    = true;
+    lcs::get_scene_params().d_hat                 = 1e-3;
+    lcs::get_scene_params().thickness             = 0.0f;
     lcs::get_scene_params().use_energy_linesearch = false;
     lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
-    lcs::get_scene_params().load_state_frame      = 106;
+    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
+}
+void ccd_rotation_cylinder_7K_ipc(std::vector<lcs::Initializer::ShellInfo>& shell_list)
+{
+    shell_list.push_back({.model_name       = obj_mesh_path + "Cylinder/cylinder7K.obj",
+                          .fixed_point_list = {lcs::Initializer::FixedPointInfo{
+                                                   .is_fixed_point_func = [](const luisa::float3& norm_pos)
+                                                   { return (norm_pos.x < 0.001f); },
+                                                   .use_rotate   = true,
+                                                   .rotCenter    = luisa::make_float3(0.005, 0, 0),
+                                                   .rotAxis      = luisa::make_float3(1, 0, 0),
+                                                   .rotAngVelDeg = -72,
+                                               },
+                                               lcs::Initializer::FixedPointInfo{
+                                                   .is_fixed_point_func = [](const luisa::float3& norm_pos)
+                                                   { return (norm_pos.x > 0.999f); },
+                                                   .use_rotate   = true,
+                                                   .rotCenter    = luisa::make_float3(-0.005, 0, 0),
+                                                   .rotAxis      = luisa::make_float3(1, 0, 0),
+                                                   .rotAngVelDeg = 72,
+                                               }}});
+    lcs::get_scene_params().pcg_iter_count        = 100;
+    lcs::get_scene_params().nonlinear_iter_count  = 3;
+    lcs::get_scene_params().use_ccd_linesearch    = true;
+    lcs::get_scene_params().stiffness_bending_ui  = 0.5;
+    lcs::get_scene_params().use_self_collision    = true;
+    lcs::get_scene_params().use_energy_linesearch = false;
+    lcs::get_scene_params().d_hat                 = 1e-3;
+    lcs::get_scene_params().thickness             = 1e-3f;
+    lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
+    lcs::get_scene_params().use_gpu               = true;
+    lcs::get_scene_params().use_floor             = false;
 }
 void ccd_rotation_square(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
@@ -400,34 +433,38 @@ void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
             break;
         };
         case 3: {
-            ccd_rotation_cylinder(shell_list);
-            break;
-        };
-        case 7: {
-            ccd_rotation_cylinder_highres(shell_list);
-            break;
-        };
-        case 10: {
-            ccd_rotation_square(shell_list);
+            ccd_rotation_cylinder_7K_quadratic(shell_list);
             break;
         };
         case 4: {
-            energy_linesearch_vf_unit_case(shell_list);
+            ccd_rotation_cylinder_7K_ipc(shell_list);
             break;
         };
         case 5: {
-            rigid_body_cube_unit_case(shell_list);
+            ccd_rotation_cylinder_highres(shell_list);
             break;
         };
         case 6: {
-            rigid_body_folding_cube_case(shell_list);
+            ccd_rotation_square(shell_list);
+            break;
+        };
+        case 7: {
+            energy_linesearch_vf_unit_case(shell_list);
             break;
         };
         case 8: {
-            dcd_cloth_ball(shell_list);
+            rigid_body_cube_unit_case(shell_list);
             break;
         };
         case 9: {
+            rigid_body_folding_cube_case(shell_list);
+            break;
+        };
+        case 10: {
+            dcd_cloth_ball(shell_list);
+            break;
+        };
+        case 11: {
             cloth_bottle4(shell_list);
             break;
         };
