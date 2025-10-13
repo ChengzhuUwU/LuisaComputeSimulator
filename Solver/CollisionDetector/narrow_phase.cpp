@@ -101,6 +101,22 @@ void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
     auto& device_count = collision_data->narrow_phase_collision_count;
     auto& host_count   = host_collision_data->narrow_phase_collision_count;
 
+    const uint num_pairs   = host_count.front();
+    const uint num_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+
+    if (num_pairs > collision_data->narrow_phase_list.size())
+    {
+        LUISA_ERROR("NarrowPhase outof range : {} (Should <= {})",
+                    num_pairs,
+                    collision_data->narrow_phase_list.size());
+    }
+    if (num_triplet > collision_data->sa_cgA_contact_offdiag_triplet.size())
+    {
+        LUISA_ERROR("NarrowPhase Adj Verts outof range : {} (Should <= {})",
+                    num_triplet,
+                    collision_data->sa_cgA_contact_offdiag_triplet.size());
+    }
+
     stream << device_count.copy_to(host_count.data()) << luisa::compute::synchronize();
 }
 void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
