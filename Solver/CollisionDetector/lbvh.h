@@ -8,6 +8,54 @@
 #include <luisa/luisa-compute.h>
 #include <Utils/async_compiler.h>
 
+
+namespace lcs
+{
+
+struct CompressedAABB
+{
+    std::array<float, 3> min_bound;
+    uint                 flag1;
+    std::array<float, 3> max_bound;
+    uint                 flag2;
+    auto                 get_aabb()
+    {
+        std::array<luisa::float3, 2> aabb;
+        aabb[0] = luisa::make_float3(min_bound[0], min_bound[1], min_bound[2]);
+        aabb[1] = luisa::make_float3(max_bound[0], max_bound[1], max_bound[2]);
+        return aabb;
+    }
+    auto get_Float2x3()
+    {
+        lcs::float2x3 aabb;
+        aabb.cols[0] = luisa::make_float3(min_bound[0], min_bound[1], min_bound[2]);
+        aabb.cols[1] = luisa::make_float3(max_bound[0], max_bound[1], max_bound[2]);
+        return aabb;
+    }
+};
+
+}  // namespace lcs
+
+// clang-format off
+LUISA_STRUCT(lcs::CompressedAABB, min_bound, flag1, max_bound, flag2)
+{
+    auto get_aabb()
+    {
+        luisa::compute::Var<std::array<luisa::float3, 2>> aabb;
+        aabb[0] = luisa::compute::make_float3(min_bound[0], min_bound[1], min_bound[2]);
+        aabb[1] = luisa::compute::make_float3(max_bound[0], max_bound[1], max_bound[2]);
+        return aabb;
+    }
+    auto get_Float2x3()
+    {
+        lcs::Float2x3 aabb;
+        aabb.cols[0] = luisa::compute::make_float3(min_bound[0], min_bound[1], min_bound[2]);
+        aabb.cols[1] = luisa::compute::make_float3(max_bound[0], max_bound[1], max_bound[2]);
+        return aabb;
+    }
+};
+// clang-format on
+
 namespace lcs
 {
 
@@ -17,59 +65,48 @@ using Morton32 = luisa::compute::Var<morton32>;
 using Morton64 = luisa::compute::Var<morton64>;
 using aabbData = float2x3;
 
-// template<typename T>
-// static inline void resize_buffer(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint size)
-// {
-//     buffer = device.create_buffer<T>(size);
-// }
-
-
 enum LBVHTreeType
 {
     LBVHTreeTypeVert,
     LBVHTreeTypeFace,
     LBVHTreeTypeEdge
 };
-enum LBVHUpdateType
-{
-    LBVHUpdateTypeCloth,
-    LBVHUpdateTypeObstacle
-};
 
 // Highly specified, so can used as black-box
 template <template <typename...> typename BufferType>
 struct LbvhData
 {
-    BufferType<float3>   sa_leaf_center;
-    BufferType<aabbData> sa_block_aabb;
-    BufferType<morton64> sa_morton;
-    BufferType<morton64> sa_morton_sorted;
-    BufferType<uint>     sa_sorted_get_original;
-    BufferType<uint>     sa_parrent;
-    BufferType<uint2>    sa_children;
-    BufferType<uint>     sa_object_idx;
-    BufferType<aabbData> sa_node_aabb;
-    BufferType<uint>     sa_is_healthy;
-    BufferType<uint>     sa_apply_flag;
-    BufferType<uint>     sa_num_leaves;
+    BufferType<float3>         sa_leaf_center;
+    BufferType<aabbData>       sa_block_aabb;
+    BufferType<morton64>       sa_morton;
+    BufferType<morton64>       sa_morton_sorted;
+    BufferType<uint>           sa_sorted_get_original;
+    BufferType<uint>           sa_parrent;
+    BufferType<uint2>          sa_children;
+    BufferType<uint>           sa_object_idx;
+    BufferType<uint>           sa_apply_flag;
+    BufferType<aabbData>       sa_node_aabb;
+    BufferType<CompressedAABB> sa_node_aabb_v2;
+    BufferType<uint>           sa_is_healthy;
+    BufferType<uint>           sa_num_leaves;
     // BufferType<AabbData> sa_node_aabb_model_position;
 
-    std::vector<morton64> host_morton64;
-    std::vector<uint>     host_sorted_get_original;
-    std::vector<uint>     host_parrent;
-    std::vector<uint2>    host_children;
-    std::vector<aabbData> host_node_aabb;
-    std::vector<uint>     host_apply_flag;
-    std::vector<uint>     host_is_healthy;
+    std::vector<morton64>       host_morton64;
+    std::vector<uint>           host_sorted_get_original;
+    std::vector<uint>           host_parrent;
+    std::vector<uint2>          host_children;
+    std::vector<aabbData>       host_node_aabb;
+    std::vector<CompressedAABB> host_node_aabb_v2;
+    std::vector<uint>           host_apply_flag;
+    std::vector<uint>           host_is_healthy;
 
     uint num_leaves;
     uint num_nodes;
     uint num_inner_nodes;
 
-    LBVHTreeType   tree_type;
-    LBVHUpdateType update_type;
+    LBVHTreeType tree_type;
 
-    void allocate(luisa::compute::Device& device, const uint input_num, const LBVHTreeType input_tree_type, const LBVHUpdateType input_update_type)
+    void allocate(luisa::compute::Device& device, const uint input_num, const LBVHTreeType input_tree_type)
     {
         const uint num_leaves      = input_num;
         const uint num_inner_nodes = num_leaves - 1;
@@ -79,8 +116,7 @@ struct LbvhData
         this->num_inner_nodes = num_inner_nodes;
         this->num_nodes       = num_nodes;
 
-        this->tree_type   = input_tree_type;
-        this->update_type = input_update_type;
+        this->tree_type = input_tree_type;
 
         LUISA_INFO("Allocate for {}-LBVH data : num_leaves = {}",
                    input_tree_type == LBVHTreeTypeVert ? "Vert" :
@@ -99,16 +135,18 @@ struct LbvhData
         resize_buffer(device, this->sa_parrent, num_nodes);
         resize_buffer(device, this->sa_children, num_nodes);
         resize_buffer(device, this->sa_object_idx, num_nodes);
-        resize_buffer(device, this->sa_node_aabb, num_nodes);
         resize_buffer(device, this->sa_apply_flag, num_nodes);
+        resize_buffer(device, this->sa_node_aabb, num_nodes);
+        resize_buffer(device, this->sa_node_aabb_v2, num_nodes);
         resize_buffer(device, this->sa_is_healthy, 1);
 
         this->host_morton64.resize(num_leaves);
         this->host_sorted_get_original.resize(num_leaves);
         this->host_parrent.resize(num_nodes);
         this->host_children.resize(num_nodes);
-        this->host_node_aabb.resize(num_nodes);
         this->host_apply_flag.resize(num_nodes);
+        this->host_node_aabb.resize(num_nodes);
+        this->host_node_aabb_v2.resize(num_nodes);
         this->host_is_healthy.resize(1);
     }
 };
@@ -147,6 +185,7 @@ class LBVH
     void reduce_face_tree_aabb(Stream& stream, const Buffer<float3>& input_position, const Buffer<uint3>& input_faces);
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
+    void host_refit(Stream& stream);
     void update_vert_tree_leave_aabb(Stream&               stream,
                                      const float           thickness,
                                      const Buffer<float3>& start_position,
@@ -204,6 +243,7 @@ class LBVH
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>, float> fn_update_edge_tree_leave_aabb;
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float> fn_update_face_tree_leave_aabb;
     luisa::compute::Shader<1> fn_clear_apply_flag;
+    luisa::compute::Shader<1> fn_init_tree_aabb_and_flag;
     luisa::compute::Shader<1> fn_refit_tree_aabb;  // Invalid!!!!
 
     // Query

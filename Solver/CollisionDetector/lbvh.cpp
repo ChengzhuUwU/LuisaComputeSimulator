@@ -737,7 +737,7 @@ void LBVH::unit_test(luisa::compute::Device& device, luisa::compute::Stream& str
     using namespace luisa::compute;
 
     LbvhData<luisa::compute::Buffer> tmp_lbvh_data;
-    tmp_lbvh_data.allocate(device, 8, LBVHTreeTypeVert, LBVHUpdateTypeCloth);
+    tmp_lbvh_data.allocate(device, 8, LBVHTreeTypeVert);
     set_lbvh_data(&tmp_lbvh_data);
     AsyncCompiler compiler(device);
     compile(compiler);
