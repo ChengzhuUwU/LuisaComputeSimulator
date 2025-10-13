@@ -39,6 +39,7 @@ class NarrowPhasesDetector
     void compile_make_contact_triplet(AsyncCompiler& compiler);
     void compile_assemble_atomic(AsyncCompiler& compiler);
     void compile_assemble_non_conflict(AsyncCompiler& compiler);
+    void compile_SpMV(AsyncCompiler& compiler);
 
   public:
     void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
@@ -62,6 +63,7 @@ class NarrowPhasesDetector
     void  download_broadphase_collision_count(Stream& stream);
     void  download_narrowphase_collision_count(Stream& stream);
     void  download_narrowphase_list(Stream& stream);
+    void  download_contact_triplet(Stream& stream);
     void  download_pervert_adjacent_list(Stream& stream);
     void  upload_spd_narrowphase_list(Stream& stream);
 
@@ -157,6 +159,7 @@ class NarrowPhasesDetector
     void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void host_sort_contact_triplet(Stream& stream);
     void device_sort_contact_triplet(Stream& stream);
+    void device_assemble_contact_triplet(Stream& stream);
 
   public:
     // Compute barrier energy
@@ -253,12 +256,10 @@ class NarrowPhasesDetector
     // Assemble
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_warp_reduce_by_key;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>>   fn_perVert_spmv_block_reduce_by_key;
 
-    // AtomicAdd SpMV
+    // SpMV
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perVert_spmv;
 };
 
 
