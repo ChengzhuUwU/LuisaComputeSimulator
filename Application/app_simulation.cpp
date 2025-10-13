@@ -148,8 +148,8 @@ int main(int argc, char** argv)
     lcs::LbvhData<luisa::compute::Buffer> lbvh_data_face;
     lcs::LbvhData<luisa::compute::Buffer> lbvh_data_edge;
     {
-        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace, lcs::LBVHUpdateTypeCloth);
-        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge, lcs::LBVHUpdateTypeCloth);
+        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace);
+        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge);
         lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_face);
         lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_edge);
         // lbvh_cloth_vert.unit_test(device, stream);
@@ -417,14 +417,14 @@ int main(int argc, char** argv)
         }
         if constexpr (draw_bounding_box)
         {
-            lcs::float2x3        global_aabb;
+            // lcs::float2x3        global_aabb;
             std::array<float, 3> min_pos;
             std::array<float, 3> max_pos;
             // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
             // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            global_aabb = lbvh_data_face.host_node_aabb[0];
-            min_pos     = {global_aabb[0][0], global_aabb[0][1], global_aabb[0][2]};
-            max_pos     = {global_aabb[1][0], global_aabb[1][1], global_aabb[1][2]};
+            auto global_aabb = lbvh_data_face.host_node_aabb[0];
+            min_pos          = {global_aabb[0][0], global_aabb[0][1], global_aabb[0][2]};
+            max_pos          = {global_aabb[1][0], global_aabb[1][1], global_aabb[1][2]};
             SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
