@@ -734,3 +734,51 @@ inline void parallel_set(std::vector<T>& dst, const T& value)
 // [](const float& x, const float& y) -> float{ return x + y; }
 
 }  // namespace CpuParallel
+
+namespace CpuParallel
+{
+
+struct atomic_float
+{
+    std::atomic<uint32_t> bits;
+
+    atomic_float()
+        : bits(0)
+    {
+    }
+    atomic_float(float f) { store(f); }
+
+    void store(float f, std::memory_order order = std::memory_order_seq_cst)
+    {
+        uint32_t i;
+        std::memcpy(&i, &f, sizeof(float));
+        bits.store(i, order);
+    }
+
+    float load(std::memory_order order = std::memory_order_seq_cst) const
+    {
+        uint32_t i = bits.load(order);
+        float    f;
+        std::memcpy(&f, &i, sizeof(float));
+        return f;
+    }
+
+    float fetch_add(float arg, std::memory_order order = std::memory_order_seq_cst)
+    {
+        uint32_t old_bits = bits.load(order);
+        while (true)
+        {
+            float old_val;
+            std::memcpy(&old_val, &old_bits, sizeof(float));
+            float new_val = old_val + arg;
+
+            uint32_t new_bits;
+            std::memcpy(&new_bits, &new_val, sizeof(float));
+
+            if (bits.compare_exchange_weak(old_bits, new_bits, order))
+                return old_val;
+        }
+    }
+};
+
+}  // namespace CpuParallel
