@@ -14,6 +14,8 @@
 namespace lcs  // Data IO
 {
 
+constexpr uint segment_size = 256;
+
 void NarrowPhasesDetector::compile(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -29,6 +31,7 @@ void NarrowPhasesDetector::compile(AsyncCompiler& compiler)
     compile_make_contact_triplet(compiler);
     compile_assemble_atomic(compiler);
     compile_assemble_non_conflict(compiler);
+    compile_SpMV(compiler);
 }
 
 void NarrowPhasesDetector::reset_toi(Stream& stream)
@@ -132,6 +135,20 @@ void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
     }
     stream << luisa::compute::synchronize();
     // LUISA_INFO("Complete Download");
+}
+void NarrowPhasesDetector::download_contact_triplet(Stream& stream)
+{
+    const auto& host_count = host_collision_data->narrow_phase_collision_count;
+
+    const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    const uint alinged_num_triplet_assembled = (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
+
+    if (num_triplet_assembled != 0)
+    {
+        stream << collision_data->sa_cgA_contact_offdiag_triplet.view(0, alinged_num_triplet_assembled)
+                      .copy_to(host_collision_data->sa_cgA_contact_offdiag_triplet.data());
+    }
+    stream << luisa::compute::synchronize();
 }
 void NarrowPhasesDetector::download_pervert_adjacent_list(Stream& stream)
 {
@@ -774,8 +791,6 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 namespace lcs  // Scan Collision Set
 {
 
-constexpr uint segment_size = 256;
-
 void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -1045,9 +1060,7 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
         fn_assemble_triplet_sorted,
         [narrow_phase_list                = collision_data->narrow_phase_list.view(),
          vert_adj_pairs_csr               = collision_data->vert_adj_pairs_csr.view(),
-         per_vert_num_adj_pairs           = collision_data->per_vert_num_adj_pairs.view(),
          per_vert_num_adj_verts           = collision_data->per_vert_num_adj_verts.view(),
-         per_vert_prefix_adj_pairs        = collision_data->per_vert_prefix_adj_pairs.view(),
          per_vert_prefix_adj_verts        = collision_data->per_vert_prefix_adj_verts.view(),
          narrow_phase_pair_offset_in_vert = collision_data->narrow_phase_pair_offset_in_vert.view(),
          sa_cgA_contact_offdiag_triplet_info = collision_data->sa_cgA_contact_offdiag_triplet_info.view(),
@@ -1095,6 +1108,7 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             atomic_add_triplet_matrix(sa_cgA_contact_offdiag_triplet, target_triplet_idx, weight[ii] * weight[jj] * hess);
         });
 }
+
 void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& stream)
 {
     auto&      host_count = host_collision_data->narrow_phase_collision_count;
@@ -1110,17 +1124,23 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         stream << fn_calc_pervert_prefix_adj_verts().dispatch(host_collision_data->per_vert_num_adj_verts.size());
 
         download_narrowphase_collision_count(stream);
+    }
+}
+void NarrowPhasesDetector::device_assemble_contact_triplet(luisa::compute::Stream& stream)
+{
+    auto&      host_count = host_collision_data->narrow_phase_collision_count;
+    const uint num_pairs  = host_count.front();
 
-        const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-        // LUISA_INFO("Device Assembled triplet count = {} <- {}", num_triplet_assembled, num_triplet);
-
+    const uint num_triplet = num_pairs * 12;
+    const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    if (num_triplet != 0)
+    {
         const uint alinged_num_triplet_assembled =
             (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
         stream << fn_reset_triplet().dispatch(alinged_num_triplet_assembled);
         stream << fn_assemble_triplet_sorted().dispatch(num_triplet);
     }
 }
-
 void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& stream)
 {
     auto&      host_count = host_collision_data->narrow_phase_collision_count;
@@ -1352,8 +1372,57 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                                 }
                             };
                         });
+}
+void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler)
+{
+    using namespace luisa::compute;
+
+    compiler.compile<1>(fn_perVert_assemble_gradient_hessian,
+                        [narrowphase_list             = collision_data->narrow_phase_list.view(),
+                         per_vert_num_narrow_phase    = collision_data->per_vert_num_adj_pairs.view(),
+                         per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs.view(),
+                         vert_adj_pairs_csr           = collision_data->vert_adj_pairs_csr.view()](
+                            Var<Buffer<float3>> sa_cgB, Var<Buffer<float3x3>> sa_cgA_diag)
+                        {
+                            const Uint vid           = dispatch_x();
+                            const Uint num_adj_pairs = per_vert_num_narrow_phase->read(vid);
+                            const Uint prefix        = per_vert_prefix_narrow_phase->read(vid);
+
+                            Float3   sum_force = make_float3(0.0f);
+                            Float3x3 sum_hess  = Zero3x3;
+                            $for(j, num_adj_pairs)
+                            {
+                                const Uint fill_in_index = prefix + j;
+                                const Uint pair_info     = vert_adj_pairs_csr->read(fill_in_index);
+                                const Uint pair_idx      = pair_info & 0x3fffffff;
+                                const Uint local_offset  = (pair_info >> 30) & 0x3;
+
+                                const auto&    adj_pair = narrowphase_list->read(pair_idx);
+                                const Float4   weight   = adj_pair->get_weight();
+                                const Float2   stiff    = adj_pair->get_stiff();  // dBdD, ddBddD
+                                const Float3   normal   = adj_pair->get_normal();
+                                const Float3   force    = stiff[0] * normal;
+                                const Float3x3 hess     = stiff[1] * outer_product(normal, normal);
+
+                                sum_force += weight[local_offset] * force;
+                                sum_hess += weight[local_offset] * weight[local_offset] * hess;
+                            };
+                            sa_cgB.write(vid, sa_cgB.read(vid) + sum_force);
+                            sa_cgA_diag.write(vid, sa_cgA_diag.read(vid) + sum_hess);
+                        });
+}
+void NarrowPhasesDetector::compile_SpMV(AsyncCompiler& compiler)
+{
+    using namespace luisa::compute;
 
     // SpMV
+    auto atomic_add_float3 = [](Var<Buffer<float3>>& sa_cgB, const Uint& idx, const Float3& vec)
+    {
+        sa_cgB.atomic(idx)[0].fetch_add(vec[0]);
+        sa_cgB.atomic(idx)[1].fetch_add(vec[1]);
+        sa_cgB.atomic(idx)[2].fetch_add(vec[2]);
+    };
+
     compiler.compile<1>(fn_perPair_spmv,
                         [narrowphase_list = collision_data->narrow_phase_list.view(),
                          atomic_add_float3](Var<Buffer<float3>> input_array, Var<Buffer<float3>> output_array)
@@ -1398,46 +1467,6 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                             atomic_add_float3(output_array, indices[2], output_vec[2]);
                             atomic_add_float3(output_array, indices[3], output_vec[3]);
                         });
-}
-void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler)
-{
-    using namespace luisa::compute;
-
-    compiler.compile<1>(fn_perVert_assemble_gradient_hessian,
-                        [narrowphase_list             = collision_data->narrow_phase_list.view(),
-                         per_vert_num_narrow_phase    = collision_data->per_vert_num_adj_pairs.view(),
-                         per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs.view(),
-                         vert_adj_pairs_csr           = collision_data->vert_adj_pairs_csr.view(),
-                         narrow_phase_pair_offset_in_vert =
-                             collision_data->narrow_phase_pair_offset_in_vert.view()](
-                            Var<Buffer<float3>> sa_cgB, Var<Buffer<float3x3>> sa_cgA_diag)
-                        {
-                            const Uint vid           = dispatch_x();
-                            const Uint num_adj_pairs = per_vert_num_narrow_phase->read(vid);
-                            const Uint prefix        = per_vert_prefix_narrow_phase->read(vid);
-
-                            Float3   sum_force = make_float3(0.0f);
-                            Float3x3 sum_hess  = Zero3x3;
-                            $for(j, num_adj_pairs)
-                            {
-                                const Uint fill_in_index = prefix + j;
-                                const Uint pair_info     = vert_adj_pairs_csr->read(fill_in_index);
-                                const Uint pair_idx      = pair_info & 0x3fffffff;
-                                const Uint local_offset  = (pair_info >> 30) & 0x3;
-
-                                const auto&    adj_pair = narrowphase_list->read(pair_idx);
-                                const Float4   weight   = adj_pair->get_weight();
-                                const Float2   stiff    = adj_pair->get_stiff();  // dBdD, ddBddD
-                                const Float3   normal   = adj_pair->get_normal();
-                                const Float3   force    = stiff[0] * normal;
-                                const Float3x3 hess     = stiff[1] * outer_product(normal, normal);
-
-                                sum_force += weight[local_offset] * force;
-                                sum_hess += weight[local_offset] * weight[local_offset] * hess;
-                            };
-                            sa_cgB.write(vid, sa_cgB.read(vid) + sum_force);
-                            sa_cgA_diag.write(vid, sa_cgA_diag.read(vid) + sum_hess);
-                        });
 
     compiler.compile<1>(fn_perVert_spmv,
                         [per_vert_num_narrow_phase    = collision_data->per_vert_num_adj_pairs.view(),
@@ -1475,93 +1504,9 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
                             sa_vec_out.write(vid, sa_vec_out.read(vid) + sum_result);
                         });
 
-    compiler.compile<1>(fn_perVert_spmv_warp_reduce_by_key,
-                        [sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()](
-                            Var<Buffer<float3>> sa_input_vec, Var<Buffer<float3>> sa_output_vec)
-                        {
-                            const Uint     triplet_idx = dispatch_x();
-                            const Uint     lane_idx    = triplet_idx % 32;
-                            auto           triplet = sa_cgA_contact_offdiag_triplet->read(triplet_idx);
-                            const Uint     vid     = triplet->get_row_idx();
-                            const Uint     adj_vid = triplet->get_col_idx();
-                            const Uint     matrix_property = triplet->get_matrix_property();
-                            const Float3x3 mat             = read_triplet_matrix(triplet);
-                            const Float3   input           = sa_input_vec.read(adj_vid);
-                            const Float3   contrib         = mat * input;
-                            const Float3   contrib_prefix  = luisa::compute::warp_prefix_sum(contrib);
-
-                            // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
-                            // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
-                            // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
-
-                            $if(MatrixTriplet::is_last_col_in_row(matrix_property))
-                            {
-                                const Uint target_laneIdx = MatrixTriplet::read_first_col_info(matrix_property);
-                                const Float3 start_contrib_prefix =
-                                    luisa::compute::warp_read_lane(contrib_prefix, target_laneIdx);
-                                const Float3 sum_contrib = contrib_prefix - start_contrib_prefix + contrib;
-                                $if(MatrixTriplet::write_use_atomic(matrix_property))
-                                {
-                                    sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
-                                    sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
-                                    sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
-                                }
-                                $else
-                                {
-                                    sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
-                                };
-                            };
-                        });
-
-    compiler.compile<1>(fn_perVert_spmv_block_reduce_by_key,
-                        [sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()](
-                            Var<Buffer<float3>> sa_input_vec, Var<Buffer<float3>> sa_output_vec)
-                        {
-                            const Uint triplet_idx = dispatch_x();
-                            const Uint threadIdx   = triplet_idx % 256;
-
-                            auto       triplet = sa_cgA_contact_offdiag_triplet->read(triplet_idx);
-                            Uint       vid     = triplet->get_row_idx();
-                            const Uint adj_vid = triplet->get_col_idx();
-                            Uint       matrix_property = triplet->get_matrix_property();
-
-                            Float3 contrib = Zero3;
-                            $if(MatrixTriplet::is_valid(matrix_property))
-                            {
-                                const Float3x3 mat   = read_triplet_matrix(triplet);
-                                const Float3   input = sa_input_vec.read(adj_vid);
-                                contrib              = mat * input;
-
-                                // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
-                                // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
-                                // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
-                            };
-
-                            luisa::compute::Shared<float3> cache_contrib(256);
-                            luisa::compute::Shared<float3> cache_warp_sum(ParallelIntrinsic::warp_num);
-
-                            ParallelIntrinsic::sort_detail::block_intrinsic_scan_exclusive(
-                                triplet_idx, contrib, cache_warp_sum, cache_contrib);
-
-                            $if(MatrixTriplet::is_last_col_in_row(matrix_property))
-                            {
-                                const Uint target_threadIdx = MatrixTriplet::read_first_col_info(matrix_property);
-                                const Float3 curr_contrib_prefix  = cache_contrib[threadIdx];
-                                const Float3 start_contrib_prefix = cache_contrib[target_threadIdx];
-                                const Float3 sum_contrib = curr_contrib_prefix - start_contrib_prefix + contrib;
-                                $if(MatrixTriplet::write_use_atomic(matrix_property))
-                                {
-                                    sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
-                                    sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
-                                    sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
-                                }
-                                $else
-                                {
-                                    sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
-                                };
-                            };
-                        });
+    // Reduce-by-key impl now moved to NewtonSolver class
 }
+
 void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compute::Stream& stream,
                                                                     const Buffer<float3>&   sa_x_left,
                                                                     const Buffer<float3>&   sa_x_right,
@@ -1702,18 +1647,9 @@ void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<floa
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint  num_pairs  = host_count.front();
 
-    // if (num_pairs != 0)
-    //     stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
     if (num_pairs != 0)
     {
-        if constexpr (segment_size == 32)
-        {
-            stream << fn_perVert_spmv_warp_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
-        }
-        else if constexpr (segment_size == 256)
-        {
-            stream << fn_perVert_spmv_block_reduce_by_key(input_array, output_array).dispatch(num_pairs * 12);
-        }
+        stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
     }
 }
 

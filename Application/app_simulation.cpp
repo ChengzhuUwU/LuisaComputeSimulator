@@ -71,7 +71,7 @@ enum SolverType
 int main(int argc, char** argv)
 {
     luisa::log_level_info();
-    luisa::fiber::scheduler scheduler;
+    luisa::fiber::scheduler scheduler;  // Initialize the fiber scheduler, which is also need in HostParallel functions
     LUISA_INFO("Hello, LuisaComputeSimulation!");
 
     // Init GPU system
