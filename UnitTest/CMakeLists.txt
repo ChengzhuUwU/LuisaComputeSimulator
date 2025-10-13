@@ -9,4 +9,5 @@ endfunction()
 luisa_compute_solver_add_test(test-xtypes test_xtypes.cpp)
 luisa_compute_solver_add_test(test-lc-features test_lc_features.cpp)
 luisa_compute_solver_add_test(test-lbvh-refit test_lbvh_refit.cpp)
+luisa_compute_solver_add_test(test-jit test_jit.cpp)
 
