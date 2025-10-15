@@ -1187,10 +1187,10 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
 
             stream << fn_block_level_second_sort_contact_triplet_align_offset().dispatch(num_triplet);
             download_narrowphase_collision_count(stream);
-            LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
-                       num_pairs * 12,
-                       num_triplet_assembled,
-                       host_count[offset]);
+            // LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
+            //            num_pairs * 12,
+            //            num_triplet_assembled,
+            //            host_count[offset]);
         }
     }
 }
