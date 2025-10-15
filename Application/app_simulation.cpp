@@ -555,8 +555,7 @@ int main(int argc, char** argv)
 
             if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                ImGui::InputScalar("Optimize Frames", ImGuiDataType_U32, &optimize_frames);
-                ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcs::get_scene_params().num_substep);
+                // ImGui::InputScalar("Num Substep", ImGuiDataType_U32, &lcs::get_scene_params().num_substep);
                 ImGui::InputScalar("Num Nonliear-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().nonlinear_iter_count);
                 ImGui::InputScalar("Num PCG-Iteration", ImGuiDataType_U32, &lcs::get_scene_params().pcg_iter_count);
                 ImGui::SliderFloat("Implicit Timestep", &lcs::get_scene_params().implicit_dt, 0.0001f, 0.2f);
@@ -598,15 +597,16 @@ int main(int argc, char** argv)
                     fn_update_rendering_vertices();
                     fn_update_GUI_vertices();
                 }
-                if (ImGui::Button("Optimize Single Step", ImVec2(-1, 0)))
+                if (ImGui::Button("Advance Single Frame", ImVec2(-1, 0)))
                 {
                     fn_single_step_with_ui();
                 }
-                if (ImGui::Button("Optimize Some Step", ImVec2(-1, 0)))
+                if (ImGui::Button("Advance Some Frame", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
                     max_frame         = lcs::get_scene_params().current_frame + optimize_frames;
                 }
+                ImGui::InputScalar("Advance Frame Count", ImGuiDataType_U32, &optimize_frames);
                 if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
@@ -635,12 +635,12 @@ int main(int argc, char** argv)
                 }
                 const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
                 const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
-                ImGui::Text("BroadPhase = %u / %u NarrowPhase = %u , Assembled Triplet = %u",
+                ImGui::Text("Broad VF/EE = %u / %u Narrow = %u , Triplet = %u",
                             host_collision_data.broad_phase_collision_count[2],
                             host_collision_data.broad_phase_collision_count[3],
                             host_collision_data.narrow_phase_collision_count[offset_pairs],
                             host_collision_data.narrow_phase_collision_count[offset_verts]);
-                ImGui::Text("MaxBroadPhase = %zu / %zu , MaxNarrowPhase = %zu , Max(MatrixTriplet = %zu)",
+                ImGui::Text("MaxCount = %zu / %zu ,  Narrow %zu , Triplet = %zu)",
                             host_collision_data.broad_phase_list_vf.size() / 2,
                             host_collision_data.broad_phase_list_ee.size() / 2,
                             host_collision_data.narrow_phase_list.size(),
