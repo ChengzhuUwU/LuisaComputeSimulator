@@ -242,16 +242,16 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
 
     // Scan
-    luisa::compute::Shader<1> fn_calc_pervert_collion_count;
-    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_pairs;
-    luisa::compute::Shader<1> fn_calc_pervert_prefix_adj_verts;
-    luisa::compute::Shader<1> fn_fill_in_pairs_in_vert_adjacent;
-    luisa::compute::Shader<1> fn_block_level_sort_contact_triplet;
-    luisa::compute::Shader<1> fn_assemble_triplet_unsorted;
-    luisa::compute::Shader<1> fn_prepare_triplet_info_sorted;
+    luisa::compute::Shader<1>                                    fn_calc_pervert_collion_count;
+    luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_pairs;
+    luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_verts;
+    luisa::compute::Shader<1>                                    fn_fill_in_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
+    luisa::compute::Shader<1> fn_block_level_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_align_offset;
     luisa::compute::Shader<1> fn_assemble_triplet_sorted;
-    luisa::compute::Shader<1> fn_reset_triplet;
-    luisa::compute::Shader<1> fn_init_triplet_info;
+    luisa::compute::Shader<1, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
 
     // Assemble
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;

@@ -307,8 +307,9 @@ void ccd_rotation_cylinder_7K_quadratic(std::vector<lcs::Initializer::ShellInfo>
                                                }}});
     lcs::get_scene_params().pcg_iter_count = 50;
     ;
-    lcs::get_scene_params().nonlinear_iter_count  = 1;
-    lcs::get_scene_params().use_ccd_linesearch    = false;
+    lcs::get_scene_params().load_state_frame     = 109;
+    lcs::get_scene_params().nonlinear_iter_count = 1;
+    // lcs::get_scene_params().use_ccd_linesearch    = false;
     lcs::get_scene_params().stiffness_bending_ui  = 0.5;
     lcs::get_scene_params().use_self_collision    = true;
     lcs::get_scene_params().d_hat                 = 1e-3;
@@ -317,7 +318,7 @@ void ccd_rotation_cylinder_7K_quadratic(std::vector<lcs::Initializer::ShellInfo>
     lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
-    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Quadratic);
+    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
 }
 void ccd_rotation_cylinder_7K_ipc(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
