@@ -13,13 +13,40 @@
 
 - **Install required packages:**  
     - For Linux users:  
-      ```sudo apt-get -y install build-essential uuid-dev```
+      ```bash
+      (sudo add-apt-repository ppa:ubuntu-toolchain-r/test)
+      apt -y update & apt -y upgrade
+      apt -y install clang-18
+      apt -y install wget uuid-dev ninja-build libvulkan-dev libeigen3-dev cmake
+      ```
+      If your cmake version (query using `cmake --version`) is older than 3.26, you need to install the newer version manually: 
+      ```bash
+      # cd to your favorate path
+      apt remove cmake --purge
+      wget https://cmake.org/files/LatestRelease/cmake-4.1.0-linux-x86_64.tar.gz
+      # you can find the suitable pre-build package in: https://cmake.org/files/LatestRelease
+      tar -zxvf cmake-4.1.0-linux-x86_64.tar.gz && sudo ln -s $(pwd)/cmake-4.1.0-linux-x86_64/bin/cmake /usr/bin/cmake
+      cmake --version
+      ```
+      Sepup cuda:
+      ```bash
+      # 
+      sudo apt -y install cuda
+      sudo apt -y clean
+      # 
+      ```
+      <!-- # If no CUDA package is find, you need install CUDA Keyring
+      # If you are using Ubuntu18.04, replace ubuntu2404 with ubuntu1804
+      # If you are using arm architecture, replace x86_64 with sbsa
+      wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+      sudo apt -y remove --purge -s '*cuda*' '*nvidia*'
+      sudo dpkg -i cuda-keyring_1.1-1_all.deb -->
     - For Linux and Windows users: If you want to use cuda backend, you need to install cuda-toolkit. Otherwise you need to enable `LUISA_COMPUTE_ENABLE_DX` option or other backend in Cmake or Xmake.
 
 - **You can build with Cmake:**  
   - Congiure: ```cmake -S . -B build```
+    - Optionally, you can specify your favorite generators, compilers, or build types like `-G Ninja`, `-D CMAKE_C_COMPILER=clang-18 -D CMAKE_CXX_COMPILER=clang++-18` (or `-D CMAKE_C_COMPILER=/usr/bin/gcc-13`) and `-D CMAKE_BUILD_TYPE=Release`.
   - Build   : ```cmake --build build -j```
-  - Optionally, you can specify your favorite generators, compilers, or build types like `-G Ninja`, `-D CMAKE_C_COMPILER=clang -D CMAKE_CXX_COMPILER=clang++` (or `-D CMAKE_C_COMPILER=/usr/bin/clang-15`) and `-D CMAKE_BUILD_TYPE=Release`.
 
 - **You can also build with Xmake:**  
   - Congiure: ```xmake l setup.lua```
