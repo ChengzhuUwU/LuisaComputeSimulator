@@ -262,7 +262,10 @@ struct CollisionData : SimulationType
 
     BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
     BufferType<MatrixTriplet3x3>                     sa_cgA_contact_offdiag_triplet;
-    BufferType<uint3>                                sa_cgA_contact_offdiag_triplet_info;
+    BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices;
+    BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices2;
+    BufferType<uint>                                 sa_cgA_contact_offdiag_triplet_property;
+    BufferType<uint>                                 sa_cgA_contact_offdiag_triplet_property2;
 
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
@@ -307,17 +310,16 @@ struct CollisionData : SimulationType
         // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
         // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
 
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_list, per_element_count_NP * (num_verts + num_edges));
-        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, 4 * per_element_count_NP * (num_verts + num_edges));
-        lcs::Initializer::resize_buffer(device,
-                                        this->narrow_phase_pair_offset_in_vert,
-                                        4 * per_element_count_NP * (num_verts + num_edges));
-        lcs::Initializer::resize_buffer(device,
-                                        this->sa_cgA_contact_offdiag_triplet,
-                                        12 * per_element_count_NP * (num_verts + num_edges));  // 12 off-diagonal
-        lcs::Initializer::resize_buffer(device,
-                                        this->sa_cgA_contact_offdiag_triplet_info,
-                                        12 * per_element_count_NP_culled * (num_verts));
+        const uint max_pairs   = per_element_count_NP * (num_verts + num_edges);
+        const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
+        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, max_pairs);
+        lcs::Initializer::resize_buffer(device, this->narrow_phase_pair_offset_in_vert, 4 * max_pairs);
+        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet, max_triplet);
+        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices, max_triplet);
+        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
+        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property, max_triplet);
+        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property2, max_triplet);
 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts);
@@ -334,7 +336,10 @@ struct CollisionData : SimulationType
             + sizeof(uint) * this->vert_adj_pairs_csr.size()
             + sizeof(ushort) * this->narrow_phase_pair_offset_in_vert.size()
             + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
-            + sizeof(uint3) * this->sa_cgA_contact_offdiag_triplet_info.size();
+            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
+            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()
+            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property.size()
+            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property2.size();
 
         LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
         if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)
