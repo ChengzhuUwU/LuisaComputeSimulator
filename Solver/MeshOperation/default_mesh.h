@@ -17,7 +17,7 @@ namespace BoundingBox
     {
         return 12;
     }
-    inline constexpr std::vector<Int3> get_box_faces()
+    inline std::vector<Int3> get_box_faces()
     {
         return std::vector<Int3>{Int3({0, 1, 3}),
                                  Int3({0, 2, 3}),
