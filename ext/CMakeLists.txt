@@ -125,6 +125,25 @@ endif()
 
 
 if (USE_AMGCL_FOR_SIM)
-    target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_AMGCL_FOR_SIM)
-    target_link_libraries(luisa-compute-solver-lib PUBLIC amgcl::amgcl)
+    target_compile_definitions(luisa-compute-solver-lib PRIVATE USE_AMGCL_FOR_SIM)
+    target_link_libraries(luisa-compute-solver-lib PRIVATE amgcl::amgcl)
+endif()
+
+
+
+# # yyjson
+if (NOT TARGET yyjson)
+    find_package(yyjson QUIET)
+    if (yyjson_FOUND)
+        target_link_libraries(luisa-compute-solver-lib PRIVATE yyjson::yyjson)
+    else ()
+        add_library(luisa-compute-solver-ext-yyjson-interface INTERFACE)
+        target_include_directories(luisa-compute-solver-ext-yyjson-interface INTERFACE
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yyjson/src>)
+        add_library(luisa-compute-solver-ext-yyjson OBJECT yyjson/src/yyjson.c yyjson/src/yyjson.h)
+        target_link_libraries(luisa-compute-solver-ext-yyjson PUBLIC luisa-compute-solver-ext-yyjson-interface)
+        if (UNIX AND NOT APPLE)
+            set_target_properties(luisa-compute-solver-ext-yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif ()
+    endif ()
 endif()
