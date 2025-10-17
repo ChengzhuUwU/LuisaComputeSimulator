@@ -1003,9 +1003,11 @@ void NewtonSolver::host_evaluate_orthogonality()
             const float h          = substep_dt;
             const float h_2_inv    = 1.f / (h * h);
 
-            float3      A[3]  = {host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
-                                 host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
-                                 host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]};
+            float3x3 A = luisa::make_float3x3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
+                                              host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
+                                              host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
+            A          = luisa::transpose(A);
+
             const float kappa = 1e5f;
             const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
 

@@ -125,6 +125,7 @@ int main(int argc, char** argv)
     // Read Mesh
     std::vector<lcs::Initializer::ShellInfo> shell_list;
     Demo::Simulation::load_scene(shell_list);
+    // Demo::Simulation::load_scene_params_from_json(shell_list);
 
     // TODO: Move it to solver class
     LUISA_INFO("Init mesh data...");
@@ -136,12 +137,12 @@ int main(int argc, char** argv)
         lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
     }
 
-    lcs::SimulationData<std::vector>            host_xpbd_data;
-    lcs::SimulationData<luisa::compute::Buffer> xpbd_data;
+    lcs::SimulationData<std::vector>            host_sim_data;
+    lcs::SimulationData<luisa::compute::Buffer> sim_data;
     {
-        lcs::Initializer::init_sim_data(&host_mesh_data, &host_xpbd_data);
-        lcs::Initializer::upload_sim_buffers(device, stream, &host_xpbd_data, &xpbd_data);
-        lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_xpbd_data, &xpbd_data);
+        lcs::Initializer::init_sim_data(&host_mesh_data, &host_sim_data);
+        lcs::Initializer::upload_sim_buffers(device, stream, &host_sim_data, &sim_data);
+        lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_sim_data, &sim_data);
         lcs::Initializer::init_simulation_params();
     }
 
@@ -158,10 +159,16 @@ int main(int argc, char** argv)
     lcs::CollisionData<std::vector>            host_collision_data;
     lcs::CollisionData<luisa::compute::Buffer> collision_data;
     {
-        host_collision_data.resize_collision_data(
-            device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
-        collision_data.resize_collision_data(
-            device, host_mesh_data.num_verts, host_mesh_data.num_faces, host_mesh_data.num_edges);
+        host_collision_data.resize_collision_data(device,
+                                                  host_mesh_data.num_verts,
+                                                  host_mesh_data.num_faces,
+                                                  host_mesh_data.num_edges,
+                                                  host_sim_data.num_dof);
+        collision_data.resize_collision_data(device,
+                                             host_mesh_data.num_verts,
+                                             host_mesh_data.num_faces,
+                                             host_mesh_data.num_edges,
+                                             host_sim_data.num_dof);
     }
 
     // Init solver class
@@ -191,7 +198,7 @@ int main(int argc, char** argv)
     LUISA_INFO("JIT Compiling Solver...");
     lcs::ConjugateGradientSolver pcg_solver;
     {
-        pcg_solver.set_data(&host_mesh_data, &mesh_data, &host_xpbd_data, &xpbd_data);
+        pcg_solver.set_data(&host_mesh_data, &mesh_data, &host_sim_data, &sim_data);
         pcg_solver.compile(compiler);
     }
 
@@ -201,8 +208,8 @@ int main(int argc, char** argv)
         // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
         solver.lcs::SolverInterface::set_data_pointer(&host_mesh_data,
                                                       &mesh_data,
-                                                      &host_xpbd_data,
-                                                      &xpbd_data,
+                                                      &host_sim_data,
+                                                      &sim_data,
                                                       &host_collision_data,
                                                       &collision_data,
                                                       &lbvh_face,

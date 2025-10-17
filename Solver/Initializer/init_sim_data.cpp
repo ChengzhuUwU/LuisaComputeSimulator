@@ -370,11 +370,11 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                 // TODO: Weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
                 // TODO: Mass distribution
                 // TODO: Integrate mass matrix with tetrahedral element
-                std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
-                std::cout
-                    << "Sum of mass = \n"
-                    << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f)
-                    << std::endl;
+                // std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
+                // std::cout
+                //     << "Sum of mass = \n"
+                //     << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f)
+                //     << std::endl;
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
                 // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
                 sim_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);

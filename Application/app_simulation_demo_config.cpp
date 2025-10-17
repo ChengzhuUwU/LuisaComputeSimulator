@@ -121,11 +121,11 @@ void rigid_body_folding_cube_case(std::vector<lcs::Initializer::ShellInfo>& shel
     lcs::get_scene_params().use_floor   = true;
     lcs::get_scene_params().implicit_dt = 0.01;
     ;
-    lcs::get_scene_params().num_substep           = 1;
-    lcs::get_scene_params().nonlinear_iter_count  = 2;
-    lcs::get_scene_params().pcg_iter_count        = 200;
-    lcs::get_scene_params().use_ccd_linesearch    = false;
-    lcs::get_scene_params().use_self_collision    = false;
+    lcs::get_scene_params().num_substep          = 1;
+    lcs::get_scene_params().nonlinear_iter_count = 2;
+    lcs::get_scene_params().pcg_iter_count       = 200;
+    lcs::get_scene_params().use_ccd_linesearch   = false;
+    // lcs::get_scene_params().use_self_collision    = false;
     lcs::get_scene_params().use_energy_linesearch = false;
 }
 void moving_vf_unit(std::vector<lcs::Initializer::ShellInfo>& shell_list)
@@ -318,7 +318,7 @@ void ccd_rotation_cylinder_7K_quadratic(std::vector<lcs::Initializer::ShellInfo>
     lcs::get_scene_params().gravity               = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_gpu               = true;
     lcs::get_scene_params().use_floor             = false;
-    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Barrier);
+    lcs::get_scene_params().contact_energy_type   = uint(lcs::ContactEnergyType::Quadratic);
 }
 void ccd_rotation_cylinder_7K_ipc(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
@@ -417,7 +417,7 @@ void ccd_rotation_cylinder_highres(std::vector<lcs::Initializer::ShellInfo>& she
 }
 void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
-    const uint case_number           = 3;
+    const uint case_number           = 9;
     lcs::get_scene_params().scene_id = case_number;
 
     switch (case_number)
