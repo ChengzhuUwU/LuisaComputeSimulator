@@ -43,8 +43,8 @@ def rotation_matrix_from_euler(rx, ry, rz):
     ])
     # Rotation around z-axis
     Rz = np.array([
-        [np.cos(rz), -np.sin(rz), 0],
-        [np.sin(rz), np.cos(rz), 0],
+        [np.cos(rz), np.sin(rz), 0],
+        [-np.sin(rz), np.cos(rz), 0],
         [0, 0, 1]
     ])
     # Combined rotation: R = Rz @ Ry @ Rx
@@ -52,17 +52,25 @@ def rotation_matrix_from_euler(rx, ry, rz):
     return R
 
 def build_J_for_vertex(Xi):
-    """
-    Xi: (3,)
-    returns J: shape (3,12)
-    J = [ I3 | Xi[0]*I3 | Xi[1]*I3 | Xi[2]*I3 ]
-    """
+    # Ensure Xi is a 1D vector of length 3 to avoid deprecated
+    # implicit array-to-scalar conversion (NumPy 1.25+).
+    # Incoming Xi may be shaped (3,1); reshape to (3,).
+    Xi = np.asarray(Xi).reshape(3,)
     I3 = np.eye(3)
     J = np.zeros((3,12), dtype=float)
     J[:, 0:3] = I3
-    J[0, 3:6] = Xi.T
-    J[1, 6:9] = Xi.T
-    J[2, 9:12] = Xi.T
+    J[0, 3] = Xi[0]
+    J[1, 4] = Xi[0]
+    J[2, 5] = Xi[0]
+    J[0, 6] = Xi[1]
+    J[1, 7] = Xi[1]
+    J[2, 8] = Xi[1]
+    J[0, 9] = Xi[2]
+    J[1, 10] = Xi[2]
+    J[2, 11] = Xi[2]
+    # J[0, 3:6] = Xi.T
+    # J[1, 6:9] = Xi.T
+    # J[2, 9:12] = Xi.T
     return J
 
 def q_to_x_all(q, X):
@@ -73,7 +81,7 @@ def q_to_x_all(q, X):
     A = np.column_stack([A1, A2, A3])  # 3x3
     x = X.copy()
     for vid in range(X.shape[0]):
-        x[vid] = A.T @ X[vid] + p
+        x[vid] = A @ X[vid] + p
     # x = (A @ X.T).T + p  # (N,3)
     return x
 
@@ -98,7 +106,7 @@ def compute_init_Gravity(x, Js_all, vert_mass, body_mass):
         global_gravity += J.T @ (m * GRAVITY)
     body_mass_inv = np.linalg.inv(body_mass)
     global_gravity = body_mass_inv @ global_gravity
-    print(f'global G = \n{global_gravity}')
+    # print(f'global G = \n{global_gravity}')
     # global_gravity = np.zeros(12, dtype=float)
     # global_gravity[0:3] = GRAVITY
     return global_gravity
@@ -187,6 +195,9 @@ def hessian_ortho_ij(i, j, A_mat, stiffness):
 
 def assemble_ortho_energy(A_mat12, b_vec12, q, stiffness_ortho):
     Acols = np.column_stack([q[3:6], q[6:9], q[9:12]])  # 3x3 cols
+
+    print(f'Input ortho A = \n{Acols}')
+
     B = np.zeros_like(b_vec12)
     H = np.zeros_like(A_mat12)
 
@@ -204,6 +215,8 @@ def assemble_ortho_energy(A_mat12, b_vec12, q, stiffness_ortho):
             idx_j = slice(3 + 3*j, 3 + 3*(j+1))
             H[idx_i, idx_j] += hess_ij
             # print(f'hessian of {i} adj {j} = {hess_ij}')
+
+    print(f'Output ortho B = {B}, H = {H}')
     return B, H
 
 def analytic_grad_hess_from_q(A_mat12, b_vec12, q, stiffness):
@@ -255,6 +268,7 @@ def assemble_inertia_perbody(A_mat12, b_vec12, q, q_tilde, Js_all, body_mass, dt
     # print(f'shape of M = {M.shape}, shape of diff = {q.shape} and {q_tilde.shape}')
     f_i = -h2_inv * (M @ diff)
     H_i = h2_inv * M
+    # print(f'inertia force = \n{f_i.reshape((12,))} H = \n{H_i} ')
     return f_i, H_i
     # b_vec12 += g_i
     # A_mat12 += H_i
@@ -347,7 +361,7 @@ import jax.numpy as jnp
 def jax_q_to_x(q, X):
     """Affine transform: x = t + A @ X"""
     t = q[0:3]
-    A = jnp.column_stack([q[3:6], q[6:9], q[9:12]]).T  # (3,3)
+    A = jnp.column_stack([q[3:6], q[6:9], q[9:12]])  # (3,3)
     return (A @ X) + t  # (N,3)
 
 def jax_func_body(q, body_mass, dt, q_tilde, stiffness_ortho):
@@ -416,7 +430,6 @@ def run_simulation():
     num_verts = X.shape[0]
     X = X.reshape((-1, 3, 1))
     vec1 = X[:,0]
-    print(f'outer = {vec1 @ vec1.T}')
     print(f'X1 = {X[:,0].shape}')
     edges = mesh.edges_unique
     total_mass = 1.0
@@ -425,18 +438,23 @@ def run_simulation():
     # Example usage:
     init_rotate = np.zeros((3,3), float)
     init_q = np.zeros(12, dtype=float).reshape(12, 1)
-    init_q[0:3, :] = np.array([0.0, 2, 0.0]).reshape(3, 1)  # lift slightly above ground
+    init_q[0:3, :] = np.array([0.0, 0, 0.0]).reshape(3, 1)  # lift slightly above ground
     rx, ry, rz = np.pi/6, 0.0, np.pi/6  # e.g., np.pi/6, np.pi/4, np.pi/3
     # rx, ry, rz = 0, 0, 0  # e.g., np.pi/6, np.pi/4, np.pi/3
     R = rotation_matrix_from_euler(rx, ry, rz)
-    R = R.T
-    init_q[3:6, 0] = R[:,0]; init_q[6:9, 0] = R[:,1]; init_q[9:12, 0] = R[:,2]; q = init_q.copy()
+    R = R
+    init_q[3:6, 0] = R[:,0]; init_q[6:9, 0] = R[:,1]; init_q[9:12, 0] = R[:,2]
+    q = init_q.copy()
     vq = np.zeros_like(q)
+
+    print(f'init q = {init_q.T}')
 
     # Precompute Jacobians once (they only depend on model coords X)
     Js_all = [build_J_for_vertex(X[i]) for i in range(num_verts)]
     # print(f'Numerical J = \n{build_J_for_vertex(np.array([1,2,3],float))}')
     # print(f'Jax       J = \n{jax_grad_x_to_q(jnp.array(init_q), np.array([1,2,3],float).reshape(3,1))}')
+
+    # print(jax_grad_x_to_q(jnp.array(init_q), np.array([1,2,3],float).reshape(3,1)).shape)
 
     # q_jax = jnp.array(init_q)
     # for vid in range(num_verts):
@@ -451,12 +469,14 @@ def run_simulation():
     body_mass = compute_body_mass(Js_all, vert_mass)
     affine_gravity = compute_init_Gravity(X, Js_all, vert_mass, body_mass)
     # affine_gravity = compute_tetmesh_body_force(X, [[0,1,2,3]], GRAVITY)
+
+    # print(f'Initial body mass = \n{body_mass}')
     
     # simulation params
     dt = 0.1
     nsteps = 400
     stiffness_ground = 1e5     # penalty stiffness for ground
-    stiffness_ortho = 1e4      # orthogonality soft constraint stiffness (you can tune)
+    stiffness_ortho = 1e5      # orthogonality soft constraint stiffness (you can tune)
     newton_iters = 1
 
     # visualization state
@@ -467,6 +487,8 @@ def run_simulation():
         q = state["q"]
         vq = state["vq"]
         q_step_bg = q.copy()
+
+        print(f'Curr q = {q.T}')
 
         # predict q_tilde with affine gravity
         q_tilde = predict_q_with_affine_gravity(q, vq, vert_mass, dt, affine_gravity)
@@ -489,20 +511,20 @@ def run_simulation():
                 q_jax = jnp.array(q)
                 q_tilde_jax = jnp.array(q_tilde)
 
-                # E = jax_func_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
-                # g = jax_grad_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
-                # H = jax_hess_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
-                # H = H.reshape(12, 12)
-                # b_vec12 -= g
-                # A_mat12 += H
+                E = jax_func_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
+                g = jax_grad_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
+                H = jax_hess_body(q_jax, body_mass, dt, q_tilde_jax, stiffness_ortho)
+                H = H.reshape(12, 12)
+                b_vec12 -= g
+                A_mat12 += H
 
-                bb, AA = assemble_inertia_perbody(A_mat12, b_vec12, q, q_tilde, Js_all, body_mass, dt, fixed_scale=1.0)
-                b_vec12 += bb
-                A_mat12 += AA
+                # bb, AA = assemble_inertia_perbody(A_mat12, b_vec12, q, q_tilde, Js_all, body_mass, dt, fixed_scale=1.0)
+                # b_vec12 += bb
+                # A_mat12 += AA
 
-                bb, AA = assemble_ortho_energy(A_mat12, b_vec12, q, stiffness_ortho)
-                b_vec12 += bb
-                A_mat12 += AA
+                # bb, AA = assemble_ortho_energy(A_mat12, b_vec12, q, stiffness_ortho)
+                # b_vec12 += bb
+                # A_mat12 += AA
 
                 bb, AA = assemble_ground_penalty(A_mat12, b_vec12, x, Js_all, stiffness_ground)
                 b_vec12 += bb
@@ -512,10 +534,9 @@ def run_simulation():
                 # print(f'numerical A = \n{AA}')
 
                 # for vid in range(num_verts):
-                #     E += jax_func_vert(q_jax, X[vid], stiffness_ground)
+                #     E = jax_func_vert(q_jax, X[vid], stiffness_ground)
                 #     g = jax_grad_vert(q_jax, X[vid], stiffness_ground)
                 #     H = jax_hess_vert(q_jax, X[vid], stiffness_ground)
-                #     # H = hessian_proj_SPD(qH)
                 #     H = H.reshape(12, 12)
                 #     b_vec12 -= g
                 #     A_mat12 += H
@@ -544,7 +565,7 @@ def run_simulation():
             # solve for dq
             dq = solve_linear_system(A_mat12, b_vec12, reg=1e-8)
 
-            use_ls = True
+            use_ls = False
             alpha = 1.0
 
             # convergence check (in reduced space)

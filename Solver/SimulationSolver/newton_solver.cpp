@@ -925,8 +925,13 @@ void           NewtonSolver::host_evaluate_inertia()
                                   }
                               });
 
-    float3*   affine_body_cgB      = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-    float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3*   abd_cgB         = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_diag    = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_offdiag = &host_sim_data->sa_cgA_offdiag_affine_body.front();
+
+    const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
+    const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
+
     CpuParallel::parallel_for(
         0,
         host_sim_data->sa_affine_bodies.size(),
@@ -936,67 +941,51 @@ void           NewtonSolver::host_evaluate_inertia()
             const float h          = substep_dt;
             const float h_2_inv    = 1.f / (h * h);
 
-            float3 q_k      = host_sim_data->sa_affine_bodies_q[body_idx];
-            float3 q_tilde  = host_sim_data->sa_affine_bodies_q_tilde[body_idx];
-            float3 delta[4] = {
-                host_sim_data->sa_affine_bodies_q[4 * body_idx + 0]
-                    - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 0],
-                host_sim_data->sa_affine_bodies_q[4 * body_idx + 1]
-                    - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 1],
-                host_sim_data->sa_affine_bodies_q[4 * body_idx + 2]
-                    - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 2],
-                host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]
-                    - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 3],
-            };
-            float3x3 offdiags = host_sim_data->sa_affine_bodies_mass_matrix_compressed_offdiag[body_idx];
-            float3x3 offdiag_first_col[3] = {luisa::make_float3x3(offdiags[0], Zero3, Zero3),
-                                             luisa::make_float3x3(Zero3, offdiags[1], Zero3),
-                                             luisa::make_float3x3(Zero3, Zero3, offdiags[2])};
+            float3   delta_q[4]  = {abd_q[4 * body_idx + 0] - abd_q_tilde[4 * body_idx + 0],
+                                    abd_q[4 * body_idx + 1] - abd_q_tilde[4 * body_idx + 1],
+                                    abd_q[4 * body_idx + 2] - abd_q_tilde[4 * body_idx + 2],
+                                    abd_q[4 * body_idx + 3] - abd_q_tilde[4 * body_idx + 3]};
+            float4x4 mass_matrix = host_sim_data->sa_affine_bodies_mass_matrix[body_idx];
+            float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
 
-            float3 gradient[4] = {Zero3, Zero3, Zero3, Zero3};
             for (uint ii = 0; ii < 4; ii++)
             {
-                gradient[ii] += host_sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + ii] * delta[ii];
-            }
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                gradient[1 + ii] += offdiag_first_col[ii] * delta[0];  // First column offdiag
-                gradient[0] += luisa::transpose(offdiag_first_col[ii]) * delta[1 + ii];  // First row offdiag
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    gradient[ii] += mass_matrix[ii][jj] * delta_q[jj];
+                }
             }
 
-            affine_body_cgB[4 * body_idx + 0] = -h_2_inv * gradient[0];
-            affine_body_cgB[4 * body_idx + 1] = -h_2_inv * gradient[1];
-            affine_body_cgB[4 * body_idx + 2] = -h_2_inv * gradient[2];
-            affine_body_cgB[4 * body_idx + 3] = -h_2_inv * gradient[3];
+            abd_cgB[4 * body_idx + 0] = -h_2_inv * gradient[0];
+            abd_cgB[4 * body_idx + 1] = -h_2_inv * gradient[1];
+            abd_cgB[4 * body_idx + 2] = -h_2_inv * gradient[2];
+            abd_cgB[4 * body_idx + 3] = -h_2_inv * gradient[3];
 
-            affine_body_cgA_diag[4 * body_idx + 0] =
-                h_2_inv * host_sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0];
-            affine_body_cgA_diag[4 * body_idx + 1] =
-                h_2_inv * host_sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1];
-            affine_body_cgA_diag[4 * body_idx + 2] =
-                h_2_inv * host_sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2];
-            affine_body_cgA_diag[4 * body_idx + 3] =
-                h_2_inv * host_sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 3];
+            abd_cgA_diag[4 * body_idx + 0] = float3x3::eye(h_2_inv * mass_matrix[0][0]);
+            abd_cgA_diag[4 * body_idx + 1] = float3x3::eye(h_2_inv * mass_matrix[1][1]);
+            abd_cgA_diag[4 * body_idx + 2] = float3x3::eye(h_2_inv * mass_matrix[2][2]);
+            abd_cgA_diag[4 * body_idx + 3] = float3x3::eye(h_2_inv * mass_matrix[3][3]);
 
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
-                h_2_inv * luisa::transpose(offdiag_first_col[0]);
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
-                h_2_inv * luisa::transpose(offdiag_first_col[1]);
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
-                h_2_inv * luisa::transpose(offdiag_first_col[2]);
+            abd_cgA_offdiag[6 * body_idx + 0] = float3x3::eye(h_2_inv * mass_matrix[0][1]);
+            abd_cgA_offdiag[6 * body_idx + 1] = float3x3::eye(h_2_inv * mass_matrix[0][2]);
+            abd_cgA_offdiag[6 * body_idx + 2] = float3x3::eye(h_2_inv * mass_matrix[0][3]);
+            abd_cgA_offdiag[6 * body_idx + 3] = float3x3::eye(h_2_inv * mass_matrix[1][2]);
+            abd_cgA_offdiag[6 * body_idx + 4] = float3x3::eye(h_2_inv * mass_matrix[1][3]);
+            abd_cgA_offdiag[6 * body_idx + 5] = float3x3::eye(h_2_inv * mass_matrix[2][3]);
         });
 }
 void NewtonSolver::host_evaluate_orthogonality()
 {
-    float3*   affine_body_cgB      = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-    float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3*   abd_cgB         = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_diag    = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_offdiag = host_sim_data->sa_cgA_offdiag_affine_body.data();
 
-    CpuParallel::parallel_for_each_core(
+    CpuParallel::parallel_for(
         0,
         host_sim_data->sa_affine_bodies.size(),
         [&](const uint body_idx)
         {
-            float3   body_force[4]   = {Zero3};
+            float3   body_force[3]   = {Zero3};
             float3x3 body_hessian[6] = {Zero3x3};
 
             const float substep_dt = get_scene_params().get_substep_dt();
@@ -1006,7 +995,7 @@ void NewtonSolver::host_evaluate_orthogonality()
             float3x3 A = luisa::make_float3x3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
-            A          = luisa::transpose(A);
+            // A          = luisa::transpose(A);
 
             const float kappa = 1e5f;
             const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
@@ -1020,7 +1009,7 @@ void NewtonSolver::host_evaluate_orthogonality()
                     grad += dot_vec(A[ii], A[jj]) * A[jj];
                 }
                 // cgB.block<3, 1>(3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
-                body_force[1 + ii] -= 4 * stiff * grad;  // Force
+                body_force[ii] -= 4.0f * stiff * grad;  // Force
             }
             uint idx = 0;
             for (uint ii = 0; ii < 3; ii++)
@@ -1031,13 +1020,12 @@ void NewtonSolver::host_evaluate_orthogonality()
                     if (ii == jj)
                     {
                         float3x3 qiqiT = outer_product(A[ii], A[ii]);
-                        float    qiTqi = dot_vec(A[ii], A[ii]) - 1.0f;
-                        float3x3 term2 = qiTqi * Identity3x3;
+                        float3x3 qiTqi = (dot_vec(A[ii], A[ii]) - 1.0f) * Identity3x3;
+                        hessian        = qiqiT + qiTqi;
                         for (uint kk = 0; kk < 3; kk++)
                         {
                             hessian = hessian + outer_product(A[kk], A[kk]);
                         }
-                        hessian = hessian + qiqiT + term2;
                     }
                     else
                     {
@@ -1054,20 +1042,17 @@ void NewtonSolver::host_evaluate_orthogonality()
             // t1   4   5   6
             // t2  t5   7   8
             // t3  t6  t8   9
-            affine_body_cgB[4 * body_idx + 0] += body_force[0];
-            affine_body_cgB[4 * body_idx + 1] += body_force[1];
-            affine_body_cgB[4 * body_idx + 2] += body_force[2];
-            affine_body_cgB[4 * body_idx + 3] += body_force[3];
-            affine_body_cgA_diag[4 * body_idx + 1] = affine_body_cgA_diag[4 * body_idx + 1] + body_hessian[0];
-            affine_body_cgA_diag[4 * body_idx + 2] = affine_body_cgA_diag[4 * body_idx + 2] + body_hessian[3];
-            affine_body_cgA_diag[4 * body_idx + 3] = affine_body_cgA_diag[4 * body_idx + 3] + body_hessian[5];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] + body_hessian[1];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] + body_hessian[2];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] + body_hessian[4];
-        });
+            abd_cgB[4 * body_idx + 1] += body_force[0];
+            abd_cgB[4 * body_idx + 2] += body_force[1];
+            abd_cgB[4 * body_idx + 3] += body_force[2];
+            abd_cgA_diag[4 * body_idx + 1]    = abd_cgA_diag[4 * body_idx + 1] + body_hessian[0];
+            abd_cgA_diag[4 * body_idx + 2]    = abd_cgA_diag[4 * body_idx + 2] + body_hessian[3];
+            abd_cgA_diag[4 * body_idx + 3]    = abd_cgA_diag[4 * body_idx + 3] + body_hessian[5];
+            abd_cgA_offdiag[6 * body_idx + 3] = abd_cgA_offdiag[6 * body_idx + 3] + body_hessian[1];
+            abd_cgA_offdiag[6 * body_idx + 4] = abd_cgA_offdiag[6 * body_idx + 4] + body_hessian[2];
+            abd_cgA_offdiag[6 * body_idx + 5] = abd_cgA_offdiag[6 * body_idx + 5] + body_hessian[4];
+        },
+        32);
 }
 void NewtonSolver::host_evaluate_dirichlet()
 {
@@ -1162,8 +1147,9 @@ void NewtonSolver::host_evaluate_ground_collision()
                                   }
                               });
 
-    float3*   affine_body_cgB      = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-    float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3*   abd_cgB         = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_diag    = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    float3x3* abd_cgA_offdiag = &host_sim_data->sa_cgA_offdiag_affine_body.front();
 
     CpuParallel::parallel_for_each_core(
         0,
@@ -1216,26 +1202,21 @@ void NewtonSolver::host_evaluate_ground_collision()
             // t2  t5   7   8
             // t3  t6  t8   9
 
-            affine_body_cgB[4 * body_idx + 0] += body_force[0];
-            affine_body_cgB[4 * body_idx + 1] += body_force[1];
-            affine_body_cgB[4 * body_idx + 2] += body_force[2];
-            affine_body_cgB[4 * body_idx + 3] += body_force[3];
-            affine_body_cgA_diag[4 * body_idx + 0] = affine_body_cgA_diag[4 * body_idx + 0] + body_hessian[0];
-            affine_body_cgA_diag[4 * body_idx + 1] = affine_body_cgA_diag[4 * body_idx + 1] + body_hessian[4];
-            affine_body_cgA_diag[4 * body_idx + 2] = affine_body_cgA_diag[4 * body_idx + 2] + body_hessian[7];
-            affine_body_cgA_diag[4 * body_idx + 3] = affine_body_cgA_diag[4 * body_idx + 3] + body_hessian[9];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] + body_hessian[1];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] + body_hessian[2];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] + body_hessian[3];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] + body_hessian[5];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] + body_hessian[6];
-            host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
-                host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] + body_hessian[8];
+            abd_cgB[4 * body_idx + 0] += body_force[0];
+            abd_cgB[4 * body_idx + 1] += body_force[1];
+            abd_cgB[4 * body_idx + 2] += body_force[2];
+            abd_cgB[4 * body_idx + 3] += body_force[3];
+            abd_cgA_diag[4 * body_idx + 0] = abd_cgA_diag[4 * body_idx + 0] + body_hessian[0];
+            abd_cgA_diag[4 * body_idx + 1] = abd_cgA_diag[4 * body_idx + 1] + body_hessian[4];
+            abd_cgA_diag[4 * body_idx + 2] = abd_cgA_diag[4 * body_idx + 2] + body_hessian[7];
+            abd_cgA_diag[4 * body_idx + 3] = abd_cgA_diag[4 * body_idx + 3] + body_hessian[9];
+
+            abd_cgA_offdiag[6 * body_idx + 0] = abd_cgA_offdiag[6 * body_idx + 0] + body_hessian[1];
+            abd_cgA_offdiag[6 * body_idx + 1] = abd_cgA_offdiag[6 * body_idx + 1] + body_hessian[2];
+            abd_cgA_offdiag[6 * body_idx + 2] = abd_cgA_offdiag[6 * body_idx + 2] + body_hessian[3];
+            abd_cgA_offdiag[6 * body_idx + 3] = abd_cgA_offdiag[6 * body_idx + 3] + body_hessian[5];
+            abd_cgA_offdiag[6 * body_idx + 4] = abd_cgA_offdiag[6 * body_idx + 4] + body_hessian[6];
+            abd_cgA_offdiag[6 * body_idx + 5] = abd_cgA_offdiag[6 * body_idx + 5] + body_hessian[8];
         });
 
     // if constexpr (use_eigen)
@@ -1261,8 +1242,11 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
     EigenFloat12    cgB = EigenFloat12::Zero();
 
     // Inertia
-    if constexpr (false)
+    // if constexpr (false)
     {
+        const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
+        const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
+
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_affine_bodies.size(),
@@ -1276,20 +1260,21 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                 EigenFloat12 delta = EigenFloat12::Zero();
 
                 delta.block<3, 1>(0, 0) =
-                    float3_to_eigen3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 0]
-                                     - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 0]);
+                    float3_to_eigen3(abd_q[4 * body_idx + 0] - abd_q_tilde[4 * body_idx + 0]);
                 delta.block<3, 1>(3, 0) =
-                    float3_to_eigen3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1]
-                                     - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 1]);
+                    float3_to_eigen3(abd_q[4 * body_idx + 1] - abd_q_tilde[4 * body_idx + 1]);
                 delta.block<3, 1>(6, 0) =
-                    float3_to_eigen3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 2]
-                                     - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 2]);
+                    float3_to_eigen3(abd_q[4 * body_idx + 2] - abd_q_tilde[4 * body_idx + 2]);
                 delta.block<3, 1>(9, 0) =
-                    float3_to_eigen3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]
-                                     - host_sim_data->sa_affine_bodies_q_tilde[4 * body_idx + 3]);
+                    float3_to_eigen3(abd_q[4 * body_idx + 3] - abd_q_tilde[4 * body_idx + 3]);
 
                 EigenFloat12    gradient = h_2_inv * M * delta;
                 EigenFloat12x12 hessian  = h_2_inv * M;
+
+                std::cout << "Body " << body_idx << " inertia gradient: " << std::endl
+                          << gradient << std::endl;
+                std::cout << "Body " << body_idx << " inertia hessian: " << std::endl
+                          << hessian << std::endl;
 
                 cgB -= gradient;
                 cgA += hessian;
@@ -1297,7 +1282,7 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
     }
 
     // Ground collision
-    if constexpr (false)
+    // if constexpr (false)
     {
         const float d_hat     = get_scene_params().d_hat;
         const float thickness = get_scene_params().thickness;
@@ -1340,40 +1325,40 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                             // t3  t6  t8   9
                         }
                     }
-                    float3* affine_body_cgB = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-                    float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
 
-                    const uint body_idx = 0;
-                    affine_body_cgB[4 * body_idx + 0] += eigen3_to_float3(cgB.block<3, 1>(0, 0));
-                    affine_body_cgB[4 * body_idx + 1] += eigen3_to_float3(cgB.block<3, 1>(3, 0));
-                    affine_body_cgB[4 * body_idx + 2] += eigen3_to_float3(cgB.block<3, 1>(6, 0));
-                    affine_body_cgB[4 * body_idx + 3] += eigen3_to_float3(cgB.block<3, 1>(9, 0));
-                    affine_body_cgA_diag[4 * body_idx + 0] =
-                        affine_body_cgA_diag[4 * body_idx + 0] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 0));
-                    affine_body_cgA_diag[4 * body_idx + 1] =
-                        affine_body_cgA_diag[4 * body_idx + 1] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 3));
-                    affine_body_cgA_diag[4 * body_idx + 2] =
-                        affine_body_cgA_diag[4 * body_idx + 2] + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 6));
-                    affine_body_cgA_diag[4 * body_idx + 3] =
-                        affine_body_cgA_diag[4 * body_idx + 3] + eigen3x3_to_float3x3(cgA.block<3, 3>(9, 9));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 3));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 6));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 9));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 6));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 9));
-                    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
-                        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5]
-                        + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 9));
+                    // float3* affine_body_cgB = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
+                    // float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+                    // const uint body_idx = 0;
+                    // affine_body_cgB[4 * body_idx + 0] += eigen3_to_float3(cgB.block<3, 1>(0, 0));
+                    // affine_body_cgB[4 * body_idx + 1] += eigen3_to_float3(cgB.block<3, 1>(3, 0));
+                    // affine_body_cgB[4 * body_idx + 2] += eigen3_to_float3(cgB.block<3, 1>(6, 0));
+                    // affine_body_cgB[4 * body_idx + 3] += eigen3_to_float3(cgB.block<3, 1>(9, 0));
+                    // affine_body_cgA_diag[4 * body_idx + 0] =
+                    //     affine_body_cgA_diag[4 * body_idx + 0] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 0));
+                    // affine_body_cgA_diag[4 * body_idx + 1] =
+                    //     affine_body_cgA_diag[4 * body_idx + 1] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 3));
+                    // affine_body_cgA_diag[4 * body_idx + 2] =
+                    //     affine_body_cgA_diag[4 * body_idx + 2] + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 6));
+                    // affine_body_cgA_diag[4 * body_idx + 3] =
+                    //     affine_body_cgA_diag[4 * body_idx + 3] + eigen3x3_to_float3x3(cgA.block<3, 3>(9, 9));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 3));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 6));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 9));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 6));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 9));
+                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
+                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5]
+                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 9));
                 }
             });
     }
@@ -1395,11 +1380,13 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
             // EigenFloat12x12 eigen_A = EigenFloat12x12::Zero();
 
             // Orthogonality potential
-            if constexpr (false)
+            // if constexpr (false)
             {
-                float3      A[3]  = {host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
-                                     host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
-                                     host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]};
+                float3x3 A = luisa::make_float3x3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
+                                                  host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
+                                                  host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
+                // A          = luisa::transpose(A);
+
                 const float kappa = 1e5f;
                 const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
 
@@ -1411,6 +1398,7 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                     {
                         grad += dot_vec(A[ii], A[jj]) * A[jj];
                     }
+                    // LUISA_INFO("grad of col {} = {}", ii, grad);
                     cgB.block<3, 1>(3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
                     // body_force[1 + ii] -= 4 * stiff * g; // Force
                     // LUISA_INFO("Force of col {} = {}", 1 + ii, g);
@@ -1443,44 +1431,51 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
             }
         });
 
-    float3*   affine_body_cgB      = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-    float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    // float3*   abd_cgB         = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
+    // float3x3* abd_cgA_diag    = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
+    // float3x3* abd_cgA_offdiag = &host_sim_data->sa_cgA_offdiag_affine_body[0];
 
-    const uint body_idx = 0;
-    affine_body_cgB[4 * body_idx + 0] += eigen3_to_float3(cgB.block<3, 1>(0, 0));
-    affine_body_cgB[4 * body_idx + 1] += eigen3_to_float3(cgB.block<3, 1>(3, 0));
-    affine_body_cgB[4 * body_idx + 2] += eigen3_to_float3(cgB.block<3, 1>(6, 0));
-    affine_body_cgB[4 * body_idx + 3] += eigen3_to_float3(cgB.block<3, 1>(9, 0));
-    affine_body_cgA_diag[4 * body_idx + 0] =
-        affine_body_cgA_diag[4 * body_idx + 0] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 0));
-    affine_body_cgA_diag[4 * body_idx + 1] =
-        affine_body_cgA_diag[4 * body_idx + 1] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 3));
-    affine_body_cgA_diag[4 * body_idx + 2] =
-        affine_body_cgA_diag[4 * body_idx + 2] + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 6));
-    affine_body_cgA_diag[4 * body_idx + 3] =
-        affine_body_cgA_diag[4 * body_idx + 3] + eigen3x3_to_float3x3(cgA.block<3, 3>(9, 9));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 3));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 6));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 9));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 6));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 9));
-    host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
-        host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 9));
+    // const uint body_idx = 0;
 
-
-    // auto dq = cgA.inverse() * cgB;
-    // CpuParallel::single_thread_for(0, host_sim_data->sa_affine_bodies.size(), [&](const uint body_idx)
+    // auto fn_add_to_cgB = [&](const uint ii)
+    // { abd_cgB[4 * body_idx + ii] += eigen3_to_float3(cgB.block<3, 1>(3 * ii, 0)); };
+    // auto fn_add_to_diag = [&](const uint ii)
     // {
-    //     host_sim_data->sa_cgX[4 * body_idx + 0] = eigen3_to_float3(dq.block<3, 1>(0, 0));
-    //     host_sim_data->sa_cgX[4 * body_idx + 1] = eigen3_to_float3(dq.block<3, 1>(3, 0));
-    //     host_sim_data->sa_cgX[4 * body_idx + 2] = eigen3_to_float3(dq.block<3, 1>(6, 0));
-    //     host_sim_data->sa_cgX[4 * body_idx + 3] = eigen3_to_float3(dq.block<3, 1>(9, 0));
-    // });
+    //     abd_cgA_diag[4 * body_idx + ii] =
+    //         abd_cgA_diag[4 * body_idx + ii] + eigen3x3_to_float3x3(cgA.block<3, 3>(3 * ii, 3 * ii));
+    // };
+    // auto fn_add_to_offdiag = [&](const uint off_idx, const uint ii, const uint jj)
+    // {
+    //     abd_cgA_offdiag[6 * body_idx + off_idx] =
+    //         abd_cgA_offdiag[6 * body_idx + off_idx] + eigen3x3_to_float3x3(cgA.block<3, 3>(3 * ii, 3 * jj));
+    // };
+
+    // fn_add_to_cgB(0);
+    // fn_add_to_cgB(1);
+    // fn_add_to_cgB(2);
+    // fn_add_to_cgB(3);
+    // fn_add_to_diag(0);
+    // fn_add_to_diag(1);
+    // fn_add_to_diag(2);
+    // fn_add_to_diag(3);
+    // fn_add_to_offdiag(0, 0, 1);
+    // fn_add_to_offdiag(1, 0, 2);
+    // fn_add_to_offdiag(2, 0, 3);
+    // fn_add_to_offdiag(3, 1, 2);
+    // fn_add_to_offdiag(4, 1, 3);
+    // fn_add_to_offdiag(5, 2, 3);
+
+    auto dq = cgA.inverse() * cgB;
+    CpuParallel::single_thread_for(
+        0,
+        host_sim_data->sa_affine_bodies.size(),
+        [&](const uint body_idx)
+        {
+            host_sim_data->sa_cgX[4 * body_idx + 0] = eigen3_to_float3(dq.block<3, 1>(0, 0));
+            host_sim_data->sa_cgX[4 * body_idx + 1] = eigen3_to_float3(dq.block<3, 1>(3, 0));
+            host_sim_data->sa_cgX[4 * body_idx + 2] = eigen3_to_float3(dq.block<3, 1>(6, 0));
+            host_sim_data->sa_cgX[4 * body_idx + 3] = eigen3_to_float3(dq.block<3, 1>(9, 0));
+        });
 }
 void NewtonSolver::host_evaluete_spring()
 {
