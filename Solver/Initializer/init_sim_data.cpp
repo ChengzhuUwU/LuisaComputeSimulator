@@ -314,8 +314,8 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         sim_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
 
-        sim_data->sa_affine_bodies_mass_matrix_diag.resize(num_affine_bodies * 4);
-        sim_data->sa_affine_bodies_mass_matrix_compressed_offdiag.resize(num_affine_bodies);
+        sim_data->sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
+        sim_data->sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
 
         sim_data->sa_cgA_offdiag_affine_body.resize(num_affine_bodies * 6);
         sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
@@ -336,15 +336,16 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                     float4x4 init_transform_matrix =
                         lcs::make_model_matrix(init_translation, init_rotation, init_scale);
                     float4x3 rest_q = AffineBodyDynamics::extract_q_from_affine_matrix(init_transform_matrix);
-                    ;
-                    float3x3 init_A;
-                    float3   init_p;
-                    AffineBodyDynamics::extract_Ap_from_q(rest_q.cols, init_A, init_p);
-                    // LUISA_INFO("init p = {}, ATA-I={}, |ATA-I| = {}", init_p, init_A * luisa::transpose(init_A) - Identity3x3, luisa::transpose(init_A));
                     sim_data->sa_affine_bodies_rest_q[4 * body_idx + 0] = rest_q[0];  // = init_transform_matrix[0].xyz()
                     sim_data->sa_affine_bodies_rest_q[4 * body_idx + 1] = rest_q[1];  // = init_transform_matrix[1].xyz()
                     sim_data->sa_affine_bodies_rest_q[4 * body_idx + 2] = rest_q[2];  // = init_transform_matrix[2].xyz()
                     sim_data->sa_affine_bodies_rest_q[4 * body_idx + 3] = rest_q[3];  // = init_transform_matrix[3].xyz()
+                    // LUISA_INFO("Affine Body {} Rest q = \n{},\n{},\n{},\n{}",
+                    //            body_idx,
+                    //            rest_q[0],
+                    //            rest_q[1],
+                    //            rest_q[2],
+                    //            rest_q[3]);
                     sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 0] = Zero3;
                     sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 1] = Zero3;
                     sim_data->sa_affine_bodies_rest_q_v[4 * body_idx + 2] = Zero3;
@@ -367,30 +368,34 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                                    // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
                                                    body_mass += mass * J.transpose() * J;
                                                });
+                body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
                 // TODO: Weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
                 // TODO: Mass distribution
                 // TODO: Integrate mass matrix with tetrahedral element
-                // std::cout << "Mass Matrix = \n" << body_mass.block<3, 3>(0, 0) << std::endl;
+
+                // std::cout << "Test J for (1,2,3) = \n"
+                //           << AffineBodyDynamics::get_jacobian_dxdq(luisa::make_float3(1, 2, 3)) << std::endl;
+
                 // std::cout
                 //     << "Sum of mass = \n"
                 //     << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f)
                 //     << std::endl;
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
                 // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
-                sim_data->sa_affine_bodies_mass_matrix_full.push_back(body_mass);
-                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 0] =
-                    eigen3x3_to_float3x3(body_mass.block<3, 3>(0, 0));
-                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 1] =
-                    eigen3x3_to_float3x3(body_mass.block<3, 3>(3, 3));
-                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 2] =
-                    eigen3x3_to_float3x3(body_mass.block<3, 3>(6, 6));
-                sim_data->sa_affine_bodies_mass_matrix_diag[4 * body_idx + 3] =
-                    eigen3x3_to_float3x3(body_mass.block<3, 3>(9, 9));
-                sim_data->sa_affine_bodies_mass_matrix_compressed_offdiag[body_idx] =
-                    luisa::make_float3x3(eigen3_to_float3(body_mass.block<3, 1>(3, 0)),
-                                         eigen3_to_float3(body_mass.block<3, 1>(6, 1)),
-                                         eigen3_to_float3(body_mass.block<3, 1>(9, 2)));
-                body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
+
+                float4x4 compressed_mass_matrix;
+                for (uint i = 0; i < 4; i++)
+                {
+                    for (uint j = 0; j < 4; j++)
+                    {
+                        compressed_mass_matrix[j][i] = body_mass(i * 3 + 0, j * 3 + 0);
+                    }
+                }
+                sim_data->sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
+                sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
+
+                // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+                // LUISA_INFO("Affine Body {} Mass Matrix = \n{}", body_idx, compressed_mass_matrix);
 
                 float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
                                          mesh_data->sa_rest_vert_area.begin() + next_prefix,
@@ -1071,10 +1076,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_affine_bodies_q_iter_start, input_data->sa_affine_bodies_q_iter_start)
             << upload_buffer(device, output_data->sa_affine_bodies_q_step_start, input_data->sa_affine_bodies_q_step_start)
             << upload_buffer(device, output_data->sa_affine_bodies_volume, input_data->sa_affine_bodies_volume)
-            << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix_diag, input_data->sa_affine_bodies_mass_matrix_diag)
-            << upload_buffer(device,
-                             output_data->sa_affine_bodies_mass_matrix_compressed_offdiag,
-                             input_data->sa_affine_bodies_mass_matrix_compressed_offdiag)
+            << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix, input_data->sa_affine_bodies_mass_matrix)
             << upload_buffer(device, output_data->sa_cgA_offdiag_affine_body, input_data->sa_cgA_offdiag_affine_body);
     }
     stream << upload_buffer(device,

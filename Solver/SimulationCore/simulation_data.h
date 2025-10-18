@@ -136,8 +136,7 @@ struct SimulationData : SimulationType
     BufferType<uint>             sa_vert_affine_bodies_id;
     BufferType<uint>             sa_affine_bodies;
     BufferType<float>            sa_affine_bodies_volume;
-    BufferType<float3x3>         sa_affine_bodies_mass_matrix_diag;
-    BufferType<float3x3>         sa_affine_bodies_mass_matrix_compressed_offdiag;
+    BufferType<float4x4>         sa_affine_bodies_mass_matrix;
     BufferType<float3>           sa_affine_bodies_rest_q;
     BufferType<float3>           sa_affine_bodies_rest_q_v;
     BufferType<float3>           sa_affine_bodies_gravity;

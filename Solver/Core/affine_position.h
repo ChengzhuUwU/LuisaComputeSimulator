@@ -112,10 +112,10 @@ namespace AffineBodyDynamics
     inline Eigen::Matrix<float, 3, 12> get_jacobian_dxdq(const luisa::float3& model_position)
     {
         Eigen::Matrix<float, 3, 12> J = Eigen::Matrix<float, 3, 12>::Zero();
-        J.block<3, 3>(0, 0)           = float3x3_to_eigen3x3(Identity3x3);
-        J.block<3, 3>(0, 3)           = float3x3_to_eigen3x3(float3x3(model_position, Zero3, Zero3));
-        J.block<3, 3>(0, 6)           = float3x3_to_eigen3x3(float3x3(Zero3, model_position, Zero3));
-        J.block<3, 3>(0, 9)           = float3x3_to_eigen3x3(float3x3(Zero3, Zero3, model_position));
+        J.block<3, 3>(0, 0)           = float3x3_to_eigen3x3(float3x3::eye(1.0f));
+        J.block<3, 3>(0, 3)           = float3x3_to_eigen3x3(float3x3::eye(model_position.x));
+        J.block<3, 3>(0, 6)           = float3x3_to_eigen3x3(float3x3::eye(model_position.y));
+        J.block<3, 3>(0, 9)           = float3x3_to_eigen3x3(float3x3::eye(model_position.z));
         return J;
     }
     inline auto extract_q_from_affine_matrix(const luisa::float4x4& A)
