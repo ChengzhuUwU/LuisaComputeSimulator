@@ -143,6 +143,9 @@ class NarrowPhasesDetector
                                                   const Buffer<float3>& sa_x_right,
                                                   const float           d_hat,
                                                   const float           thickness,
+                                                  const Buffer<uint>&   sa_vert_affine_bodies_id,
+                                                  const Buffer<float3>& sa_scaled_model_x,
+                                                  const uint            prefix_abd,
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
     void device_perVert_evaluate_gradient_hessian(Stream&               stream,
@@ -152,14 +155,14 @@ class NarrowPhasesDetector
                                                   const float           thickness,
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
-    void construct_pervert_adj_list(Stream& stream);
+    void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
     void host_sort_contact_triplet(Stream& stream);
     void device_sort_contact_triplet(Stream& stream);
-    void device_assemble_contact_triplet(Stream& stream);
+    void device_assemble_contact_triplet(Stream& stream, Buffer<float3>& sa_scaled_model_x, const uint prefix_abd);
 
   public:
     // Compute barrier energy
@@ -242,19 +245,21 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
 
     // Scan
-    luisa::compute::Shader<1>                                    fn_calc_pervert_collion_count;
+    luisa::compute::Shader<1>                                    fn_preprocess_for_affine_bodies;
+    luisa::compute::Shader<1, Buffer<uint>, uint>                fn_calc_pervert_collion_count;
     luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_pairs;
     luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_verts;
-    luisa::compute::Shader<1>                                    fn_fill_in_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1, Buffer<uint>, uint>                fn_fill_in_pairs_in_vert_adjacent;
     luisa::compute::Shader<1, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
-    luisa::compute::Shader<1> fn_block_level_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1>                                    fn_specify_target_slot;
     luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_fill_in;
     luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_align_offset;
-    luisa::compute::Shader<1> fn_assemble_triplet_sorted;
-    luisa::compute::Shader<1, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
+    luisa::compute::Shader<1, Buffer<float3>, uint>               fn_assemble_triplet_sorted;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
+    luisa::compute::Shader<1, Buffer<MatrixTriplet3x3>>           fn_reset_triplet;
 
     // Assemble
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
 
     // SpMV

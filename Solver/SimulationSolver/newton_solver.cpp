@@ -1179,6 +1179,9 @@ void NewtonSolver::host_evaluate_ground_collision()
                     float3   model_x = host_mesh_data->sa_scaled_model_x[vid];
                     float3   force   = stiff * C * normal;
                     float3x3 hessian = stiff * outer_product(normal, normal);
+                    // Friction
+                    {
+                    }
                     {
                         float3x3 curr_hessian[10];
                         float3   curr_force[4];
@@ -1238,8 +1241,8 @@ void NewtonSolver::host_evaluate_ground_collision()
 }
 void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
 {
-    EigenFloat12x12 cgA = EigenFloat12x12::Zero();
-    EigenFloat12    cgB = EigenFloat12::Zero();
+    Eigen::Matrix<float, 24, 24> cgA = Eigen::Matrix<float, 24, 24>::Zero();
+    Eigen::Matrix<float, 24, 12> cgB = Eigen::Matrix<float, 24, 12>::Zero();
 
     // Inertia
     // if constexpr (false)
@@ -1271,13 +1274,13 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                 EigenFloat12    gradient = h_2_inv * M * delta;
                 EigenFloat12x12 hessian  = h_2_inv * M;
 
-                std::cout << "Body " << body_idx << " inertia gradient: " << std::endl
-                          << gradient << std::endl;
-                std::cout << "Body " << body_idx << " inertia hessian: " << std::endl
-                          << hessian << std::endl;
+                // std::cout << "Body " << body_idx << " inertia gradient: " << std::endl
+                //           << gradient << std::endl;
+                // std::cout << "Body " << body_idx << " inertia hessian: " << std::endl
+                //           << hessian << std::endl;
 
-                cgB -= gradient;
-                cgA += hessian;
+                cgB.block<12, 1>(body_idx * 12, 0) -= gradient;
+                cgA.block<12, 12>(body_idx * 12, body_idx * 12) += hessian;
             });
     }
 
@@ -1297,10 +1300,6 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                     const uint curr_prefix = host_mesh_data->prefix_num_verts[mesh_idx];
                     const uint next_prefix = host_mesh_data->prefix_num_verts[mesh_idx + 1];
 
-                    float3   body_force[4]       = {Zero3};
-                    float3x3 body_hessian[4][10] = {Zero3x3};
-                    // EigenFloat12 eigen_B = EigenFloat12::Zero();
-                    // EigenFloat12x12 eigen_A = EigenFloat12x12::Zero();
                     for (uint vid = curr_prefix; vid < next_prefix; vid++)
                     {
                         float3 x_k  = host_sim_data->sa_x[vid];
@@ -1316,49 +1315,20 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                             float3   model_x = host_mesh_data->sa_scaled_model_x[vid];
                             float3   force   = stiff * C * normal;
                             float3x3 hessian = stiff * outer_product(normal, normal);
-                            auto     J       = AffineBodyDynamics::get_jacobian_dxdq(model_x);
-                            cgB += J.transpose() * float3_to_eigen3(force);
-                            cgA += J.transpose() * float3x3_to_eigen3x3(hessian) * J;
+
+                            // Friction
+
+                            auto J = AffineBodyDynamics::get_jacobian_dxdq(model_x);
+                            cgB.block<12, 1>(body_idx * 12, 0) += J.transpose() * float3_to_eigen3(force);
+                            cgA.block<12, 12>(body_idx * 12, body_idx * 12) +=
+                                J.transpose() * float3x3_to_eigen3x3(hessian) * J;
+
                             //  0   1   2   3
                             // t1   4   5   6
                             // t2  t5   7   8
                             // t3  t6  t8   9
                         }
                     }
-
-                    // float3* affine_body_cgB = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-                    // float3x3* affine_body_cgA_diag = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
-                    // const uint body_idx = 0;
-                    // affine_body_cgB[4 * body_idx + 0] += eigen3_to_float3(cgB.block<3, 1>(0, 0));
-                    // affine_body_cgB[4 * body_idx + 1] += eigen3_to_float3(cgB.block<3, 1>(3, 0));
-                    // affine_body_cgB[4 * body_idx + 2] += eigen3_to_float3(cgB.block<3, 1>(6, 0));
-                    // affine_body_cgB[4 * body_idx + 3] += eigen3_to_float3(cgB.block<3, 1>(9, 0));
-                    // affine_body_cgA_diag[4 * body_idx + 0] =
-                    //     affine_body_cgA_diag[4 * body_idx + 0] + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 0));
-                    // affine_body_cgA_diag[4 * body_idx + 1] =
-                    //     affine_body_cgA_diag[4 * body_idx + 1] + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 3));
-                    // affine_body_cgA_diag[4 * body_idx + 2] =
-                    //     affine_body_cgA_diag[4 * body_idx + 2] + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 6));
-                    // affine_body_cgA_diag[4 * body_idx + 3] =
-                    //     affine_body_cgA_diag[4 * body_idx + 3] + eigen3x3_to_float3x3(cgA.block<3, 3>(9, 9));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 0]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 3));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 1]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 6));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 2]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(0, 9));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 3]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 6));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 4]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(3, 9));
-                    // host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5] =
-                    //     host_sim_data->sa_cgA_offdiag_affine_body[6 * body_idx + 5]
-                    //     + eigen3x3_to_float3x3(cgA.block<3, 3>(6, 9));
                 }
             });
     }
@@ -1399,7 +1369,7 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                         grad += dot_vec(A[ii], A[jj]) * A[jj];
                     }
                     // LUISA_INFO("grad of col {} = {}", ii, grad);
-                    cgB.block<3, 1>(3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
+                    cgB.block<3, 1>(12 * body_idx + 3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
                     // body_force[1 + ii] -= 4 * stiff * g; // Force
                     // LUISA_INFO("Force of col {} = {}", 1 + ii, g);
                 }
@@ -1424,58 +1394,96 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
                             hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
                         }
                         // LUISA_INFO("hess of {} adj {} = {}", ii, jj, hessian);
-                        cgA.block<3, 3>(3 + 3 * ii, 3 + 3 * jj) += 4.0f * stiff * float3x3_to_eigen3x3(hessian);
+                        cgA.block<3, 3>(12 * body_idx + 3 + 3 * ii, 12 * body_idx + 3 + 3 * jj) +=
+                            4.0f * stiff * float3x3_to_eigen3x3(hessian);
                         // body_hessian[ii][jj] = body_hessian[ii][jj] + 4.0f * stiff * hessian; idx += 1;
                     }
                 }
             }
         });
 
-    // float3*   abd_cgB         = &host_sim_data->sa_cgB[host_sim_data->num_verts_soft];
-    // float3x3* abd_cgA_diag    = &host_sim_data->sa_cgA_diag[host_sim_data->num_verts_soft];
-    // float3x3* abd_cgA_offdiag = &host_sim_data->sa_cgA_offdiag_affine_body[0];
 
-    // const uint body_idx = 0;
+    // Test abd
+    // if (false)
+    {
+        Eigen::Matrix<float, 24, 24> tmpA = Eigen::Matrix<float, 24, 24>::Zero();
+        Eigen::Matrix<float, 24, 12> tmpB = Eigen::Matrix<float, 24, 12>::Zero();
 
-    // auto fn_add_to_cgB = [&](const uint ii)
-    // { abd_cgB[4 * body_idx + ii] += eigen3_to_float3(cgB.block<3, 1>(3 * ii, 0)); };
-    // auto fn_add_to_diag = [&](const uint ii)
-    // {
-    //     abd_cgA_diag[4 * body_idx + ii] =
-    //         abd_cgA_diag[4 * body_idx + ii] + eigen3x3_to_float3x3(cgA.block<3, 3>(3 * ii, 3 * ii));
-    // };
-    // auto fn_add_to_offdiag = [&](const uint off_idx, const uint ii, const uint jj)
-    // {
-    //     abd_cgA_offdiag[6 * body_idx + off_idx] =
-    //         abd_cgA_offdiag[6 * body_idx + off_idx] + eigen3x3_to_float3x3(cgA.block<3, 3>(3 * ii, 3 * jj));
-    // };
+        mp_narrowphase_detector->download_narrowphase_list(stream);
 
-    // fn_add_to_cgB(0);
-    // fn_add_to_cgB(1);
-    // fn_add_to_cgB(2);
-    // fn_add_to_cgB(3);
-    // fn_add_to_diag(0);
-    // fn_add_to_diag(1);
-    // fn_add_to_diag(2);
-    // fn_add_to_diag(3);
-    // fn_add_to_offdiag(0, 0, 1);
-    // fn_add_to_offdiag(1, 0, 2);
-    // fn_add_to_offdiag(2, 0, 3);
-    // fn_add_to_offdiag(3, 1, 2);
-    // fn_add_to_offdiag(4, 1, 3);
-    // fn_add_to_offdiag(5, 2, 3);
+        const auto& host_count = host_collision_data->narrow_phase_collision_count;
+        const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        LUISA_INFO("Assembled contact triplet count : {}", num_triplet_assembled);
+
+        const uint num_pairs = host_count.front();
+        // Eigen::Matrix<float, 24, 24> A         = Eigen::Matrix<float, 24, 24>::Zero();
+        // Eigen::Matrix<float, 24, 1>  B         = Eigen::Matrix<float, 24, 1>::Zero();
+        for (uint pair_idx = 0; pair_idx < num_pairs; pair_idx++)
+        {
+            auto pair = host_collision_data->narrow_phase_list[pair_idx];
+
+            const uint4  indices        = pair.get_indices();
+            const float4 weight         = pair.get_weight();
+            const float3 normal         = pair.get_normal();
+            const float  k1             = pair.get_k1();  // dBdD
+            const float  k2             = pair.get_k2();  // ddBddD
+            const auto   collision_type = pair.get_collision_type();
+            float        D;
+
+            float3 positions[4] = {
+                host_sim_data->sa_x[indices[0]],
+                host_sim_data->sa_x[indices[1]],
+                host_sim_data->sa_x[indices[2]],
+                host_sim_data->sa_x[indices[3]],
+            };
+
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                const float3                Xi = host_mesh_data->sa_scaled_model_x[indices[ii]];
+                Eigen::Matrix<float, 3, 12> J1 = AffineBodyDynamics::get_jacobian_dxdq(Xi);
+                const uint  body_i             = host_sim_data->sa_vert_affine_bodies_id[indices[ii]];
+                EigenFloat3 grad               = float3_to_eigen3(k1 * weight[ii] * normal);
+                tmpB.block<12, 1>(body_i * 12, 0) += J1.transpose() * grad;
+
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    const float3                Xj = host_mesh_data->sa_scaled_model_x[indices[jj]];
+                    Eigen::Matrix<float, 3, 12> J2 = AffineBodyDynamics::get_jacobian_dxdq(Xj);
+                    const uint body_j = host_sim_data->sa_vert_affine_bodies_id[indices[jj]];
+
+                    const float3x3 hess = k2 * weight[ii] * weight[jj] * outer_product(normal, normal);
+                    const EigenFloat12x12 JtHJ = J1.transpose() * float3x3_to_eigen3x3(hess) * J2;
+                    tmpA.block<12, 12>(body_i * 12, body_j * 12) += JtHJ;  // Only affect its own body
+                }
+            }
+        }
+
+        // uint idx = 0;
+        // for (uint ii = 0; ii < 8; ii++)
+        // {
+        //     // LUISA_INFO("Contact tmpB block {} = \n{}", ii, tmpB.block<12, 1>(ii * 12, 0));
+        //     for (uint jj = 0; jj < 8; jj++)
+        //     {
+        //         // LUISA_INFO("Contact tmpA block {} : ({}, {}) = {}",
+        //         //            idx,
+        //         //            ii,
+        //         //            jj,
+        //         //            eigen3x3_to_float3x3(tmpA.block<3, 3>(ii * 3, jj * 3)));
+        //         if (ii != jj)
+        //             idx += 1;
+        //     }
+        // }
+
+        cgA += tmpA;
+        cgB += tmpB;
+    }
 
     auto dq = cgA.inverse() * cgB;
-    CpuParallel::single_thread_for(
-        0,
-        host_sim_data->sa_affine_bodies.size(),
-        [&](const uint body_idx)
-        {
-            host_sim_data->sa_cgX[4 * body_idx + 0] = eigen3_to_float3(dq.block<3, 1>(0, 0));
-            host_sim_data->sa_cgX[4 * body_idx + 1] = eigen3_to_float3(dq.block<3, 1>(3, 0));
-            host_sim_data->sa_cgX[4 * body_idx + 2] = eigen3_to_float3(dq.block<3, 1>(6, 0));
-            host_sim_data->sa_cgX[4 * body_idx + 3] = eigen3_to_float3(dq.block<3, 1>(9, 0));
-        });
+    CpuParallel::single_thread_for(0,
+                                   host_sim_data->sa_affine_bodies.size() * 4,
+                                   [&](const uint i) {
+                                       host_sim_data->sa_cgX[i] = eigen3_to_float3(dq.block<3, 1>(3 * i, 0));
+                                   });
 }
 void NewtonSolver::host_evaluete_spring()
 {
@@ -1814,7 +1822,8 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
         device_narrowphase_dcd(stream);
 
     mp_narrowphase_detector->download_narrowphase_collision_count(stream);
-    mp_narrowphase_detector->construct_pervert_adj_list(stream);
+    mp_narrowphase_detector->construct_pervert_adj_list(
+        stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 {
@@ -2023,7 +2032,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                         {
                             float3x3 hessian = off_diag_hessian_ptr[6 * body_idx + offset];
                             offset += 1;
-                            output_vec[j] += (hessian)*input_vec[jj];
+                            output_vec[j] += hessian * input_vec[jj];
                             output_vec[jj] += transpose(hessian) * input_vec[j];
                         }
                     }
@@ -2195,14 +2204,25 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_cgB.copy_from(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_from(host_sim_data->sa_cgA_diag.data());
 
-        mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
-            stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->device_assemble_contact_triplet(stream);
+        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                          sim_data->sa_x,
+                                                                          sim_data->sa_x,
+                                                                          d_hat,
+                                                                          thickness,
+                                                                          sim_data->sa_vert_affine_bodies_id,
+                                                                          mesh_data->sa_scaled_model_x,
+                                                                          host_sim_data->num_verts_soft,
+                                                                          sim_data->sa_cgB,
+                                                                          sim_data->sa_cgA_diag);
+        mp_narrowphase_detector->device_assemble_contact_triplet(
+            stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
         mp_narrowphase_detector->download_contact_triplet(stream);
 
         stream << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_to(host_sim_data->sa_cgA_diag.data())
                << luisa::compute::synchronize();
+
+        stream << luisa::compute::synchronize();
     };
     auto ccd_get_toi = [&]() -> float
     {
@@ -2491,11 +2511,19 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     auto evaluate_contact = [&]()
     {
-        // mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(
-        mp_narrowphase_detector->device_perVert_evaluate_gradient_hessian(
-            stream, sim_data->sa_x, sim_data->sa_x, d_hat, thickness, sim_data->sa_cgB, sim_data->sa_cgA_diag);
+        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                          sim_data->sa_x,
+                                                                          sim_data->sa_x,
+                                                                          d_hat,
+                                                                          thickness,
+                                                                          sim_data->sa_vert_affine_bodies_id,
+                                                                          mesh_data->sa_scaled_model_x,
+                                                                          host_sim_data->num_verts_soft,
+                                                                          sim_data->sa_cgB,
+                                                                          sim_data->sa_cgA_diag);
 
-        mp_narrowphase_detector->device_assemble_contact_triplet(stream);
+        mp_narrowphase_detector->device_assemble_contact_triplet(
+            stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
     };
     auto ccd_get_toi = [&]() -> float
     {
