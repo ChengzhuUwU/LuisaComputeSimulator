@@ -34,7 +34,7 @@ namespace lcs
 {
 
 constexpr uint mask_collision_type = 1u << 31;
-constexpr uint mask_get_index      = ~mask_collision_type;
+constexpr uint mask_get_index      = ~(mask_collision_type);
 
 namespace CollisionPair
 {
@@ -79,14 +79,14 @@ namespace CollisionPair
 
         void make_vv_pair(const uint2& vids, const float3& normal, const float k1, const float k2, const float area)
         {
-            indices = luisa::make_uint4(vids.x, vids.y, -1u, -1u);
+            indices = luisa::make_uint4(vids.x, -1u, vids.y, -1u);
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, 1.0f, 1.0f);
             set_collision_type(type_vv());
         }
         void make_ve_pair(const uint3& vids, const float3& normal, const float k1, const float k2, const float area, const float2& edge_bary)
         {
-            indices = luisa::make_uint4(vids.x, vids.y, vids.z, -1u);
+            indices = luisa::make_uint4(vids.x, -1u, vids.y, vids.z);
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
             set_collision_type(type_ve());
@@ -106,8 +106,8 @@ namespace CollisionPair
             set_collision_type(type_ee());
         }
         
-        [[nodiscard]] float4 get_vv_weight() const { return luisa::make_float4(1.0f, -1.0f, 0.0f, 0.0f); }
-        [[nodiscard]] float4 get_ve_weight() const { return luisa::make_float4(1.0f, -vec2[2], -vec2[3], 0.0f); }
+        [[nodiscard]] float4 get_vv_weight() const { return luisa::make_float4(1.0f, 0.0f, -1.0f, 0.0f); }
+        [[nodiscard]] float4 get_ve_weight() const { return luisa::make_float4(1.0f, 0.0f, -vec2[2], -vec2[3]); }
         [[nodiscard]] float4 get_vf_weight() const { return luisa::make_float4(1.0f, -vec2[2], -vec2[3], vec2[2] + vec2[3] - 1.0f); }
         [[nodiscard]] float4 get_ee_weight() const { return luisa::make_float4(vec2[2], 1.0f - vec2[2], -vec2[3], vec2[3] - 1.0f); }
         
@@ -148,7 +148,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
                     const luisa::compute::Float   k2,
                     const luisa::compute::Float   area)
     {
-        indices = luisa::compute::make_uint4(vids.x, vids.y, -1u, -1u);
+        indices = luisa::compute::make_uint4(vids.x, -1u, vids.y, -1u);
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, 1.0f, 1.0f);
         set_collision_type(lcs::CollisionPair::type_vv());
@@ -160,7 +160,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
                     const luisa::compute::Float   area,
                     const luisa::compute::Float2& edge_bary)
     {
-        indices = luisa::compute::make_uint4(vids.x, vids.y, vids.z, -1u);
+        indices = luisa::compute::make_uint4(vids.x, -1u, vids.y, vids.z);
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
         set_collision_type(lcs::CollisionPair::type_ve());
@@ -194,6 +194,123 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
     luisa::compute::UInt get_index(const uint i) const { return indices[i] & lcs::mask_get_index; }
     luisa::compute::UInt get_index(const luisa::compute::Uint& i) const { return indices[i] & lcs::mask_get_index; }
     luisa::compute::UInt4 get_indices() const { return indices & luisa::compute::make_uint4(lcs::mask_get_index); }
+    
+    void get_active_indices(
+        luisa::compute::ArrayVar<uint, 8>& active_indices,
+        luisa::compute::UInt& left_active_count,
+        luisa::compute::UInt& right_active_count,
+        const luisa::compute::UInt2& body_13_indices, 
+        const luisa::compute::UInt& abd_prefix) const 
+    { 
+        const auto type = get_collision_type();
+        luisa::compute::UInt4 orig_indices = get_indices();
+
+        left_active_count = 0;
+        right_active_count = 0;
+        $if(body_13_indices[0] == -1u) // Left is soft
+        {
+            $if(type == lcs::CollisionPair::type_vf() | 
+                type == lcs::CollisionPair::type_vv() | 
+                type == lcs::CollisionPair::type_ve())
+            {
+                active_indices[left_active_count] = orig_indices[0] | (0 << 30);
+                left_active_count += 1u;
+            }
+            $else
+            {
+                active_indices[left_active_count + 0] = orig_indices[0] | (0 << 30);
+                active_indices[left_active_count + 1] = orig_indices[1] | (1 << 30);
+                left_active_count += 2;
+            };
+        }
+        $else
+        {
+            active_indices[left_active_count + 0] = (abd_prefix + 4 * body_13_indices[0] + 0) | (0 << 30);
+            active_indices[left_active_count + 1] = (abd_prefix + 4 * body_13_indices[0] + 1) | (1 << 30);
+            active_indices[left_active_count + 2] = (abd_prefix + 4 * body_13_indices[0] + 2) | (2 << 30);
+            active_indices[left_active_count + 3] = (abd_prefix + 4 * body_13_indices[0] + 3) | (3 << 30);
+            left_active_count += 4;
+        };
+
+        right_active_count = left_active_count;
+
+        $if(body_13_indices[1] == -1u) // Right is soft
+        {
+            $if(type == lcs::CollisionPair::type_vv())
+            {
+                active_indices[right_active_count] = orig_indices[2] | (2 << 30);
+                right_active_count += 1u;
+            }
+            $elif(type == lcs::CollisionPair::type_ve() | 
+                  type == lcs::CollisionPair::type_ee())
+            {
+                active_indices[right_active_count + 0] = orig_indices[2] | (2 << 30);
+                active_indices[right_active_count + 1] = orig_indices[3] | (3 << 30);
+                right_active_count += 2u;
+            }
+            $else
+            {
+                active_indices[right_active_count + 0] = orig_indices[1] | (1 << 30);
+                active_indices[right_active_count + 1] = orig_indices[2] | (2 << 30);
+                active_indices[right_active_count + 2] = orig_indices[3] | (3 << 30);
+                right_active_count += 3u;
+            };
+        }
+        $else
+        {
+            active_indices[right_active_count + 0] = (abd_prefix + 4 * body_13_indices[1] + 0) | (0 << 30);
+            active_indices[right_active_count + 1] = (abd_prefix + 4 * body_13_indices[1] + 1) | (1 << 30);
+            active_indices[right_active_count + 2] = (abd_prefix + 4 * body_13_indices[1] + 2) | (2 << 30);
+            active_indices[right_active_count + 3] = (abd_prefix + 4 * body_13_indices[1] + 3) | (3 << 30);
+            right_active_count += 4;
+        };
+
+        right_active_count -= left_active_count;
+    }
+    luisa::compute::UInt4 get_active_indices(const luisa::compute::UInt2& body_13_indices, luisa::compute::UInt& dofs) const 
+    { 
+        const auto type = get_collision_type();
+        luisa::compute::UInt4 result = get_indices();
+        
+        $if(body_13_indices[0] == -1u & body_13_indices[1] == -1u) // Soft-Soft
+        {
+            dofs = 4;
+        }
+        $elif(body_13_indices[0] == -1u & body_13_indices[1] != -1u) // Soft-Rigid
+        {
+            $if(type == lcs::CollisionPair::type_vf())
+            {
+                result[1] = body_13_indices[1];
+                dofs = 2;
+            }
+            $elif(type == lcs::CollisionPair::type_ee())
+            {
+                result[2] = body_13_indices[1];
+                dofs = 3;
+            };
+        }
+        $elif(body_13_indices[0] != -1u & body_13_indices[1] == -1u)
+        {
+            $if(type == lcs::CollisionPair::type_vf())
+            {
+                result[0] = body_13_indices[0];
+                dofs = 4;
+            }
+            $elif(type == lcs::CollisionPair::type_ee())
+            {
+                result[0] = body_13_indices[0];
+                result[1] = body_13_indices[0];
+                dofs = 3;
+            };
+        }
+        $else // Rigid-Rigid
+        {
+            result[0] = body_13_indices[0];
+            result[1] = body_13_indices[1];
+            dofs = 2;
+        };
+        return result; 
+    }
 
     luisa::compute::Float3 get_normal() const { return vec1.xyz(); }
     luisa::compute::Float get_area() const { return vec1[3]; }
@@ -202,8 +319,8 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
     luisa::compute::Float get_k2() const { return vec2[1]; }
     luisa::compute::Float2 get_stiff() const { return vec2.xy(); }
 
-    luisa::compute::Float4 get_vv_weight() const { return luisa::compute::make_float4(1.0f, -1.0f, 0.0f, 0.0f); }
-    luisa::compute::Float4 get_ve_weight() const { return luisa::compute::make_float4(1.0f, -vec2[2], -vec2[3], 0.0f); }
+    luisa::compute::Float4 get_vv_weight() const { return luisa::compute::make_float4(1.0f, 0.0f, -1.0f, 0.0f); }
+    luisa::compute::Float4 get_ve_weight() const { return luisa::compute::make_float4(1.0f, 0.0f, -vec2[2], -vec2[3]); }
     luisa::compute::Float4 get_vf_weight() const { return luisa::compute::make_float4(1.0f, -vec2[2], -vec2[3], vec2[2] + vec2[3] - 1.0f); }
     luisa::compute::Float4 get_ee_weight() const { return luisa::compute::make_float4(vec2[2], 1.0f - vec2[2], -vec2[3], vec2[3] - 1.0f); }
 
@@ -278,7 +395,6 @@ struct CollisionData : SimulationType
     BufferType<uint>                       per_vert_num_adj_verts;
     BufferType<uint>                       per_vert_prefix_adj_pairs;
     BufferType<uint>                       per_vert_prefix_adj_verts;
-    BufferType<ushort>                     narrow_phase_pair_offset_in_vert;
     BufferType<uint>                       vert_adj_pairs_csr;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
     luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
@@ -290,7 +406,11 @@ struct CollisionData : SimulationType
     const uint get_ee_count_offset() { return 3; }
 
     // template<template<typename...> typename BufferType>
-    inline void resize_collision_data(luisa::compute::Device& device, const uint num_verts, const uint num_faces, const uint num_edges)
+    inline void resize_collision_data(luisa::compute::Device& device,
+                                      const uint              num_verts,
+                                      const uint              num_faces,
+                                      const uint              num_edges,
+                                      const uint              num_dofs)
     {
         // const uint num_verts = mesh_data->num_verts;
         // const uint num_edges = mesh_data->num_edges;
@@ -313,20 +433,19 @@ struct CollisionData : SimulationType
         const uint max_pairs   = per_element_count_NP * (num_verts + num_edges);
         const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
         lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
-        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, max_pairs);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_pair_offset_in_vert, 4 * max_pairs);
+        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, max_pairs * 4);
         lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet, max_triplet);
         lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices, max_triplet);
         lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
         lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property, max_triplet);
         lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property2, max_triplet);
 
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_pairs, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_verts);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_verts + 1);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_verts + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_dofs);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_dofs);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_pairs, num_dofs);
+        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_dofs);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_dofs + 1);
+        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
         this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
         this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 
@@ -334,7 +453,6 @@ struct CollisionData : SimulationType
             sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
             + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
             + sizeof(uint) * this->vert_adj_pairs_csr.size()
-            + sizeof(ushort) * this->narrow_phase_pair_offset_in_vert.size()
             + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
             + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
             + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()
