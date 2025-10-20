@@ -300,6 +300,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
+        sim_data->sa_affine_bodies_mesh_id.resize(num_affine_bodies);
         sim_data->sa_affine_bodies.resize(num_affine_bodies);
 
         sim_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
@@ -317,7 +318,9 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         sim_data->sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
         sim_data->sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
 
-        sim_data->sa_cgA_offdiag_affine_body.resize(num_affine_bodies * 6);
+        sim_data->sa_affine_bodies_gradients.resize(num_affine_bodies * 4);
+        sim_data->sa_affine_bodies_hessians.resize(num_affine_bodies * 16);
+
         sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
 
         CpuParallel::single_thread_for(
@@ -325,8 +328,12 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
             num_affine_bodies,
             [&](const uint body_idx)
             {
-                const uint meshIdx                   = affine_body_indices[body_idx];
-                sim_data->sa_affine_bodies[body_idx] = meshIdx;
+                const uint meshIdx                           = affine_body_indices[body_idx];
+                sim_data->sa_affine_bodies_mesh_id[body_idx] = meshIdx;
+                sim_data->sa_affine_bodies[body_idx] = luisa::make_uint4(num_verts_soft + 4 * body_idx + 0,
+                                                                         num_verts_soft + 4 * body_idx + 1,
+                                                                         num_verts_soft + 4 * body_idx + 2,
+                                                                         num_verts_soft + 4 * body_idx + 3);
 
                 {
                     float3 init_translation = mesh_data->sa_rest_translate[meshIdx];
@@ -441,6 +448,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         sim_data->vert_adj_stretch_springs.resize(num_dof);
         sim_data->vert_adj_stretch_faces.resize(num_dof);
         sim_data->vert_adj_bending_edges.resize(num_dof);
+        sim_data->vert_adj_affine_bodies.resize(num_dof);
 
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
         {
@@ -521,7 +529,29 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         }
         upload_2d_csr_from(sim_data->sa_vert_adj_bending_edges_csr, sim_data->vert_adj_bending_edges);
 
-        // Vert adj material-force-verts
+        // Vert adj orthogonality energy
+        for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
+        {
+            auto body = sim_data->sa_affine_bodies[body_idx];
+            for (uint j = 0; j < 4; j++)
+            {
+                sim_data->vert_adj_affine_bodies[body[j]].push_back(body_idx);
+            }
+
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj)
+                    {
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, body[ii], body[jj]);
+                    }
+                }
+            }
+        }
+        upload_2d_csr_from(sim_data->sa_vert_adj_affine_bodies_csr, sim_data->vert_adj_affine_bodies);
+
+        // Sort adjacents
         CpuParallel::parallel_for(0,
                                   num_dof,
                                   [&](const uint vid)
@@ -545,8 +575,6 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         // const uint alinged_nnz = orig_hessian_nnz;
         sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
         sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, make_matrix_triplet_info(-1u, -1u, 0));
-        std::atomic_uint32_t direct_add_count = 0;
-        std::atomic_uint32_t atomic_add_count = 0;
 
         CpuParallel::parallel_for(
             0,
@@ -760,6 +788,20 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                                   mask.data(),
                                                   sizeof(ushort) * 12);
                                   });
+
+        // Affine body inertia and orthogonality energy
+        sim_data->sa_affine_bodies_offsets_in_adjlist.resize(num_affine_bodies * 12);
+        CpuParallel::parallel_for(0,
+                                  sim_data->sa_affine_bodies.size(),
+                                  [&](const uint body_idx)
+                                  {
+                                      auto body = sim_data->sa_affine_bodies[body_idx];
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
+                                                                                               body);  // size = 12
+                                      std::memcpy(sim_data->sa_affine_bodies_offsets_in_adjlist.data() + body_idx * 12,
+                                                  mask.data(),
+                                                  sizeof(ushort) * 12);
+                                  });
     }
 
     // Constraint Graph Coloring
@@ -787,93 +829,6 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         upload_2d_csr_from(colored_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
         upload_2d_csr_from(colored_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
-    }
-
-    // Init Newton Coloring
-    {
-        const auto& vert_adj_verts = sim_data->vert_adj_material_force_verts;  // Not considering Obstacle
-        std::vector<uint2> upper_matrix_elements;                              //
-        upper_matrix_elements.reserve(num_dof * 10);
-        std::vector<std::vector<uint>> vert_adj_upper_verts(num_dof);
-        for (uint vid = 0; vid < num_dof; vid++)
-        {
-            for (const uint adj_vid : vert_adj_verts[vid])
-            {
-                if (vid < adj_vid)
-                {
-                    vert_adj_upper_verts[vid].push_back(adj_vid);
-                    upper_matrix_elements.emplace_back(uint2(vid, adj_vid));
-                }
-            }
-        }
-
-        std::vector<std::vector<uint>> tmp_clusterd_hessian_set;
-        fn_graph_coloring_per_constraint(
-            "SpMV non-conlict set", tmp_clusterd_hessian_set, vert_adj_upper_verts, upper_matrix_elements, 2);
-
-        upload_from(colored_data->sa_hessian_pairs, upper_matrix_elements);
-        colored_data->num_clusters_hessian_pairs = tmp_clusterd_hessian_set.size();
-        fn_get_prefix(colored_data->sa_prefix_merged_hessian_pairs, tmp_clusterd_hessian_set);
-        upload_2d_csr_from(colored_data->sa_clusterd_hessian_pairs, tmp_clusterd_hessian_set);
-
-        std::vector<std::vector<uint>> hessian_insert_indices(num_dof);
-        CpuParallel::parallel_for(0,
-                                  num_dof,
-                                  [&](const uint vid)
-                                  { hessian_insert_indices[vid].resize(vert_adj_verts[vid].size(), -1u); });
-        CpuParallel::parallel_for(0,
-                                  upper_matrix_elements.size(),
-                                  [&](const uint pair_idx)
-                                  {
-                                      const uint2 pair     = upper_matrix_elements[pair_idx];
-                                      const uint  left     = pair[0];
-                                      const uint  right    = pair[1];
-                                      const auto& adj_list = vert_adj_verts[left];
-                                      for (uint jj = 0; jj < adj_list.size(); jj++)
-                                      {
-                                          if (adj_list[jj] == right)
-                                          {
-                                              hessian_insert_indices[left][jj] = pair_idx;
-                                              return;
-                                          }
-                                      }
-                                      LUISA_ERROR("Can not find {} in adjacent list of {}", right, left);
-                                  });
-        {
-            const uint num_offdiag_upper = 1;
-            colored_data->sa_hessian_slot_per_edge.resize(num_stretch_springs * num_offdiag_upper);
-            CpuParallel::parallel_for(
-                0,
-                num_stretch_springs,
-                [&](const uint eid)
-                {
-                    auto edge        = sim_data->sa_stretch_springs[eid];
-                    uint edge_offset = 0;
-                    for (uint ii = 0; ii < 2; ii++)
-                    {
-                        for (uint jj = ii + 1; jj < 2; jj++)
-                        {
-                            const bool need_transpose = edge[ii] > edge[jj];
-                            const uint left           = need_transpose ? edge[jj] : edge[ii];
-                            const uint right          = need_transpose ? edge[ii] : edge[jj];
-
-                            const auto& adj_list = vert_adj_verts[left];
-                            auto        find     = std::find(adj_list.begin(), adj_list.end(), right);
-                            if (find == adj_list.end())
-                            {
-                                LUISA_ERROR("Can not find {} in adjacent list of {}", right, left);
-                            }
-                            else
-                            {
-                                uint       offset    = std::distance(adj_list.begin(), find);
-                                const uint adj_index = hessian_insert_indices[left][offset];
-                                colored_data->sa_hessian_slot_per_edge[num_offdiag_upper * eid + edge_offset] = adj_index;
-                                edge_offset += 1;
-                            }
-                        }
-                    }
-                });
-        }
     }
 
     // Vertex Block Descent Coloring
@@ -986,7 +941,6 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     output_data->colored_data.num_clusters_bending_edges = input_data->colored_data.num_clusters_bending_edges;
     output_data->colored_data.num_clusters_per_vertex_with_material_constraints =
         input_data->colored_data.num_clusters_per_vertex_with_material_constraints;
-    output_data->colored_data.num_clusters_hessian_pairs = input_data->colored_data.num_clusters_hessian_pairs;
 
     stream << upload_buffer(device, output_data->sa_num_dof, input_data->sa_num_dof)
            << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
@@ -1077,25 +1031,14 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_affine_bodies_q_step_start, input_data->sa_affine_bodies_q_step_start)
             << upload_buffer(device, output_data->sa_affine_bodies_volume, input_data->sa_affine_bodies_volume)
             << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix, input_data->sa_affine_bodies_mass_matrix)
-            << upload_buffer(device, output_data->sa_cgA_offdiag_affine_body, input_data->sa_cgA_offdiag_affine_body);
+            << upload_buffer(device, output_data->sa_affine_bodies_gradients, input_data->sa_affine_bodies_gradients)
+            << upload_buffer(device, output_data->sa_affine_bodies_hessians, input_data->sa_affine_bodies_hessians)
+            << upload_buffer(device, output_data->sa_affine_bodies_offsets_in_adjlist, input_data->sa_affine_bodies_offsets_in_adjlist);
     }
     stream << upload_buffer(device,
                             output_data->sa_vert_affine_bodies_id,
                             input_data->sa_vert_affine_bodies_id);  // Basic information
-    if (input_data->colored_data.sa_hessian_pairs.size() > 0)
-    {
-        stream
-            << upload_buffer(device,
-                             output_data->colored_data.sa_prefix_merged_hessian_pairs,
-                             input_data->colored_data.sa_prefix_merged_hessian_pairs)
-            << upload_buffer(device,
-                             output_data->colored_data.sa_clusterd_hessian_pairs,
-                             input_data->colored_data.sa_clusterd_hessian_pairs)
-            << upload_buffer(device, output_data->colored_data.sa_hessian_pairs, input_data->colored_data.sa_hessian_pairs)
-            << upload_buffer(device,
-                             output_data->colored_data.sa_hessian_slot_per_edge,
-                             input_data->colored_data.sa_hessian_slot_per_edge);
-    }
+
     stream
         << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet, input_data->sa_cgA_fixtopo_offdiag_triplet)
         << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet_info, input_data->sa_cgA_fixtopo_offdiag_triplet_info)
@@ -1135,10 +1078,6 @@ void resize_pcg_data(luisa::compute::Device&                      device,
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
-    // if (num_springs > 0)        resize_buffer(host_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    // if (num_bending_edges > 0)  resize_buffer(host_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
-    if (num_affine_bodies > 0)
-        resize_buffer(host_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
 
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
@@ -1151,10 +1090,6 @@ void resize_pcg_data(luisa::compute::Device&                      device,
     resize_buffer(device, device_data->sa_cgX, num_verts);
     resize_buffer(device, device_data->sa_cgB, num_verts);
     resize_buffer(device, device_data->sa_cgA_diag, num_verts);
-    // if (num_springs > 0)        resize_buffer(device, device_data->sa_cgA_offdiag_stretch_spring, num_springs * 1);
-    // if (num_bending_edges > 0)  resize_buffer(device, device_data->sa_cgA_offdiag_bending, num_bending_edges * 6);
-    if (num_affine_bodies > 0)
-        resize_buffer(device, device_data->sa_cgA_offdiag_affine_body, num_affine_bodies * 6);
     resize_buffer(device, device_data->sa_cgMinv, num_verts);
     resize_buffer(device, device_data->sa_cgP, num_verts);
     resize_buffer(device, device_data->sa_cgQ, num_verts);
