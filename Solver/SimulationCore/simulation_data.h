@@ -37,17 +37,6 @@ struct ColoredData : SimulationType
     BufferType<uint>  sa_prefix_merged_bending_edges;
     BufferType<float> sa_lambda_bending;
 
-    // Hessian non-conflict set
-    uint              num_clusters_hessian_pairs = 0;
-    BufferType<uint2> sa_hessian_pairs;  // Constaints the needed hessian pair
-    BufferType<uint>  sa_clusterd_hessian_pairs;
-    BufferType<uint>  sa_hessian_slot_per_edge;
-    BufferType<uint2> sa_merged_hessian_pairs;          // TODO
-    BufferType<uint>  sa_prefix_merged_hessian_pairs;   // TODO
-    BufferType<uint>  sa_merged_hessian_slot_per_edge;  // TODO
-    // BufferType<uint> sa_clusterd_hessian_slot_per_dehedral_angle;
-    // BufferType<uint> sa_clusterd_hessian_slot_per_triangle;
-
     // VBD
     uint             num_clusters_per_vertex_with_material_constraints = 0;
     BufferType<uint> prefix_per_vertex_with_material_constraints;
@@ -134,7 +123,8 @@ struct SimulationData : SimulationType
 
     std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<uint>             sa_vert_affine_bodies_id;
-    BufferType<uint>             sa_affine_bodies;
+    BufferType<uint>             sa_affine_bodies_mesh_id;
+    BufferType<uint4>            sa_affine_bodies;
     BufferType<float>            sa_affine_bodies_volume;
     BufferType<float4x4>         sa_affine_bodies_mass_matrix;
     BufferType<float3>           sa_affine_bodies_rest_q;
@@ -145,6 +135,9 @@ struct SimulationData : SimulationType
     BufferType<float3>           sa_affine_bodies_q_tilde;
     BufferType<float3>           sa_affine_bodies_q_iter_start;
     BufferType<float3>           sa_affine_bodies_q_step_start;
+    BufferType<float3>           sa_affine_bodies_gradients;
+    BufferType<float3x3>         sa_affine_bodies_hessians;
+    BufferType<ushort>           sa_affine_bodies_offsets_in_adjlist;
 
 
     BufferType<float3> sa_affine_bodies_q_outer;
@@ -161,7 +154,6 @@ struct SimulationData : SimulationType
     BufferType<float3x3>         sa_cgA_diag;
     BufferType<MatrixTriplet3x3> sa_cgA_fixtopo_offdiag_triplet;
     BufferType<uint3>            sa_cgA_fixtopo_offdiag_triplet_info;
-    BufferType<float3x3>         sa_cgA_offdiag_affine_body;
 
     BufferType<float3x3> sa_cgMinv;
     BufferType<float3>   sa_cgP;
@@ -176,11 +168,13 @@ struct SimulationData : SimulationType
     std::vector<std::vector<uint>> vert_adj_stretch_springs;
     std::vector<std::vector<uint>> vert_adj_stretch_faces;
     std::vector<std::vector<uint>> vert_adj_bending_edges;
+    std::vector<std::vector<uint>> vert_adj_affine_bodies;
 
     BufferType<uint> sa_vert_adj_material_force_verts_csr;
     BufferType<uint> sa_vert_adj_stretch_springs_csr;
     BufferType<uint> sa_vert_adj_stretch_faces_csr;
     BufferType<uint> sa_vert_adj_bending_edges_csr;
+    BufferType<uint> sa_vert_adj_affine_bodies_csr;
 };
 
 }  // namespace lcs
