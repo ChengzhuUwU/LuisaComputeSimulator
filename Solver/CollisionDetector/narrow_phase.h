@@ -252,9 +252,9 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, Buffer<uint>, uint>                fn_fill_in_pairs_in_vert_adjacent;
     luisa::compute::Shader<1, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
     luisa::compute::Shader<1>                                    fn_specify_target_slot;
-    luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_fill_in;
-    luisa::compute::Shader<1> fn_block_level_second_sort_contact_triplet_align_offset;
-    luisa::compute::Shader<1, Buffer<float3>, uint>               fn_assemble_triplet_sorted;
+    luisa::compute::Shader<1>                       fn_block_level_second_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1>                       fn_specify_target_slot_2_level;
+    luisa::compute::Shader<1, Buffer<float3>, uint> fn_assemble_triplet_sorted;
     luisa::compute::Shader<1, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
     luisa::compute::Shader<1, Buffer<MatrixTriplet3x3>>           fn_reset_triplet;
 
