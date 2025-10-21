@@ -225,10 +225,10 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         }
         $else
         {
-            active_indices[left_active_count + 0] = (abd_prefix + 4 * body_13_indices[0] + 0) | (0 << 30);
-            active_indices[left_active_count + 1] = (abd_prefix + 4 * body_13_indices[0] + 1) | (1 << 30);
-            active_indices[left_active_count + 2] = (abd_prefix + 4 * body_13_indices[0] + 2) | (2 << 30);
-            active_indices[left_active_count + 3] = (abd_prefix + 4 * body_13_indices[0] + 3) | (3 << 30);
+            active_indices[left_active_count + 0] = (abd_prefix + 4 * body_13_indices[0] + 0) | (0 << 28);
+            active_indices[left_active_count + 1] = (abd_prefix + 4 * body_13_indices[0] + 1) | (1 << 28);
+            active_indices[left_active_count + 2] = (abd_prefix + 4 * body_13_indices[0] + 2) | (2 << 28);
+            active_indices[left_active_count + 3] = (abd_prefix + 4 * body_13_indices[0] + 3) | (3 << 28);
             left_active_count += 4;
         };
 
@@ -258,10 +258,10 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         }
         $else
         {
-            active_indices[right_active_count + 0] = (abd_prefix + 4 * body_13_indices[1] + 0) | (0 << 30);
-            active_indices[right_active_count + 1] = (abd_prefix + 4 * body_13_indices[1] + 1) | (1 << 30);
-            active_indices[right_active_count + 2] = (abd_prefix + 4 * body_13_indices[1] + 2) | (2 << 30);
-            active_indices[right_active_count + 3] = (abd_prefix + 4 * body_13_indices[1] + 3) | (3 << 30);
+            active_indices[right_active_count + 0] = (abd_prefix + 4 * body_13_indices[1] + 0) | (0 << 28);
+            active_indices[right_active_count + 1] = (abd_prefix + 4 * body_13_indices[1] + 1) | (1 << 28);
+            active_indices[right_active_count + 2] = (abd_prefix + 4 * body_13_indices[1] + 2) | (2 << 28);
+            active_indices[right_active_count + 3] = (abd_prefix + 4 * body_13_indices[1] + 3) | (3 << 28);
             right_active_count += 4;
         };
 

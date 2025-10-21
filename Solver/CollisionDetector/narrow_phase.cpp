@@ -142,7 +142,7 @@ void NarrowPhasesDetector::download_contact_triplet(Stream& stream)
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
 
     const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-    const uint alinged_num_triplet_assembled = (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
+    const uint alinged_num_triplet_assembled = get_dispatch_threads(num_triplet_assembled, 256);
 
     if (num_triplet_assembled != 0)
     {
@@ -794,6 +794,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 namespace lcs  // Scan Collision Set
 {
 
+constexpr uint mask_get_active_vid = 0xFFFFFFF;  // max vert index 268435455
+
 void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -818,7 +820,7 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
 
                             $for(ii, active_count)
                             {
-                                const Uint index = active_indices[ii] & 0x3FFFFFFF;
+                                const Uint index = active_indices[ii] & mask_get_active_vid;
                                 per_vert_num_adj_pairs->atomic(index).fetch_add(active_count - 1);
                             };
                         });
@@ -869,9 +871,9 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
 
             $for(ii, active_count)
             {
-                const Uint prefix = per_vert_prefix_adj_pairs->read(active_indices[ii] & 0x3FFFFFFF);
+                const Uint prefix = per_vert_prefix_adj_pairs->read(active_indices[ii] & mask_get_active_vid);
                 const Uint offset =
-                    per_vert_num_adj_pairs->atomic(active_indices[ii] & 0x3FFFFFFF).fetch_add(active_count - 1);
+                    per_vert_num_adj_pairs->atomic(active_indices[ii] & mask_get_active_vid).fetch_add(active_count - 1);
                 const Uint fill_in_index = prefix + offset;
                 Uint       idx           = 0;
                 $for(jj, active_count)
@@ -880,7 +882,13 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                     {
                         const Uint triplet_idx = fill_in_index + idx;
                         const Uint upper_lower_flag =
-                            2 * Uint(ii >= left_active_count) + Uint(jj >= right_active_count);
+                            2 * Uint(ii >= left_active_count) + Uint(jj >= left_active_count);
+                        // device_log("For pair {} , fill in vert adj list at index {} with pair ({}, {}), flag = {}",
+                        //            pair_idx,
+                        //            triplet_idx,
+                        //            active_indices[ii] & mask_get_active_index,
+                        //            active_indices[jj] & mask_get_active_index,
+                        //            upper_lower_flag);
                         sa_cgA_contact_offdiag_triplet_indices->write(
                             triplet_idx, make_uint2(active_indices[ii], active_indices[jj]));
                         vert_adj_pairs_csr->write(triplet_idx, pair_idx | (upper_lower_flag << 30));
@@ -947,8 +955,8 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             $if(triplet_idx < num_triplets)
             {
                 Uint2 triplet_info = input_triplet_indices->read(triplet_idx);
-                Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
-                Uint  adj_vid      = triplet_info[1] & 0x3FFFFFFF;
+                Uint  vid          = triplet_info[0] & mask_get_active_vid;
+                Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
                 value              = (static_cast<Value>(vid) << 32) | static_cast<Value>(adj_vid);
             };
 
@@ -1047,14 +1055,12 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                         {
                             const Uint  triplet_idx  = dispatch_x();
                             const Uint2 triplet_info = triplet_indices->read(triplet_idx);
-                            const Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
+                            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
                             const Uint  curr_prefix  = per_vert_prefix_adj_verts->read(vid);
 
                             const Uint offset_property = triplet_property->read(triplet_idx);  // Unsorted
                             const Uint offset             = offset_property & 0xFFFF;
                             const Uint target_triplet_idx = curr_prefix + offset;
-
-                            // device_log("Triplet {} ({}, {}) assemble to {}", triplet_idx, vid, triplet_info[1] & 0x3FFFFFFF, target_triplet_idx);
 
                             triplet_property->write(triplet_idx, target_triplet_idx);
                             $if((offset_property & (1 << 31)) != 0)
@@ -1068,7 +1074,7 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
     //      Sort: Given triplet_indices2 => triplet_property2 (offset)
     //      Prefix Sum
 
-    compiler.compile<1>(fn_block_level_second_sort_contact_triplet_align_offset,
+    compiler.compile<1>(fn_specify_target_slot_2_level,
                         [per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
                          per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view(),
                          triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices.view(),
@@ -1081,8 +1087,8 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                             const Uint first_sort_triplet_idx = triplet_property->read(triplet_idx);
 
                             const Uint2 triplet_info = triplet_indices2->read(first_sort_triplet_idx);
-                            const Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
-                            const Uint  adj_vid      = triplet_info[1] & 0x3FFFFFFF;
+                            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
+                            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
                             const Uint  curr_prefix  = per_vert_prefix_adj_verts->read(vid);
 
                             const Uint offset_property = triplet_property2->read(first_sort_triplet_idx);
@@ -1099,6 +1105,12 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                                 sa_cgA_contact_offdiag_triplet->write(
                                     second_sort_triplet_idx,
                                     make_matrix_triplet(vid, adj_vid, property, make_float3x3(0.0f)));
+                                // device_log("Triplet {}: {}, {}, is_first {}, is_last {}",
+                                //            second_sort_triplet_idx,
+                                //            vid,
+                                //            adj_vid,
+                                //            MatrixTriplet::is_first_col_in_row(property),
+                                //            MatrixTriplet::is_last_col_in_row(property));
                             };
                         });
 
@@ -1115,8 +1127,8 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             const Uint offset          = offset_property & 0xFFFF;
 
             const Uint2 triplet_info = triplet_indices->read(triplet_idx);
-            const Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
-            const Uint  adj_vid      = triplet_info[1] & 0x3FFFFFFF;
+            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
+            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
             const Uint  curr_prefix  = per_vert_prefix_adj_verts->read(vid);
 
             const Uint target_triplet_idx = curr_prefix + offset;
@@ -1156,15 +1168,18 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                             const Float3x3 hess    = k2 * outer_product(normal, normal);
 
                             const Uint2 triplet_info = triplet_indices->read(triplet_idx);
-                            const Uint  vid          = triplet_info[0] & 0x3FFFFFFF;
-                            const Uint  adj_vid      = triplet_info[1] & 0x3FFFFFFF;
+                            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
+                            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
                             const Uint  ii           = triplet_info[0] >> 30;
                             const Uint  jj           = triplet_info[1] >> 30;
 
                             const auto collision_type = pair->get_collision_type();
 
-                            Uint2 left_range  = make_uint2(ii, ii);
-                            Uint2 right_range = make_uint2(jj, jj);
+                            const Uint JtJH_i     = (triplet_info[0] >> 28) & 0x3;  // For soft vert is 0
+                            const Uint JtJH_j     = (triplet_info[1] >> 28) & 0x3;
+                            Uint2      left_range = make_uint2(ii, ii);
+                            Uint2      right_range = make_uint2(jj, jj);
+
                             $if(vid >= prefix_abd)
                             {
                                 $if(collision_type == CollisionPair::type_vf())
@@ -1216,14 +1231,15 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                                 };
                             };
 
-                            Float sum_weight = 0.0f;
+                            Float sum_weight = 0.0f;  // = weight[ii] * weight[jj];
                             $for(i, left_range[0], left_range[1] + 1)
                             {
                                 $for(j, right_range[0], right_range[1] + 1)
                                 {
-                                    sum_weight += weight[i] * weight[j]
-                                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[i]))[ii]
-                                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[j]))[jj];
+                                    sum_weight +=
+                                        weight[i] * weight[j]
+                                        * make_float4(1.0f, sa_scaled_model_x.read(indices[i]))[JtJH_i]
+                                        * make_float4(1.0f, sa_scaled_model_x.read(indices[j]))[JtJH_j];
                                 };
                             };
                             const Uint target_triplet_idx = triplet_property->read(triplet_idx);
@@ -1278,7 +1294,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
             stream << fn_reset_uint(collision_data->narrow_phase_collision_count.view(offset, 1)).dispatch(1);
             stream << fn_calc_pervert_prefix_adj_verts().dispatch(num_dof);
 
-            stream << fn_block_level_second_sort_contact_triplet_align_offset().dispatch(num_triplet);
+            stream << fn_specify_target_slot_2_level().dispatch(num_triplet);
             download_narrowphase_collision_count(stream);
             // LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
             //            num_pairs * 12,
@@ -1341,8 +1357,8 @@ void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& str
                                   {
                                       auto triplet_info =
                                           host_collision_data->sa_cgA_contact_offdiag_triplet_indices[triplet_idx];
-                                      const uint  vid     = triplet_info[0] & 0x3FFFFFFF;
-                                      const uint  adj_vid = triplet_info[1] & 0x3FFFFFFF;
+                                      const uint  vid     = triplet_info[0] & mask_get_active_vid;
+                                      const uint  adj_vid = triplet_info[1] & mask_get_active_vid;
                                       const Value value =
                                           (static_cast<Value>(vid) << 32) | static_cast<Value>(adj_vid);
                                       vector_key[triplet_idx]   = (triplet_idx);
@@ -1528,10 +1544,13 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             const Float    k2  = stiff[1];
             const Float3x3 nnT = outer_product(normal, normal);
 
-            auto add_to_soft_body = [&](const uint ii)
+            auto add_to_soft_body = [&](const uint start, const uint end)
             {
-                atomic_add_float3(sa_cgB, indices[ii], k1 * weight[ii] * normal);
-                atomic_add_float3x3(sa_cgA_diag, indices[ii], k2 * weight[ii] * weight[ii] * nnT);
+                for (uint ii = start; ii <= end; ii++)
+                {
+                    atomic_add_float3(sa_cgB, indices[ii], k1 * weight[ii] * normal);
+                    atomic_add_float3x3(sa_cgA_diag, indices[ii], k2 * weight[ii] * weight[ii] * nnT);
+                }
             };
             auto add_to_rigid_body = [&](const uint start, const uint end, const Uint body_index)
             {
@@ -1540,11 +1559,11 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 {
                     aligned_weight += weight[ii] * make_float4(1.0f, sa_scaled_model_x.read(indices[ii]));
                 }
-                for (uint jj = 0; jj < 4; jj++)
+                for (uint ii = 0; ii < 4; ii++)
                 {
-                    const Uint vid = prefix_abd + 4 * body_index + jj;
-                    atomic_add_float3(sa_cgB, vid, k1 * aligned_weight[jj] * normal);
-                    atomic_add_float3x3(sa_cgA_diag, vid, k2 * aligned_weight[jj] * aligned_weight[jj] * nnT);
+                    const Uint vid = prefix_abd + 4 * body_index + ii;
+                    atomic_add_float3(sa_cgB, vid, k1 * aligned_weight[ii] * normal);
+                    atomic_add_float3x3(sa_cgA_diag, vid, k2 * aligned_weight[ii] * aligned_weight[ii] * nnT);
                 }
             };
 
@@ -1557,7 +1576,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             {
                 $if(body_indices[0] == -1u)  // Vert is soft
                 {
-                    add_to_soft_body(0);
+                    add_to_soft_body(0, 0);
                 }
                 $else  // Vert is rigid
                 {
@@ -1566,9 +1585,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
                 $if(body_indices[1] == -1u)
                 {
-                    add_to_soft_body(1);
-                    add_to_soft_body(2);
-                    add_to_soft_body(3);
+                    add_to_soft_body(1, 3);
                 }
                 $else
                 {
@@ -1579,8 +1596,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             {
                 $if(body_indices[0] == -1u)
                 {
-                    add_to_soft_body(0);
-                    add_to_soft_body(1);
+                    add_to_soft_body(0, 1);
                 }
                 $else
                 {
@@ -1589,8 +1605,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
                 $if(body_indices[1] == -1u)
                 {
-                    add_to_soft_body(2);
-                    add_to_soft_body(3);
+                    add_to_soft_body(2, 3);
                 }
                 $else
                 {
