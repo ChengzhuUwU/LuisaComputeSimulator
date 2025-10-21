@@ -15,9 +15,44 @@ namespace lcs
 
 void SolverInterface::physics_step_prev_operation()
 {
+    CpuParallel::parallel_for(0,
+                              host_sim_data->sa_x.size(),
+                              [&](const uint vid)
+                              {
+                                  host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
+                                  host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
+                                  host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
+                              });
+
+    CpuParallel::parallel_for(
+        0,
+        host_sim_data->sa_affine_bodies_q.size(),
+        [&](const uint vid)
+        {
+            host_sim_data->sa_affine_bodies_q_step_start[vid] = host_sim_data->sa_affine_bodies_q_outer[vid];
+            host_sim_data->sa_affine_bodies_q[vid]   = host_sim_data->sa_affine_bodies_q_outer[vid];
+            host_sim_data->sa_affine_bodies_q_v[vid] = host_sim_data->sa_affine_bodies_q_v_outer[vid];
+        });
 }
 void SolverInterface::physics_step_post_operation()
 {
+    CpuParallel::parallel_for(0,
+                              host_sim_data->sa_x.size(),
+                              [&](const uint vid)
+                              {
+                                  host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
+                                  host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
+                              });
+
+    CpuParallel::parallel_for(0,
+                              host_sim_data->sa_affine_bodies_q.size(),
+                              [&](const uint vid)
+                              {
+                                  host_sim_data->sa_affine_bodies_q_outer[vid] =
+                                      host_sim_data->sa_affine_bodies_q[vid];
+                                  host_sim_data->sa_affine_bodies_q_v_outer[vid] =
+                                      host_sim_data->sa_affine_bodies_q_v[vid];
+                              });
 }
 
 void SolverInterface::restart_system()

@@ -161,7 +161,6 @@ void DescentSolver::compile(luisa::compute::Device& device)
          sa_v                   = sim_data->sa_v.view(),
          sa_iter_start_position = sim_data->sa_x_step_start.view(),
          sa_iter_position       = sim_data->sa_x.view(),
-         sa_velocity_start      = sim_data->sa_v_step_start.view(),
          sa_vert_velocity       = sim_data->sa_v.view(),
          sa_x_start = sim_data->sa_x_step_start.view()](const Float substep_dt, const Bool fix_scene, const Float damping)
         {
@@ -184,7 +183,6 @@ void DescentSolver::compile(luisa::compute::Device& device)
             vel *= exp(-damping * substep_dt);
 
             sa_vert_velocity->write(vid, vel);
-            sa_velocity_start->write(vid, vel);
             sa_iter_start_position->write(vid, x_k);
         });
 
@@ -489,20 +487,11 @@ void DescentSolver::physics_step_xpbd(luisa::compute::Device& device, luisa::com
 void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     lcs::SolverInterface::physics_step_prev_operation();
-    // Get frame start position and velocity
-    CpuParallel::parallel_for(0,
-                              host_sim_data->sa_x.size(),
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
-                                  host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
-                              });
 
     // Upload to GPU
     stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
            << sim_data->sa_v.copy_from(host_sim_data->sa_v.data())
-           << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x.data())
-           << sim_data->sa_v_step_start.copy_from(host_sim_data->sa_v.data()) << luisa::compute::synchronize();
+           << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x.data()) << luisa::compute::synchronize();
 
     // const uint num_substep = lcs::get_scene_params().print_xpbd_convergence ? 1 : lcs::get_scene_params().num_substep;
     const uint  num_substep          = lcs::get_scene_params().num_substep;
@@ -537,13 +526,6 @@ void DescentSolver::physics_step_GPU(luisa::compute::Device& device, luisa::comp
     }
 
     // Return frame end position and velocity
-    CpuParallel::parallel_for(0,
-                              host_sim_data->sa_x.size(),
-                              [&](const uint vid)
-                              {
-                                  host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
-                                  host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
-                              });
     lcs::SolverInterface::physics_step_post_operation();
 }
 void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
@@ -558,7 +540,6 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
                                   host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
                                   host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
                                   host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
-                                  host_sim_data->sa_v_step_start[vid] = host_mesh_data->sa_v_frame_outer[vid];
                               });
 
     const uint  num_substep          = lcs::get_scene_params().num_substep;
@@ -611,7 +592,6 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         auto* sa_iter_position       = host_sim_data->sa_x.data();
         auto* sa_iter_start_position = host_sim_data->sa_x_step_start.data();
         auto* sa_vert_velocity       = host_sim_data->sa_v.data();
-        auto* sa_velocity_start      = host_sim_data->sa_v_step_start.data();
 
         CpuParallel::parallel_for(0,
                                   host_mesh_data->num_verts,
@@ -634,7 +614,6 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
                                       vel *= luisa::exp(-damping * substep_dt);
 
                                       sa_vert_velocity[vid]       = vel;
-                                      sa_velocity_start[vid]      = vel;
                                       sa_iter_start_position[vid] = x_k;
                                   });
     };

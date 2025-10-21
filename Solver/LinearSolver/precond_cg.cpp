@@ -626,10 +626,7 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
             -1e9f);
     };
 
-    std::vector<float3>& host_x            = host_sim_data->sa_x;
-    std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& host_x_tilde      = host_sim_data->sa_x_tilde;
-    std::vector<float3>& host_cgX          = host_sim_data->sa_cgX;
+    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
 
     // auto device_pcg = [&]()
     const uint num_verts        = host_cgX.size();
@@ -762,10 +759,7 @@ void ConjugateGradientSolver::eigen_solve(const Eigen::SparseMatrix<float>& eige
                                           const Eigen::VectorXf&            eigen_cgB,
                                           std::function<double(const std::vector<float3>&)> func_compute_energy)
 {
-    std::vector<float3>& host_x            = host_sim_data->sa_x;
-    std::vector<float3>& host_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& host_x_tilde      = host_sim_data->sa_x_tilde;
-    std::vector<float3>& host_cgX          = host_sim_data->sa_cgX;
+    std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
 
     const uint num_verts = host_cgX.size();
 
