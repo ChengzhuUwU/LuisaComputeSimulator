@@ -738,47 +738,60 @@ inline void parallel_set(std::vector<T>& dst, const T& value)
 namespace CpuParallel
 {
 
-struct atomic_float
+template <typename T>
+struct spin_atomic
 {
-    std::atomic<uint32_t> bits;
+    // static_assert(sizeof(T) % 4 == 0, "spin_atomic only supports types with size multiple of 4 bytes.");
+    // constexpr static size_t N = sizeof(T) / 4;
 
-    atomic_float()
-        : bits(0)
+    using AtomicView = std::atomic<T>;
+    using MemoryView = T;
+
+    AtomicView bits;
+    spin_atomic<T>()
+        : bits({0})
     {
     }
-    atomic_float(float f) { store(f); }
+    spin_atomic<T>(const T& f) { store(f); }
 
-    void store(float f, std::memory_order order = std::memory_order_seq_cst)
+    void store(const T& f, std::memory_order order = std::memory_order_seq_cst)
     {
-        uint32_t i;
-        std::memcpy(&i, &f, sizeof(float));
-        bits.store(i, order);
+        MemoryView i;
+        std::memcpy(&i, &f, sizeof(T));
+        bits.store(i);
     }
 
-    float load(std::memory_order order = std::memory_order_seq_cst) const
+    T load(std::memory_order order = std::memory_order_seq_cst) const
     {
-        uint32_t i = bits.load(order);
-        float    f;
-        std::memcpy(&f, &i, sizeof(float));
+        MemoryView i = bits.load(order);
+        T          f;
+        std::memcpy(&f, &i, sizeof(T));
         return f;
     }
 
-    float fetch_add(float arg, std::memory_order order = std::memory_order_seq_cst)
+    T fetch_add(const T& arg, std::memory_order order = std::memory_order_seq_cst)
     {
-        uint32_t old_bits = bits.load(order);
+        MemoryView old_bits = bits.load(order);
         while (true)
         {
-            float old_val;
-            std::memcpy(&old_val, &old_bits, sizeof(float));
-            float new_val = old_val + arg;
+            T old_val;
+            std::memcpy(&old_val, &old_bits, sizeof(T));
+            T new_val = old_val + arg;
 
-            uint32_t new_bits;
-            std::memcpy(&new_bits, &new_val, sizeof(float));
+            MemoryView new_bits;
+            std::memcpy(&new_bits, &new_val, sizeof(T));
 
             if (bits.compare_exchange_weak(old_bits, new_bits, order))
                 return old_val;
         }
     }
 };
+
+// using atomic_float    = spin_atomic<float>;
+// using atomic_float3   = spin_atomic<luisa::float3>;
+// using atomic_float4   = spin_atomic<luisa::float3>;
+// using atomic_float3x3 = spin_atomic<luisa::float3x3>;
+// using atomic_float4x3 = spin_atomic<float4x3>;
+
 
 }  // namespace CpuParallel
