@@ -106,6 +106,49 @@ static inline float fast_infinity_norm(const std::vector<float3>& ptr)  // Min v
         [](const float left, const float right) { return max_scalar(left, right); },
         -1e9f);
 };
+static void convert_eigen_to_triplets(const Eigen::MatrixXf& matrix, std::vector<MatrixTriplet3x3>& triplets)
+{
+    if (matrix.rows() != matrix.cols())
+    {
+        LUISA_ERROR("Not quad matrix");
+        return;
+    }
+    const uint N = matrix.rows() / 3;
+    LUISA_INFO("Convert eigen matrix of size {} to triplets, N = {}", matrix.rows(), N);
+
+    uint idx = 0;
+    triplets.clear();
+    for (uint ii = 0; ii < N; ii++)
+    {
+        const uint curr_prefix = ii * (N - 1);
+        const uint curr_suffix = (ii + 1) * (N - 1) - 1;
+        for (uint jj = 0; jj < N; jj++)
+        {
+            if (ii != jj)
+            {
+                const EigenFloat3x3 orig = matrix.block<3, 3>(ii * 3, jj * 3);
+                const uint property = MatrixTriplet::make_triplet_property_in_block(idx, curr_prefix, curr_suffix);
+                triplets.emplace_back(make_matrix_triplet(ii, jj, property, eigen3x3_to_float3x3(orig)));
+                idx += 1;
+            }
+        }
+    }
+}
+static void convert_triplets_to_eigen(Eigen::MatrixXf& matrix, const std::vector<MatrixTriplet3x3>& triplets, const uint N)
+{
+    matrix.resize(3 * N, 3 * N);
+    matrix.setZero();
+    for (const auto& triplet : triplets)
+    {
+        if (MatrixTriplet::is_valid(triplet.get_matrix_property()))
+        {
+            auto row = triplet.get_row_idx();
+            auto col = triplet.get_col_idx();
+            matrix.block<3, 3>(row * 3, col * 3) += float3x3_to_eigen3x3(triplet.get_matrix());
+        }
+    }
+}
+
 
 void NewtonSolver::compile(AsyncCompiler& compiler)
 {
@@ -1273,8 +1316,7 @@ void NewtonSolver::host_reset_cgB_cgX_diagA()
         CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
     }
 }
-constexpr bool print_detail = false;
-void           NewtonSolver::host_evaluate_inertia()
+void NewtonSolver::host_evaluate_inertia()
 {
     const float stiffness_dirichlet = get_scene_params().stiffness_dirichlet;
 
@@ -1306,13 +1348,6 @@ void           NewtonSolver::host_evaluate_inertia()
                                       hessian  = stiffness_dirichlet * hessian;
                                   }
                                   {
-                                      if constexpr (print_detail)
-                                          LUISA_INFO("vid {}, mass: {}, move = {}, gradient: {}, hessian: {}",
-                                                     vid,
-                                                     mass,
-                                                     length_vec(x_k - x_tilde),
-                                                     gradient,
-                                                     hessian);
                                       // sa_cgX[vid] = dx_0;
                                       sa_cgB[vid]      = gradient;
                                       sa_cgA_diag[vid] = hessian;
@@ -1551,93 +1586,84 @@ void NewtonSolver::host_evaluate_ground_collision()
                                   }
                               });
 
-    float3*   abd_gradients = host_sim_data->sa_affine_bodies_gradients.data();
-    float3x3* abd_hessians  = host_sim_data->sa_affine_bodies_hessians.data();
-
-    CpuParallel::parallel_for_each_core(
+    float3*    abd_gradients = host_sim_data->sa_affine_bodies_gradients.data();
+    float3x3*  abd_hessians  = host_sim_data->sa_affine_bodies_hessians.data();
+    const uint num_bodies    = host_sim_data->sa_affine_bodies.size();
+    CpuParallel::single_thread_for(
         0,
         host_sim_data->sa_affine_bodies.size(),
         [&](const uint body_idx)
         {
-            const uint mesh_idx    = host_sim_data->sa_affine_bodies_mesh_id[body_idx];
-            const uint curr_prefix = host_mesh_data->prefix_num_verts[mesh_idx];
-            const uint next_prefix = host_mesh_data->prefix_num_verts[mesh_idx + 1];
-
-            float3   body_gradient[4] = {Zero3};
-            float3x3 body_hessian[10] = {Zero3x3};
-            // EigenFloat12 eigen_B = EigenFloat12::Zero();
-            // EigenFloat12x12 eigen_A = EigenFloat12x12::Zero();
-            for (uint vid = curr_prefix; vid < next_prefix; vid++)
+            if (get_scene_params().use_floor)
             {
-                float3 x_k  = host_sim_data->sa_x[vid];
-                float  diff = x_k.y - floor_y;
+                const uint mesh_idx    = host_sim_data->sa_affine_bodies_mesh_id[body_idx];
+                const uint curr_prefix = host_mesh_data->prefix_num_verts[mesh_idx];
+                const uint next_prefix = host_mesh_data->prefix_num_verts[mesh_idx + 1];
 
-                if (diff < d_hat + thickness)
+                for (uint vid = curr_prefix; vid < next_prefix; vid++)
                 {
-                    float    C       = diff - (d_hat + thickness);
-                    float3   normal  = luisa::make_float3(0, 1, 0);
-                    float    area    = sa_rest_vert_area[vid];
-                    float    stiff   = 1e9f * area;
-                    float    k1      = stiff * C;
-                    float3   model_x = host_mesh_data->sa_scaled_model_x[vid];
-                    float3   grad    = stiff * C * normal;
-                    float3x3 hessian = stiff * outer_product(normal, normal);
+                    float3 x_k  = host_sim_data->sa_x[vid];
+                    float  diff = x_k.y - get_scene_params().floor.y;
+
+                    if (diff < d_hat + thickness)
                     {
-                        float3x3 curr_hessian[10];
-                        float3   curr_grad[4];
-                        AffineBodyDynamics::affine_Jacobian_to_gradient(model_x, grad, curr_grad);
-                        AffineBodyDynamics::affine_Jacobian_to_hessian(model_x, model_x, hessian, curr_hessian);
-                        for (uint jj = 0; jj < 4; jj++)
+                        float    C        = diff - (d_hat + thickness);
+                        float3   normal   = luisa::make_float3(0, 1, 0);
+                        float    area     = host_mesh_data->sa_rest_vert_area[vid];
+                        float    stiff    = 1e9f * area;
+                        float    k1       = stiff * C;
+                        float3   model_x  = host_mesh_data->sa_scaled_model_x[vid];
+                        float3   gradient = stiff * C * normal;
+                        float3x3 hessian  = stiff * outer_product(normal, normal);
+
+                        // Friction
+
+                        uint   idx    = 4;
+                        float4 weight = luisa::make_float4(1.0f, model_x.x, model_x.y, model_x.z);
+                        for (uint ii = 0; ii < 4; ii++)
                         {
-                            body_gradient[jj] += curr_grad[jj];
+                            float  wi          = weight[ii];
+                            float3 affine_grad = wi * gradient;
+                            abd_gradients[4 * body_idx + ii] += affine_grad;
+                            for (uint jj = 0; jj < 4; jj++)
+                            {
+                                float    wj          = weight[jj];
+                                float3x3 affine_hess = wi * wj * hessian;
+                                if (ii == jj)
+                                {
+                                    abd_hessians[16 * body_idx + ii] = abd_hessians[16 * body_idx + ii] + affine_hess;
+                                }
+                                else
+                                {
+                                    abd_hessians[16 * body_idx + idx] = abd_hessians[16 * body_idx + idx] + affine_hess;
+                                    idx += 1;
+                                }
+                            }
                         }
-                        for (uint jj = 0; jj < 10; jj++)
-                        {
-                            body_hessian[jj] = body_hessian[jj] + curr_hessian[jj];
-                        }
-                        // for (uint jj = 0; jj < 4; jj++) { LUISA_INFO("For vert {} : force = {}", vid, curr_force[jj]); }
-                        // for (uint jj = 0; jj < 10; jj++) { LUISA_INFO("For vert {} : hess = {}", vid, curr_hessian[jj]); }
+
+                        // auto J = AffineBodyDynamics::get_jacobian_dxdq(model_x);
+                        // cgB.block<12, 1>(body_idx * 12, 0) -= J.transpose() * float3_to_eigen3(gradient);
+                        // cgA.block<12, 12>(body_idx * 12, body_idx * 12) +=
+                        //     J.transpose() * float3x3_to_eigen3x3(hessian) * J;
                     }
                 }
             }
-            //   0   1   2   3      0   4   5   6
-            //  t1   4   5   6      7   1   8   9
-            //  t2  t5   7   8     10  11   2  12
-            //  t3  t6  t8   9     13  14  15   3
-
-            auto* body_grad_ptr = &abd_gradients[4 * body_idx];
-            auto* body_hess_ptr = &abd_hessians[16 * body_idx];
-
-            body_grad_ptr[0] += body_gradient[0];
-            body_grad_ptr[1] += body_gradient[1];
-            body_grad_ptr[2] += body_gradient[2];
-            body_grad_ptr[3] += body_gradient[3];
-
-            body_hess_ptr[0]  = body_hess_ptr[0] + body_hessian[0];
-            body_hess_ptr[1]  = body_hess_ptr[1] + body_hessian[4];
-            body_hess_ptr[2]  = body_hess_ptr[2] + body_hessian[7];
-            body_hess_ptr[3]  = body_hess_ptr[3] + body_hessian[8];
-            body_hess_ptr[4]  = body_hess_ptr[4] + body_hessian[1];
-            body_hess_ptr[5]  = body_hess_ptr[5] + body_hessian[2];
-            body_hess_ptr[6]  = body_hess_ptr[6] + body_hessian[3];
-            body_hess_ptr[7]  = body_hess_ptr[7] + luisa::transpose(body_hessian[1]);
-            body_hess_ptr[8]  = body_hess_ptr[8] + body_hessian[5];
-            body_hess_ptr[9]  = body_hess_ptr[9] + body_hessian[6];
-            body_hess_ptr[10] = body_hess_ptr[10] + luisa::transpose(body_hessian[2]);
-            body_hess_ptr[11] = body_hess_ptr[11] + luisa::transpose(body_hessian[5]);
-            body_hess_ptr[12] = body_hess_ptr[12] + body_hessian[8];
-            body_hess_ptr[13] = body_hess_ptr[13] + luisa::transpose(body_hessian[3]);
-            body_hess_ptr[14] = body_hess_ptr[14] + luisa::transpose(body_hessian[6]);
-            body_hess_ptr[15] = body_hess_ptr[15] + luisa::transpose(body_hessian[8]);
         });
 }
 void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
 {
-    Eigen::Matrix<float, 24, 24> cgA = Eigen::Matrix<float, 24, 24>::Zero();
-    Eigen::Matrix<float, 24, 12> cgB = Eigen::Matrix<float, 24, 12>::Zero();
+    stream << luisa::compute::synchronize();
+
+    const uint                 num_bodies = host_sim_data->sa_affine_bodies.size();
+    Eigen::SparseMatrix<float> spA(num_bodies * 12, num_bodies * 12);
+    Eigen::SparseMatrix<float> spB(num_bodies * 12, 1);
+    Eigen::MatrixXf            cgA = spA.toDense();
+    Eigen::MatrixXf            cgB = spB.toDense();
+    cgA.setZero();
+    cgB.setZero();
 
     // Inertia
-    // if constexpr (false)
+    if constexpr (false)
     {
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
@@ -1725,87 +1751,88 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
             });
     }
 
-    const float d_hat     = get_scene_params().d_hat;
-    const float thickness = get_scene_params().thickness;
-    CpuParallel::single_thread_for(
-        0,
-        host_sim_data->sa_affine_bodies.size(),
-        [&](const uint body_idx)
-        {
-            float3   body_force[4]       = {Zero3};
-            float3x3 body_hessian[4][10] = {Zero3x3};
-            // EigenFloat12 eigen_B = EigenFloat12::Zero();
-            // EigenFloat12x12 eigen_A = EigenFloat12x12::Zero();
-
-            // Orthogonality potential
-            // if constexpr (false)
-            {
-                float3x3 A = luisa::make_float3x3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
-                                                  host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
-                                                  host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
-                // A          = luisa::transpose(A);
-
-                const float kappa = 1e5f;
-                const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
-
-                float stiff = kappa;  //* V;
-                for (uint ii = 0; ii < 3; ii++)
-                {
-                    float3 grad = (-1.0f) * A[ii];
-                    for (uint jj = 0; jj < 3; jj++)
-                    {
-                        grad += dot_vec(A[ii], A[jj]) * A[jj];
-                    }
-                    // LUISA_INFO("grad of col {} = {}", ii, grad);
-                    cgB.block<3, 1>(12 * body_idx + 3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
-                    // body_force[1 + ii] -= 4 * stiff * g; // Force
-                    // LUISA_INFO("Force of col {} = {}", 1 + ii, g);
-                }
-                for (uint ii = 0; ii < 3; ii++)
-                {
-                    for (uint jj = 0; jj < 3; jj++)
-                    {
-                        float3x3 hessian = Zero3x3;
-                        if (ii == jj)
-                        {
-                            float3x3 qiqiT = outer_product(A[ii], A[ii]);
-                            float    qiTqi = dot_vec(A[ii], A[ii]) - 1.0f;
-                            float3x3 term2 = qiTqi * Identity3x3;
-                            for (uint kk = 0; kk < 3; kk++)
-                            {
-                                hessian = hessian + outer_product(A[kk], A[kk]);
-                            }
-                            hessian = hessian + qiqiT + term2;
-                        }
-                        else
-                        {
-                            hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
-                        }
-                        // LUISA_INFO("hess of {} adj {} = {}", ii, jj, hessian);
-                        cgA.block<3, 3>(12 * body_idx + 3 + 3 * ii, 12 * body_idx + 3 + 3 * jj) +=
-                            4.0f * stiff * float3x3_to_eigen3x3(hessian);
-                        // body_hessian[ii][jj] = body_hessian[ii][jj] + 4.0f * stiff * hessian; idx += 1;
-                    }
-                }
-            }
-        });
-
-
-    // Test abd
-    // if (false)
+    // Ortho
+    if constexpr (false)
     {
-        Eigen::Matrix<float, 24, 24> tmpA = Eigen::Matrix<float, 24, 24>::Zero();
-        Eigen::Matrix<float, 24, 12> tmpB = Eigen::Matrix<float, 24, 12>::Zero();
+        const float d_hat     = get_scene_params().d_hat;
+        const float thickness = get_scene_params().thickness;
+        CpuParallel::single_thread_for(
+            0,
+            host_sim_data->sa_affine_bodies.size(),
+            [&](const uint body_idx)
+            {
+                float3   body_force[4]       = {Zero3};
+                float3x3 body_hessian[4][10] = {Zero3x3};
+                // EigenFloat12 eigen_B = EigenFloat12::Zero();
+                // EigenFloat12x12 eigen_A = EigenFloat12x12::Zero();
+
+                // Orthogonality potential
+                // if constexpr (false)
+                {
+                    float3x3 A = luisa::make_float3x3(host_sim_data->sa_affine_bodies_q[4 * body_idx + 1],
+                                                      host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
+                                                      host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
+                    // A          = luisa::transpose(A);
+
+                    const float kappa = 1e5f;
+                    const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
+
+                    float stiff = kappa;  //* V;
+                    for (uint ii = 0; ii < 3; ii++)
+                    {
+                        float3 grad = (-1.0f) * A[ii];
+                        for (uint jj = 0; jj < 3; jj++)
+                        {
+                            grad += dot_vec(A[ii], A[jj]) * A[jj];
+                        }
+                        // LUISA_INFO("grad of col {} = {}", ii, grad);
+                        cgB.block<3, 1>(12 * body_idx + 3 + 3 * ii, 0) -= 4 * stiff * float3_to_eigen3(grad);
+                        // body_force[1 + ii] -= 4 * stiff * g; // Force
+                        // LUISA_INFO("Force of col {} = {}", 1 + ii, g);
+                    }
+                    for (uint ii = 0; ii < 3; ii++)
+                    {
+                        for (uint jj = 0; jj < 3; jj++)
+                        {
+                            float3x3 hessian = Zero3x3;
+                            if (ii == jj)
+                            {
+                                float3x3 qiqiT = outer_product(A[ii], A[ii]);
+                                float    qiTqi = dot_vec(A[ii], A[ii]) - 1.0f;
+                                float3x3 term2 = qiTqi * Identity3x3;
+                                for (uint kk = 0; kk < 3; kk++)
+                                {
+                                    hessian = hessian + outer_product(A[kk], A[kk]);
+                                }
+                                hessian = hessian + qiqiT + term2;
+                            }
+                            else
+                            {
+                                hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
+                            }
+                            // LUISA_INFO("hess of {} adj {} = {}", ii, jj, hessian);
+                            cgA.block<3, 3>(12 * body_idx + 3 + 3 * ii, 12 * body_idx + 3 + 3 * jj) +=
+                                4.0f * stiff * float3x3_to_eigen3x3(hessian);
+                            // body_hessian[ii][jj] = body_hessian[ii][jj] + 4.0f * stiff * hessian; idx += 1;
+                        }
+                    }
+                }
+            });
+    }
+
+    // Contact
+    if constexpr (false)
+    {
+        auto tmpA = cgA;
+        auto tmpB = cgB;
+        tmpA.setZero();
+        tmpB.setZero();
 
         mp_narrowphase_detector->download_narrowphase_list(stream);
 
         const auto& host_count = host_collision_data->narrow_phase_collision_count;
-        const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-        LUISA_INFO("Assembled contact triplet count : {}", num_triplet_assembled);
+        const uint  num_pairs  = host_count.front();
 
-        const uint num_pairs = host_count.front();
-        // Eigen::Matrix<float, 24, 24> A         = Eigen::Matrix<float, 24, 24>::Zero();
-        // Eigen::Matrix<float, 24, 1>  B         = Eigen::Matrix<float, 24, 1>::Zero();
         for (uint pair_idx = 0; pair_idx < num_pairs; pair_idx++)
         {
             auto pair = host_collision_data->narrow_phase_list[pair_idx];
@@ -1846,32 +1873,83 @@ void NewtonSolver::host_test_affine_body(luisa::compute::Stream& stream)
             }
         }
 
-        // uint idx = 0;
-        // for (uint ii = 0; ii < 8; ii++)
-        // {
-        //     // LUISA_INFO("Contact tmpB block {} = \n{}", ii, tmpB.block<12, 1>(ii * 12, 0));
-        //     for (uint jj = 0; jj < 8; jj++)
-        //     {
-        //         // LUISA_INFO("Contact tmpA block {} : ({}, {}) = {}",
-        //         //            idx,
-        //         //            ii,
-        //         //            jj,
-        //         //            eigen3x3_to_float3x3(tmpA.block<3, 3>(ii * 3, jj * 3)));
-        //         if (ii != jj)
-        //             idx += 1;
-        //     }
-        // }
-
         cgA += tmpA;
         cgB += tmpB;
     }
 
-    auto dq = cgA.inverse() * cgB;
-    CpuParallel::single_thread_for(0,
-                                   host_sim_data->sa_affine_bodies.size() * 4,
-                                   [&](const uint i) {
-                                       host_sim_data->sa_cgX[i] = eigen3_to_float3(dq.block<3, 1>(3 * i, 0));
-                                   });
+    // auto dq = cgA.ldlt().solve(cgB).eval();
+    // CpuParallel::single_thread_for(0,
+    //                                host_sim_data->sa_affine_bodies.size() * 4,
+    //                                [&](const uint i) {
+    //                                    host_sim_data->sa_cgX[i] = eigen3_to_float3(dq.block<3, 1>(3 * i, 0));
+    //                                });
+    // return;
+
+    for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+    {
+        auto diag_hess = cgA.block<3, 3>(vid * 3, vid * 3);
+        auto grad      = cgB.block<3, 1>(vid * 3, 0);
+        host_sim_data->sa_cgA_diag[vid] = host_sim_data->sa_cgA_diag[vid] + eigen3x3_to_float3x3(diag_hess);
+        host_sim_data->sa_cgB[vid] = host_sim_data->sa_cgB[vid] + eigen3_to_float3(grad);
+    }
+
+    // std::vector<MatrixTriplet3x3> new_triplet;
+    // convert_eigen_to_triplets(cgA, new_triplet);
+    // LUISA_INFO("New triplet size: {}", new_triplet.size());
+
+    // auto& host_count = host_collision_data->narrow_phase_collision_count;
+    // host_count[CollisionPair::CollisionCount::total_adj_verts_offset()] = new_triplet.size();
+
+    // CpuParallel::parallel_set(host_collision_data->sa_cgA_contact_offdiag_triplet,
+    //                           get_dispatch_threads(new_triplet.size(), 256),
+    //                           make_matrix_triplet(-1u, -1u, 0, luisa::make_float3x3(0.0f)));
+    // for (uint triplet_idx = 0; triplet_idx < new_triplet.size(); triplet_idx++)
+    // {
+    //     host_collision_data->sa_cgA_contact_offdiag_triplet[triplet_idx] = new_triplet[triplet_idx];
+    // }
+
+    // Eigen::SparseMatrix<float> cgA_sparse;
+    // cgA_sparse.resize(host_sim_data->num_affine_bodies * 12, host_sim_data->num_affine_bodies * 12);
+    // {
+    //     // cgA_sparse = cgA.sparseView();
+    //     std::vector<Eigen::Triplet<float>> triplet_list;
+    //     for (const auto& triplet : new_triplet)
+    //     {
+    //         uint       row   = triplet.get_row_idx();
+    //         uint       col   = triplet.get_col_idx();
+    //         const auto value = float3x3_to_eigen3x3(triplet.get_matrix());
+    //         for (uint i = 0; i < 3; i++)
+    //         {
+    //             for (uint j = 0; j < 3; j++)
+    //             {
+    //                 triplet_list.emplace_back(row * 3 + i, col * 3 + j, value(i, j));
+    //             }
+    //         }
+    //     }
+    //     for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+    //     {
+    //         auto diag_hess = float3x3_to_eigen3x3(host_sim_data->sa_cgA_diag[vid]);
+    //         for (uint i = 0; i < 3; i++)
+    //         {
+    //             for (uint j = 0; j < 3; j++)
+    //             {
+    //                 triplet_list.emplace_back(vid * 3 + i, vid * 3 + j, diag_hess(i, j));
+    //             }
+    //         }
+    //     }
+    //     cgA_sparse.setFromTriplets(triplet_list.begin(), triplet_list.end());
+    // }
+
+    // auto dq = cgA.ldlt().solve(cgB).eval();
+    // for (uint vid = 0; vid < num_bodies * 4; vid++)
+    // {
+    //     host_sim_data->sa_cgX[vid] = eigen3_to_float3(dq.block<3, 1>(vid * 3, 0));
+    // }
+
+    // Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
+    // solver.analyzePattern(cgA_sparse);
+    // solver.factorize(cgA_sparse);
+    // Eigen::MatrixXf dq = solver.solve(cgB);
 }
 void NewtonSolver::host_evaluete_spring()
 {
@@ -2362,29 +2440,9 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
         }
 
         // Material Energy
-        if constexpr (false)
-        {
-            // CpuParallel::parallel_for(
-            //     0,
-            //     host_sim_data->num_verts_soft,
-            //     [&](const uint vid)
-            //     {
-            //         const uint curr_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid];
-            //         const uint next_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
-            //         float3 output_vec = Zero3;
-            //         for (uint j = curr_prefix; j < next_prefix; j++)
-            //         {
-            //             const auto triplet = host_sim_data->sa_cgA_fixtopo_offdiag_triplet[j];
-            //             const uint adj_vid = triplet.get_col_idx();
-            //             output_vec += triplet.get_matrix() * input_ptr[adj_vid];
-            //         }
-            //         output_ptr[vid] += output_vec;
-            //     });
-        }
-
         auto fn_SpMV_reduce_by_key = [&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim)
         {
-            CpuParallel::parallel_for_each_core(
+            CpuParallel::parallel_for(
                 0,
                 gridDim,
                 [&](const uint blockIdx)
@@ -2407,15 +2465,15 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                             const float3   input = input_ptr[adj_vid];
                             contrib              = mat * input;
                             sum_contrib += contrib;
+                            // output_ptr[vid] += contrib;
                         };
                         if (MatrixTriplet::is_last_col_in_row(matrix_property))
                         {
                             if (MatrixTriplet::write_use_atomic(matrix_property))
                             {
-                                auto atomic_view = (CpuParallel::atomic_float*)(&output_ptr[vid]);
-                                atomic_view[0].fetch_add(sum_contrib.x);
-                                atomic_view[1].fetch_add(sum_contrib.y);
-                                atomic_view[2].fetch_add(sum_contrib.z);
+                                auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
+                                atomic_view->fetch_add(sum_contrib);
+                                // output_ptr[vid] += sum_contrib;
                             }
                             else
                             {
@@ -2443,55 +2501,50 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
                                     std::function<double(const std::vector<float3>&)> func_compute_energy)
 {
 
-    EigenFloat12 eigen_b;
-    eigen_b.setZero();
-    EigenFloat12x12 eigen_A;
-    eigen_A.setZero();
-    for (uint vid = 0; vid < 4; vid++)
+    const uint      num_dof = host_sim_data->num_dof;
+    Eigen::MatrixXf cgA(num_dof * 3, num_dof * 3);
+    Eigen::MatrixXf cgB(num_dof * 3, 1);
+    cgA.setZero();
+    cgB.setZero();
+
+    const auto& host_count      = host_collision_data->narrow_phase_collision_count;
+    const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    std::vector<MatrixTriplet3x3> new_triplet;
+    for (uint i = 0; i < reduced_triplet; i++)
     {
-        eigen_b.block<3, 1>(vid * 3, 0)       = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
-        eigen_A.block<3, 3>(vid * 3, vid * 3) = float3x3_to_eigen3x3(host_sim_data->sa_cgA_diag[vid]);
+        new_triplet.push_back(host_collision_data->sa_cgA_contact_offdiag_triplet[i]);
     }
-    for (uint eid = 0; eid < 5; eid++)
+    for (uint i = 0; i < host_sim_data->sa_cgA_fixtopo_offdiag_triplet.size(); i++)
     {
-        float3   grad = host_sim_data->sa_stretch_springs_gradients[2 * eid + 0];
-        float3x3 He   = host_sim_data->sa_stretch_springs_hessians[4 * eid + 0];
-        uint2    edge = host_sim_data->colored_data.sa_merged_stretch_springs[eid];
-        eigen_A.block<3, 3>(edge[0] * 3, edge[0] * 3) += float3x3_to_eigen3x3(He);
-        eigen_A.block<3, 3>(edge[1] * 3, edge[1] * 3) += float3x3_to_eigen3x3(He);
-        eigen_A.block<3, 3>(edge[0] * 3, edge[1] * 3) += float3x3_to_eigen3x3(-1.0f * He);
-        eigen_A.block<3, 3>(edge[1] * 3, edge[0] * 3) += float3x3_to_eigen3x3(-1.0f * He);
-        eigen_b.block<3, 1>(edge[0] * 3, 0) += float3_to_eigen3(grad);
-        eigen_b.block<3, 1>(edge[1] * 3, 0) -= float3_to_eigen3(-grad);
+        new_triplet.push_back(host_sim_data->sa_cgA_fixtopo_offdiag_triplet[i]);
+    }
+    convert_triplets_to_eigen(cgA, new_triplet, num_dof);
+    for (uint vid = 0; vid < num_dof; vid++)
+    {
+        cgA.block<3, 3>(vid * 3, vid * 3) = float3x3_to_eigen3x3(host_sim_data->sa_cgA_diag[vid]);
+        cgB.block<3, 1>(vid * 3, 0)       = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
     }
 
-    auto eigen_dx = eigen_A.inverse() * eigen_b;
-    // auto eigen_dx = eigen_pcg(eigen_A, eigen_b);
+    auto cgX = cgA.ldlt().solve(cgB).eval();
+    // auto cgX = eigen_pcg(eigen_A, eigen_b);
 
     // std::cout << "Eigen A = \n" << eigen_A << std::endl;
     // std::cout << "Eigen b = \n" << eigen_b.transpose() << std::endl;
     // std::cout << "Eigen result = " << eigen_dx.transpose() << std::endl;
-    for (uint vid = 0; vid < 4; vid++)
+    for (uint vid = 0; vid < num_dof; vid++)
     {
-        host_sim_data->sa_cgX[vid] = eigen3_to_float3(eigen_dx.block<3, 1>(vid * 3, 0));
+        host_sim_data->sa_cgX[vid] = eigen3_to_float3(cgX.block<3, 1>(vid * 3, 0));
     }
-    constexpr bool print_energy = false;
-    double         curr_energy  = 0.0;
-    if constexpr (print_energy)
-    {
-        host_apply_dx(1.0f);
-        curr_energy = func_compute_energy(host_sim_data->sa_x);
-    }
+
     const float infinity_norm = fast_infinity_norm(host_sim_data->sa_cgX);
     if (luisa::isnan(infinity_norm) || luisa::isinf(infinity_norm))
     {
         LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}{}",
+    LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
                get_scene_params().current_nonlinear_iter,
-               (eigen_b - eigen_A * eigen_dx).norm(),
-               infinity_norm,
-               print_energy ? luisa::format(", energy = {:6.5f}", curr_energy) : "");
+               (cgB - cgA * cgX).norm(),
+               infinity_norm);
 }
 void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
 {
@@ -2587,8 +2640,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_to(host_sim_data->sa_cgA_diag.data())
                << luisa::compute::synchronize();
-
-        stream << luisa::compute::synchronize();
     };
     auto ccd_get_toi = [&]() -> float
     {
@@ -2626,7 +2677,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto linear_solver_interface = [&]()
     {
-        if constexpr (false)
+        if constexpr (true)
         {
             host_solve_eigen(stream, compute_energy_interface);
         }

@@ -110,17 +110,17 @@ void rigid_body_cube_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_l
 void rigid_body_folding_cube_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({.model_name  = obj_mesh_path + "cube.obj",
-                          .translation = luisa::make_float3(0, 0.9, 0),
+                          .translation = luisa::make_float3(0, 1.0, 0),
                           .scale       = luisa::make_float3(0.1),
                           .shell_type  = lcs::Initializer::ShellTypeRigid});
     shell_list.push_back({.model_name  = obj_mesh_path + "cube.obj",
-                          .translation = luisa::make_float3(0, 0.6, 0),
+                          .translation = luisa::make_float3(0, 0.7, 0),
                           //   .translation = luisa::make_float3(0.1, 0.511, 0.2),
                           //   .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
                           .scale      = luisa::make_float3(0.2),
                           .shell_type = lcs::Initializer::ShellTypeRigid});
     shell_list.push_back({.model_name  = obj_mesh_path + "cube.obj",
-                          .translation = luisa::make_float3(0, 0, 0),
+                          .translation = luisa::make_float3(0, 0.1, 0),
                           .scale       = luisa::make_float3(0.5),
                           .shell_type  = lcs::Initializer::ShellTypeRigid});
     lcs::get_scene_params().use_gpu     = false;

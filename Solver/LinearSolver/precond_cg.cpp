@@ -524,9 +524,9 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
             LUISA_ERROR("Exist NAN/INF in PCG iteration");
             exit(0);
         }
-        // if (normR < 5e-3 * normR_0 || dot_rz == 0.0f)
-        // if (dot_rz == 0.0f)
-        if (dot_rz < 1e-8)
+        // if (normR < 1e-4 * normR_0 || dot_rz == 0.0f)
+        // if (dot_rz < 1e-8)
+        if (dot_rz == 0.0f)
         {
             break;
         }
@@ -683,7 +683,7 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
         // 6 : init energy
         // 7 : new energy
 
-        if (iter % 25 == 0)
+        if (iter % 50 == 0)
         {
             // stream
             //     << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
@@ -697,15 +697,19 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
 
             if (iter == 0)
                 stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR_0);
-            stream << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz) << luisa::compute::synchronize();
+
+
+            stream << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
+                   << sim_data->sa_convergence.view(1, 1).copy_to(&dot_rz) << luisa::compute::synchronize();
             // LUISA_INFO("dot_rz = {}", dot_rz);
             if (luisa::isnan(dot_rz) || luisa::isinf(dot_rz))
             {
                 LUISA_ERROR("Exist NAN/INF in PCG iteration");
                 exit(0);
             }
-            // if (dot_rz == 0.0f)
-            if (dot_rz < 1e-8)
+            // if (dot_rz < 1e-8)
+            // if (normR / normR_0 < 1e-4f)
+            if (dot_rz == 0.0f)
             {
                 break;
             }
