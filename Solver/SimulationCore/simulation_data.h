@@ -90,7 +90,6 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_tilde;
     BufferType<float3> sa_x;
     BufferType<float3> sa_v;
-    BufferType<float3> sa_v_step_start;
     BufferType<float3> sa_x_step_start;
     BufferType<float3> sa_x_iter_start;
 
@@ -124,6 +123,7 @@ struct SimulationData : SimulationType
     std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<uint>             sa_vert_affine_bodies_id;
     BufferType<uint>             sa_affine_bodies_mesh_id;
+    BufferType<uint>             sa_affine_bodies_is_fixed;
     BufferType<uint4>            sa_affine_bodies;
     BufferType<float>            sa_affine_bodies_volume;
     BufferType<float4x4>         sa_affine_bodies_mass_matrix;

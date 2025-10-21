@@ -18,6 +18,45 @@ namespace lcs
 // diag vec
 // columns
 
+// Make eye matrix
+constexpr inline float2x2 make_eye2x2(const float diag)
+{
+    return luisa::make_float2x2(diag, 0.0f, 0.0f, diag);
+}
+constexpr inline float3x3 make_eye3x3(const float diag)
+{
+    return luisa::make_float3x3(luisa::make_float3(diag, 0.0f, 0.0f),
+                                luisa::make_float3(0.0f, diag, 0.0f),
+                                luisa::make_float3(0.0f, 0.0f, diag));
+}
+constexpr inline float4x4 make_eye4x4(const float diag)
+{
+    return luisa::make_float4x4(luisa::make_float4(diag, 0.0f, 0.0f, 0.0f),
+                                luisa::make_float4(0.0f, diag, 0.0f, 0.0f),
+                                luisa::make_float4(0.0f, 0.0f, diag, 0.0f),
+                                luisa::make_float4(0.0f, 0.0f, 0.0f, diag));
+}
+
+inline Var<float2x2> make_eye2x2(const Var<float> x)
+{
+    return luisa::compute::make_float2x2(luisa::compute::make_float2(x, 0.0f),
+                                         luisa::compute::make_float2(0.0f, x));
+}
+inline Var<float3x3> make_eye3x3(const Var<float> diag)
+{
+    return luisa::compute::make_float3x3(luisa::compute::make_float3(diag, 0.0f, 0.0f),
+                                         luisa::compute::make_float3(0.0f, diag, 0.0f),
+                                         luisa::compute::make_float3(0.0f, 0.0f, diag));
+}
+inline Var<float4x4> make_eye4x4(const Var<float> diag)
+{
+    return luisa::compute::make_float4x4(luisa::compute::make_float4(diag, 0.0f, 0.0f, 0.0f),
+                                         luisa::compute::make_float4(0.0f, diag, 0.0f, 0.0f),
+                                         luisa::compute::make_float4(0.0f, 0.0f, diag, 0.0f),
+                                         luisa::compute::make_float4(0.0f, 0.0f, 0.0f, diag));
+}
+
+
 // float2x2
 constexpr inline float2x2 makeFloat2x2(const float diag)
 {

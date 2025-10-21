@@ -51,9 +51,6 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
     sim_data->sa_x_tilde.resize(mesh_data->num_verts);
     sim_data->sa_x.resize(mesh_data->num_verts);
     sim_data->sa_v.resize(mesh_data->num_verts);
-    CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_v);
-    sim_data->sa_v_step_start.resize(mesh_data->num_verts);
-    CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_v_step_start);
     sim_data->sa_x_step_start.resize(mesh_data->num_verts);
     sim_data->sa_x_iter_start.resize(mesh_data->num_verts);
 
@@ -302,6 +299,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         const uint num_blocks_affine_body = num_affine_bodies * 4;
         sim_data->sa_affine_bodies_mesh_id.resize(num_affine_bodies);
         sim_data->sa_affine_bodies.resize(num_affine_bodies);
+        sim_data->sa_affine_bodies_is_fixed.resize(num_affine_bodies);
 
         sim_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_rest_q_v.resize(num_blocks_affine_body);
@@ -403,6 +401,16 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
                 // LUISA_INFO("Affine Body {} Mass Matrix = \n{}", body_idx, compressed_mass_matrix);
+
+                sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
+                for (uint vid = curr_prefix; vid < next_prefix; vid++)
+                {
+                    if (mesh_data->sa_is_fixed[vid])
+                    {
+                        sim_data->sa_affine_bodies_is_fixed[body_idx] = true;
+                        break;
+                    }
+                }
 
                 float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
                                          mesh_data->sa_rest_vert_area.begin() + next_prefix,
@@ -946,7 +954,6 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
            << upload_buffer(device, output_data->sa_x_tilde, input_data->sa_x_tilde)
            << upload_buffer(device, output_data->sa_x, input_data->sa_x)
            << upload_buffer(device, output_data->sa_v, input_data->sa_v)
-           << upload_buffer(device, output_data->sa_v_step_start, input_data->sa_v_step_start)
            << upload_buffer(device, output_data->sa_x_step_start, input_data->sa_x_step_start)
            << upload_buffer(device, output_data->sa_x_iter_start, input_data->sa_x_iter_start)
 
@@ -1022,6 +1029,8 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     {
         stream
             << upload_buffer(device, output_data->sa_affine_bodies, input_data->sa_affine_bodies)
+            << upload_buffer(device, output_data->sa_affine_bodies_mesh_id, input_data->sa_affine_bodies_mesh_id)
+            << upload_buffer(device, output_data->sa_affine_bodies_is_fixed, input_data->sa_affine_bodies_is_fixed)
             << upload_buffer(device, output_data->sa_affine_bodies_rest_q, input_data->sa_affine_bodies_rest_q)
             << upload_buffer(device, output_data->sa_affine_bodies_gravity, input_data->sa_affine_bodies_gravity)
             << upload_buffer(device, output_data->sa_affine_bodies_q, input_data->sa_affine_bodies_q)
@@ -1046,6 +1055,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
         << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
         << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr)
+        << upload_buffer(device, output_data->sa_vert_adj_affine_bodies_csr, input_data->sa_vert_adj_affine_bodies_csr)
 
         << upload_buffer(device,
                          output_data->colored_data.prefix_per_vertex_with_material_constraints,

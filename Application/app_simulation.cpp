@@ -70,7 +70,13 @@ enum SolverType
 
 int main(int argc, char** argv)
 {
-    luisa::log_level_info();
+
+#ifndef NDEBUG
+    luisa::log_level_info();  // log_level_verbose
+#else
+    luisa::log_level_verbose();
+#endif
+
     luisa::fiber::scheduler scheduler;  // Initialize the fiber scheduler, which is also need in HostParallel functions
     LUISA_INFO("Hello, LuisaComputeSimulation!");
 
