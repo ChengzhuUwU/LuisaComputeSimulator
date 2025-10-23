@@ -126,9 +126,10 @@ struct SceneParams
 
     float stiffness_bending_ui        = 0.5f;
     float stiffness_quadratic_bending = 5e-3f;
-    float stiffness_DAB_bending       = stiffness_quadratic_bending;
+    float stiffness_DAB_bending       = 5e-2f;
     float stiffness_collision         = 1e9;
     float stiffness_dirichlet         = 1e9;
+    float stiffness_orthogonality     = 1e5;
 
     // Balloon constraint
     float balloon_scale_rate = 1.0f;
@@ -140,7 +141,7 @@ struct SceneParams
 
     // Thickness & Friction
     float thickness = 0.0f;
-    float d_hat     = 3e-3f;
+    float d_hat     = 1e-3f;
     // float thickness_vv_obstacle = 0.01f;
     // float thickness_vv_cloth = 0.01f;
     // float thickness_vv_tet = 0.01f;
@@ -178,11 +179,7 @@ struct SceneParams
         return num_substep * current_substep + current_nonlinear_iter;
     }
     float get_substep_dt() { return implicit_dt / float(num_substep); }
-    float get_stiffness_quadratic_bending()
-    {
-        return stiffness_quadratic_bending * stiffness_bending_ui;
-    }
-    float get_stiffness_DAB_bending() { return stiffness_DAB_bending * stiffness_bending_ui; }
+    float get_stiffness_bending() { return stiffness_DAB_bending * stiffness_bending_ui; }
 };
 
 #ifndef METAL_CODE

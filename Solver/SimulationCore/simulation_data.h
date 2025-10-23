@@ -116,6 +116,7 @@ struct SimulationData : SimulationType
     BufferType<uint4>    sa_bending_edges;
     BufferType<float>    sa_bending_edges_rest_angle;
     BufferType<float4x4> sa_bending_edges_Q;
+    BufferType<float>    sa_bending_edges_rest_area;
     BufferType<ushort>   sa_bending_edges_offsets_in_adjlist;
     BufferType<float3>   sa_bending_edges_gradients;
     BufferType<float3x3> sa_bending_edges_hessians;

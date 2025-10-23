@@ -1,6 +1,7 @@
 #include "SimulationCore/solver_interface.h"
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
+#include "Energy/bending_energy.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 #include "SimulationCore/scene_params.h"
@@ -77,19 +78,13 @@ void SolverInterface::restart_system()
                                       host_sim_data->sa_affine_bodies_rest_q_v[bid];
                               });
 }
-void SolverInterface::save_current_frame_state()
-{
-    CpuParallel::parallel_for(0,
-                              host_mesh_data->num_verts,
-                              [&](uint vid)
-                              {
-                                  host_mesh_data->sa_x_frame_saved[vid] = host_mesh_data->sa_x_frame_outer[vid];
-                                  host_mesh_data->sa_v_frame_saved[vid] = host_mesh_data->sa_v_frame_outer[vid];
-                              });
-}
 void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
 {
-    save_current_frame_state();
+    // save_current_frame_state();
+    std::vector<float3> sa_x_frame_saved(host_mesh_data->sa_x_frame_outer);
+    std::vector<float3> sa_v_frame_saved(host_mesh_data->sa_v_frame_outer);
+    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer);
+    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer);
 
     const std::string filename = std::format("frame_{}{}.state", frame, addition_str);
 
@@ -121,13 +116,25 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
         file << "o position" << std::endl;
         for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
         {
-            const auto vertex = host_mesh_data->sa_x_frame_saved[vid];
+            const auto vertex = sa_x_frame_saved[vid];
             file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
         }
         file << "o velocity" << std::endl;
         for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
         {
-            const auto vel = host_mesh_data->sa_v_frame_saved[vid];
+            const auto vel = sa_v_frame_saved[vid];
+            file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
+        }
+        file << "o q" << std::endl;
+        for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+        {
+            const auto vertex = sa_q_frame_saved[vid];
+            file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
+        }
+        file << "o qv" << std::endl;
+        for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+        {
+            const auto vel = sa_qv_frame_saved[vid];
             file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
         }
 
@@ -138,19 +145,6 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
     {
         LUISA_ERROR("Unable to open file: {}", full_path);
     }
-}
-void SolverInterface::load_saved_state()
-{
-    CpuParallel::parallel_for(0,
-                              host_mesh_data->num_verts,
-                              [&](uint vid)
-                              {
-                                  auto saved_pos = host_mesh_data->sa_x_frame_saved[vid];
-                                  host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
-
-                                  auto saved_vel = host_mesh_data->sa_v_frame_saved[vid];
-                                  host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
-                              });
 }
 void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
 {
@@ -166,15 +160,22 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
         return;
     }
 
+    std::vector<float3> sa_x_frame_saved(host_mesh_data->sa_x_frame_outer.size());
+    std::vector<float3> sa_v_frame_saved(host_mesh_data->sa_v_frame_outer.size());
+    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer.size());
+    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer.size());
+
     std::string line;
     enum Section
     {
         None,
         Position,
-        Velocity
+        Velocity,
+        Q,
+        Qv,
     };
     Section current_section = None;
-    uint    pos_vid = 0, vel_vid = 0;
+    uint    index           = 0;
 
     while (std::getline(file, line))
     {
@@ -183,13 +184,25 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
         if (line.rfind("o position", 0) == 0)
         {
             current_section = Position;
-            pos_vid         = 0;
+            index           = 0;
             continue;
         }
         if (line.rfind("o velocity", 0) == 0)
         {
             current_section = Velocity;
-            vel_vid         = 0;
+            index           = 0;
+            continue;
+        }
+        if (line.rfind("o q", 0) == 0)
+        {
+            current_section = Q;
+            index           = 0;
+            continue;
+        }
+        if (line.rfind("o qv", 0) == 0)
+        {
+            current_section = Qv;
+            index           = 0;
             continue;
         }
         if (line[0] == 'v' && (current_section == Position || current_section == Velocity))
@@ -199,28 +212,50 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             iss >> x >> y >> z;
             if (current_section == Position)
             {
-                if (pos_vid < host_mesh_data->num_verts)
-                    host_mesh_data->sa_x_frame_saved[pos_vid] = {x, y, z};
-                pos_vid++;
+                if (index < host_mesh_data->num_verts)
+                    sa_x_frame_saved[index] = {x, y, z};
+                index++;
             }
             else if (current_section == Velocity)
             {
-                if (vel_vid < host_mesh_data->num_verts)
-                    host_mesh_data->sa_v_frame_saved[vel_vid] = {x, y, z};
-                vel_vid++;
+                if (index < host_mesh_data->num_verts)
+                    sa_v_frame_saved[index] = {x, y, z};
+                index++;
+            }
+            else if (current_section == Q)
+            {
+                if (index < host_sim_data->num_affine_bodies * 4)
+                    sa_q_frame_saved[index] = {x, y, z};
+                index++;
+            }
+            else if (current_section == Qv)
+            {
+                if (index < host_sim_data->num_affine_bodies * 4)
+                    sa_qv_frame_saved[index] = {x, y, z};
+                index++;
             }
         }
     }
     file.close();
 
-    if (pos_vid != host_mesh_data->num_verts || vel_vid != host_mesh_data->num_verts)
-    {
-        LUISA_ERROR("numVerts read {} does NOT match numVerts of current mesh {}",
-                    pos_vid,
-                    host_mesh_data->num_verts);
-    }
+    // load_saved_state();
+    CpuParallel::parallel_for(0,
+                              host_mesh_data->num_verts,
+                              [&](uint vid)
+                              {
+                                  auto saved_pos                        = sa_x_frame_saved[vid];
+                                  host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
 
-    load_saved_state();
+                                  auto saved_vel                        = sa_v_frame_saved[vid];
+                                  host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
+                              });
+    CpuParallel::parallel_for(0,
+                              host_sim_data->sa_affine_bodies.size() * 4,
+                              [&](const uint vid)
+                              {
+                                  host_sim_data->sa_affine_bodies_q_outer[vid] = sa_q_frame_saved[vid];
+                                  host_sim_data->sa_affine_bodies_q_v_outer[vid] = sa_qv_frame_saved[vid];
+                              });
 
     LUISA_INFO("State file loaded: {}", full_path);
 }
@@ -302,7 +337,8 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 constexpr bool print_detail = false;
 
 // Evaluate Energy
-double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& curr_x)
+void SolverInterface::host_compute_elastic_energy(const std::vector<float3>&     curr_x,
+                                                  std::map<std::string, double>& energy_list)
 {
     auto compute_energy_inertia = [](const uint                 vid,
                                      const std::vector<float3>& sa_x,
@@ -318,7 +354,7 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
         float       mass           = sa_vert_mass[vid];
         bool        is_fixed       = sa_is_fixed[vid];
         float       energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-        ;
+
         if (is_fixed)
         {
             // Dirichlet boundary energy
@@ -387,6 +423,8 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
                                      const std::vector<float3>&  sa_x,
                                      const std::vector<uint4>&   sa_bending_edges,
                                      const std::vector<float4x4> sa_bending_edges_Q,
+                                     const std::vector<float>    sa_bending_edges_rest_angle,
+                                     const std::vector<float>    sa_bending_edges_rest_area,
                                      const float                 stiffness_bending)
     {
         const uint4    edge        = sa_bending_edges[eid];
@@ -398,21 +436,31 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
             sa_x[edge[3]],
         };
         float energy = 0.f;
-        for (uint ii = 0; ii < 4; ii++)
-        {
-            for (uint jj = 0; jj < 4; jj++)
-            {
-                // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
-                energy += m_Q[ii][jj] * luisa::dot(vert_pos[ii], vert_pos[jj]);
-            }
-        }
-        energy = 0.5f * stiffness_bending * energy;
+
+        // Refers to ppf-contact-solver
+        float rest_angle = sa_bending_edges_rest_angle[eid];
+        float angle = BendingEnergy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
+        float delta_angle = angle - rest_angle;
+        float area        = sa_bending_edges_rest_area[eid];
+
+        energy = 0.5f * area * stiffness_bending * delta_angle * delta_angle;
+
+        // for (uint ii = 0; ii < 4; ii++)
+        // {
+        //     for (uint jj = 0; jj < 4; jj++)
+        //     {
+        //         // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+        //         energy += m_Q[ii][jj] * luisa::dot(vert_pos[ii], vert_pos[jj]);
+        //     }
+        // }
+        // energy = 0.5f * stiffness_bending * energy;
+
         return energy;
     };
 
     double energy_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(
         0,
-        mesh_data->num_verts,
+        host_sim_data->num_verts_soft,
         [&](const uint vid)
         {
             return compute_energy_inertia(vid,
@@ -436,7 +484,6 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
                                                  get_scene_params().use_floor,
                                                  get_scene_params().d_hat,
                                                  get_scene_params().thickness);
-            ;
         });
     double energy_spring = CpuParallel::parallel_for_and_reduce_sum<double>(
         0,
@@ -458,25 +505,84 @@ double SolverInterface::host_compute_elastic_energy(const std::vector<float3>& c
                                           curr_x,
                                           host_sim_data->sa_bending_edges,
                                           host_sim_data->sa_bending_edges_Q,
-                                          get_scene_params().get_stiffness_quadratic_bending());
+                                          host_sim_data->sa_bending_edges_rest_angle,
+                                          host_sim_data->sa_bending_edges_rest_area,
+                                          get_scene_params().get_stiffness_bending());
         });
-    double energy_total = energy_inertia + energy_goundcollision + energy_spring + energy_bending;
-    if (get_scene_params().print_system_energy)
-    {
-        LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}",
-                   energy_total,
-                   energy_inertia,
-                   energy_goundcollision,
-                   energy_spring,
-                   energy_bending);
-    }
-    return energy_total;
+    double energy_abd_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(
+        0,
+        host_sim_data->num_affine_bodies,
+        [&](const uint body_idx)
+        {
+            const float h              = get_scene_params().get_substep_dt();
+            const float squared_inv_dt = 1.0f / (h * h);
+            bool        is_fixed       = host_sim_data->sa_affine_bodies_is_fixed[body_idx];
+
+            auto   mass_matrix = host_sim_data->sa_affine_bodies_mass_matrix[body_idx];
+            float3 delta[4]    = {
+                host_sim_data->sa_affine_bodies_q[body_idx * 4 + 0]
+                    - host_sim_data->sa_affine_bodies_q_tilde[body_idx * 4 + 0],
+                host_sim_data->sa_affine_bodies_q[body_idx * 4 + 1]
+                    - host_sim_data->sa_affine_bodies_q_tilde[body_idx * 4 + 1],
+                host_sim_data->sa_affine_bodies_q[body_idx * 4 + 2]
+                    - host_sim_data->sa_affine_bodies_q_tilde[body_idx * 4 + 2],
+                host_sim_data->sa_affine_bodies_q[body_idx * 4 + 3]
+                    - host_sim_data->sa_affine_bodies_q_tilde[body_idx * 4 + 3],
+            };
+            float energy = 0.0f;
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 3; jj++)
+                {
+                    float3 diff = delta[ii];
+                    float  mass = mass_matrix[ii][ii];
+                    energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
+                }
+            }
+            if (is_fixed)
+            {
+                energy = get_scene_params().stiffness_dirichlet * energy;
+            }
+            return energy;
+        });
+    double energy_abd_ortho = CpuParallel::parallel_for_and_reduce_sum<double>(
+        0,
+        host_sim_data->num_affine_bodies,
+        [&](const uint body_dx)
+        {
+            float3x3 A;
+            float3   p;
+            AffineBodyDynamics::extract_Ap_from_q(host_sim_data->sa_affine_bodies_q.data() + 4 * body_dx, A, p);
+            float energy = 0.0f;
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                for (uint jj = 0; jj < 3; jj++)
+                {
+                    energy = luisa::dot(A[ii], A[jj]) - float(ii == jj ? 0.0f : 1.0f);
+                }
+            }
+            return get_scene_params().stiffness_orthogonality * energy;
+        });
+
+    energy_list.insert(std::make_pair("Inertia Soft Body", energy_inertia));
+    energy_list.insert(std::make_pair("Inertia Rigid Body", energy_abd_inertia));
+    energy_list.insert(std::make_pair("Ground Collision", energy_goundcollision));
+    energy_list.insert(std::make_pair("Cloth Stretch", energy_spring));
+    energy_list.insert(std::make_pair("Cloth Bending", energy_bending));
+    energy_list.insert(std::make_pair("ABD Orthogonality", energy_abd_ortho));
+
+    // auto total_energy = std::accumulate(energy_list.begin(),
+    //                                     energy_list.end(),
+    //                                     0.0,
+    //                                     [](double sum, const auto& pair) { return sum + pair.second; });
 };
 
 constexpr uint offset_inertia          = 0;
 constexpr uint offset_ground_collision = 1;
 constexpr uint offset_stretch_spring   = 2;
 constexpr uint offset_bending          = 3;
+constexpr uint offset_abd_inertia      = 4;
+constexpr uint offset_abd_ortho        = 5;
 
 void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 {
@@ -597,30 +703,40 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
     if (host_sim_data->sa_bending_edges.size() > 0)
         compiler.compile<1>(
             fn_calc_energy_bending,
-            [sa_edges           = sim_data->sa_bending_edges.view(),
-             sa_bending_edges_Q = sim_data->sa_bending_edges_Q.view(),
+            [sa_edges                    = sim_data->sa_bending_edges.view(),
+             sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
+             sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
+             sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
              sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float stiffness_bending)
             {
                 const Uint eid    = dispatch_id().x;
                 Float      energy = 0.0f;
                 {
-                    const Uint4    edge        = sa_edges->read(eid);
-                    const Float4x4 m_Q         = sa_bending_edges_Q->read(eid);
-                    Float3         vert_pos[4] = {
+                    const Uint4 edge = sa_edges->read(eid);
+
+                    Float3 vert_pos[4] = {
                         sa_x.read(edge[0]),
                         sa_x.read(edge[1]),
                         sa_x.read(edge[2]),
                         sa_x.read(edge[3]),
                     };
-                    for (uint ii = 0; ii < 4; ii++)
-                    {
-                        for (uint jj = 0; jj < 4; jj++)
-                        {
-                            // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
-                            energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]);
-                        }
-                    }
-                    energy = 0.5f * stiffness_bending * energy;
+                    Float rest_angle = sa_bending_edges_rest_angle->read(eid);
+                    Float angle =
+                        BendingEnergy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
+                    Float delta_angle = angle - rest_angle;
+                    Float area        = sa_bending_edges_rest_area->read(eid);
+                    energy            = 0.5f * stiffness_bending * area * delta_angle * delta_angle;
+
+                    // const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
+                    // for (uint ii = 0; ii < 4; ii++)
+                    // {
+                    //     for (uint jj = 0; jj < 4; jj++)
+                    //     {
+                    //         // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+                    //         energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]);
+                    //     }
+                    // }
+                    // energy = 0.5f * stiffness_bending * energy;
                 };
                 energy = ParallelIntrinsic::block_intrinsic_reduce(
                     eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -630,39 +746,151 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 };
             },
             default_option);
+
+    if (host_sim_data->num_affine_bodies != 0)
+    {
+        compiler.compile<1>(
+            fn_calc_energy_abd_inertia,
+            [sa_q_tilde   = sim_data->sa_affine_bodies_q_tilde.view(),
+             sa_vert_mass = sim_data->sa_affine_bodies_mass_matrix.view(),
+             sa_is_fixed  = sim_data->sa_affine_bodies_is_fixed.view(),
+             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_q, Float substep_dt, Float stiffness_dirichlet)
+            {
+                const Uint body_idx = dispatch_id().x;
+
+                Float energy = 0.0f;
+                {
+                    const Float h              = substep_dt;
+                    const Float squared_inv_dt = 1.0f / (h * h);
+                    Bool        is_fixed       = sa_is_fixed->read(body_idx);
+
+                    auto   mass_matrix = sa_vert_mass->read(body_idx);
+                    Float3 delta[4]    = {
+                        sa_q.read(body_idx * 4 + 0) - sa_q_tilde->read(body_idx * 4 + 0),
+                        sa_q.read(body_idx * 4 + 1) - sa_q_tilde->read(body_idx * 4 + 1),
+                        sa_q.read(body_idx * 4 + 2) - sa_q_tilde->read(body_idx * 4 + 2),
+                        sa_q.read(body_idx * 4 + 3) - sa_q_tilde->read(body_idx * 4 + 3),
+                    };
+                    Float energy = 0.0f;
+                    for (uint ii = 0; ii < 4; ii++)
+                    {
+                        for (uint jj = 0; jj < 3; jj++)
+                        {
+                            Float3 diff = delta[ii];
+                            Float  mass = mass_matrix[ii][ii];
+                            energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
+                        }
+                    }
+                    $if(is_fixed)
+                    {
+                        energy *= stiffness_dirichlet;
+                    };
+                };
+
+                energy = ParallelIntrinsic::block_intrinsic_reduce(
+                    body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                $if(body_idx % 256 == 0)
+                {
+                    sa_system_energy->atomic(offset_abd_inertia).fetch_add(energy);
+                };
+            },
+            default_option);
+
+        compiler.compile<1>(
+            fn_calc_energy_abd_ortho,
+            [sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_q, Float stiffness_ortho)
+            {
+                const Uint body_idx = dispatch_id().x;
+
+                Float energy = 0.0f;
+                {
+                    Float3x3 A;
+                    Float3   p;
+                    AffineBodyDynamics::extract_Ap_from_q(sa_q, body_idx, A, p);
+                    Float energy = 0.0f;
+                    for (uint ii = 0; ii < 3; ii++)
+                    {
+                        for (uint jj = 0; jj < 3; jj++)
+                        {
+                            energy = dot(A[ii], A[jj]) - (ii == jj ? 0.0f : 1.0f);
+                        }
+                    }
+                    energy *= stiffness_ortho;
+                };
+
+                energy = ParallelIntrinsic::block_intrinsic_reduce(
+                    body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                $if(body_idx % 256 == 0)
+                {
+                    sa_system_energy->atomic(offset_abd_ortho).fetch_add(energy);
+                };
+            },
+            default_option);
+    }
 }
-double SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&               stream,
-                                                      const luisa::compute::Buffer<float3>& curr_x)
+void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&               stream,
+                                                    const luisa::compute::Buffer<float3>& curr_x,
+                                                    std::map<std::string, double>&        energy_list)
 {
-    stream << fn_reset_float(sim_data->sa_system_energy).dispatch(8)
-           << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
-                  .dispatch(mesh_data->num_verts)
-           << fn_calc_energy_ground_collision(curr_x,
+    stream << fn_reset_float(sim_data->sa_system_energy).dispatch(8);
+    if (host_sim_data->num_verts_soft != 0)
+    {
+        stream << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
+                      .dispatch(host_sim_data->num_verts_soft);
+    }
+    if (host_sim_data->num_affine_bodies != 0)
+    {
+        stream << fn_calc_energy_abd_inertia(sim_data->sa_affine_bodies_q,
+                                             get_scene_params().get_substep_dt(),
+                                             get_scene_params().stiffness_dirichlet)
+                      .dispatch(host_sim_data->num_affine_bodies);
+        stream << fn_calc_energy_abd_ortho(sim_data->sa_affine_bodies_q, get_scene_params().stiffness_orthogonality)
+                      .dispatch(host_sim_data->num_affine_bodies);
+    }
+
+    stream << fn_calc_energy_ground_collision(curr_x,
                                               get_scene_params().floor.y,
                                               get_scene_params().use_floor,
                                               1e7f,
                                               get_scene_params().d_hat,
                                               get_scene_params().thickness)
-                  .dispatch(mesh_data->num_verts)
-           << fn_calc_energy_spring(curr_x, get_scene_params().stiffness_spring)
-                  .dispatch(host_sim_data->sa_stretch_springs.size())
-           << fn_calc_energy_bending(curr_x, get_scene_params().get_stiffness_quadratic_bending())
-                  .dispatch(host_sim_data->sa_bending_edges.size());
+                  .dispatch(mesh_data->num_verts);
+
+    if (host_sim_data->sa_stretch_springs.size() != 0)
+    {
+        stream << fn_calc_energy_spring(curr_x, get_scene_params().stiffness_spring)
+                      .dispatch(host_sim_data->sa_stretch_springs.size());
+    }
+    if (host_sim_data->sa_bending_edges.size() != 0)
+    {
+        stream << fn_calc_energy_bending(curr_x, get_scene_params().get_stiffness_bending())
+                      .dispatch(host_sim_data->sa_bending_edges.size());
+    }
 
     auto& host_energy = host_sim_data->sa_system_energy;
     stream << sim_data->sa_system_energy.view(0, 8).copy_to(host_energy.data()) << luisa::compute::synchronize();
 
-    float total_energy = std::reduce(&host_energy[0], &host_energy[8], 0.0f);
-    if (get_scene_params().print_system_energy)
-    {
-        LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}",
-                   total_energy,
-                   host_energy[offset_inertia],
-                   host_energy[offset_ground_collision],
-                   host_energy[offset_stretch_spring],
-                   host_energy[offset_bending]);
-    }
-    return total_energy;
+    // float total_energy = std::reduce(&host_energy[0], &host_energy[8], 0.0f);
+    // if (get_scene_params().print_system_energy)
+    // {
+    //     LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}",
+    //                total_energy,
+    //                host_energy[offset_inertia],
+    //                host_energy[offset_ground_collision],
+    //                host_energy[offset_stretch_spring],
+    //                host_energy[offset_bending]);
+    // }
+    energy_list.insert(std::make_pair("Inertia Soft Body", host_energy[offset_inertia]));
+    energy_list.insert(std::make_pair("Inertia Rigid Body", host_energy[offset_abd_inertia]));
+    energy_list.insert(std::make_pair("Ground Collision", host_energy[offset_ground_collision]));
+    energy_list.insert(std::make_pair("Cloth Stretch", host_energy[offset_stretch_spring]));
+    energy_list.insert(std::make_pair("Cloth Bending", host_energy[offset_bending]));
+    energy_list.insert(std::make_pair("ABD Orthogonality", host_energy[offset_abd_ortho]));
+    // auto total_energy = std::accumulate(energy_list.begin(),
+    //                                     energy_list.end(),
+    //                                     0.0,
+    //                                     [](double sum, const auto& pair) { return sum + pair.second; });
+    // return total_energy;
     // return energy_inertia + energy_goundcollision + energy_spring;
 };
 

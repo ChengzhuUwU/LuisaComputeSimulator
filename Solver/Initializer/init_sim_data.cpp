@@ -232,6 +232,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Rest bending info
         sim_data->sa_bending_edges.resize(num_bending_edges);
+        sim_data->sa_bending_edges_rest_area.resize(num_bending_edges);
         sim_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
         sim_data->sa_bending_edges_Q.resize(num_bending_edges);
         sim_data->sa_bending_edges_gradients.resize(num_bending_edges * 4);
@@ -241,8 +242,10 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
             num_bending_edges,
             [&](const uint eid)
             {
-                const uint   orig_eid    = bending_edge_indices[eid];
-                const uint4  edge        = mesh_data->sa_dihedral_edges[orig_eid];
+                const uint orig_eid = bending_edge_indices[eid];
+                uint4      edge     = mesh_data->sa_dihedral_edges[orig_eid];
+
+                edge                     = luisa::make_uint4(edge[0], edge[1], edge[2], edge[3]);
                 const float3 vert_pos[4] = {mesh_data->sa_rest_x[edge[0]],
                                             mesh_data->sa_rest_x[edge[1]],
                                             mesh_data->sa_rest_x[edge[2]],
@@ -250,17 +253,22 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
                 // Rest state angle
                 {
-                    const float3& x1 = vert_pos[2];
-                    const float3& x2 = vert_pos[3];
-                    const float3& x3 = vert_pos[0];
-                    const float3& x4 = vert_pos[1];
+                    const float3& x0 = vert_pos[0];
+                    const float3& x1 = vert_pos[1];
+                    const float3& x2 = vert_pos[2];
+                    const float3& x3 = vert_pos[3];
 
-                    float3      tmp;
-                    const float angle =
-                        lcs::BendingEnergy::CalcGradientsAndAngle(x1, x2, x3, x4, tmp, tmp, tmp, tmp);
+                    const float angle = lcs::BendingEnergy::compute_theta(x0, x1, x2, x3);
+
+                    const float A1    = 0.5f * luisa::length(luisa::cross(x1 - x0, x2 - x0));
+                    const float A2    = 0.5f * luisa::length(luisa::cross(x1 - x0, x3 - x0));
+                    const float L0    = luisa::length(x0 - x1);
+                    const float h_bar = (A1 + A2) / (3.0f * L0);
+
                     if (luisa::isnan(angle))
                         LUISA_ERROR("is nan rest angle {}", eid);
 
+                    sim_data->sa_bending_edges_rest_area[eid]  = h_bar;
                     sim_data->sa_bending_edges[eid]            = edge;
                     sim_data->sa_bending_edges_rest_angle[eid] = angle;
                 }
@@ -998,6 +1006,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     {
         stream
             << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
+            << upload_buffer(device, output_data->sa_bending_edges_rest_area, input_data->sa_bending_edges_rest_area)
             << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
             << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
             << upload_buffer(device, output_data->sa_bending_edges_offsets_in_adjlist, input_data->sa_bending_edges_offsets_in_adjlist)
