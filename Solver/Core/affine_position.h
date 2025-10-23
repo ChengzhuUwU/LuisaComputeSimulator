@@ -161,6 +161,16 @@ namespace AffineBodyDynamics
         A[1] = q->read(4 * body_idx + 2);
         A[2] = q->read(4 * body_idx + 3);
     }
+    inline void extract_Ap_from_q(const Var<luisa::compute::BufferView<float3>>& q,
+                                  const luisa::compute::Uint                     body_idx,
+                                  luisa::compute::Float3x3&                      A,
+                                  luisa::compute::Float3&                        p)
+    {
+        p    = q->read(4 * body_idx + 0);
+        A[0] = q->read(4 * body_idx + 1);
+        A[1] = q->read(4 * body_idx + 2);
+        A[2] = q->read(4 * body_idx + 3);
+    }
 
     template <typename Vec>
     inline auto affine_Jacobian_to_gradient(const Vec& model_position, const Vec& vertex_force)

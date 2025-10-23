@@ -64,10 +64,12 @@ class NewtonSolver : public lcs::SolverInterface
     void device_SpMV(luisa::compute::Stream&               stream,
                      const luisa::compute::Buffer<float3>& input_array,
                      luisa::compute::Buffer<float3>&       output_array);
-    float device_compute_contact_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
+    void device_compute_contact_energy(luisa::compute::Stream&               stream,
+                                       const luisa::compute::Buffer<float3>& curr_x,
+                                       std::map<std::string, double>&        energy_list);
     // void device_line_search(luisa::compute::Stream& stream);
 
-    void host_test_affine_body(luisa::compute::Stream& stream);
+    void host_test_dynamics(luisa::compute::Stream& stream);
 
   private:
     void collision_detection(luisa::compute::Stream& stream);

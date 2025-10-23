@@ -742,14 +742,26 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     {
         predict_position(substep_dt);
 
+
+        auto get_energy_template = [&](std::vector<float3>& positions)
+        {
+            std::map<std::string, double> energy_map;
+            host_compute_elastic_energy(positions, energy_map);
+            return std::accumulate(energy_map.begin(),
+                                   energy_map.end(),
+                                   0.0,
+                                   [](double sum, const std::pair<std::string, double>& p)
+                                   { return sum + p.second; });
+        };
+
         if (print_energy)
             LUISA_INFO("Frame {} start   position energy = {}",
                        lcs::get_scene_params().current_frame,
-                       host_compute_elastic_energy(host_sim_data->sa_x_step_start));
+                       get_energy_template(host_sim_data->sa_x_step_start));
         if (print_energy)
             LUISA_INFO("Frame {} predict position energy = {}",
                        lcs::get_scene_params().current_frame,
-                       host_compute_elastic_energy(host_sim_data->sa_x));
+                       get_energy_template(host_sim_data->sa_x));
 
         for (uint iter = 0; iter < nonlinear_iter_count; iter++)
         {
@@ -762,7 +774,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
             if (print_energy)
                 LUISA_INFO("    Non-linear iter {:2} energy = {}",
                            iter,
-                           host_compute_elastic_energy(host_sim_data->sa_x));
+                           get_energy_template(host_sim_data->sa_x));
         }
         update_velocity(substep_dt, false, lcs::get_scene_params().damping_cloth);
     }

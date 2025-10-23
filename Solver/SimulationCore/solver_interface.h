@@ -67,16 +67,16 @@ class SolverInterface
     void compile(AsyncCompiler& compiler) { compile_compute_energy(compiler); }
 
   public:
-    void   physics_step_prev_operation();
-    void   physics_step_post_operation();
-    void   restart_system();
-    void   save_current_frame_state();
-    void   save_current_frame_state_to_host(const uint frame, const std::string& addition_str);
-    void   load_saved_state();
-    void   load_saved_state_from_host(const uint frame, const std::string& addition_str);
-    void   save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
-    double host_compute_elastic_energy(const std::vector<float3>& curr_x);
-    double device_compute_elastic_energy(luisa::compute::Stream& stream, const luisa::compute::Buffer<float3>& curr_x);
+    void physics_step_prev_operation();
+    void physics_step_post_operation();
+    void restart_system();
+    void save_current_frame_state_to_host(const uint frame, const std::string& addition_str);
+    void load_saved_state_from_host(const uint frame, const std::string& addition_str);
+    void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
+    void host_compute_elastic_energy(const std::vector<float3>& curr_x, std::map<std::string, double>& energy_list);
+    void device_compute_elastic_energy(luisa::compute::Stream&               stream,
+                                       const luisa::compute::Buffer<float3>& curr_x,
+                                       std::map<std::string, double>&        energy_list);
     void compile_compute_energy(AsyncCompiler& compiler);
 
   protected:
@@ -105,6 +105,12 @@ class SolverInterface
                            float                                // stiffness_dirichlet
                            >
         fn_calc_energy_inertia;
+    luisa::compute::Shader<1,
+                           luisa::compute::BufferView<float3>,  // sa_q
+                           float,                               // substep_dt
+                           float                                // stiffness_dirichlet
+                           >
+        fn_calc_energy_abd_inertia;
     // luisa::compute::Shader<1,
     //     luisa::compute::BufferView<float3>, // sa_x
     //     float, // substep_dt
@@ -115,6 +121,11 @@ class SolverInterface
                            float                                // stiffness_spring
                            >
         fn_calc_energy_spring;
+    luisa::compute::Shader<1,
+                           luisa::compute::BufferView<float3>,  // sa_q
+                           float                                // stiffness_spring
+                           >
+        fn_calc_energy_abd_ortho;
     luisa::compute::Shader<1,
                            luisa::compute::BufferView<float3>,  // sa_x
                            float                                // stiffness_bending

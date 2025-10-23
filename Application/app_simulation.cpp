@@ -116,10 +116,9 @@ int main(int argc, char** argv)
 
     // Some params
     {
-        lcs::get_scene_params().implicit_dt          = 1.0f / 120.f;
-        lcs::get_scene_params().num_substep          = 1;
-        lcs::get_scene_params().nonlinear_iter_count = 50;
-        lcs::get_scene_params().pcg_iter_count       = 2000;
+        lcs::get_scene_params().implicit_dt    = 1.0f / 60.f;
+        lcs::get_scene_params().num_substep    = 1;
+        lcs::get_scene_params().pcg_iter_count = 100;
         // lcs::get_scene_params().use_bending = false;
         // lcs::get_scene_params().use_quadratic_bending_model = true;
         // lcs::get_scene_params().use_xpbd_solver = false;

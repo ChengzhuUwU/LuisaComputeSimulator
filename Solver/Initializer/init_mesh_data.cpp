@@ -451,7 +451,7 @@ namespace Initializer
                 mesh_data->sa_vert_mass.resize(num_verts);
                 mesh_data->sa_vert_mass_inv.resize(num_verts);
 
-                const float defulat_density = 10.0f;
+                const float defulat_density = 100.0f;
                 CpuParallel::parallel_for(0,
                                           num_verts,
                                           [&](const uint vid)
@@ -471,11 +471,6 @@ namespace Initializer
             mesh_data->sa_x_frame_outer.resize(num_verts);
             mesh_data->sa_v_frame_outer.resize(num_verts);
 
-            mesh_data->sa_x_frame_saved.resize(num_verts);
-            mesh_data->sa_x_frame_saved = mesh_data->sa_rest_x;
-            mesh_data->sa_v_frame_saved.resize(num_verts);
-            mesh_data->sa_v_frame_saved = mesh_data->sa_rest_v;
-
             CpuParallel::parallel_for(0,
                                       num_verts,
                                       [&](const uint vid)
@@ -486,8 +481,6 @@ namespace Initializer
                                           mesh_data->sa_x_frame_outer_next[vid] = rest_x;
                                           mesh_data->sa_x_frame_outer[vid]      = rest_x;
                                           mesh_data->sa_v_frame_outer[vid]      = rest_v;
-                                          mesh_data->sa_x_frame_saved[vid]      = rest_x;
-                                          mesh_data->sa_v_frame_saved[vid]      = rest_v;
                                       });
         }
     }
