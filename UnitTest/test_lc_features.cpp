@@ -1,9 +1,66 @@
 
+#include <any>
 #include <luisa/luisa-compute.h>
+
+struct Arguments
+{
+    luisa::compute::Buffer<uint>            buffer1;
+    luisa::compute::Buffer<float>           buffer2;
+    luisa::compute::Buffer<luisa::float3>   buffer3;
+    luisa::compute::Buffer<luisa::float3x3> buffer4;
+};
+LUISA_BINDING_GROUP(Arguments, buffer1, buffer2, buffer3, buffer4){};
+
+
+void test_dynamic_resize(luisa::compute::Device& device, luisa::compute::Stream& stream)
+{
+    using namespace luisa::compute;
+    using Uint  = UInt;
+    using Uint2 = UInt2;
+
+    Arguments args;
+    auto      fn_from_ref = device.compile<1>(
+        [&](Var<Arguments> args, const Uint iter)
+        {
+            const Uint lid = dispatch_id().x;
+            args.buffer1.write(lid, iter);
+        });
+
+    auto fn_lc_test = [&](const uint loop)
+    {
+        const uint num_leaves = 1 << loop;
+        // buffer                = device.create_sparse_buffer<uint>(num_leaves);
+        args.buffer1 = device.create_buffer<uint>(num_leaves);
+        args.buffer2 = device.create_buffer<float>(num_leaves);
+        args.buffer3 = device.create_buffer<float3>(num_leaves);
+        args.buffer4 = device.create_buffer<float3x3>(num_leaves);
+        stream << fn_from_ref(args, loop).dispatch(num_leaves) << synchronize();
+
+        std::vector<uint> host_array(num_leaves);
+        stream << args.buffer1.copy_to(host_array.data()) << synchronize();
+        if (!std::all_of(host_array.begin(), host_array.end(), [loop](uint v) { return v == loop; }))
+        {
+            LUISA_ERROR("Values mismatch at loop = {}", loop);
+            return -1;
+        }
+        LUISA_INFO("LC Test successed.");
+        return 0;
+    };
+
+    const uint test_times = 10;
+    for (uint i = 1; i <= test_times; i++)
+    {
+        if (fn_lc_test(i) != 0)
+        {
+            LUISA_ERROR("Test failed at loop = {}", i);
+            return;
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
-    luisa::log_level_info();
+    luisa::log_level_verbose();
     LUISA_INFO("Test LC features");
 
     // Init GPU system
@@ -27,46 +84,7 @@ int main(int argc, char** argv)
     luisa::compute::Device device = context.create_device(backend, nullptr, true);
     luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
-
-    using namespace luisa::compute;
-    using Uint  = UInt;
-    using Uint2 = UInt2;
-
-
-    auto fn_test1 = device.compile<1>(
-        [](const BufferVar<uint> sa_apply_flag)
-        {
-            const Uint lid = dispatch_id().x;
-            // $if(lid == 0)
-            // {
-            //     device_log("Hello Device Print");
-            // };
-        });
-
-    auto fn_lc_test = [&](const uint loop)
-    {
-        const uint num_leaves = 1 << loop;
-        LUISA_INFO("In loop = {},", loop);
-
-        Buffer<uint>        sa_apply_flag = device.create_buffer<uint>(num_leaves);
-        luisa::vector<uint> host_apply_flag(num_leaves, 0u);
-
-        stream << sa_apply_flag.copy_from(host_apply_flag.data()) << fn_test1(sa_apply_flag).dispatch(num_leaves)
-               << sa_apply_flag.copy_to(host_apply_flag.data()) << synchronize();
-
-        LUISA_INFO(".  LC Test successed.");
-        return 0;
-    };
-
-    const uint test_times = 10;
-    for (uint i = 1; i <= test_times; i++)
-    {
-        if (fn_lc_test(i) != 0)
-        {
-            LUISA_ERROR("Test failed at loop = {}", i);
-            return -1;
-        }
-    }
+    test_dynamic_resize(device, stream);
 
     return 0;
 }
