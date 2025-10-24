@@ -6,6 +6,11 @@
 [![windows](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_windows.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_windows.yml)
 [![macos](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml)
 
+
+LuisaComputeSimulator is a high-performance cross-platform application for **Physics Simulation** based on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute). 
+
+The simulator provides support for simulating cloth and rigid body and for **Intersection-Free** simulation.
+
 ## Getting Started
 
 - **Clone the repository:**
