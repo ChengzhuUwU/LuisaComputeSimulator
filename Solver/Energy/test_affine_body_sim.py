@@ -18,7 +18,7 @@ GRAVITY = np.array([0.0, -9.8, 0.0], dtype=float).reshape((3,1))
 np.set_printoptions(linewidth=1000)
 
 USE_ORTHO = True
-USE_AUTO_DIFF = True
+USE_AUTO_DIFF = False
 
 # ----------------------
 # Utility / Jacobian
@@ -333,6 +333,7 @@ def compute_total_energy(X, body_mass, dt, stiffness_ground, q, q_tilde, stiffne
     energy_inertia = 0.0
     N = X.shape[0]
     energy_inertia = 0.5 * h2_inv * (q - q_tilde).reshape(12, 1).T @ body_mass @ (q - q_tilde).reshape(12, 1)
+    print(f'diff = {q - q_tilde}, mass = {body_mass}, E = {energy_inertia}')
     # for i in range(N):
     #     diff = x[i] - x_tilde[i]
     #     energy_inertia += 0.5 * vert_mass[i] * h2_inv * np.dot(diff, diff)
@@ -342,6 +343,7 @@ def compute_total_energy(X, body_mass, dt, stiffness_ground, q, q_tilde, stiffne
         if yi < 0.0:
             pen = yi
             energy_ground += 0.5 * stiffness_ground * (pen * pen)
+            # print(f'Vert {i} penetration = {pen}, ground energy += {0.5 * stiffness_ground * (pen * pen)}')
     energy_ortho = 0.0
     if USE_ORTHO:
         Acols = np.column_stack([q[3:6], q[6:9], q[9:12]])
@@ -351,8 +353,9 @@ def compute_total_energy(X, body_mass, dt, stiffness_ground, q, q_tilde, stiffne
         #         target = 1.0 if i == j else 0.0
         #         term = np.dot(Acols[:,i], Acols[:,j]) - target
         #         e += term * term
-        energy_ortho += stiffness_ortho * e
+        energy_ortho += e
         # energy_ortho = energy_ortho_mat(Acols, stiffness_ortho)
+    print(f'Energy inertia = {energy_inertia}, gound = {energy_ground}, ortho = {energy_ortho}')
     return energy_inertia + energy_ground + energy_ortho, (energy_inertia, energy_ground, energy_ortho)
 
 import jax
@@ -380,12 +383,25 @@ def jax_func_body(q, body_mass, dt, q_tilde, stiffness_ortho):
     return energy_inertia + energy_ortho
     return energy_ortho
 
+def jax_func_inertia(q, body_mass, dt, q_tilde, stiffness_ortho):
+    h2_inv = 1.0 / (dt * dt)
+    dq = q - q_tilde
+    energy_inertia = 0.5 * h2_inv * jnp.squeeze(dq.T @ body_mass @ dq)
+    return energy_inertia
+
+def jax_func_orthogonality(q, body_mass, dt, q_tilde, stiffness_ortho):
+    Acols = jnp.column_stack([q[3:6], q[6:9], q[9:12]])  # (3,3)
+    M = Acols @ Acols.T - jnp.eye(3)
+    frob_norm_sq = jnp.sum(M**2)
+    energy_ortho = stiffness_ortho * frob_norm_sq
+    return energy_ortho
+
 def jax_func_vert(q, X, stiffness_ground):
     x = jax_q_to_x(q, X)  # (N,3)
     yi = x[1]  # y coordinate
     penetration = jnp.minimum(yi, 0.0)
     # print(f'jax penetration = {penetration}')
-    energy_ground = 0.5 * stiffness_ground * jnp.sum(penetration**2)
+    energy_ground = 0.5 * stiffness_ground * penetration * penetration
     return energy_ground
     
 jax_grad_body = jax.grad(jax_func_body)  # gradient wrt q
@@ -438,9 +454,9 @@ def run_simulation():
     # Example usage:
     init_rotate = np.zeros((3,3), float)
     init_q = np.zeros(12, dtype=float).reshape(12, 1)
-    init_q[0:3, :] = np.array([0.0, 0, 0.0]).reshape(3, 1)  # lift slightly above ground
-    rx, ry, rz = np.pi/6, 0.0, np.pi/6  # e.g., np.pi/6, np.pi/4, np.pi/3
-    # rx, ry, rz = 0, 0, 0  # e.g., np.pi/6, np.pi/4, np.pi/3
+    init_q[0:3, :] = np.array([0.0, -0.1, 0.0]).reshape(3, 1)  # lift slightly above ground
+    # rx, ry, rz = np.pi/6, 0.0, np.pi/6
+    rx, ry, rz = 0.0, 0.0, 0.0
     R = rotation_matrix_from_euler(rx, ry, rz)
     R = R
     init_q[3:6, 0] = R[:,0]; init_q[6:9, 0] = R[:,1]; init_q[9:12, 0] = R[:,2]
@@ -477,7 +493,7 @@ def run_simulation():
     nsteps = 400
     stiffness_ground = 1e5     # penalty stiffness for ground
     stiffness_ortho = 1e5      # orthogonality soft constraint stiffness (you can tune)
-    newton_iters = 1
+    newton_iters = 2
 
     # visualization state
     state = {"q": q, "vq": vq}
@@ -488,14 +504,7 @@ def run_simulation():
         vq = state["vq"]
         q_step_bg = q.copy()
 
-        print(f'Curr q = {q.T}')
-
-        # predict q_tilde with affine gravity
         q_tilde = predict_q_with_affine_gravity(q, vq, vert_mass, dt, affine_gravity)
-
-        # print(f'q_init = {q}')
-        # print(f' q_tilde = {q_tilde}')
-        # print(f' affine_gravity = {affine_gravity}')
 
         # Newton solve in reduced q (12 DOF)
         for it in range(newton_iters):
@@ -561,19 +570,21 @@ def run_simulation():
                 b_vec12 += bb
                 A_mat12 += AA
             
-
             # solve for dq
             dq = solve_linear_system(A_mat12, b_vec12, reg=1e-8)
 
-            use_ls = False
+            use_ls = True
             alpha = 1.0
 
             # convergence check (in reduced space)
+            print(f'In newton iter {it}, maxP = {np.linalg.norm(dq, np.inf)}')
             if np.linalg.norm(dq, np.inf) < 1e-6:
                 break
 
             if use_ls:
                 def get_energy():
+                    # print(f'AutoDiffE = {E} = (Inertia {E_inertia} + ortho {E_otrho} + Ground {E_gound}), Numerical = {E_numerical} = Inertia {energy_inertia} + Ortho {energy_ortho} + Ground {energy_ground}')
+
                     if USE_AUTO_DIFF:
                         E = 0
                         q_jax = jnp.array(q)
@@ -583,12 +594,14 @@ def run_simulation():
                             E += jax_func_vert(q_jax, X[vid], stiffness_ground)
                         return E, []
                     else:
-                        return compute_total_energy(x, body_mass, dt, stiffness_ground, q, q_tilde, stiffness_ortho)   
+                        return compute_total_energy(X, body_mass, dt, stiffness_ground, q, q_tilde, stiffness_ortho)   
                 
                 # linesearch in q-space
-                q = q_iter_bg + alpha * dq
+                q = q_iter_bg
                 x = q_to_x_all(q, X)
+                print(f'Before linesearch, energy evaluation:')
                 energy_init, _ = get_energy()    
+                
                 for ls in range(20):
                     q = q_iter_bg + alpha * dq
                     x = q_to_x_all(q, X)
@@ -597,7 +610,7 @@ def run_simulation():
                         energy_init = energy_trial
                         break
                     alpha *= 0.5
-                    print(f'Line search {ls} : alpha = {alpha}, prev {energy_init} < energy = {energy_trial} = {_}  ')
+                    # print(f'Line search {ls} : alpha = {alpha}, prev {energy_init} < energy = {energy_trial} ')
 
             # apply step
             q = q_iter_bg + alpha * dq

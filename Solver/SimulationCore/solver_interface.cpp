@@ -390,7 +390,7 @@ void SolverInterface::host_compute_elastic_energy(std::map<std::string, double>&
         {
             float C     = d_hat + thickness - diff;
             float area  = sa_rest_vert_area[vid];
-            float stiff = 1e7 * area;
+            float stiff = get_scene_params().stiffness_collision * area;
             return 0.5f * stiff * C * C;
         }
         else
@@ -537,7 +537,7 @@ void SolverInterface::host_compute_elastic_energy(std::map<std::string, double>&
                 {
                     float  mass = mass_matrix[ii][jj];
                     float3 diff = delta[jj];
-                    energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
+                    energy += squared_inv_dt * luisa::dot(delta[ii], delta[jj]) * mass / (2.0f);
                 }
             }
             if (is_fixed)
@@ -656,10 +656,12 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 Float  diff = x_k.y - floor_y;
                 $if(diff < d_hat + thickness)
                 {
-                    Float C     = d_hat + thickness - diff;
-                    Float area  = sa_rest_vert_area->read(vid);
+                    Float C    = d_hat + thickness - diff;
+                    Float area = sa_rest_vert_area->read(vid);
+                    // Float area  = 1.0f;
                     Float stiff = stiffness * area;
                     energy      = 0.5f * stiff * C * C;
+                    // device_log("For vert {}, pen = {}, E = {}", vid, C, energy);
                 };
             };
 
@@ -778,9 +780,8 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                     {
                         for (uint jj = 0; jj < 4; jj++)
                         {
-                            Float  mass = mass_matrix[ii][jj];
-                            Float3 diff = delta[jj];
-                            energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
+                            Float mass = mass_matrix[ii][jj];
+                            energy += squared_inv_dt * dot(delta[ii], delta[jj]) * mass / (2.0f);
                         }
                     }
 
@@ -810,7 +811,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                     Float3x3 A;
                     Float3   p;
                     AffineBodyDynamics::extract_Ap_from_q(sa_q, body_idx, A, p);
-                    device_log("A = {}, AAT = {}", A, A * transpose(A));
+                    // device_log("A = {}, AAT = {}", A, A * transpose(A));
                     for (uint ii = 0; ii < 3; ii++)
                     {
                         for (uint jj = 0; jj < 3; jj++)
@@ -836,6 +837,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                                                     std::map<std::string, double>& energy_list)
 {
     const luisa::compute::Buffer<float3>& curr_x = sim_data->sa_x;
+    const luisa::compute::Buffer<float3>& curr_q = sim_data->sa_affine_bodies_q;
 
     stream << fn_reset_float(sim_data->sa_system_energy).dispatch(8);
     if (host_sim_data->num_verts_soft != 0)
@@ -856,7 +858,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     stream << fn_calc_energy_ground_collision(curr_x,
                                               get_scene_params().floor.y,
                                               get_scene_params().use_floor,
-                                              1e7f,
+                                              get_scene_params().stiffness_collision,
                                               get_scene_params().d_hat,
                                               get_scene_params().thickness)
                   .dispatch(mesh_data->num_verts);

@@ -525,6 +525,10 @@ void LBVH::compile(AsyncCompiler& compiler)
             UInt3      face               = input_face->read(fid);
             Float3     start_positions[3] = {
                 sa_x_start->read(face[0]), sa_x_start->read(face[1]), sa_x_start->read(face[2])};
+            device_assert(!is_nan_vec(start_positions[0]) | !is_nan_vec(start_positions[1])
+                              | !is_nan_vec(start_positions[2]) | !is_inf_vec(start_positions[0])
+                              | !is_inf_vec(start_positions[1]) | !is_inf_vec(start_positions[2]),
+                          "Position exist NAN/INF");
             Float3 end_positions[3] = {sa_x_end->read(face[0]), sa_x_end->read(face[1]), sa_x_end->read(face[2])};
             Float2x3 start_aabb = AABB::make_aabb(start_positions[0], start_positions[1], start_positions[2]);
             Float2x3 end_aabb = AABB::make_aabb(end_positions[0], end_positions[1], end_positions[2]);
