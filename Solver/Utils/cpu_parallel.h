@@ -3,12 +3,12 @@
 // #include <vcruntime_typeinfo.h>
 // #undef max
 // #undef min
-// #define USE_LUISA_FIBER
+// #define LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER
 
 #include <numeric>
 #include <vector>
 #include <luisa/core/stl/algorithm.h>
-#ifdef USE_LUISA_FIBER
+#ifdef LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER
 #include <luisa/core/fiber.h>
 #include <luisa/core/spin_mutex.h>
 #endif

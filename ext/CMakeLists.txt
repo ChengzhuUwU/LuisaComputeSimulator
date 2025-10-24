@@ -58,7 +58,7 @@ endif()
 target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
 
 
-if(LUISA_COMPUTE_SOLVER_USE_GUI)
+if(LCS_ENABLE_GUI)
     if (NOT TARGET polyscope)
         FetchContent_Declare(
             polyscope
@@ -76,13 +76,13 @@ if(LUISA_COMPUTE_SOLVER_USE_GUI)
 endif()
 
 
-if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
-    target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR=1)
+if (LCS_USE_SYSTEM_PARALLEL_FOR)
+    target_compile_definitions(luisa-compute-solver-lib PRIVATE LCS_USE_SYSTEM_PARALLEL_FOR=1)
     find_package(TBB CONFIG QUIET)
     if (TBB_FOUND AND TARGET TBB::tbb)
         message(STATUS "Host parallel function use TBB")
-        target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_TBB=1)
-        target_link_libraries(luisa-compute-solver-lib PUBLIC TBB::tbb)
+        target_compile_definitions(luisa-compute-solver-lib PRIVATE LUISA_COMPUTE_SOLVER_ENABLE_TBB=1)
+        target_link_libraries(luisa-compute-solver-lib PRIVATE TBB::tbb)
     else()
         # use libdispatch or TBB for parallel_for on non-Apple Unix systems if available
         if (UNIX AND NOT APPLE)
@@ -101,33 +101,33 @@ if (LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR)
             find_path(DISPATCH_INCLUDE_DIR dispatch/dispatch.h) # Apple use native libdispatch
             if (DISPATCH_LIB AND DISPATCH_INCLUDE_DIR)
                 message(STATUS "Host parallel function use package libdispatch")
-                target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
-                target_link_libraries(luisa-compute-solver-lib PUBLIC ${DISPATCH_LIB})
-                target_include_directories(luisa-compute-solver-lib PUBLIC ${DISPATCH_INCLUDE_DIR})
+                target_compile_definitions(luisa-compute-solver-lib PRIVATE LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
+                target_link_libraries(luisa-compute-solver-lib PRIVATE ${DISPATCH_LIB})
+                target_include_directories(luisa-compute-solver-lib PRIVATE ${DISPATCH_INCLUDE_DIR})
             endif ()
         else() # Windows or Apple
             if (APPLE)
                 # Use native libdispatch
-                target_compile_definitions(luisa-compute-solver-lib PUBLIC LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
+                target_compile_definitions(luisa-compute-solver-lib PRIVATE LUISA_COMPUTE_SOLVER_ENABLE_LIBDISPATCH=1)
                 message(STATUS "Host parallel function use native libdispatch")
             else ()
-                target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
+                target_compile_definitions(luisa-compute-solver-lib PRIVATE LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER=1)
                 message(STATUS "Host parallel function use luisa::fiber")
             endif ()
         endif()
     endif()
 else()
-    target_compile_definitions(luisa-compute-solver-lib PUBLIC USE_LUISA_FIBER=1)
+    target_compile_definitions(luisa-compute-solver-lib PRIVATE LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER=1)
     message(STATUS "Host parallel function use luisa::fiber")
 endif()
 
 
 
 
-if (USE_AMGCL_FOR_SIM)
-    target_compile_definitions(luisa-compute-solver-lib PRIVATE USE_AMGCL_FOR_SIM)
-    target_link_libraries(luisa-compute-solver-lib PRIVATE amgcl::amgcl)
-endif()
+# if (USE_AMGCL_FOR_SIM)
+#     target_compile_definitions(luisa-compute-solver-lib PRIVATE USE_AMGCL_FOR_SIM)
+#     target_link_libraries(luisa-compute-solver-lib PRIVATE amgcl::amgcl)
+# endif()
 
 
 

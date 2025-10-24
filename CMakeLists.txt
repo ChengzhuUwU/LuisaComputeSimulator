@@ -6,8 +6,9 @@ project(LuisaComputeSolver)
 
 
 # Global options
-option(LUISA_COMPUTE_SOLVER_USE_GUI "Enable GUI support" OFF)
-option(LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
+option(LCS_ENABLE_GUI "Enable GUI support" OFF)
+option(LCS_ENABLE_TEST "Enable Unit Tests" OFF)
+option(LCS_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
 
 option(LUISA_COMPUTE_ENABLE_CUDA "Enable CUDA backend" ON)
 option(LUISA_COMPUTE_ENABLE_METAL "Enable Metal backend" ON)
@@ -46,9 +47,11 @@ target_link_libraries(app-simulation PRIVATE
     luisa-compute-solver-lib
     luisa-compute-solver-ext-yyjson
     )
-if (LUISA_COMPUTE_SOLVER_USE_GUI)
+if (LCS_ENABLE_GUI)
     target_link_libraries(app-simulation PRIVATE polyscope)
     target_compile_definitions(app-simulation PRIVATE SIMULATION_APP_USE_GUI=1)
 endif()
 
-add_subdirectory(UnitTest)
+if(LCS_ENABLE_TEST)
+    add_subdirectory(UnitTest)
+endif()
