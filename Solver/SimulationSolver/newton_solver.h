@@ -49,8 +49,7 @@ class NewtonSolver : public lcs::SolverInterface
     void host_evaluete_spring();
     void host_evaluete_bending();
     void host_material_energy_assembly();
-    void host_solve_eigen(luisa::compute::Stream&                           stream,
-                          std::function<double(const std::vector<float3>&)> func_compute_energy);
+    void host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_line_search(luisa::compute::Stream& stream);
 
@@ -64,9 +63,7 @@ class NewtonSolver : public lcs::SolverInterface
     void device_SpMV(luisa::compute::Stream&               stream,
                      const luisa::compute::Buffer<float3>& input_array,
                      luisa::compute::Buffer<float3>&       output_array);
-    void device_compute_contact_energy(luisa::compute::Stream&               stream,
-                                       const luisa::compute::Buffer<float3>& curr_x,
-                                       std::map<std::string, double>&        energy_list);
+    void device_compute_contact_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list);
     // void device_line_search(luisa::compute::Stream& stream);
 
     void host_test_dynamics(luisa::compute::Stream& stream);

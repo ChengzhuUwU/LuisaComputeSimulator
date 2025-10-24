@@ -19,6 +19,14 @@ void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
+inline float safe_devide(const float a, const float b)
+{
+    return b < 1e-8f ? 0.0f : a / b;
+}
+inline Var<float> safe_devide(const Var<float> a, const Var<float> b)
+{
+    return lcs::select(b < 1e-8f, Float(0.0f), a / b);
+}
 
 void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
 {
@@ -75,7 +83,7 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
         [sa_convergence = sim_data->sa_convergence.view(), fn_read_rz](const Float dot_pq)
     {
         Float delta = fn_read_rz();
-        Float alpha = select(dot_pq == 0.0f, Float(0.0f), delta / dot_pq);  // alpha = delta / dot(p, q)
+        Float alpha = safe_devide(delta, dot_pq);
         sa_convergence->write(2, alpha);
     };
     luisa::compute::Callable fn_read_alpha = [sa_convergence = sim_data->sa_convergence.view()]()
@@ -86,7 +94,7 @@ void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
     {
         // Float delta_old = fn_read_rz();
         Float delta_old = dot_rz_old;
-        Float beta      = select(delta_old == 0.0f, Float(0.0f), dot_rz / delta_old);
+        Float beta      = safe_devide(dot_rz, delta_old);
         sa_convergence->write(3, beta);
     };
     luisa::compute::Callable fn_read_beta = [sa_convergence = sim_data->sa_convergence.view()]()
@@ -343,7 +351,7 @@ static inline float fast_infinity_norm(const std::vector<float3>& ptr)  // Min v
 
 void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
                                          std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
-                                         std::function<double(const std::vector<float3>&)> func_compute_energy)
+                                         std::function<double()> func_compute_energy)
 {
     std::vector<float3>&   sa_cgX      = host_sim_data->sa_cgX;
     std::vector<float3>&   sa_cgB      = host_sim_data->sa_cgB;
@@ -377,7 +385,7 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
     {
         float delta_old = sa_converage[0];
         float delta     = sa_converage[2];
-        float beta      = delta_old == 0.0f ? 0.0f : delta / delta_old;
+        float beta      = safe_devide(delta, delta_old);
         if (vid == 0)
         {
             sa_converage[1]                 = 0;
@@ -403,7 +411,9 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
     {
         float delta  = sa_converage[0];
         float dot_pq = sa_converage[1];
-        float alpha  = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
+        float alpha  = safe_devide(delta, dot_pq);
+        // float alpha  = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
+        // float alpha = dot_pq < 1e-8f ? 0.0f : delta / dot_pq;
         return alpha;
     };
     auto save_dot_rz = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_rz) -> void
@@ -525,8 +535,8 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
             exit(0);
         }
         // if (normR < 1e-4 * normR_0 || dot_rz == 0.0f)
-        // if (dot_rz < 1e-8)
-        if (dot_rz == 0.0f)
+        if (dot_rz < 1e-8)
+        // if (dot_rz == 0.0f)
         {
             break;
         }
@@ -614,7 +624,7 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
 void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
     luisa::compute::Stream& stream,
     std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
-    std::function<double(const luisa::compute::Buffer<float3>&)> func_compute_energy)
+    std::function<double()> func_compute_energy)
 {
     auto host_infinity_norm = [](const std::vector<float3>& ptr) -> float  // Min value in array
     {
@@ -683,7 +693,7 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
         // 6 : init energy
         // 7 : new energy
 
-        if (iter % 50 == 0)
+        if (iter % 25 == 0)
         {
             // stream
             //     << sim_data->sa_convergence.view(4, 1).copy_to(&normR)
@@ -707,9 +717,9 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
                 LUISA_ERROR("Exist NAN/INF in PCG iteration");
                 exit(0);
             }
-            // if (dot_rz < 1e-8)
+            if (dot_rz < 1e-8)
             // if (normR / normR_0 < 1e-4f)
-            if (dot_rz == 0.0f)
+            // if (dot_rz == 0.0f)
             {
                 break;
             }
@@ -761,7 +771,7 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
 void ConjugateGradientSolver::eigen_solve(const Eigen::SparseMatrix<float>& eigen_cgA,
                                           Eigen::VectorXf&                  eigen_cgX,
                                           const Eigen::VectorXf&            eigen_cgB,
-                                          std::function<double(const std::vector<float3>&)> func_compute_energy)
+                                          std::function<double()>           func_compute_energy)
 {
     std::vector<float3>& host_cgX = host_sim_data->sa_cgX;
 

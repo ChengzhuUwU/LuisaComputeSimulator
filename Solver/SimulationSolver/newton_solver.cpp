@@ -107,56 +107,24 @@ static inline float fast_infinity_norm(const std::vector<float3>& ptr)  // Min v
         [](const float left, const float right) { return max_scalar(left, right); },
         -1e9f);
 };
-static void convert_eigen_to_triplets(const Eigen::MatrixXf& matrix, std::vector<MatrixTriplet3x3>& triplets)
-{
-    if (matrix.rows() != matrix.cols())
-    {
-        LUISA_ERROR("Not quad matrix");
-        return;
-    }
-    const uint N = matrix.rows() / 3;
-    LUISA_INFO("Convert eigen matrix of size {} to triplets, N = {}", matrix.rows(), N);
 
-    uint idx = 0;
-    triplets.clear();
-    for (uint ii = 0; ii < N; ii++)
-    {
-        const uint curr_prefix = ii * (N - 1);
-        const uint curr_suffix = (ii + 1) * (N - 1) - 1;
-        for (uint jj = 0; jj < N; jj++)
-        {
-            if (ii != jj)
-            {
-                const EigenFloat3x3 orig = matrix.block<3, 3>(ii * 3, jj * 3);
-                const uint property = MatrixTriplet::make_triplet_property_in_block(idx, curr_prefix, curr_suffix);
-                triplets.emplace_back(make_matrix_triplet(ii, jj, property, eigen3x3_to_float3x3(orig)));
-                idx += 1;
-            }
-        }
-    }
-}
-static void convert_triplets_to_dense_matrix(Eigen::MatrixXf&                     matrix,
-                                             const std::vector<MatrixTriplet3x3>& triplets,
-                                             const uint                           N)
+template <uint N>
+struct EigenTripletBlock
 {
-    matrix.resize(3 * N, 3 * N);
-    matrix.setZero();
-    for (const auto& triplet : triplets)
-    {
-        if (MatrixTriplet::is_valid(triplet.get_matrix_property()))
-        {
-            auto row = triplet.get_row_idx();
-            auto col = triplet.get_col_idx();
-            matrix.block<3, 3>(row * 3, col * 3) += float3x3_to_eigen3x3(triplet.get_matrix());
-        }
-    }
-}
+    std::array<uint, N>                indices;
+    Eigen::Matrix<float, 3 * N, 3 * N> matrix;
+};
+
+struct VarientEigenTripletBlock
+{
+    std::vector<uint> left_indices;
+    std::vector<uint> right_indices;
+    Eigen::MatrixXf   matrix;
+};
+
 static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>&          matrix,
-                                              const std::vector<MatrixTriplet3x3>& triplets,
-                                              const uint                           N)
+                                              const std::vector<MatrixTriplet3x3>& triplets)
 {
-    matrix.resize(3 * N, 3 * N);
-    matrix.setZero();
     std::vector<Eigen::Triplet<float>> eigen_triplets;
     eigen_triplets.reserve(triplets.size() * 9);
     for (const auto& triplet : triplets)
@@ -170,17 +138,17 @@ static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>&       
             {
                 for (uint j = 0; j < 3; j++)
                 {
-                    eigen_triplets.push_back(Eigen::Triplet<float>(row * 3 + i, col * 3 + j, hess[i][j]));
+                    eigen_triplets.emplace_back(Eigen::Triplet<float>(row * 3 + i, col * 3 + j, hess[i][j]));
                 }
             }
         }
     }
     matrix.setFromTriplets(eigen_triplets.begin(), eigen_triplets.end());
 }
+
 template <uint N>
-static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>& matrix,
-                                              const std::vector<Eigen::Matrix<float, 3 * N, 3 * N>>& hessians,
-                                              const std::vector<luisa::Vector<unsigned int, N>>& indices)
+static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>&              matrix,
+                                              const std::vector<EigenTripletBlock<N>>& hessians)
 {
     Eigen::SparseMatrix<float> local_matrix(matrix.rows(), matrix.cols());
     local_matrix.setZero();
@@ -188,8 +156,9 @@ static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>& matrix
     local_triplets.reserve(hessians.size() * N * N * 9);
     for (size_t t_idx = 0; t_idx < hessians.size(); t_idx++)
     {
-        const auto& hess = hessians[t_idx];
-        const auto& idxs = indices[t_idx];
+        auto        triplet = hessians[t_idx];
+        const auto& hess    = triplet.matrix;
+        const auto& idxs    = triplet.indices;
         for (uint ii = 0; ii < N; ii++)
         {
             const uint vid = idxs[ii];
@@ -200,7 +169,7 @@ static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>& matrix
                 {
                     for (uint j = 0; j < 3; j++)
                     {
-                        local_triplets.push_back(
+                        local_triplets.emplace_back(
                             Eigen::Triplet<float>(vid * 3 + i, adj_vid * 3 + j, hess(ii * 3 + i, jj * 3 + j)));
                     }
                 }
@@ -210,29 +179,40 @@ static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>& matrix
     local_matrix.setFromTriplets(local_triplets.begin(), local_triplets.end());
     matrix += local_matrix;
 }
-// template <uint N>
-static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>&                    matrix,
-                                              const std::vector<Eigen::Matrix<float, 3, 3>>& hessians)
+
+static void convert_triplets_to_sparse_matrix(Eigen::SparseMatrix<float>&                  matrix,
+                                              const std::vector<VarientEigenTripletBlock>& hessians)
 {
     Eigen::SparseMatrix<float> local_matrix(matrix.rows(), matrix.cols());
     local_matrix.setZero();
     std::vector<Eigen::Triplet<float>> local_triplets;
-    local_triplets.reserve(hessians.size() * 9);
-    for (size_t vid = 0; vid < hessians.size(); vid++)
+    for (size_t t_idx = 0; t_idx < hessians.size(); t_idx++)
     {
-        const auto& hess = hessians[vid];
-        for (uint i = 0; i < 3; i++)
+        auto        triplet    = hessians[t_idx];
+        const auto& hess       = triplet.matrix;
+        const auto& left_idxs  = triplet.left_indices;
+        const auto& right_idxs = triplet.right_indices;
+
+        for (uint ii = 0; ii < left_idxs.size(); ii++)
         {
-            for (uint j = 0; j < 3; j++)
+            const uint vid = left_idxs[ii];
+            for (uint jj = 0; jj < right_idxs.size(); jj++)
             {
-                local_triplets.push_back(Eigen::Triplet<float>(vid * 3 + i, vid * 3 + j, hess(i, j)));
+                const uint adj_vid = right_idxs[jj];
+                for (uint i = 0; i < 3; i++)
+                {
+                    for (uint j = 0; j < 3; j++)
+                    {
+                        local_triplets.emplace_back(
+                            Eigen::Triplet<float>(vid * 3 + i, adj_vid * 3 + j, hess(ii * 3 + i, jj * 3 + j)));
+                    }
+                }
             }
         }
     }
     local_matrix.setFromTriplets(local_triplets.begin(), local_triplets.end());
     matrix += local_matrix;
 }
-
 
 void NewtonSolver::compile(AsyncCompiler& compiler)
 {
@@ -378,7 +358,6 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
                 // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
                 // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
             };
-
 
             luisa::compute::set_block_size(256u);
             luisa::compute::Shared<float3> cache_warp_sum(ParallelIntrinsic::warp_num);
@@ -1313,7 +1292,13 @@ void NewtonSolver::host_predict_position()
                                   host_sim_data->sa_affine_bodies_q_tilde[block_idx]      = q_pred;
                                   host_sim_data->sa_affine_bodies_q_iter_start[block_idx] = q_prev;
                                   host_sim_data->sa_affine_bodies_q[block_idx]            = q_prev;
-                                  // LUISA_INFO("Body {}'s block_{} : q = {}, v = {} , dt = {} => q_tilde = {}", block_idx / 4, block_idx % 4, q_prev, q_v, substep_dt, q_pred);
+                                  //   LUISA_INFO("Body {}'s block_{} : q = {}, v = {} , dt = {} => q_tilde = {}",
+                                  //              block_idx / 4,
+                                  //              block_idx % 4,
+                                  //              q_prev,
+                                  //              q_v,
+                                  //              substep_dt,
+                                  //              q_pred);
                               });
 }
 void NewtonSolver::host_update_velocity()
@@ -1423,7 +1408,7 @@ void NewtonSolver::host_evaluate_inertia()
                                   // float3 v_0 = sa_v[vid];
 
                                   float    mass     = sa_vert_mass[vid];
-                                  float3   gradient = -mass * h_2_inv * (x_k - x_tilde);
+                                  float3   gradient = mass * h_2_inv * (x_k - x_tilde);
                                   float3x3 hessian  = luisa::make_float3x3(1.0f) * mass * h_2_inv;
 
                                   if (sa_is_fixed[vid])
@@ -1433,7 +1418,7 @@ void NewtonSolver::host_evaluate_inertia()
                                   }
                                   {
                                       // sa_cgX[vid] = dx_0;
-                                      sa_cgB[vid]      = gradient;
+                                      sa_cgB[vid]      = -gradient;
                                       sa_cgA_diag[vid] = hessian;
                                   }
                               });
@@ -1694,7 +1679,7 @@ void NewtonSolver::host_evaluate_ground_collision()
                         float    C        = diff - (d_hat + thickness);
                         float3   normal   = luisa::make_float3(0, 1, 0);
                         float    area     = host_mesh_data->sa_rest_vert_area[vid];
-                        float    stiff    = 1e9f * area;
+                        float    stiff    = stiffness_ground * area;
                         float    k1       = stiff * C;
                         float3   model_x  = host_mesh_data->sa_scaled_model_x[vid];
                         float3   gradient = stiff * C * normal;
@@ -1745,13 +1730,15 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     cgA.setZero();
     cgB.setZero();
 
+    const uint prefix = host_sim_data->num_verts_soft;
+
     // Inertia
     if constexpr (false)
     {
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
 
-        std::vector<EigenFloat12x12> hessian_blocks(num_bodies);
+        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
         CpuParallel::single_thread_for(
             0,
@@ -1782,18 +1769,22 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 // std::cout << "Body " << body_idx << " inertia hessian: " << std::endl
                 //           << hessian << std::endl;
 
-                hessian_blocks[body_idx] = hessian;
+                hessian_blocks[body_idx] = {.indices = {prefix + 4 * body_idx + 0,
+                                                        prefix + 4 * body_idx + 1,
+                                                        prefix + 4 * body_idx + 2,
+                                                        prefix + 4 * body_idx + 3},
+                                            .matrix  = hessian};
                 cgB.block<12, 1>(body_idx * 12, 0) -= gradient;
                 // cgA.block<12, 12>(body_idx * 12, body_idx * 12) += hessian;
             });
 
-        convert_triplets_to_sparse_matrix<4>(cgA, hessian_blocks, host_sim_data->sa_affine_bodies);
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
     // Soft inertia
     // if constexpr (false)
     {
-        std::vector<EigenFloat3x3> hessian_blocks(num_dof);
+        std::vector<EigenTripletBlock<1>> hessian_blocks(host_sim_data->num_verts_soft);
         CpuParallel::single_thread_for(0,
                                        host_sim_data->num_verts_soft,
                                        [sa_cgB              = host_sim_data->sa_cgB.data(),
@@ -1825,7 +1816,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                            }
                                            {
                                                cgB.block<3, 1>(vid * 3, 0) = -float3_to_eigen3(gradient);
-                                               hessian_blocks[vid] = float3x3_to_eigen3x3(hessian);
+                                               hessian_blocks[vid]         = {.indices = {vid},
+                                                                              .matrix = float3x3_to_eigen3x3(hessian)};
                                            }
                                        });
 
@@ -1835,7 +1827,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Soft stretch
     // if constexpr (false)
     {
-        std::vector<EigenFloat6x6> hessian_blocks(host_sim_data->sa_stretch_springs.size());
+        std::vector<EigenTripletBlock<2>> hessian_blocks(host_sim_data->sa_stretch_springs.size());
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_stretch_springs.size(),
@@ -1884,18 +1876,17 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                     tmpH.block<3, 3>(0, 3) = float3x3_to_eigen3x3(-1.0f * He);
                     tmpH.block<3, 3>(3, 0) = float3x3_to_eigen3x3(-1.0f * He);
                     tmpH.block<3, 3>(3, 3) = float3x3_to_eigen3x3(He);
-                    hessian_blocks[eid]    = tmpH;
+                    hessian_blocks[eid]    = {.indices = {edge[0], edge[1]}, .matrix = tmpH};
                 }
             });
 
-        convert_triplets_to_sparse_matrix<2>(cgA, hessian_blocks, host_sim_data->sa_stretch_springs);
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
     // Bending
     // if constexpr (false)
     {
-        std::vector<EigenFloat12x12> hessian_blocks(host_sim_data->sa_bending_edges.size());
-        std::vector<uint4>           new_bending_edges(host_sim_data->sa_bending_edges.size());
+        std::vector<EigenTripletBlock<4>> hessian_blocks(host_sim_data->sa_bending_edges.size());
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_bending_edges.size(),
@@ -1908,8 +1899,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
              output_hessian_ptr          = host_sim_data->sa_bending_edges_hessians.data(),
              stiffness_bending           = get_scene_params().get_stiffness_bending(),
              &hessian_blocks,
-             &cgB,
-             &new_bending_edges](const uint eid)
+             &cgB](const uint eid)
             {
                 uint4  edge        = sa_bending_edges[eid];
                 float3 vert_pos[4] = {sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]]};
@@ -1923,7 +1913,6 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 float  angle =
                     BendingEnergy::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
                 const float delta_angle = angle - rest_angle;
-                new_bending_edges[eid]  = edge;
 
                 EigenFloat12x12 H = EigenFloat12x12::Zero();
                 cgB.block<3, 1>(3 * edge[0], 0) -= stiff * delta_angle * float3_to_eigen3(gradients[0]);
@@ -1936,17 +1925,26 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                         H.block<3, 3>(3 * ii, 3 * jj) =
                             stiff * float3x3_to_eigen3x3(outer_product(gradients[ii], gradients[jj]));
                     }
-                hessian_blocks[eid] = H;
+                hessian_blocks[eid] = {.indices = {edge[0], edge[1], edge[2], edge[3]}, .matrix = H};
             });
-        convert_triplets_to_sparse_matrix<4>(cgA, hessian_blocks, new_bending_edges);
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
     // Ground collision
     if constexpr (false)
     {
-        std::vector<EigenFloat12x12> hessian_blocks(num_bodies);
-        for (auto& H : hessian_blocks)
-            H = EigenFloat12x12::Zero();
+        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
+        for (uint body_idx = 0; body_idx < host_sim_data->sa_affine_bodies.size(); body_idx++)
+        {
+            hessian_blocks[body_idx] = {.indices =
+                                            {
+                                                prefix + 4 * body_idx + 0,
+                                                prefix + 4 * body_idx + 1,
+                                                prefix + 4 * body_idx + 2,
+                                                prefix + 4 * body_idx + 3,
+                                            },
+                                        .matrix = EigenFloat12x12::Zero()};
+        }
 
         const float d_hat     = get_scene_params().d_hat;
         const float thickness = get_scene_params().thickness;
@@ -1981,7 +1979,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
 
                             auto J = AffineBodyDynamics::get_jacobian_dxdq(model_x);
                             cgB.block<12, 1>(body_idx * 12, 0) += J.transpose() * float3_to_eigen3(force);
-                            hessian_blocks[body_idx] += J.transpose() * float3x3_to_eigen3x3(hessian) * J;
+                            hessian_blocks[body_idx].matrix += J.transpose() * float3x3_to_eigen3x3(hessian) * J;
                             // cgA.block<12, 12>(body_idx * 12, body_idx * 12) +=
                             //     J.transpose() * float3x3_to_eigen3x3(hessian) * J;
 
@@ -1993,13 +1991,13 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                     }
                 }
             });
-        convert_triplets_to_sparse_matrix<4>(cgA, hessian_blocks, host_sim_data->sa_affine_bodies);
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
-    // Ortho
+    // Orthogonality
     if constexpr (false)
     {
-        std::vector<EigenFloat12x12> hessian_blocks(num_bodies);
+        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
         const float d_hat     = get_scene_params().d_hat;
         const float thickness = get_scene_params().thickness;
@@ -2060,25 +2058,26 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                 4.0f * stiff * float3x3_to_eigen3x3(hessian);
                         }
                     }
-                    hessian_blocks[body_idx] = local_H;
+                    hessian_blocks[body_idx] = {.indices = {prefix + 4 * body_idx + 0,
+                                                            prefix + 4 * body_idx + 1,
+                                                            prefix + 4 * body_idx + 2,
+                                                            prefix + 4 * body_idx + 3},
+                                                .matrix  = local_H};
                 }
             });
+
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
     // Contact
     if constexpr (false)
     {
-        // auto tmpA = cgA;
-        // auto tmpB = cgB;
-        // tmpA.setZero();
-        // tmpB.setZero();
-
         mp_narrowphase_detector->download_narrowphase_list(stream);
 
         const auto& host_count = host_collision_data->narrow_phase_collision_count;
         const uint  num_pairs  = host_count.front();
 
-        std::vector<EigenFloat12x12> hessian_blocks;
+        std::vector<VarientEigenTripletBlock> hessian_blocks;
 
         for (uint pair_idx = 0; pair_idx < num_pairs; pair_idx++)
         {
@@ -2099,36 +2098,131 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 host_sim_data->sa_x[indices[3]],
             };
             bool is_rigid[4] = {
-                indices[0] >= host_sim_data->num_verts_soft,
-                indices[1] >= host_sim_data->num_verts_soft,
-                indices[2] >= host_sim_data->num_verts_soft,
-                indices[3] >= host_sim_data->num_verts_soft,
+                indices[0] >= prefix,
+                indices[1] >= prefix,
+                indices[2] >= prefix,
+                indices[3] >= prefix,
             };
 
-            for (uint ii = 0; ii < 4; ii++)
+            if constexpr (false)
             {
-                const float3                Xi = host_mesh_data->sa_scaled_model_x[indices[ii]];
-                Eigen::Matrix<float, 3, 12> J1 = AffineBodyDynamics::get_jacobian_dxdq(Xi);
-                const uint  body_i             = host_sim_data->sa_vert_affine_bodies_id[indices[ii]];
-                EigenFloat3 grad               = float3_to_eigen3(k1 * weight[ii] * normal);
-                cgB.block<12, 1>(body_i * 12, 0) += J1.transpose() * grad;
-
-                for (uint jj = 0; jj < 4; jj++)
+                for (uint ii = 0; ii < 4; ii++)
                 {
-                    const float3                Xj = host_mesh_data->sa_scaled_model_x[indices[jj]];
-                    Eigen::Matrix<float, 3, 12> J2 = AffineBodyDynamics::get_jacobian_dxdq(Xj);
-                    const uint body_j = host_sim_data->sa_vert_affine_bodies_id[indices[jj]];
+                    EigenFloat3 grad = float3_to_eigen3(k1 * weight[ii] * normal);
+                    cgB.block<3, 1>(indices[ii] * 3, 0) += grad;
+                    for (uint jj = 0; jj < 4; jj++)
+                    {
+                        const float3x3 hess = k2 * weight[ii] * weight[jj] * outer_product(normal, normal);
+                        hessian_blocks.push_back({.left_indices  = {indices[ii]},
+                                                  .right_indices = {indices[jj]},
+                                                  .matrix        = float3x3_to_eigen3x3(hess)});
+                    }
+                }
+            }
 
-                    const float3x3 hess = k2 * weight[ii] * weight[jj] * outer_product(normal, normal);
-                    const EigenFloat12x12 JtHJ = J1.transpose() * float3x3_to_eigen3x3(hess) * J2;
-                    // cgA.block<12, 12>(body_i * 12, body_j * 12) += JtHJ;  // Only affect its own body
-                    hessian_blocks[pair_idx] += JtHJ;
+            // if constexpr (false)
+            {
+                for (uint ii = 0; ii < 4; ii++)
+                {
+                    std::vector<uint> left_indices;
+                    std::vector<uint> right_indices;
+
+                    EigenFloat3     grad = float3_to_eigen3(k1 * weight[ii] * normal);
+                    Eigen::MatrixXf J1;  // = Eigen::Matrix<float, 3, 12>::Zero();
+                    if (is_rigid[ii])
+                    {
+                        const float3 Xi   = host_mesh_data->sa_scaled_model_x[indices[ii]];
+                        J1                = AffineBodyDynamics::get_jacobian_dxdq(Xi);
+                        const uint body_i = host_sim_data->sa_vert_affine_bodies_id[indices[ii]];
+
+                        cgB.block<12, 1>(3 * prefix + body_i * 12, 0) += J1.transpose() * grad;
+                        left_indices = {
+                            prefix + 4 * body_i + 0,
+                            prefix + 4 * body_i + 1,
+                            prefix + 4 * body_i + 2,
+                            prefix + 4 * body_i + 3,
+                        };
+                    }
+                    else
+                    {
+                        J1 = EigenFloat3x3::Identity();
+                        cgB.block<3, 1>(indices[ii] * 3, 0) += grad;
+                        left_indices = {indices[ii]};
+                    }
+
+                    for (uint jj = 0; jj < 4; jj++)
+                    {
+                        const float3x3 hess = k2 * weight[ii] * weight[jj] * outer_product(normal, normal);
+                        Eigen::MatrixXf J2;
+                        if (is_rigid[jj])
+                        {
+                            const float3 Xj   = host_mesh_data->sa_scaled_model_x[indices[jj]];
+                            J2                = AffineBodyDynamics::get_jacobian_dxdq(Xj);
+                            const uint body_j = host_sim_data->sa_vert_affine_bodies_id[indices[jj]];
+                            right_indices     = {
+                                prefix + 4 * body_j + 0,
+                                prefix + 4 * body_j + 1,
+                                prefix + 4 * body_j + 2,
+                                prefix + 4 * body_j + 3,
+                            };
+                        }
+                        else
+                        {
+                            J2            = EigenFloat3x3::Identity();
+                            right_indices = {indices[jj]};
+                        }
+                        const Eigen::MatrixXf JtHJ = J1.transpose() * float3x3_to_eigen3x3(hess) * J2;
+
+                        hessian_blocks.push_back(
+                            {.left_indices = left_indices, .right_indices = right_indices, .matrix = JtHJ});
+                        // LUISA_INFO("Host generate offdiag triplet ({}, {}): {}", left_indices, right_indices, hess);
+                    }
                 }
             }
         }
+        // convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
+    }
 
-        // cgA += tmpA;
-        // cgB += tmpB;
+    // if constexpr (false)
+    {
+        stream << fn_reset_vector(sim_data->sa_cgB).dispatch(num_dof)
+               << fn_reset_float3x3(sim_data->sa_cgA_diag).dispatch(num_dof);
+        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                          sim_data->sa_x,
+                                                                          sim_data->sa_x,
+                                                                          get_scene_params().d_hat,
+                                                                          get_scene_params().thickness,
+                                                                          sim_data->sa_vert_affine_bodies_id,
+                                                                          mesh_data->sa_scaled_model_x,
+                                                                          host_sim_data->num_verts_soft,
+                                                                          sim_data->sa_cgB,
+                                                                          sim_data->sa_cgA_diag);
+        mp_narrowphase_detector->device_assemble_contact_triplet(
+            stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
+        mp_narrowphase_detector->download_contact_triplet(stream);
+
+        {
+            std::vector<float3>   contact_force(num_dof);
+            std::vector<float3x3> contact_diagA(num_dof);
+            stream << sim_data->sa_cgB.copy_to(contact_force.data())
+                   << sim_data->sa_cgA_diag.copy_to(contact_diagA.data()) << luisa::compute::synchronize();
+            std::vector<EigenTripletBlock<1>> hessian_blocks(num_dof);
+            for (uint vid = 0; vid < num_dof; vid++)
+            {
+                cgB.block<3, 1>(vid * 3, 0) += float3_to_eigen3(contact_force[vid]);
+                hessian_blocks[vid] = {.indices = {vid}, .matrix = float3x3_to_eigen3x3(contact_diagA[vid])};
+            }
+            convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
+        }
+
+        const uint triplet_count =
+            host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        std::vector<MatrixTriplet3x3> hessian_blocks(triplet_count);
+        CpuParallel::parallel_copy(host_collision_data->sa_cgA_contact_offdiag_triplet, hessian_blocks, triplet_count);
+        Eigen::SparseMatrix<float> cgA_contact_offdiag(num_dof * 3, num_dof * 3);
+        cgA_contact_offdiag.setZero();
+        convert_triplets_to_sparse_matrix(cgA_contact_offdiag, hessian_blocks);
+        cgA += cgA_contact_offdiag;
     }
 
     Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver;  // Eigen::IncompleteCholesky<float>
@@ -2149,73 +2243,6 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                get_scene_params().current_nonlinear_iter,
                (cgB - cgA * cgX).norm(),
                fast_infinity_norm(host_sim_data->sa_cgX));
-    return;
-
-    // for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
-    // {
-    //     auto diag_hess = cgA.block<3, 3>(vid * 3, vid * 3);
-    //     auto grad      = cgB.block<3, 1>(vid * 3, 0);
-    //     host_sim_data->sa_cgA_diag[vid] = host_sim_data->sa_cgA_diag[vid] + eigen3x3_to_float3x3(diag_hess);
-    //     host_sim_data->sa_cgB[vid] = host_sim_data->sa_cgB[vid] + eigen3_to_float3(grad);
-    // }
-
-    // std::vector<MatrixTriplet3x3> new_triplet;
-    // convert_eigen_to_triplets(cgA, new_triplet);
-    // LUISA_INFO("New triplet size: {}", new_triplet.size());
-
-    // auto& host_count = host_collision_data->narrow_phase_collision_count;
-    // host_count[CollisionPair::CollisionCount::total_adj_verts_offset()] = new_triplet.size();
-
-    // CpuParallel::parallel_set(host_collision_data->sa_cgA_contact_offdiag_triplet,
-    //                           get_dispatch_threads(new_triplet.size(), 256),
-    //                           make_matrix_triplet(-1u, -1u, 0, luisa::make_float3x3(0.0f)));
-    // for (uint triplet_idx = 0; triplet_idx < new_triplet.size(); triplet_idx++)
-    // {
-    //     host_collision_data->sa_cgA_contact_offdiag_triplet[triplet_idx] = new_triplet[triplet_idx];
-    // }
-
-    // Eigen::SparseMatrix<float> cgA_sparse;
-    // cgA_sparse.resize(host_sim_data->num_affine_bodies * 12, host_sim_data->num_affine_bodies * 12);
-    // {
-    //     // cgA_sparse = cgA.sparseView();
-    //     std::vector<Eigen::Triplet<float>> triplet_list;
-    //     for (const auto& triplet : new_triplet)
-    //     {
-    //         uint       row   = triplet.get_row_idx();
-    //         uint       col   = triplet.get_col_idx();
-    //         const auto value = float3x3_to_eigen3x3(triplet.get_matrix());
-    //         for (uint i = 0; i < 3; i++)
-    //         {
-    //             for (uint j = 0; j < 3; j++)
-    //             {
-    //                 triplet_list.emplace_back(row * 3 + i, col * 3 + j, value(i, j));
-    //             }
-    //         }
-    //     }
-    //     for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
-    //     {
-    //         auto diag_hess = float3x3_to_eigen3x3(host_sim_data->sa_cgA_diag[vid]);
-    //         for (uint i = 0; i < 3; i++)
-    //         {
-    //             for (uint j = 0; j < 3; j++)
-    //             {
-    //                 triplet_list.emplace_back(vid * 3 + i, vid * 3 + j, diag_hess(i, j));
-    //             }
-    //         }
-    //     }
-    //     cgA_sparse.setFromTriplets(triplet_list.begin(), triplet_list.end());
-    // }
-
-    // auto dq = cgA.ldlt().solve(cgB).eval();
-    // for (uint vid = 0; vid < num_bodies * 4; vid++)
-    // {
-    //     host_sim_data->sa_cgX[vid] = eigen3_to_float3(dq.block<3, 1>(vid * 3, 0));
-    // }
-
-    // Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
-    // solver.analyzePattern(cgA_sparse);
-    // solver.factorize(cgA_sparse);
-    // Eigen::MatrixXf dq = solver.solve(cgB);
 }
 void NewtonSolver::host_evaluete_spring()
 {
@@ -2646,9 +2673,7 @@ void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 
     device_narrowphase_ccd(stream);
 }
-void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream&               stream,
-                                                 const luisa::compute::Buffer<float3>& curr_x,
-                                                 std::map<std::string, double>&        energy_list)
+void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list)
 {
     // stream << sim_data->sa_x.copy_from(sa_x.data());
     const float thickness = get_scene_params().thickness;
@@ -2657,8 +2682,8 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream&        
 
     mp_narrowphase_detector->reset_energy(stream);
     mp_narrowphase_detector->compute_contact_energy_from_iter_start_list(stream,
-                                                                         curr_x,
-                                                                         curr_x,
+                                                                         sim_data->sa_x,
+                                                                         sim_data->sa_x,
                                                                          mesh_data->sa_rest_x,
                                                                          mesh_data->sa_rest_x,
                                                                          mesh_data->sa_rest_vert_area,
@@ -2742,9 +2767,10 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
         }
 
         // Material Energy
-        auto fn_SpMV_reduce_by_key = [&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim)
+        auto fn_SpMV_reduce_by_key =
+            [&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim, const uint triplet_count)
         {
-            CpuParallel::parallel_for(
+            CpuParallel::parallel_for_each_core(
                 0,
                 gridDim,
                 [&](const uint blockIdx)
@@ -2753,14 +2779,16 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                     const uint blockPrefix = blockIdx * blockDim;
 
                     float3 sum_contrib = luisa::make_float3(0.0f);
-                    for (uint triplet_idx = blockPrefix; triplet_idx < blockPrefix + blockDim; triplet_idx++)
+                    for (uint triplet_idx = blockPrefix;
+                         triplet_idx < min_scalar(blockPrefix + blockDim, triplet_count);
+                         triplet_idx++)
                     {
                         auto       triplet         = sa_cgA_offdiag_triplet[triplet_idx];
                         const uint vid             = triplet.get_row_idx();
                         const uint adj_vid         = triplet.get_col_idx();
                         const uint matrix_property = triplet.get_matrix_property();
 
-                        float3 contrib = Zero3;
+                        float3 contrib = luisa::make_float3(0.0f);
                         if (MatrixTriplet::is_valid(matrix_property))
                         {
                             const float3x3 mat   = read_triplet_matrix(triplet);
@@ -2768,9 +2796,23 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                             contrib              = mat * input;
                             sum_contrib += contrib;
                             // output_ptr[vid] += contrib;
+
+                            // if (get_scene_params().current_pcg_it == 0)
+                            //     LUISA_INFO("Triplet {} : vid {}, adj_vid {}, is_first {}, is_last {}, contrib {}, sum_contrib {}",
+                            //                triplet_idx,
+                            //                vid,
+                            //                adj_vid,
+                            //                MatrixTriplet::is_first_col_in_row(matrix_property),
+                            //                MatrixTriplet::is_last_col_in_row(matrix_property),
+                            //                contrib,
+                            //                sum_contrib);
                         };
+                        // continue;
                         if (MatrixTriplet::is_last_col_in_row(matrix_property))
                         {
+                            // if (get_scene_params().current_pcg_it == 0)
+                            //     LUISA_INFO("Triplet {} try to add to {}, with {}", triplet_idx, vid, sum_contrib);
+
                             if (MatrixTriplet::write_use_atomic(matrix_property))
                             {
                                 auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
@@ -2788,16 +2830,17 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
         };
 
         fn_SpMV_reduce_by_key(host_sim_data->sa_cgA_fixtopo_offdiag_triplet,
-                              get_dispatch_block(sim_data->sa_cgA_fixtopo_offdiag_triplet.size(), 256));
+                              get_dispatch_block(sim_data->sa_cgA_fixtopo_offdiag_triplet.size(), 256),
+                              sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
         const auto& host_count     = host_collision_data->narrow_phase_collision_count;
         const uint reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
         fn_SpMV_reduce_by_key(host_collision_data->sa_cgA_contact_offdiag_triplet,
-                              get_dispatch_block(reduced_triplet, 256));
+                              get_dispatch_block(reduced_triplet, 256),
+                              reduced_triplet);
     }
 }
-void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
-                                    std::function<double(const std::vector<float3>&)> func_compute_energy)
+void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy)
 {
 
     const uint                 num_dof = host_sim_data->num_dof;
@@ -2806,24 +2849,33 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
     cgA.setZero();
     cgB.setZero();
 
-    std::vector<MatrixTriplet3x3> new_triplet;
-    // const auto& host_count      = host_collision_data->narrow_phase_collision_count;
-    // const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-    // for (uint i = 0; i < reduced_triplet; i++)
-    // {
-    //     new_triplet.push_back(host_collision_data->sa_cgA_contact_offdiag_triplet[i]);
-    // }
-    // for (uint i = 0; i < host_sim_data->sa_cgA_fixtopo_offdiag_triplet.size(); i++)
-    // {
-    //     new_triplet.push_back(host_sim_data->sa_cgA_fixtopo_offdiag_triplet[i]);
-    // }
     for (uint vid = 0; vid < num_dof; vid++)
     {
-        new_triplet.push_back(
-            make_matrix_triplet(vid, vid, MatrixTriplet::is_valid(), host_sim_data->sa_cgA_diag[vid]));
         cgB.block<3, 1>(vid * 3, 0) = float3_to_eigen3(host_sim_data->sa_cgB[vid]);
     }
-    convert_triplets_to_sparse_matrix(cgA, new_triplet, num_dof);
+    std::vector<MatrixTriplet3x3> new_triplet;
+    {
+        // Diag part
+        for (uint vid = 0; vid < num_dof; vid++)
+        {
+            new_triplet.push_back(
+                make_matrix_triplet(vid, vid, MatrixTriplet::is_valid(), host_sim_data->sa_cgA_diag[vid]));
+        }
+        // Material hessian off-diag part
+        for (uint i = 0; i < host_sim_data->sa_cgA_fixtopo_offdiag_triplet.size(); i++)
+        {
+            new_triplet.push_back(host_sim_data->sa_cgA_fixtopo_offdiag_triplet[i]);
+        }
+        // Contact hessian off-diag part
+        const auto& host_count     = host_collision_data->narrow_phase_collision_count;
+        const uint reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        for (uint i = 0; i < reduced_triplet; i++)
+        {
+            new_triplet.push_back(host_collision_data->sa_cgA_contact_offdiag_triplet[i]);
+        }
+    }
+    convert_triplets_to_sparse_matrix(cgA, new_triplet);
+
 
     Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower> solver;  // Eigen::IncompleteCholesky<float>
     solver.setTolerance(1e-6f);
@@ -2834,7 +2886,6 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream,
         LUISA_ERROR("Eigen PCG decomposition failed!");
     }
     auto cgX = solver.solve(cgB).eval();
-    // auto cgX = cgA.sol.solve(cgB).eval();
     // auto cgX = eigen_pcg(eigen_A, eigen_b);
 
     // std::cout << "Eigen A = \n" << eigen_A << std::endl;
@@ -2962,14 +3013,20 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // return 1.0f;
     };
 
-    auto compute_energy_interface = [&](const std::vector<float3>& curr_x)
+    auto compute_energy_interface = [&]()
     {
         stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
-        stream << sim_data->sa_x.copy_from(curr_x.data());
+        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        if (host_sim_data->num_affine_bodies != 0)
+        {
+            stream
+                << sim_data->sa_affine_bodies_q.copy_from(host_sim_data->sa_affine_bodies_q.data())
+                << sim_data->sa_affine_bodies_q_tilde.copy_from(host_sim_data->sa_affine_bodies_q_tilde.data());
+        }
 
         std::map<std::string, double> energy_list;
-        device_compute_elastic_energy(stream, sim_data->sa_x, energy_list);
-        device_compute_contact_energy(stream, sim_data->sa_x, energy_list);
+        device_compute_elastic_energy(stream, energy_list);
+        device_compute_contact_energy(stream, energy_list);
 
         auto total_energy = std::accumulate(energy_list.begin(),
                                             energy_list.end(),
@@ -3046,6 +3103,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
             host_reset_off_diag();
 
+            update_contact_set();
+
+            // if (iter == 0) // Always refresh for collision count is variant
+            if (use_energy_linesearch)
+            {
+                prev_state_energy = compute_energy_interface();
+            }
+
             if constexpr (true)
             {
                 host_evaluate_inertia();
@@ -3060,24 +3125,16 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 host_material_energy_assembly();
 
-                update_contact_set();
-
                 evaluate_contact();
 
                 // host_evaluate_dirichlet();
 
-                // if (iter == 0) // Always refresh for collision count is variant
-                if (use_energy_linesearch)
-                {
-                    prev_state_energy = compute_energy_interface(host_sim_data->sa_x);
-                }
+                linear_solver_interface();  // Solve Ax=b
             }
             else
             {
                 host_test_dynamics(stream);
             }
-
-            linear_solver_interface();  // Solve Ax=b
 
             float alpha   = 1.0f;
             float ccd_toi = 1.0f;
@@ -3131,7 +3188,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             if (use_energy_linesearch)
             {
                 // Energy after CCD or just solving Axb
-                auto curr_energy = compute_energy_interface(host_sim_data->sa_x);
+                auto curr_energy = compute_energy_interface();
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
                 {
                     LUISA_ERROR("Energy is not valid : {}", curr_energy);
@@ -3165,7 +3222,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     alpha /= 2;
                     host_apply_dx(alpha);
 
-                    curr_energy = compute_energy_interface(host_sim_data->sa_x);
+                    curr_energy = compute_energy_interface();
                     LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
 
                     if (alpha < 1e-4)
@@ -3279,11 +3336,11 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         //
         device_SpMV(stream, input_ptr, output_ptr);
     };
-    auto compute_energy_interface = [&](const luisa::compute::Buffer<float3>& curr_x)
+    auto compute_energy_interface = [&]()
     {
         std::map<std::string, double> energy_list;
-        device_compute_elastic_energy(stream, sim_data->sa_x, energy_list);
-        device_compute_contact_energy(stream, sim_data->sa_x, energy_list);
+        device_compute_elastic_energy(stream, energy_list);
+        device_compute_contact_energy(stream, energy_list);
 
         auto total_energy = std::accumulate(energy_list.begin(),
                                             energy_list.end(),
@@ -3415,7 +3472,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 // stream << fn_evaluate_dirichlet(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
 
                 if (get_scene_params().use_energy_linesearch)
-                    prev_state_energy = compute_energy_interface(sim_data->sa_x);
+                    prev_state_energy = compute_energy_interface();
             }
 
             stream << luisa::compute::synchronize();
@@ -3454,7 +3511,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             if (get_scene_params().use_energy_linesearch)
             {
                 // Energy after CCD or just solving Axb
-                auto curr_energy = compute_energy_interface(sim_data->sa_x);
+                auto curr_energy = compute_energy_interface();
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
                 {
                     LUISA_ERROR("Energy is not valid : {}", curr_energy);
@@ -3489,7 +3546,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     host_apply_dx(alpha);
                     device_apply_dx(alpha);
 
-                    curr_energy = compute_energy_interface(sim_data->sa_x);
+                    curr_energy = compute_energy_interface();
                     LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
 
                     if (alpha < 1e-4)
