@@ -71,11 +71,12 @@ void ccd_vf_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 void rigid_body_cube_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
     shell_list.push_back({// .model_name = obj_mesh_path + "square2.obj",
-                          .model_name  = obj_mesh_path + "cube.obj",
-                          .translation = luisa::make_float3(0, 0.2, 0),
-                          .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
-                          .scale       = luisa::make_float3(0.1),
-                          .shell_type  = lcs::Initializer::ShellTypeRigid});
+                          .model_name = obj_mesh_path + "cube.obj",
+                          //   .translation = luisa::make_float3(0, -0.1, 0),
+                          .rotation = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
+                          //   .rotation = luisa::make_float3(0.0, 0, 0.0),
+                          .scale      = luisa::make_float3(0.1f),
+                          .shell_type = lcs::Initializer::ShellTypeRigid});
     shell_list.push_back({// .model_name = obj_mesh_path + "square2.obj",
                           .model_name  = obj_mesh_path + "cube.obj",
                           .translation = luisa::make_float3(0.6, 0.4, 0),
@@ -88,6 +89,10 @@ void rigid_body_cube_unit_case(std::vector<lcs::Initializer::ShellInfo>& shell_l
                           .rotation    = luisa::make_float3(lcs::Pi / 3, lcs::Pi / 6, 0),
                           .scale       = luisa::make_float3(0.5),
                           .shell_type  = lcs::Initializer::ShellTypeRigid});
+    // lcs::get_scene_params().stiffness_collision     = 1e5f;
+    // lcs::get_scene_params().stiffness_orthogonality = 1e5f;
+    // lcs::get_scene_params().d_hat                   = 0.0f;
+
     // shell_list.push_back({
     //     .model_name = obj_mesh_path + "square2.obj",
     //     .translation = luisa::make_float3(0.1, 0.2, 0),
