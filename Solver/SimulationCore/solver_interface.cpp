@@ -337,9 +337,10 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
 constexpr bool print_detail = false;
 
 // Evaluate Energy
-void SolverInterface::host_compute_elastic_energy(const std::vector<float3>&     curr_x,
-                                                  std::map<std::string, double>& energy_list)
+void SolverInterface::host_compute_elastic_energy(std::map<std::string, double>& energy_list)
 {
+    const std::vector<float3>& curr_x = host_sim_data->sa_x;
+
     auto compute_energy_inertia = [](const uint                 vid,
                                      const std::vector<float3>& sa_x,
                                      const std::vector<float3>& sa_x_tilde,
@@ -532,10 +533,10 @@ void SolverInterface::host_compute_elastic_energy(const std::vector<float3>&    
             float energy = 0.0f;
             for (uint ii = 0; ii < 4; ii++)
             {
-                for (uint jj = 0; jj < 3; jj++)
+                for (uint jj = 0; jj < 4; jj++)
                 {
-                    float3 diff = delta[ii];
-                    float  mass = mass_matrix[ii][ii];
+                    float  mass = mass_matrix[ii][jj];
+                    float3 diff = delta[jj];
                     energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
                 }
             }
@@ -558,7 +559,8 @@ void SolverInterface::host_compute_elastic_energy(const std::vector<float3>&    
             {
                 for (uint jj = 0; jj < 3; jj++)
                 {
-                    energy = luisa::dot(A[ii], A[jj]) - float(ii == jj ? 0.0f : 1.0f);
+                    float term = dot(A[ii], A[jj]) - (ii == jj ? 1.0f : 0.0f);
+                    energy += term * term;
                 }
             }
             return get_scene_params().stiffness_orthogonality * energy;
@@ -771,16 +773,17 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                         sa_q.read(body_idx * 4 + 2) - sa_q_tilde->read(body_idx * 4 + 2),
                         sa_q.read(body_idx * 4 + 3) - sa_q_tilde->read(body_idx * 4 + 3),
                     };
-                    Float energy = 0.0f;
+
                     for (uint ii = 0; ii < 4; ii++)
                     {
-                        for (uint jj = 0; jj < 3; jj++)
+                        for (uint jj = 0; jj < 4; jj++)
                         {
-                            Float3 diff = delta[ii];
-                            Float  mass = mass_matrix[ii][ii];
+                            Float  mass = mass_matrix[ii][jj];
+                            Float3 diff = delta[jj];
                             energy += squared_inv_dt * length_squared_vec(diff) * mass / (2.0f);
                         }
                     }
+
                     $if(is_fixed)
                     {
                         energy *= stiffness_dirichlet;
@@ -807,12 +810,13 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                     Float3x3 A;
                     Float3   p;
                     AffineBodyDynamics::extract_Ap_from_q(sa_q, body_idx, A, p);
-                    Float energy = 0.0f;
+                    device_log("A = {}, AAT = {}", A, A * transpose(A));
                     for (uint ii = 0; ii < 3; ii++)
                     {
                         for (uint jj = 0; jj < 3; jj++)
                         {
-                            energy = dot(A[ii], A[jj]) - (ii == jj ? 0.0f : 1.0f);
+                            Float term = dot(A[ii], A[jj]) - (ii == jj ? 1.0f : 0.0f);
+                            energy += term * term;
                         }
                     }
                     energy *= stiffness_ortho;
@@ -828,10 +832,11 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
             default_option);
     }
 }
-void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&               stream,
-                                                    const luisa::compute::Buffer<float3>& curr_x,
-                                                    std::map<std::string, double>&        energy_list)
+void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&        stream,
+                                                    std::map<std::string, double>& energy_list)
 {
+    const luisa::compute::Buffer<float3>& curr_x = sim_data->sa_x;
+
     stream << fn_reset_float(sim_data->sa_system_energy).dispatch(8);
     if (host_sim_data->num_verts_soft != 0)
     {

@@ -55,7 +55,7 @@ namespace CollisionPair
         uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
 
         float3 get_normal() const { return vec1.xyz(); }
-        float  get_area() const { return vec1[3]; }
+        float  get_stiffness() const { return vec1[3]; }
 
         float         get_k1() const { return vec2[0]; }
         float         get_k2() const { return vec2[1]; }
@@ -214,7 +214,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
                 type == lcs::CollisionPair::type_ve())
             {
                 active_indices[left_active_count] = orig_indices[0] | (0 << 30);
-                left_active_count += 1u;
+                left_active_count += 1;
             }
             $else
             {
@@ -313,7 +313,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
     }
 
     luisa::compute::Float3 get_normal() const { return vec1.xyz(); }
-    luisa::compute::Float get_area() const { return vec1[3]; }
+    luisa::compute::Float get_stiffness() const { return vec1[3]; }
 
     luisa::compute::Float get_k1() const { return vec2[0]; }
     luisa::compute::Float get_k2() const { return vec2[1]; }
