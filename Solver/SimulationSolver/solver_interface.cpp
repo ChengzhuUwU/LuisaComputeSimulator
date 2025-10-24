@@ -1,4 +1,4 @@
-#include "SimulationCore/solver_interface.h"
+#include "SimulationSolver/solver_interface.h"
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"

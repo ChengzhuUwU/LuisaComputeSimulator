@@ -14,7 +14,7 @@
 
 #include "SimulationCore/scene_params.h"
 #include "SimulationCore/base_mesh.h"
-#include "SimulationCore/solver_interface.h"
+#include "SimulationSolver/solver_interface.h"
 #include "SimulationSolver/descent_solver.h"
 
 #include "Initializer/init_mesh_data.h"
