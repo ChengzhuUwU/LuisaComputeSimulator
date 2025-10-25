@@ -76,8 +76,8 @@ namespace Initializer
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
         float3 scale   = luisa::make_float3(1.0f);
-        float  mass    = 0.1f;    // 0.1 kg
-        float  density = 100.0f;  // If mass > 0, use mass to compute density
+        float  mass    = 0.0f;    // If mass > 0, use mass to compute density
+        float  density = 100.0f;  //
 
         std::vector<FixedPointInfo> fixed_point_info;
         std::vector<uint>           fixed_point_list;

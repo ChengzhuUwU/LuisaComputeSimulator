@@ -527,35 +527,54 @@ namespace Initializer
                                           }
                                           mesh_data->sa_rest_edge_area[eid] = area;
                                       });
-            float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
-            float sum_edge_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_edge_area);
-            float sum_vert_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_vert_area);
-            // LUISA_INFO("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
-            LUISA_INFO("Average areas : face = {}, edge = {}, vert = {}",
-                       sum_face_area / double(num_faces),
-                       sum_edge_area / double(num_edges),
-                       sum_vert_area / double(num_verts));
+
+            // float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
+            // float sum_edge_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_edge_area);
+            // float sum_vert_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_vert_area);
+            // // LUISA_INFO("Summary areas : face = {}, edge = {}, vert = {}", sum_face_area, sum_edge_area, sum_vert_area);
+            // LUISA_INFO("Average areas : face = {}, edge = {}, vert = {}",
+            //            sum_face_area / double(num_faces),
+            //            sum_edge_area / double(num_edges),
+            //            sum_vert_area / double(num_verts));
         }
 
-        // Init vert info
+        // Init mass info
         {
-            // Set vert mass
+            mesh_data->sa_body_mass.resize(num_meshes);
+            std::vector<float> mesh_areas(num_meshes, 0.0f);
+            for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
-                mesh_data->sa_vert_mass.resize(num_verts);
-                mesh_data->sa_vert_mass_inv.resize(num_verts);
-
-                const float defulat_density = 100.0f;
-                CpuParallel::parallel_for(0,
-                                          num_verts,
-                                          [&](const uint vid)
-                                          {
-                                              bool        is_fixed = mesh_data->sa_is_fixed[vid] != 0;
-                                              const float mass =
-                                                  defulat_density * mesh_data->sa_rest_vert_area[vid];
-                                              mesh_data->sa_vert_mass[vid] = mass;
-                                              mesh_data->sa_vert_mass_inv[vid] = is_fixed ? 0.0f : 1.0f / (mass);
-                                          });
+                uint  prefix_num_faces = mesh_data->prefix_num_faces[meshIdx];
+                uint  curr_num_faces   = mesh_data->prefix_num_faces[meshIdx + 1] - prefix_num_faces;
+                float mesh_area        = CpuParallel::parallel_for_and_reduce_sum<float>(
+                    0,
+                    curr_num_faces,
+                    [&](const uint fid) { return mesh_data->sa_rest_face_area[prefix_num_faces + fid]; });
+                mesh_areas[meshIdx]              = mesh_area;
+                mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
+                                                       shell_infos[meshIdx].mass :
+                                                       mesh_area * shell_infos[meshIdx].density;
+                LUISA_INFO("Mesh {}'s area = {}, total mass = {}", meshIdx, mesh_area, mesh_data->sa_body_mass[meshIdx]);
             }
+
+            // Set vert mass
+            mesh_data->sa_vert_mass.resize(num_verts);
+            mesh_data->sa_vert_mass_inv.resize(num_verts);
+
+            const float defulat_density = 100.0f;
+            CpuParallel::parallel_for(0,
+                                      num_verts,
+                                      [&](const uint vid)
+                                      {
+                                          bool        is_fixed  = mesh_data->sa_is_fixed[vid] != 0;
+                                          const uint  mesh_id   = mesh_data->sa_vert_mesh_id[vid];
+                                          const float vert_area = mesh_data->sa_rest_vert_area[vid];
+                                          const float mesh_area = mesh_areas[mesh_id];
+                                          const float weight    = vert_area / mesh_area;
+                                          const float mass = weight * mesh_data->sa_body_mass[mesh_id];
+                                          mesh_data->sa_vert_mass[vid] = mass;
+                                          mesh_data->sa_vert_mass_inv[vid] = is_fixed ? 0.0f : 1.0f / (mass);
+                                      });
         }
 
         // Init vert status
@@ -603,6 +622,7 @@ namespace Initializer
             stream << upload_buffer(device, output_data->sa_dihedral_edges, input_data->sa_dihedral_edges);
 
         stream
+            << upload_buffer(device, output_data->sa_body_mass, input_data->sa_body_mass)
             << upload_buffer(device, output_data->sa_vert_mass, input_data->sa_vert_mass)
             << upload_buffer(device, output_data->sa_vert_mass_inv, input_data->sa_vert_mass_inv)
             << upload_buffer(device, output_data->sa_is_fixed, input_data->sa_is_fixed)

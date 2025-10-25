@@ -365,7 +365,7 @@ void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
                       .emplace_back(ShellInfo{
                           .model_name  = obj_mesh_path + "square2K.obj",
                           .translation = luisa::make_float3(0, 0.2, 0),
-                          .scale       = luisa::make_float3(0.1f),
+                          .scale       = luisa::make_float3(0.2f),
                       })
                       .load_mesh_data();
     shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
@@ -390,7 +390,7 @@ void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
 }
 void load_default_scene(std::vector<ShellInfo>& shell_list)
 {
-    lcs::get_scene_params().scene_id = 3;
+    lcs::get_scene_params().scene_id = 10;
     const uint case_number           = lcs::get_scene_params().scene_id;
 
     switch (case_number)
