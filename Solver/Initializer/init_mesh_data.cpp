@@ -87,6 +87,51 @@ namespace Initializer
             fixed_point_info.end(), curr_fixed_point_info.begin(), curr_fixed_point_info.end());
         return curr_fixed_point_verts;
     }
+    void ShellInfo::update_pinned_verts(const float time)
+    {
+        CpuParallel::parallel_for(
+            0,
+            fixed_point_list.size(),
+            [&](const uint index)
+            {
+                const uint local_vid        = fixed_point_list[index];
+                const auto model_pos        = input_mesh.model_positions[local_vid];
+                auto       transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+                const auto rest_pos =
+                    (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
+                        .xyz();
+
+                auto target = FixedPointInfo::fn_affine_position(fixed_point_info[index], time, rest_pos);
+                fixed_point_target_positions[index] = target;
+                // LUISA_INFO("For FixedVert {}: vid = {} try to push {} to {}", index, vid, rest_pos, target);
+            });
+    }
+    void ShellInfo::update_pinned_verts(const std::vector<float3>& new_positions)
+    {
+        CpuParallel::parallel_copy(new_positions, fixed_point_target_positions);
+    }
+    // template <typename T>
+    void ShellInfo::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
+    {
+        rest_positions.resize(input_mesh.model_positions.size());
+        auto transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+        CpuParallel::parallel_for(0,
+                                  input_mesh.model_positions.size(),
+                                  [&](const uint vid)
+                                  {
+                                      const auto model_pos = input_mesh.model_positions[vid];
+                                      auto       rest_pos =
+                                          (transform_matrix
+                                           * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
+                                              .xyz();
+                                      std::array<float, 3> output;
+                                      output[0]           = rest_pos.x;
+                                      output[1]           = rest_pos.y;
+                                      output[2]           = rest_pos.z;
+                                      rest_positions[vid] = output;
+                                  });
+    }
+
     // template<template<typename> typename BasicBuffer>
     void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos, lcs::MeshData<std::vector>* mesh_data)
     {
@@ -252,8 +297,8 @@ namespace Initializer
                                           {
                                               const uint local_vid = curr_shell_info.fixed_point_list[index];
                                               const uint global_vid = prefix_num_verts + local_vid;
-                                              mesh_data->sa_is_fixed[global_vid]      = true;
-                                              curr_shell_info.fixed_point_list[index] = global_vid;
+                                              mesh_data->sa_is_fixed[global_vid] = true;
+                                              //   curr_shell_info.fixed_point_list[index] = global_vid;
                                           });
                 // Set fixed-points
                 {

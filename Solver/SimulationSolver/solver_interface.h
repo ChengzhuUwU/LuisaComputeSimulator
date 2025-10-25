@@ -21,35 +21,36 @@
 namespace lcs
 {
 
-struct SolverData
-{
-    lcs::MeshData<std::vector>            host_mesh_data;
-    lcs::MeshData<luisa::compute::Buffer> mesh_data;
-
-    lcs::SimulationData<std::vector>            host_sim_data;
-    lcs::SimulationData<luisa::compute::Buffer> sim_data;
-
-    lcs::LbvhData<luisa::compute::Buffer> lbvh_data_face;
-    lcs::LbvhData<luisa::compute::Buffer> lbvh_data_edge;
-
-    lcs::CollisionData<std::vector>            host_collision_data;
-    lcs::CollisionData<luisa::compute::Buffer> collision_data;
-};
-
-struct SolverHelper
-{
-    lcs::BufferFiller   buffer_filler;
-    lcs::DeviceParallel device_parallel;
-
-    lcs::LBVH lbvh_face;
-    lcs::LBVH lbvh_edge;
-
-    lcs::NarrowPhasesDetector    narrow_phase_detector;
-    lcs::ConjugateGradientSolver pcg_solver;
-};
 
 class SolverInterface
 {
+  private:
+    struct SolverData
+    {
+        lcs::MeshData<std::vector>            host_mesh_data;
+        lcs::MeshData<luisa::compute::Buffer> mesh_data;
+
+        lcs::SimulationData<std::vector>            host_sim_data;
+        lcs::SimulationData<luisa::compute::Buffer> sim_data;
+
+        lcs::LbvhData<luisa::compute::Buffer> lbvh_data_face;
+        lcs::LbvhData<luisa::compute::Buffer> lbvh_data_edge;
+
+        lcs::CollisionData<std::vector>            host_collision_data;
+        lcs::CollisionData<luisa::compute::Buffer> collision_data;
+    };
+
+    struct SolverHelper
+    {
+        lcs::BufferFiller   buffer_filler;
+        lcs::DeviceParallel device_parallel;
+
+        lcs::LBVH lbvh_face;
+        lcs::LBVH lbvh_edge;
+
+        lcs::NarrowPhasesDetector    narrow_phase_detector;
+        lcs::ConjugateGradientSolver pcg_solver;
+    };
 
     // public:
     //     template<typename T>
@@ -64,42 +65,7 @@ class SolverInterface
                    luisa::compute::Stream&                   stream,
                    std::vector<lcs::Initializer::ShellInfo>& shell_list);
     void compile(AsyncCompiler& compiler);
-    void set_data_pointer(MeshData<std::vector>*                  host_mesh_ptr,
-                          MeshData<luisa::compute::Buffer>*       mesh_ptr,
-                          SimulationData<std::vector>*            host_xpbd_ptr,
-                          SimulationData<luisa::compute::Buffer>* xpbd_ptr,
-                          LbvhData<luisa::compute::Buffer>*       lbvh_data_face_ptr,
-                          LbvhData<luisa::compute::Buffer>*       lbvh_data_edge_ptr,
-                          CollisionData<std::vector>*             host_ccd_ptr,
-                          CollisionData<luisa::compute::Buffer>*  ccd_ptr,
-                          LBVH*                                   lbvh_face_ptr,
-                          LBVH*                                   lbvh_edge_ptr,
-                          BufferFiller*                           buffer_filler_ptr,
-                          DeviceParallel*                         device_parallel_ptr,
-                          NarrowPhasesDetector*                   narrowphase_detector_ptr,
-                          ConjugateGradientSolver*                pcg_solver_ptr)
-    {
-        // Data pointer
-        this->host_mesh_data = host_mesh_ptr;
-        this->host_sim_data  = host_xpbd_ptr;
-
-        this->mesh_data = mesh_ptr;
-        this->sim_data  = xpbd_ptr;
-
-        this->lbvh_data_face = lbvh_data_face_ptr;
-        this->lbvh_data_edge = lbvh_data_edge_ptr;
-
-        this->host_collision_data = host_ccd_ptr;
-        this->collision_data      = ccd_ptr;
-
-        // Tool class pointer
-        this->lbvh_face             = lbvh_face_ptr;
-        this->lbvh_edge             = lbvh_edge_ptr;
-        this->device_parallel       = device_parallel_ptr;
-        this->buffer_filler         = buffer_filler_ptr;
-        this->narrow_phase_detector = narrowphase_detector_ptr;
-        pcg_solver                  = pcg_solver_ptr;
-    }
+    void set_data_pointer(SolverData& solver_data, SolverHelper& solver_helper);
 
   public:
     void restart_system();
@@ -110,13 +76,47 @@ class SolverInterface
     void device_compute_elastic_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list);
     void compile_compute_energy(AsyncCompiler& compiler);
 
+  public:
+    template <typename T>
+    void get_simulation_results_to_host(std::vector<std::vector<T>>& output_positions)
+    {
+        for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
+        {
+            CpuParallel::parallel_for(
+                0,
+                host_mesh_data->prefix_num_verts[meshIdx + 1] - host_mesh_data->prefix_num_verts[meshIdx],
+                [&](const uint vid)
+                {
+                    auto pos = host_mesh_data->sa_x_frame_outer[vid + host_mesh_data->prefix_num_verts[meshIdx]];
+                    output_positions[meshIdx][vid] = {pos.x, pos.y, pos.z};
+                });
+        }
+    }
+    template <typename T>
+    void update_pinned_verts_information(const uint               meshIdx,
+                                         const std::vector<uint>& pinned_verts,
+                                         const std::vector<T>&    pinned_verts_target_position)
+    {
+        const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
+        CpuParallel::parallel_for(0,
+                                  pinned_verts.size(),
+                                  [&](const uint index)
+                                  {
+                                      const uint local_vid = pinned_verts[index];
+                                      const auto target    = pinned_verts_target_position[index];
+                                      const uint vid = host_sim_data->fixed_verts_map[meshIdx][local_vid];
+                                      host_sim_data->sa_target_positions[vid] =
+                                          luisa::make_float3(target[0], target[1], target[2]);
+                                  });
+    }
+
   protected:
     void physics_step_prev_operation();
     void physics_step_post_operation();
 
   private:
-    lcs::SolverData   solver_data;
-    lcs::SolverHelper solver_helper;
+    SolverData   solver_data;
+    SolverHelper solver_helper;
 
   protected:
     MeshData<std::vector>*            host_mesh_data;

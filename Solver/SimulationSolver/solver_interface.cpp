@@ -15,24 +15,34 @@
 namespace lcs
 {
 
+void SolverInterface::set_data_pointer(SolverData& solver_data, SolverHelper& solver_helper)
+{
+    // Data pointer
+    this->host_mesh_data = &solver_data.host_mesh_data;
+    this->host_sim_data  = &solver_data.host_sim_data;
+
+    this->mesh_data = &solver_data.mesh_data;
+    this->sim_data  = &solver_data.sim_data;
+
+    this->lbvh_data_face = &solver_data.lbvh_data_face;
+    this->lbvh_data_edge = &solver_data.lbvh_data_edge;
+
+    this->host_collision_data = &solver_data.host_collision_data;
+    this->collision_data      = &solver_data.collision_data;
+
+    // Tool class pointer
+    this->lbvh_face             = &solver_helper.lbvh_face;
+    this->lbvh_edge             = &solver_helper.lbvh_edge;
+    this->device_parallel       = &solver_helper.device_parallel;
+    this->buffer_filler         = &solver_helper.buffer_filler;
+    this->narrow_phase_detector = &solver_helper.narrow_phase_detector;
+    pcg_solver                  = &solver_helper.pcg_solver;
+}
 void SolverInterface::init_data(luisa::compute::Device&                   device,
                                 luisa::compute::Stream&                   stream,
                                 std::vector<lcs::Initializer::ShellInfo>& shell_list)
 {
-    set_data_pointer(&solver_data.host_mesh_data,
-                     &solver_data.mesh_data,
-                     &solver_data.host_sim_data,
-                     &solver_data.sim_data,
-                     &solver_data.lbvh_data_face,
-                     &solver_data.lbvh_data_edge,
-                     &solver_data.host_collision_data,
-                     &solver_data.collision_data,
-                     &solver_helper.lbvh_face,
-                     &solver_helper.lbvh_edge,
-                     &solver_helper.buffer_filler,
-                     &solver_helper.device_parallel,
-                     &solver_helper.narrow_phase_detector,
-                     &solver_helper.pcg_solver);
+    set_data_pointer(solver_data, solver_helper);
 
     // Init data
     {

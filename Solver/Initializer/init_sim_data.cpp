@@ -54,6 +54,24 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
     sim_data->sa_x_step_start.resize(mesh_data->num_verts);
     sim_data->sa_x_iter_start.resize(mesh_data->num_verts);
 
+    // Count for fixed points
+    {
+        std::vector<uint>&              fixed_verts     = sim_data->sa_fixed_verts;
+        std::vector<std::vector<uint>>& fixed_verts_map = sim_data->fixed_verts_map;
+        fixed_verts_map.resize(mesh_data->num_meshes);
+        sim_data->sa_target_positions.resize(mesh_data->num_verts);
+        for (uint vid = 0; vid < mesh_data->num_verts; vid++)
+        {
+            if (mesh_data->sa_is_fixed[vid])
+            {
+                const uint meshIdx = mesh_data->sa_vert_mesh_id[vid];
+                fixed_verts.push_back(vid);
+                fixed_verts_map[meshIdx].push_back(vid);
+                sim_data->sa_target_positions[vid] = (mesh_data->sa_rest_x[vid]);
+            }
+        }
+    }
+
     // Count for stretch springs, stretch faces, bending edges
     std::vector<uint> stretch_spring_indices(mesh_data->num_edges, -1u);
     uint              num_stretch_springs = 0;
@@ -302,6 +320,10 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                     sim_data->sa_bending_edges_Q[eid] = m_Q;  // See : A quadratic bending model for inextensible surfaces.
                 }
             });
+
+        // LUISA_INFO("Stretch springs: {}", sim_data->sa_stretch_springs);
+        // LUISA_INFO("Stretch faces: {}", sim_data->sa_stretch_faces);
+        // LUISA_INFO("Bending edges: {}", sim_data->sa_bending_edges);
 
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
@@ -605,7 +627,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                     const uint triplet_property =
                         MatrixTriplet::make_triplet_property_in_block(idx, curr_prefix, next_prefix - 1);
 
-                    // LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
+                    LUISA_INFO("Hessian Triplet ({}, {}) at idx = {}, property = {:16b}", vid, adj_vid, idx, triplet_property);
                     sim_data->sa_cgA_fixtopo_offdiag_triplet_info[idx] =
                         make_matrix_triplet_info(vid, adj_vid, triplet_property);
                 }
@@ -966,6 +988,13 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
            << upload_buffer(device, output_data->sa_x_iter_start, input_data->sa_x_iter_start)
 
            << upload_buffer(device, output_data->sa_system_energy, input_data->sa_system_energy);
+
+    if (input_data->sa_fixed_verts.size() > 0)
+    {
+        stream << upload_buffer(device, output_data->sa_fixed_verts, input_data->sa_fixed_verts)
+               << upload_buffer(device, output_data->sa_target_positions, input_data->sa_target_positions);
+    }
+
     if (input_data->sa_stretch_springs.size() > 0)
     {
         stream
