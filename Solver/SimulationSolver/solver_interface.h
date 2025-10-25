@@ -93,18 +93,16 @@ class SolverInterface
         }
     }
     template <typename T>
-    void update_pinned_verts_information(const uint               meshIdx,
-                                         const std::vector<uint>& pinned_verts,
-                                         const std::vector<T>&    pinned_verts_target_position)
+    void update_pinned_verts_information(const uint meshIdx, const std::vector<T>& pinned_verts_target_position)
     {
         const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
         CpuParallel::parallel_for(0,
-                                  pinned_verts.size(),
+                                  pinned_verts_target_position.size(),
                                   [&](const uint index)
                                   {
-                                      const uint local_vid = pinned_verts[index];
-                                      const auto target    = pinned_verts_target_position[index];
-                                      const uint vid = host_sim_data->fixed_verts_map[meshIdx][local_vid];
+                                      const auto target = pinned_verts_target_position[index];
+                                      const uint vid = host_mesh_data->fixed_verts_map[meshIdx][index];
+                                      // LUISA_INFO("Fixed id {} : vid = {}, try to move to {}", index, vid, target);
                                       host_sim_data->sa_target_positions[vid] =
                                           luisa::make_float3(target[0], target[1], target[2]);
                                   });

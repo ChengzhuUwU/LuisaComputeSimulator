@@ -1,5 +1,6 @@
 #include <iostream>
 #include <luisa/luisa-compute.h>
+#include <string>
 
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/narrow_phase.h"
@@ -77,6 +78,10 @@ int main(int argc, char** argv)
     {
         backend = argv[1];
     }
+    if (argc >= 3)
+    {
+        lcs::get_scene_params().scene_id = static_cast<uint>(std::stoul(argv[2]));
+    }
     luisa::compute::Device device = context.create_device(backend,
                                                           nullptr,
 #ifndef NDEBUG
@@ -104,7 +109,7 @@ int main(int argc, char** argv)
         {
             lcs::Initializer::ShellInfo& shell_info = shell_list[mesh_idx];
             shell_info.update_pinned_verts(curr_frame * lcs::get_scene_params().implicit_dt);
-            solver.update_pinned_verts_information(mesh_idx, shell_info.fixed_point_list, shell_info.fixed_point_target_positions);
+            solver.update_pinned_verts_information(mesh_idx, shell_info.fixed_point_target_positions);
         }
     };
 
@@ -346,7 +351,7 @@ int main(int argc, char** argv)
                 ImGui::Text("Broad VF/EE = %u / %u Narrow = %u , Triplet = %u",
                             host_collision_data.broad_phase_collision_count[2],
                             host_collision_data.broad_phase_collision_count[3],
-                            host_collision_data.narrow_phase_collision_count[offset_pairs],
+                            host_collision_data.narrow_phase_collision_count.front(),
                             host_collision_data.narrow_phase_collision_count[offset_verts]);
                 ImGui::Text("MaxCount = %zu / %zu ,  Narrow %zu , Triplet = %zu)",
                             host_collision_data.broad_phase_list_vf.size() / 2,

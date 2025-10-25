@@ -86,7 +86,6 @@ struct MeshData : SimulationType
 
     // Host only
     std::vector<float3> sa_x_frame_outer;
-    std::vector<float3> sa_x_frame_outer_next;
     std::vector<float3> sa_v_frame_outer;
 
     std::vector<uint> prefix_num_verts;
@@ -98,6 +97,9 @@ struct MeshData : SimulationType
     std::vector<std::vector<uint>> vert_adj_faces;
     std::vector<std::vector<uint>> vert_adj_edges;
     std::vector<std::vector<uint>> vert_adj_dihedral_edges;
+
+    std::vector<uint>              fixed_verts;
+    std::vector<std::vector<uint>> fixed_verts_map;
 };
 
 

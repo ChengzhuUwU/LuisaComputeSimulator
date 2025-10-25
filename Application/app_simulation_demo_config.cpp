@@ -267,7 +267,7 @@ void ccd_rotation_cylinder_7K_quadratic(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().nonlinear_iter_count = 1;
     lcs::get_scene_params().gravity              = luisa::make_float3(0.0f);
     lcs::get_scene_params().use_floor            = false;
-    lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Quadratic);
+    lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
 }
 void ccd_rotation_cylinder_7K_ipc(std::vector<ShellInfo>& shell_list)
 {
@@ -390,8 +390,8 @@ void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
 }
 void load_default_scene(std::vector<ShellInfo>& shell_list)
 {
-    const uint case_number           = 0;
-    lcs::get_scene_params().scene_id = case_number;
+    lcs::get_scene_params().scene_id = 3;
+    const uint case_number           = lcs::get_scene_params().scene_id;
 
     switch (case_number)
     {

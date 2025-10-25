@@ -68,7 +68,7 @@ namespace Initializer
 
             if (func(norm_pos))
             {
-                // LUISA_INFO("Found fixed point vert : mesh {}, local_vid {}, norm_pos {}", model_name, local_vid, norm_pos);
+                // LUISA_INFO("Found fixed point vert : local_vid {}, pos {}", vid, pos);
                 auto affine_pos = FixedPointInfo::fn_affine_position(fixed_info, 0.0f, pos);
                 curr_fixed_point_verts.emplace_back(vid);
                 curr_fixed_point_target_positions.emplace_back(affine_pos);
@@ -94,16 +94,23 @@ namespace Initializer
             fixed_point_list.size(),
             [&](const uint index)
             {
-                const uint local_vid        = fixed_point_list[index];
-                const auto model_pos        = input_mesh.model_positions[local_vid];
-                auto       transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
-                const auto rest_pos =
+                const uint  local_vid        = fixed_point_list[index];
+                const auto& fixed_info       = fixed_point_info[index];
+                const auto  model_pos        = input_mesh.model_positions[local_vid];
+                auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+                const auto  rest_pos =
                     (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
                         .xyz();
 
-                auto target = FixedPointInfo::fn_affine_position(fixed_point_info[index], time, rest_pos);
+                auto target = FixedPointInfo::fn_affine_position(fixed_info, time, rest_pos);
+                auto orig   = fixed_point_target_positions[index];
                 fixed_point_target_positions[index] = target;
-                // LUISA_INFO("For FixedVert {}: vid = {} try to push {} to {}", index, vid, rest_pos, target);
+                // LUISA_INFO("For FixedVert {}: local vid = {} try to push delta {} : from {} to {}",
+                //            index,
+                //            local_vid,
+                //            target - orig,
+                //            rest_pos,
+                //            target);
             });
     }
     void ShellInfo::update_pinned_verts(const std::vector<float3>& new_positions)
@@ -156,6 +163,8 @@ namespace Initializer
         mesh_data->sa_rest_translate.resize(num_meshes);
         mesh_data->sa_rest_rotation.resize(num_meshes);
         mesh_data->sa_rest_scale.resize(num_meshes);
+
+        mesh_data->fixed_verts_map.resize(num_meshes);
 
         // Constant scalar and init MeshData
         // TODO: Identity cloth, tet, rigid-body
@@ -291,6 +300,7 @@ namespace Initializer
                                           });
 
                 // Read fixed points
+                mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_list.size());
                 CpuParallel::parallel_for(0,
                                           curr_shell_info.fixed_point_list.size(),
                                           [&](const uint index)
@@ -298,7 +308,8 @@ namespace Initializer
                                               const uint local_vid = curr_shell_info.fixed_point_list[index];
                                               const uint global_vid = prefix_num_verts + local_vid;
                                               mesh_data->sa_is_fixed[global_vid] = true;
-                                              //   curr_shell_info.fixed_point_list[index] = global_vid;
+                                              mesh_data->fixed_verts.push_back(global_vid);
+                                              mesh_data->fixed_verts_map[meshIdx][index] = global_vid;
                                           });
                 // Set fixed-points
                 {
@@ -549,7 +560,6 @@ namespace Initializer
 
         // Init vert status
         {
-            mesh_data->sa_x_frame_outer_next.resize(num_verts);
             mesh_data->sa_x_frame_outer.resize(num_verts);
             mesh_data->sa_v_frame_outer.resize(num_verts);
 
@@ -560,9 +570,8 @@ namespace Initializer
                                           const float3 rest_x = mesh_data->sa_rest_x[vid];
                                           const float3 rest_v = mesh_data->sa_rest_v[vid];
 
-                                          mesh_data->sa_x_frame_outer_next[vid] = rest_x;
-                                          mesh_data->sa_x_frame_outer[vid]      = rest_x;
-                                          mesh_data->sa_v_frame_outer[vid]      = rest_v;
+                                          mesh_data->sa_x_frame_outer[vid] = rest_x;
+                                          mesh_data->sa_v_frame_outer[vid] = rest_v;
                                       });
         }
     }

@@ -104,6 +104,18 @@ void SolverInterface::compile(AsyncCompiler& compiler)
 void SolverInterface::physics_step_prev_operation()
 {
     CpuParallel::parallel_for(0,
+                              host_mesh_data->fixed_verts.size(),
+                              [&](const uint index)
+                              {
+                                  const uint   vid        = host_mesh_data->fixed_verts[index];
+                                  const float3 curr_pos   = host_mesh_data->sa_x_frame_outer[vid];
+                                  const float3 target_pos = host_sim_data->sa_target_positions[vid];
+                                  const float3 desire_vel =
+                                      (target_pos - curr_pos) / lcs::get_scene_params().implicit_dt;
+                                  host_mesh_data->sa_v_frame_outer[vid] = desire_vel;
+                              });
+
+    CpuParallel::parallel_for(0,
                               host_sim_data->sa_x.size(),
                               [&](const uint vid)
                               {

@@ -93,9 +93,7 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_step_start;
     BufferType<float3> sa_x_iter_start;
 
-    std::vector<std::vector<uint>> fixed_verts_map;
-    BufferType<uint>               sa_fixed_verts;
-    BufferType<float3>             sa_target_positions;
+    BufferType<float3> sa_target_positions;
 
     // Energy
     uint              num_verts_soft    = 0;

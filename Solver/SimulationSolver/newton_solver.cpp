@@ -3016,8 +3016,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto ccd_get_toi = [&]() -> float
     {
-        LUISA_INFO("Start pos = {}", host_sim_data->sa_x_iter_start);
-        LUISA_INFO("End   pos = {}", host_sim_data->sa_x);
         stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
                << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
