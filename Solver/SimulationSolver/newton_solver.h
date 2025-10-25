@@ -28,9 +28,30 @@ class NewtonSolver : public lcs::SolverInterface
   public:
     void physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(AsyncCompiler& compiler);
+    void init_solver(luisa::compute::Device&                   device,
+                     luisa::compute::Stream&                   stream,
+                     std::vector<lcs::Initializer::ShellInfo>& shell_list)
+    {
+        LUISA_INFO("Init mesh data...");
+        SolverInterface::init_data(device, stream, shell_list);
+
+        luisa::compute::Clock clk;
+        {
+            AsyncCompiler compiler(device);
+            {
+                SolverInterface::compile(compiler);
+                this->compile(compiler);
+            }
+            compiler.wait();
+        }
+        LUISA_INFO("Shader compile done with time {} seconds.", clk.toc() * 1e-3);
+
+        SolverInterface::restart_system();
+        LUISA_INFO("Simulation begin...");
+    }
 
   private:
+    void compile(AsyncCompiler& compiler);
     void compile_advancing(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);
     void compile_assembly(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);
     void compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);

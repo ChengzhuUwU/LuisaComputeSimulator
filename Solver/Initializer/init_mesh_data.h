@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MeshOperation/mesh_reader.h"
 #include "SimulationCore/base_mesh.h"
 
 namespace lcs
@@ -8,19 +9,60 @@ namespace lcs
 namespace Initializer
 {
 
-    using IsFixedPointFunc = std::function<bool(const float3&)>;
     struct FixedPointInfo
     {
-        IsFixedPointFunc  is_fixed_point_func;
-        bool              use_translate = false;
-        float3            translate     = luisa::make_float3(0.0f);
-        bool              use_scale     = false;
-        float3            scale         = luisa::make_float3(1.0f);
-        bool              use_rotate    = false;
-        float3            rotCenter;
-        float3            rotAxis;
-        float             rotAngVelDeg = 0.0f;
-        std::vector<uint> fixed_point_verts;
+        // IsFixedPointFunc  is_fixed_point_func;
+        // std::vector<uint> fixed_point_verts;
+        // std::vector<float3> fixed_point_target_positions;
+        // uint   fixed_vid;
+        // float3 target_position;
+
+        std::function<bool(const float3&)> is_fixed_point_func;
+
+        bool   use_translate = false;
+        float3 translate     = luisa::make_float3(0.0f);
+
+        bool   use_scale = false;
+        float3 scale     = luisa::make_float3(1.0f);
+
+        bool   use_rotate = false;
+        float3 rotCenter;
+        float3 rotAxis;
+        float  rotAngVelDeg = 0.0f;
+
+        bool   use_setting_position = false;
+        float3 setting_position;
+
+        static float3 fn_affine_position(const lcs::Initializer::FixedPointInfo& fixed_point,
+                                         const float                             time,
+                                         const lcs::float3&                      pos)
+        {
+            auto fn_scale =
+                [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
+            { return (luisa::scaling(fixed_point.scale * time) * luisa::make_float4(pos, 1.0f)).xyz(); };
+            auto fn_rotate =
+                [](const lcs::Initializer::FixedPointInfo& fixed_point, const float time, const lcs::float3& pos)
+            {
+                const float rotAngRad    = time * fixed_point.rotAngVelDeg / 180.0f * float(lcs::Pi);
+                const auto  relative_vec = pos - fixed_point.rotCenter;
+                auto        matrix       = luisa::rotation(fixed_point.rotAxis, rotAngRad);
+                const auto  rotated_pos  = matrix * luisa::make_float4(relative_vec, 1.0f);
+                return fixed_point.rotCenter + rotated_pos.xyz();
+            };
+            auto fn_translate = [](const lcs::Initializer::FixedPointInfo& fixed_point,
+                                   const float                             time,
+                                   const lcs::float3&                      pos) {
+                return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
+            };
+            auto new_pos = pos;
+            if (fixed_point.use_scale)
+                new_pos = fn_scale(fixed_point, time, new_pos);
+            if (fixed_point.use_rotate)
+                new_pos = fn_rotate(fixed_point, time, new_pos);
+            if (fixed_point.use_translate)
+                new_pos = fn_translate(fixed_point, time, new_pos);
+            return new_pos;
+        };
     };
     enum ShellType
     {
@@ -33,9 +75,31 @@ namespace Initializer
         std::string model_name  = "square8K.obj";
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
-        float3                      scale = luisa::make_float3(1.0f);
-        std::vector<FixedPointInfo> fixed_point_list;
+        float3 scale   = luisa::make_float3(1.0f);
+        float  mass    = 0.1f;    // 0.1 kg
+        float  density = 100.0f;  // If mass > 0, use mass to compute density
+
+        std::vector<FixedPointInfo> fixed_point_info;
+        std::vector<uint>           fixed_point_list;
+        std::vector<float3>         fixed_point_target_positions;
         ShellType                   shell_type = ShellTypeCloth;
+        SimMesh::TriangleMeshData   input_mesh;
+        std::vector<float3>         simulated_positions;
+
+        std::vector<uint> set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
+                                                              const FixedPointInfo& info = FixedPointInfo());
+        void set_pinned_vert_fixed_info(const uint vid, const FixedPointInfo& info);
+        void update_pinned_verts(const float time);
+        void update_pinned_verts(const std::vector<float3>& new_positions);
+
+        // template <typename T>
+        void get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
+
+        ShellInfo& load_mesh_data()
+        {
+            bool second_read = SimMesh::read_mesh_file(model_name, input_mesh);
+            return *this;
+        }
     };
 
     void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_list, lcs::MeshData<std::vector>* mesh_data);

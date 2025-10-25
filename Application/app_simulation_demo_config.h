@@ -9,7 +9,7 @@ namespace Demo
 namespace Simulation
 {
 
-    void load_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list);
+    void load_default_scene(std::vector<lcs::Initializer::ShellInfo>& shell_list);
     void load_scene_params_from_json(std::vector<lcs::Initializer::ShellInfo>& shell_list);
 
 }  // namespace Simulation

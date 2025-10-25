@@ -2,6 +2,7 @@
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"
+#include "Initializer/init_sim_data.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 #include "SimulationCore/scene_params.h"
@@ -14,6 +15,82 @@
 namespace lcs
 {
 
+void SolverInterface::init_data(luisa::compute::Device&                   device,
+                                luisa::compute::Stream&                   stream,
+                                std::vector<lcs::Initializer::ShellInfo>& shell_list)
+{
+    set_data_pointer(&solver_data.host_mesh_data,
+                     &solver_data.mesh_data,
+                     &solver_data.host_sim_data,
+                     &solver_data.sim_data,
+                     &solver_data.lbvh_data_face,
+                     &solver_data.lbvh_data_edge,
+                     &solver_data.host_collision_data,
+                     &solver_data.collision_data,
+                     &solver_helper.lbvh_face,
+                     &solver_helper.lbvh_edge,
+                     &solver_helper.buffer_filler,
+                     &solver_helper.device_parallel,
+                     &solver_helper.narrow_phase_detector,
+                     &solver_helper.pcg_solver);
+
+    // Init data
+    {
+        lcs::Initializer::init_mesh_data(shell_list, host_mesh_data);
+        lcs::Initializer::upload_mesh_buffers(device, stream, host_mesh_data, mesh_data);
+    }
+
+    {
+        lcs::Initializer::init_sim_data(host_mesh_data, host_sim_data);
+        lcs::Initializer::upload_sim_buffers(device, stream, host_sim_data, sim_data);
+        lcs::Initializer::resize_pcg_data(device, stream, host_mesh_data, host_sim_data, sim_data);
+    }
+
+    {
+        lbvh_data_face->allocate(device, host_mesh_data->num_faces, lcs::LBVHTreeTypeFace);
+        lbvh_data_edge->allocate(device, host_mesh_data->num_edges, lcs::LBVHTreeTypeEdge);
+        lcs::Initializer::init_lbvh_data(device, stream, lbvh_data_face);
+        lcs::Initializer::init_lbvh_data(device, stream, lbvh_data_edge);
+        // lbvh_cloth_vert.unit_test(device, stream);
+    }
+
+    {
+        host_collision_data->resize_collision_data(device,
+                                                   host_mesh_data->num_verts,
+                                                   host_mesh_data->num_faces,
+                                                   host_mesh_data->num_edges,
+                                                   host_sim_data->num_dof);
+        collision_data->resize_collision_data(device,
+                                              host_mesh_data->num_verts,
+                                              host_mesh_data->num_faces,
+                                              host_mesh_data->num_edges,
+                                              host_sim_data->num_dof);
+    }
+}
+void SolverInterface::compile(AsyncCompiler& compiler)
+{
+    compile_compute_energy(compiler);
+
+    {
+        lbvh_face->set_lbvh_data(lbvh_data_face);
+        lbvh_edge->set_lbvh_data(lbvh_data_edge);
+        lbvh_face->compile(compiler);
+        lbvh_edge->compile(compiler);
+    }
+
+    LUISA_INFO("JIT Compiling Narrow Phase Detector...");
+    {
+        narrow_phase_detector->set_collision_data(host_collision_data, collision_data);
+        narrow_phase_detector->compile(compiler);
+        // narrow_phase_detector.unit_test(device, stream);
+    }
+
+    LUISA_INFO("JIT Compiling Solver...");
+    {
+        pcg_solver->set_data(host_mesh_data, mesh_data, host_sim_data, sim_data);
+        pcg_solver->compile(compiler);
+    }
+}
 void SolverInterface::physics_step_prev_operation()
 {
     CpuParallel::parallel_for(0,

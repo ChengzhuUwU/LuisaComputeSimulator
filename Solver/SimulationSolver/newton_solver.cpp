@@ -495,38 +495,40 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    compiler.compile<1>(
-        fn_apply_dx_affine_bodies,
-        [sa_x               = sim_data->sa_x.view(),
-         sa_scaled_model_x  = mesh_data->sa_scaled_model_x.view(),
-         sa_x_iter_start    = sim_data->sa_x_iter_start.view(),
-         sa_cgX             = sim_data->sa_cgX.view(),
-         sa_affine_bodies_q = sim_data->sa_affine_bodies_q.view(),
-         sa_vert_affine_bodies_id = sim_data->sa_vert_affine_bodies_id.view()](const Float alpha, const Uint prefix)
-        {
-            const Uint vid      = prefix + dispatch_id().x;
-            const Uint body_idx = sa_vert_affine_bodies_id->read(vid);
-            Float3     new_x;
-            Float3     p;
-            Float3x3   A;
-            AffineBodyDynamics::extract_Ap_from_q(sa_affine_bodies_q, body_idx, A, p);
-            const Float3 rest_x = sa_scaled_model_x->read(vid);
-            new_x               = A * rest_x + p;  // Affine position
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dx_affine_bodies,
+            [sa_x               = sim_data->sa_x.view(),
+             sa_scaled_model_x  = mesh_data->sa_scaled_model_x.view(),
+             sa_x_iter_start    = sim_data->sa_x_iter_start.view(),
+             sa_cgX             = sim_data->sa_cgX.view(),
+             sa_affine_bodies_q = sim_data->sa_affine_bodies_q.view(),
+             sa_vert_affine_bodies_id = sim_data->sa_vert_affine_bodies_id.view()](const Float alpha, const Uint prefix)
+            {
+                const Uint vid      = prefix + dispatch_id().x;
+                const Uint body_idx = sa_vert_affine_bodies_id->read(vid);
+                Float3     new_x;
+                Float3     p;
+                Float3x3   A;
+                AffineBodyDynamics::extract_Ap_from_q(sa_affine_bodies_q, body_idx, A, p);
+                const Float3 rest_x = sa_scaled_model_x->read(vid);
+                new_x               = A * rest_x + p;  // Affine position
 
-            sa_x->write(vid, new_x);
-        },
-        default_option);
+                sa_x->write(vid, new_x);
+            },
+            default_option);
 
-    compiler.compile<1>(
-        fn_apply_dq,
-        [sa_q            = sim_data->sa_affine_bodies_q.view(),
-         sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
-         sa_cgX          = sim_data->sa_cgX.view()](const Float alpha, const Uint prefix)
-        {
-            const UInt vid = dispatch_id().x;
-            sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
-        },
-        default_option);
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dq,
+            [sa_q            = sim_data->sa_affine_bodies_q.view(),
+             sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
+             sa_cgX          = sim_data->sa_cgX.view()](const Float alpha, const Uint prefix)
+            {
+                const UInt vid = dispatch_id().x;
+                sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
+            },
+            default_option);
 
     compiler.compile<1>(
         fn_apply_dx_non_constant,
@@ -545,17 +547,18 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    compiler.compile<1>(
-        fn_apply_dq_non_constant,
-        [sa_q            = sim_data->sa_affine_bodies_q.view(),
-         sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
-         sa_cgX = sim_data->sa_cgX.view()](Var<BufferView<float>> alpha_buffer, const Uint prefix)
-        {
-            const Float alpha = alpha_buffer.read(0);
-            const UInt  vid   = dispatch_id().x;
-            sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
-        },
-        default_option);
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dq_non_constant,
+            [sa_q            = sim_data->sa_affine_bodies_q.view(),
+             sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
+             sa_cgX = sim_data->sa_cgX.view()](Var<BufferView<float>> alpha_buffer, const Uint prefix)
+            {
+                const Float alpha = alpha_buffer.read(0);
+                const UInt  vid   = dispatch_id().x;
+                sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
+            },
+            default_option);
 }
 
 void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
@@ -749,41 +752,45 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
     };
 
     // Assembly
-    compiler.compile(fn_material_energy_assembly_stretch_spring,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_stretch_springs_csr.view(),
-                      constaints               = sim_data->sa_stretch_springs.view(),
-                      constaint_gradients      = sim_data->sa_stretch_springs_gradients.view(),
-                      constaint_hessians       = sim_data->sa_stretch_springs_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_stretch_springs_offsets_in_adjlist.view(),
-                      assembly_template]()
-                     {
-                         const Uint vid = dispatch_x();
-                         assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_stretch_springs.size() != 0)
+        compiler.compile(
+            fn_material_energy_assembly_stretch_spring,
+            [vert_adj_constraints_csr     = sim_data->sa_vert_adj_stretch_springs_csr.view(),
+             constaints                   = sim_data->sa_stretch_springs.view(),
+             constaint_gradients          = sim_data->sa_stretch_springs_gradients.view(),
+             constaint_hessians           = sim_data->sa_stretch_springs_hessians.view(),
+             constaint_offsets_in_adjlist = sim_data->sa_stretch_springs_offsets_in_adjlist.view(),
+             assembly_template]()
+            {
+                const Uint vid = dispatch_x();
+                assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+            });
 
-    compiler.compile(fn_material_energy_assembly_bending,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_bending_edges_csr.view(),
-                      constaints               = sim_data->sa_bending_edges.view(),
-                      constaint_gradients      = sim_data->sa_bending_edges_gradients.view(),
-                      constaint_hessians       = sim_data->sa_bending_edges_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_bending_edges_offsets_in_adjlist.view(),
-                      assembly_template]()
-                     {
-                         const Uint vid = dispatch_x();
-                         assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_bending_edges.size() != 0)
+        compiler.compile(fn_material_energy_assembly_bending,
+                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_bending_edges_csr.view(),
+                          constaints               = sim_data->sa_bending_edges.view(),
+                          constaint_gradients      = sim_data->sa_bending_edges_gradients.view(),
+                          constaint_hessians       = sim_data->sa_bending_edges_hessians.view(),
+                          constaint_offsets_in_adjlist = sim_data->sa_bending_edges_offsets_in_adjlist.view(),
+                          assembly_template]()
+                         {
+                             const Uint vid = dispatch_x();
+                             assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                         });
 
-    compiler.compile(fn_material_energy_assembly_affine_body,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_affine_bodies_csr.view(),
-                      constaints               = sim_data->sa_affine_bodies.view(),
-                      constaint_gradients      = sim_data->sa_affine_bodies_gradients.view(),
-                      constaint_hessians       = sim_data->sa_affine_bodies_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_affine_bodies_offsets_in_adjlist.view(),
-                      assembly_template](const Uint prefix)
-                     {
-                         const Uint vid = prefix + dispatch_x();
-                         assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_affine_bodies.size() != 0)
+        compiler.compile(fn_material_energy_assembly_affine_body,
+                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_affine_bodies_csr.view(),
+                          constaints               = sim_data->sa_affine_bodies.view(),
+                          constaint_gradients      = sim_data->sa_affine_bodies_gradients.view(),
+                          constaint_hessians       = sim_data->sa_affine_bodies_hessians.view(),
+                          constaint_offsets_in_adjlist = sim_data->sa_affine_bodies_offsets_in_adjlist.view(),
+                          assembly_template](const Uint prefix)
+                         {
+                             const Uint vid = prefix + dispatch_x();
+                             assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                         });
 }
 void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
 {
@@ -1765,6 +1772,13 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                                gradient = stiffness_dirichlet * gradient;
                                                hessian  = stiffness_dirichlet * hessian;
                                            }
+                                           // LUISA_INFO("vid {}: is_fixed? {}, x_k = {}, x_tilde = {}, mass = {} inertia gradient = {}",
+                                           //            vid,
+                                           //            sa_is_fixed[vid] == 1,
+                                           //            x_k,
+                                           //            x_tilde,
+                                           //            mass,
+                                           //            gradient);
                                            {
                                                cgB.block<3, 1>(vid * 3, 0) = -float3_to_eigen3(gradient);
                                                hessian_blocks[vid]         = {.indices = {vid},
@@ -1835,7 +1849,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Bending
-    // if constexpr (false)
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(host_sim_data->sa_bending_edges.size());
         CpuParallel::single_thread_for(
@@ -1882,7 +1896,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // ABD Ground Collision
-    // if constexpr (false)
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
         for (uint body_idx = 0; body_idx < host_sim_data->sa_affine_bodies.size(); body_idx++)
@@ -1947,7 +1961,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // ABD Inertia
-    // if constexpr (false)
+    if constexpr (false)
     {
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
@@ -1996,7 +2010,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Orthogonality
-    // if constexpr (false)
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
@@ -2073,7 +2087,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Contact
     if constexpr (false)
     {
-        mp_narrowphase_detector->download_narrowphase_list(stream);
+        narrow_phase_detector->download_narrowphase_list(stream);
 
         const auto& host_count = host_collision_data->narrow_phase_collision_count;
         const uint  num_pairs  = host_count.front();
@@ -2188,19 +2202,19 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     {
         stream << fn_reset_vector(sim_data->sa_cgB).dispatch(num_dof)
                << fn_reset_float3x3(sim_data->sa_cgA_diag).dispatch(num_dof);
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          get_scene_params().d_hat,
-                                                                          get_scene_params().thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        get_scene_params().d_hat,
+                                                                        get_scene_params().thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
-        mp_narrowphase_detector->download_contact_triplet(stream);
+        narrow_phase_detector->download_contact_triplet(stream);
 
         {
             std::vector<float3>   contact_force(num_dof);
@@ -2254,6 +2268,7 @@ void NewtonSolver::host_evaluete_spring()
                                sa_rest_length = host_sim_data->sa_stretch_spring_rest_state_length.data(),
                                output_gradient_ptr = host_sim_data->sa_stretch_springs_gradients.data(),
                                output_hessian_ptr  = host_sim_data->sa_stretch_springs_hessians.data(),
+                               sa_rest_edge_area   = host_mesh_data->sa_rest_edge_area.data(),
                                stiffness_stretch   = get_scene_params().stiffness_spring](const uint eid)
                               {
                                   uint2 edge = sa_edges[eid];
@@ -2533,12 +2548,12 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
     const float thickness       = get_scene_params().thickness;
     const float ccd_query_range = thickness + 0;  // + d_hat ???
 
-    mp_narrowphase_detector->reset_broadphase_count(stream);
+    narrow_phase_detector->reset_broadphase_count(stream);
 
-    mp_lbvh_face->update_face_tree_leave_aabb(
+    lbvh_face->update_face_tree_leave_aabb(
         stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
-    mp_lbvh_face->refit(stream);
-    mp_lbvh_face->broad_phase_query_from_verts(
+    lbvh_face->refit(stream);
+    lbvh_face->broad_phase_query_from_verts(
         stream,
         sim_data->sa_x_iter_start,
         sim_data->sa_x,
@@ -2546,10 +2561,10 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
         collision_data->broad_phase_list_vf,
         ccd_query_range);
 
-    mp_lbvh_edge->update_edge_tree_leave_aabb(
+    lbvh_edge->update_edge_tree_leave_aabb(
         stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
-    mp_lbvh_edge->refit(stream);
-    mp_lbvh_edge->broad_phase_query_from_edges(
+    lbvh_edge->refit(stream);
+    lbvh_edge->broad_phase_query_from_edges(
         stream,
         sim_data->sa_x_iter_start,
         sim_data->sa_x,
@@ -2564,10 +2579,9 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
     const float d_hat           = get_scene_params().d_hat;
     const float dcd_query_range = d_hat + thickness;
 
-    mp_lbvh_face->update_face_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
-    mp_lbvh_face->refit(stream);
-    mp_lbvh_face->broad_phase_query_from_verts(
+    lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+    lbvh_face->refit(stream);
+    lbvh_face->broad_phase_query_from_verts(
         stream,
         sim_data->sa_x,
         sim_data->sa_x,
@@ -2575,10 +2589,9 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
         collision_data->broad_phase_list_vf,
         dcd_query_range);
 
-    mp_lbvh_edge->update_edge_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
-    mp_lbvh_edge->refit(stream);
-    mp_lbvh_edge->broad_phase_query_from_edges(
+    lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+    lbvh_edge->refit(stream);
+    lbvh_edge->broad_phase_query_from_edges(
         stream,
         sim_data->sa_x,
         sim_data->sa_x,
@@ -2591,27 +2604,27 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 {
     const float thickness = get_scene_params().thickness;
     const float d_hat     = get_scene_params().d_hat;
-    // mp_narrowphase_detector->reset_narrowphase_count(stream);
-    mp_narrowphase_detector->reset_toi(stream);
+    // narrow_phase_detector->reset_narrowphase_count(stream);
+    narrow_phase_detector->reset_toi(stream);
 
-    mp_narrowphase_detector->vf_ccd_query(stream,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x,
-                                          sim_data->sa_x,
-                                          mesh_data->sa_faces,
-                                          d_hat,
-                                          thickness);
+    narrow_phase_detector->vf_ccd_query(stream,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x,
+                                        sim_data->sa_x,
+                                        mesh_data->sa_faces,
+                                        d_hat,
+                                        thickness);
 
-    mp_narrowphase_detector->ee_ccd_query(stream,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x,
-                                          sim_data->sa_x,
-                                          mesh_data->sa_edges,
-                                          mesh_data->sa_edges,
-                                          d_hat,
-                                          thickness);
+    narrow_phase_detector->ee_ccd_query(stream,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x,
+                                        sim_data->sa_x,
+                                        mesh_data->sa_edges,
+                                        mesh_data->sa_edges,
+                                        d_hat,
+                                        thickness);
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {
@@ -2619,58 +2632,58 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
     const float d_hat     = get_scene_params().d_hat;
     const float kappa     = get_scene_params().stiffness_collision;
 
-    mp_narrowphase_detector->vf_dcd_query_repulsion(stream,
-                                                    sim_data->sa_x,
-                                                    sim_data->sa_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_vert_area,
-                                                    mesh_data->sa_rest_face_area,
-                                                    mesh_data->sa_faces,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    d_hat,
-                                                    thickness,
-                                                    kappa);
+    narrow_phase_detector->vf_dcd_query_repulsion(stream,
+                                                  sim_data->sa_x,
+                                                  sim_data->sa_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_vert_area,
+                                                  mesh_data->sa_rest_face_area,
+                                                  mesh_data->sa_faces,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  d_hat,
+                                                  thickness,
+                                                  kappa);
 
-    mp_narrowphase_detector->ee_dcd_query_repulsion(stream,
-                                                    sim_data->sa_x,
-                                                    sim_data->sa_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_edge_area,
-                                                    mesh_data->sa_rest_edge_area,
-                                                    mesh_data->sa_edges,
-                                                    mesh_data->sa_edges,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    d_hat,
-                                                    thickness,
-                                                    kappa);
+    narrow_phase_detector->ee_dcd_query_repulsion(stream,
+                                                  sim_data->sa_x,
+                                                  sim_data->sa_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_edge_area,
+                                                  mesh_data->sa_rest_edge_area,
+                                                  mesh_data->sa_edges,
+                                                  mesh_data->sa_edges,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  d_hat,
+                                                  thickness,
+                                                  kappa);
 }
 void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
 {
-    mp_narrowphase_detector->reset_broadphase_count(stream);
-    mp_narrowphase_detector->reset_narrowphase_count(stream);
-    mp_narrowphase_detector->reset_pervert_collision_count(stream);
+    narrow_phase_detector->reset_broadphase_count(stream);
+    narrow_phase_detector->reset_narrowphase_count(stream);
+    narrow_phase_detector->reset_pervert_collision_count(stream);
 
     if (get_scene_params().use_self_collision)
         device_broadphase_dcd(stream);
 
-    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    narrow_phase_detector->download_broadphase_collision_count(stream);
 
     if (get_scene_params().use_self_collision)
         device_narrowphase_dcd(stream);
 
-    mp_narrowphase_detector->download_narrowphase_collision_count(stream);
-    mp_narrowphase_detector->construct_pervert_adj_list(
+    narrow_phase_detector->download_narrowphase_collision_count(stream);
+    narrow_phase_detector->construct_pervert_adj_list(
         stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 {
     device_broadphase_ccd(stream);
 
-    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    narrow_phase_detector->download_broadphase_collision_count(stream);
 
     device_narrowphase_ccd(stream);
 }
@@ -2681,20 +2694,20 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
     const float d_hat     = get_scene_params().d_hat;
     const float kappa     = get_scene_params().stiffness_collision;
 
-    mp_narrowphase_detector->reset_energy(stream);
-    mp_narrowphase_detector->compute_contact_energy_from_iter_start_list(stream,
-                                                                         sim_data->sa_x,
-                                                                         sim_data->sa_x,
-                                                                         mesh_data->sa_rest_x,
-                                                                         mesh_data->sa_rest_x,
-                                                                         mesh_data->sa_rest_vert_area,
-                                                                         mesh_data->sa_rest_face_area,
-                                                                         mesh_data->sa_faces,
-                                                                         d_hat,
-                                                                         thickness,
-                                                                         kappa);
+    narrow_phase_detector->reset_energy(stream);
+    narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
+                                                                       sim_data->sa_x,
+                                                                       sim_data->sa_x,
+                                                                       mesh_data->sa_rest_x,
+                                                                       mesh_data->sa_rest_x,
+                                                                       mesh_data->sa_rest_vert_area,
+                                                                       mesh_data->sa_rest_face_area,
+                                                                       mesh_data->sa_faces,
+                                                                       d_hat,
+                                                                       thickness,
+                                                                       kappa);
 
-    auto contact_energy = mp_narrowphase_detector->download_energy(stream);
+    auto contact_energy = narrow_phase_detector->download_energy(stream);
     energy_list.insert(std::make_pair("Contact", contact_energy));
 }
 void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
@@ -2725,8 +2738,8 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(aligned_diaptch_count);
 
-    // mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
-    // mp_narrowphase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
+    // narrow_phase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
+    // narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
@@ -2974,28 +2987,28 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_update_contact_list(stream);
-        // mp_narrowphase_detector->download_narrowphase_list(stream);
-        // mp_narrowphase_detector->download_pervert_adjacent_list(stream);
-        mp_narrowphase_detector->device_sort_contact_triplet(stream);
+        // narrow_phase_detector->download_narrowphase_list(stream);
+        // narrow_phase_detector->download_pervert_adjacent_list(stream);
+        narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
     {
         stream << sim_data->sa_cgB.copy_from(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_from(host_sim_data->sa_cgA_diag.data());
 
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          d_hat,
-                                                                          thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        d_hat,
+                                                                        thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
-        mp_narrowphase_detector->download_contact_triplet(stream);
+        narrow_phase_detector->download_contact_triplet(stream);
 
         stream << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_to(host_sim_data->sa_cgA_diag.data())
@@ -3003,12 +3016,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto ccd_get_toi = [&]() -> float
     {
+        LUISA_INFO("Start pos = {}", host_sim_data->sa_x_iter_start);
+        LUISA_INFO("End   pos = {}", host_sim_data->sa_x);
         stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
                << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_ccd_line_search(stream);
 
-        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
         // return 1.0f;
     };
@@ -3076,10 +3091,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     // Init LBVH
     {
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        mp_lbvh_face->construct_tree(stream);
-        mp_lbvh_edge->construct_tree(stream);
+        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+        lbvh_face->construct_tree(stream);
+        lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
@@ -3174,8 +3189,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     {
                         if (host_mesh_data->sa_is_fixed[vid])
                         {
-                            // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
                             return luisa::length(delta);
                         }
                         return 0.0f;  // Non-fixed point
@@ -3307,28 +3321,28 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto        update_contact_set = [&]()
     {
         device_update_contact_list(stream);
-        mp_narrowphase_detector->device_sort_contact_triplet(stream);
+        narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
     {
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          d_hat,
-                                                                          thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        d_hat,
+                                                                        thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
 
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
     };
     auto ccd_get_toi = [&]() -> float
     {
         device_ccd_line_search(stream);
-        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
     };
 
@@ -3370,10 +3384,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         ADD_HOST_TIME_STAMP("Init LBVH");
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        mp_lbvh_face->construct_tree(stream);
-        mp_lbvh_edge->construct_tree(stream);
+        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+        lbvh_face->construct_tree(stream);
+        lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
@@ -3573,8 +3587,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     {
                         if (host_mesh_data->sa_is_fixed[vid])
                         {
-                            // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
                             return luisa::length(delta);
                         }
                         return 0.0f;  // Non-fixed point

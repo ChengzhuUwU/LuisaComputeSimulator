@@ -129,110 +129,11 @@ int main(int argc, char** argv)
 
     // Read Mesh
     std::vector<lcs::Initializer::ShellInfo> shell_list;
-    Demo::Simulation::load_scene(shell_list);
-    // Demo::Simulation::load_scene_params_from_json(shell_list);
+    Demo::Simulation::load_default_scene(shell_list);
 
-    // TODO: Move it to solver class
-    LUISA_INFO("Init mesh data...");
-    // Init data
-    lcs::MeshData<std::vector>            host_mesh_data;
-    lcs::MeshData<luisa::compute::Buffer> mesh_data;
-    {
-        lcs::Initializer::init_mesh_data(shell_list, &host_mesh_data);  // TODO: Input with readed mesh data
-        lcs::Initializer::upload_mesh_buffers(device, stream, &host_mesh_data, &mesh_data);
-    }
-
-    lcs::SimulationData<std::vector>            host_sim_data;
-    lcs::SimulationData<luisa::compute::Buffer> sim_data;
-    {
-        lcs::Initializer::init_sim_data(&host_mesh_data, &host_sim_data);
-        lcs::Initializer::upload_sim_buffers(device, stream, &host_sim_data, &sim_data);
-        lcs::Initializer::resize_pcg_data(device, stream, &host_mesh_data, &host_sim_data, &sim_data);
-        lcs::Initializer::init_simulation_params();
-    }
-
-    lcs::LbvhData<luisa::compute::Buffer> lbvh_data_face;
-    lcs::LbvhData<luisa::compute::Buffer> lbvh_data_edge;
-    {
-        lbvh_data_face.allocate(device, host_mesh_data.num_faces, lcs::LBVHTreeTypeFace);
-        lbvh_data_edge.allocate(device, host_mesh_data.num_edges, lcs::LBVHTreeTypeEdge);
-        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_face);
-        lcs::Initializer::init_lbvh_data(device, stream, &lbvh_data_edge);
-        // lbvh_cloth_vert.unit_test(device, stream);
-    }
-
-    lcs::CollisionData<std::vector>            host_collision_data;
-    lcs::CollisionData<luisa::compute::Buffer> collision_data;
-    {
-        host_collision_data.resize_collision_data(device,
-                                                  host_mesh_data.num_verts,
-                                                  host_mesh_data.num_faces,
-                                                  host_mesh_data.num_edges,
-                                                  host_sim_data.num_dof);
-        collision_data.resize_collision_data(device,
-                                             host_mesh_data.num_verts,
-                                             host_mesh_data.num_faces,
-                                             host_mesh_data.num_edges,
-                                             host_sim_data.num_dof);
-    }
-
-    // Init solver class
-    luisa::compute::Clock clk;
-    LUISA_INFO("JIT Compiling LBVH...");
-    lcs::BufferFiller   buffer_filler;
-    lcs::DeviceParallel device_parallel;
-
-    lcs::LBVH          lbvh_face;
-    lcs::LBVH          lbvh_edge;
-    lcs::AsyncCompiler compiler(device);
-    {
-        lbvh_face.set_lbvh_data(&lbvh_data_face);
-        lbvh_edge.set_lbvh_data(&lbvh_data_edge);
-        lbvh_face.compile(compiler);
-        lbvh_edge.compile(compiler);
-    }
-
-    LUISA_INFO("JIT Compiling Narrow Phase Detector...");
-    lcs::NarrowPhasesDetector narrow_phase_detector;
-    {
-        narrow_phase_detector.set_collision_data(&host_collision_data, &collision_data);
-        narrow_phase_detector.compile(compiler);
-        // narrow_phase_detector.unit_test(device, stream);
-    }
-
-    LUISA_INFO("JIT Compiling Solver...");
-    lcs::ConjugateGradientSolver pcg_solver;
-    {
-        pcg_solver.set_data(&host_mesh_data, &mesh_data, &host_sim_data, &sim_data);
-        pcg_solver.compile(compiler);
-    }
-
-    // lcs::DescentSolver  solver;
+    // Init Solver
     lcs::NewtonSolver solver;
-    {
-        // device_parallel.create(device); // TODO: Check CUDA backend on windows's debug mode
-        solver.lcs::SolverInterface::set_data_pointer(&host_mesh_data,
-                                                      &mesh_data,
-                                                      &host_sim_data,
-                                                      &sim_data,
-                                                      &host_collision_data,
-                                                      &collision_data,
-                                                      &lbvh_face,
-                                                      &lbvh_edge,
-                                                      &buffer_filler,
-                                                      &device_parallel,
-                                                      &narrow_phase_detector,
-                                                      &pcg_solver);
-        solver.lcs::SolverInterface::compile(compiler);
-        solver.compile(compiler);
-    }
-    compiler.wait();
-    LUISA_INFO("Shader compile done with time {} seconds.", clk.toc() * 1e-3);
-    // Define Simulation
-    {
-        solver.lcs::SolverInterface::restart_system();
-        LUISA_INFO("Simulation begin...");
-    }
+    solver.init_solver(device, stream, shell_list);
 
     // for (auto edge : host_mesh_data.sa_edges)
     // {
@@ -287,6 +188,7 @@ int main(int argc, char** argv)
         {
             const float h = lcs::get_scene_params().implicit_dt;
 
+            auto& host_mesh_data = solver.get_host_mesh_data();
             CpuParallel::parallel_for(0,
                                       host_mesh_data.num_verts,
                                       [&](const uint vid)
@@ -303,40 +205,36 @@ int main(int argc, char** argv)
             // Animation for fixed points
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
-                const auto& fixed_point_info = shell_list[clothIdx].fixed_point_list;
-                if (fixed_point_info.empty())
+                if (shell_list[clothIdx].fixed_point_list.empty())
                     continue;
 
-                for (const auto& fixed_point : fixed_point_info)
-                {
-                    if (fixed_point.use_rotate || fixed_point.use_scale || fixed_point.use_translate)
+                CpuParallel::parallel_for(
+                    0,
+                    shell_list[clothIdx].fixed_point_list.size(),
+                    [&](const uint index)
                     {
-                        const std::vector<uint>& fixed_point_verts = fixed_point.fixed_point_verts;
-                        CpuParallel::parallel_for(
-                            0,
-                            fixed_point_verts.size(),
-                            [&](const uint index)
+                        const auto& vid        = shell_list[clothIdx].fixed_point_list[index];
+                        const auto& fixed_info = shell_list[clothIdx].fixed_point_info[index];
+                        if (fixed_info.use_rotate || fixed_info.use_scale || fixed_info.use_translate)
+                        {
+                            auto& orig_pos = host_mesh_data.sa_rest_x[vid];
                             {
-                                const uint vid      = fixed_point_verts[index];
-                                auto&      orig_pos = host_mesh_data.sa_rest_x[vid];
-                                {
-                                    // Rotate
-                                    const float rotAngRad  = curr_frame * h;
-                                    const float start_time = curr_frame == 0 ? 0 : (curr_frame - 1) * h;
-                                    const float end_time   = curr_frame * h;
-                                    auto bg = fn_affine_position(fixed_point, start_time, orig_pos);
-                                    auto ed = fn_affine_position(fixed_point, end_time, orig_pos);
-                                    host_mesh_data.sa_x_frame_outer[vid]      = bg;
-                                    host_mesh_data.sa_x_frame_outer_next[vid] = ed;
-                                    host_mesh_data.sa_v_frame_outer[vid]      = (ed - bg) / h;
-                                    // LUISA_INFO("Fix point desire from {} to {} (vel = {})", bg, ed, (ed - bg) / h);
-                                    // host_mesh_data.sa_x_frame_outer[vid] = ed;
-                                    // host_mesh_data.sa_x_frame_outer_next[vid] = ed;
-                                    // host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
-                                }
-                            });
-                    }
-                }
+                                // Rotate
+                                const float rotAngRad  = curr_frame * h;
+                                const float start_time = curr_frame == 0 ? 0 : (curr_frame - 1) * h;
+                                const float end_time   = curr_frame * h;
+                                auto        bg = fn_affine_position(fixed_info, start_time, orig_pos);
+                                auto        ed = fn_affine_position(fixed_info, end_time, orig_pos);
+                                host_mesh_data.sa_x_frame_outer[vid]      = bg;
+                                host_mesh_data.sa_x_frame_outer_next[vid] = ed;
+                                host_mesh_data.sa_v_frame_outer[vid]      = (ed - bg) / h;
+                                // LUISA_INFO("Fix point desire from {} to {} (vel = {})", bg, ed, (ed - bg) / h);
+                                // host_mesh_data.sa_x_frame_outer[vid] = ed;
+                                // host_mesh_data.sa_x_frame_outer_next[vid] = ed;
+                                // host_mesh_data.sa_v_frame_outer[vid] = luisa::make_float3(0.0f);
+                            }
+                        }
+                    });
             }
         };
         fn_fixed_point_animation(lcs::get_scene_params().current_frame);
@@ -346,6 +244,7 @@ int main(int argc, char** argv)
         else
             solver.physics_step_CPU(device, stream);
 
+        auto& host_mesh_data = solver.get_host_mesh_data();
         CpuParallel::parallel_for(0,
                                   host_mesh_data.num_verts,
                                   [&](const uint vid)
@@ -374,6 +273,7 @@ int main(int argc, char** argv)
     std::vector<std::array<uint, 3>>  sa_global_aabb_faces = SimMesh::BoundingBox::get_box_faces();
     std::vector<std::vector<std::array<float, 3>>> face_color(shell_list.size());
     {
+        const auto& host_mesh_data = solver.get_host_mesh_data();
         for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
         {
             sa_rendering_vertices[meshIdx].resize(host_mesh_data.prefix_num_verts[meshIdx + 1]
@@ -405,17 +305,10 @@ int main(int argc, char** argv)
                                            - host_mesh_data.prefix_num_faces[meshIdx],
                                        {0.7, 0.2, 0.3});
         }
-
-        if constexpr (draw_bounding_box)
-        {
-            std::array<float, 3> min_pos = {-0.01f, -0.01f, -0.01f};
-            ;
-            std::array<float, 3> max_pos = {0.01f, 0.01f, 0.01f};
-            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
-        }
     }
     auto fn_update_rendering_vertices = [&]()
     {
+        const auto& host_mesh_data = solver.get_host_mesh_data();
         for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
         {
             CpuParallel::parallel_for(
@@ -426,18 +319,6 @@ int main(int argc, char** argv)
                     auto pos = host_mesh_data.sa_x_frame_outer[vid + host_mesh_data.prefix_num_verts[clothIdx]];
                     sa_rendering_vertices[clothIdx][vid] = {pos.x, pos.y, pos.z};
                 });
-        }
-        if constexpr (draw_bounding_box)
-        {
-            // lcs::float2x3        global_aabb;
-            std::array<float, 3> min_pos;
-            std::array<float, 3> max_pos;
-            // stream << lbvh_data_face.sa_node_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            // stream << lbvh_data_face.sa_block_aabb.view(0, 1).copy_to(&global_aabb) << luisa::compute::synchronize();
-            auto global_aabb = lbvh_data_face.host_node_aabb[0];
-            min_pos          = {global_aabb[0][0], global_aabb[0][1], global_aabb[0][2]};
-            max_pos          = {global_aabb[1][0], global_aabb[1][1], global_aabb[1][2]};
-            SimMesh::BoundingBox::update_vertices(sa_global_aabb_vertices, min_pos, max_pos);
         }
     };
     auto fn_save_frame_to_obj = [&](const std::string& additional_info = "")
@@ -490,22 +371,12 @@ int main(int argc, char** argv)
             surface_meshes.push_back(curr_mesh_ptr);
         }
 
-        if constexpr (draw_bounding_box)
-        {
-            polyscope::SurfaceMesh* bounding_box_ptr =
-                polyscope::registerSurfaceMesh("Global Bounding Box", sa_global_aabb_vertices, sa_global_aabb_faces);
-            bounding_box_ptr->setTransparency(0.25f);
-            bounding_boxes.push_back(bounding_box_ptr);
-        }
-
         auto fn_update_GUI_vertices = [&]()
         {
             for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
             }
-            if constexpr (draw_bounding_box)
-                bounding_boxes.back()->updateVertexPositions(sa_global_aabb_vertices);
         };
         auto fn_single_step_with_ui = [&]()
         {
@@ -528,6 +399,8 @@ int main(int argc, char** argv)
                 static polyscope::PickResult prev_selection;
                 if (polyscope::haveSelection())
                 {
+                    const auto& host_mesh_data = solver.get_host_mesh_data();
+
                     polyscope::PickResult selection = polyscope::getSelection();
                     if (selection.isHit
                         && !(selection.screenCoords.x == prev_selection.screenCoords.x
@@ -645,8 +518,10 @@ int main(int argc, char** argv)
                 {
                     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
                 }
-                const uint offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
-                const uint offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
+                const auto& host_collision_data = solver.get_host_collision_data();
+                const auto& collision_data      = solver.get_device_collision_data();
+                const uint  offset_pairs = lcs::CollisionPair::CollisionCount::total_adj_pairs_offset();
+                const uint  offset_verts = lcs::CollisionPair::CollisionCount::total_adj_verts_offset();
                 ImGui::Text("Broad VF/EE = %u / %u Narrow = %u , Triplet = %u",
                             host_collision_data.broad_phase_collision_count[2],
                             host_collision_data.broad_phase_collision_count[3],

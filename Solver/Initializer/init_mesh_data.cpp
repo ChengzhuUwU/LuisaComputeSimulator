@@ -13,8 +13,80 @@ namespace lcs
 
 namespace Initializer
 {
+    struct AABB
+    {
+        float3 packed_min;
+        float3 packed_max;
+        AABB   operator+(const AABB& input_aabb) const
+        {
+            AABB tmp;
+            tmp.packed_min = lcs::min_vec(packed_min, input_aabb.packed_min);
+            tmp.packed_max = lcs::max_vec(packed_max, input_aabb.packed_max);
+            return tmp;
+        }
+        AABB()
+            : packed_min(float3(Float_max))
+            , packed_max(float3(-Float_max))
+        {
+        }
+        AABB(const float3& pos)
+            : packed_min(pos)
+            , packed_max(pos)
+        {
+        }
+    };
+    std::vector<uint> ShellInfo::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
+                                                                     const FixedPointInfo& fixed_info)
+    {
+        if (input_mesh.model_positions.size() == 0)
+        {
+            load_mesh_data();
+            // LUISA_INFO("ShellInfo::set_pinned_verts_from_norm_position() : auto load mesh data for shell {}", model_name);
+        }
+        AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
+            0,
+            input_mesh.model_positions.size(),
+            [&](const uint vid)
+            {
+                auto   read_pos = input_mesh.model_positions[vid];
+                float3 pos      = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
+                return AABB(pos);
+            });
 
+        auto pos_min     = local_aabb.packed_min;
+        auto pos_max     = local_aabb.packed_max;
+        auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
 
+        std::vector<uint>           curr_fixed_point_verts;
+        std::vector<FixedPointInfo> curr_fixed_point_info;
+        std::vector<float3>         curr_fixed_point_target_positions;
+        for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
+        {
+            auto   read_pos = input_mesh.model_positions[vid];
+            float3 pos      = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
+            float3 norm_pos = (pos - pos_min) * pos_dim_inv;
+
+            if (func(norm_pos))
+            {
+                // LUISA_INFO("Found fixed point vert : mesh {}, local_vid {}, norm_pos {}", model_name, local_vid, norm_pos);
+                auto affine_pos = FixedPointInfo::fn_affine_position(fixed_info, 0.0f, pos);
+                curr_fixed_point_verts.emplace_back(vid);
+                curr_fixed_point_target_positions.emplace_back(affine_pos);
+                auto tmp                = fixed_info;
+                tmp.is_fixed_point_func = func;
+                curr_fixed_point_info.push_back(tmp);
+            }
+        }
+
+        fixed_point_list.insert(
+            fixed_point_list.end(), curr_fixed_point_verts.begin(), curr_fixed_point_verts.end());
+        fixed_point_target_positions.insert(fixed_point_target_positions.end(),
+                                            curr_fixed_point_target_positions.begin(),
+                                            curr_fixed_point_target_positions.end());
+        fixed_point_info.insert(
+            fixed_point_info.end(), curr_fixed_point_info.begin(), curr_fixed_point_info.end());
+        return curr_fixed_point_verts;
+    }
     // template<template<typename> typename BasicBuffer>
     void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos, lcs::MeshData<std::vector>* mesh_data)
     {
@@ -173,43 +245,29 @@ namespace Initializer
                                                                       bending_edge[3]);
                                           });
 
+                // Read fixed points
+                CpuParallel::parallel_for(0,
+                                          curr_shell_info.fixed_point_list.size(),
+                                          [&](const uint index)
+                                          {
+                                              const uint local_vid = curr_shell_info.fixed_point_list[index];
+                                              const uint global_vid = prefix_num_verts + local_vid;
+                                              mesh_data->sa_is_fixed[global_vid]      = true;
+                                              curr_shell_info.fixed_point_list[index] = global_vid;
+                                          });
                 // Set fixed-points
                 {
-                    struct AABB
-                    {
-                        float3 packed_min;
-                        float3 packed_max;
-                        AABB   operator+(const AABB& input_aabb) const
-                        {
-                            AABB tmp;
-                            tmp.packed_min = lcs::min_vec(packed_min, input_aabb.packed_min);
-                            tmp.packed_max = lcs::max_vec(packed_max, input_aabb.packed_max);
-                            return tmp;
-                        }
-                        AABB()
-                            : packed_min(float3(Float_max))
-                            , packed_max(float3(-Float_max))
-                        {
-                        }
-                        AABB(const float3& pos)
-                            : packed_min(pos)
-                            , packed_max(pos)
-                        {
-                        }
-                    };
-
                     AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
                         0,
                         curr_num_verts,
                         [&](const uint vid)
                         {
-                            auto pos = mesh_data->sa_rest_x[prefix_num_verts + vid];
+                            auto   read_pos = mesh_data->sa_rest_x[prefix_num_verts + vid];
+                            float3 pos      = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
                             return AABB(pos);
                         });
-
-                    auto pos_min     = local_aabb.packed_min;
-                    auto pos_max     = local_aabb.packed_max;
-                    auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
+                    auto pos_min = local_aabb.packed_min;
+                    auto pos_max = local_aabb.packed_max;
 
                     float avg_spring_length =
                         CpuParallel::parallel_for_and_reduce_sum<float>(
@@ -221,6 +279,8 @@ namespace Initializer
                                 return length_vec(mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
                             })
                         / float(curr_num_edges);
+
+
                     LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}",
                                meshIdx,
                                curr_num_verts,
@@ -228,29 +288,6 @@ namespace Initializer
                                curr_num_edges,
                                avg_spring_length,
                                pos_max - pos_min);
-
-
-                    CpuParallel::single_thread_for(0,
-                                                   curr_num_verts,
-                                                   [&](const uint local_vid)
-                                                   {
-                                                       const uint global_vid = prefix_num_verts + local_vid;
-                                                       float3 orig_pos = mesh_data->sa_rest_x[global_vid];
-                                                       float3 norm_pos = (orig_pos - pos_min) * pos_dim_inv;
-
-                                                       bool is_fixed = false;
-                                                       for (auto& fixed_point_info : curr_shell_info.fixed_point_list)
-                                                       {
-                                                           if (fixed_point_info.is_fixed_point_func(norm_pos))
-                                                           {
-                                                               is_fixed = true;
-                                                               fixed_point_info.fixed_point_verts.push_back(global_vid);
-                                                               break;
-                                                           }
-                                                       }
-                                                       // is_fixed = norm_pos.z < 0.001f && (norm_pos.x > 0.999f || norm_pos.x < 0.001f ) ;
-                                                       mesh_data->sa_is_fixed[global_vid] = is_fixed;
-                                                   });
                 }
 
                 prefix_num_verts += curr_num_verts;

@@ -9,6 +9,8 @@
 namespace lcs
 {
 
+constexpr float pcg_epsilon = 1e-10f;
+
 template <typename T>
 void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
 {
@@ -21,11 +23,11 @@ void buffer_add(Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest
 }
 inline float safe_devide(const float a, const float b)
 {
-    return b < 1e-8f ? 0.0f : a / b;
+    return b < pcg_epsilon ? 0.0f : a / b;
 }
 inline Var<float> safe_devide(const Var<float> a, const Var<float> b)
 {
-    return lcs::select(b < 1e-8f, Float(0.0f), a / b);
+    return lcs::select(b < pcg_epsilon, Float(0.0f), a / b);
 }
 
 void ConjugateGradientSolver::compile(AsyncCompiler& compiler)
@@ -413,7 +415,7 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
         float dot_pq = sa_converage[1];
         float alpha  = safe_devide(delta, dot_pq);
         // float alpha  = dot_pq == 0.0f ? 0.0f : delta / dot_pq;
-        // float alpha = dot_pq < 1e-8f ? 0.0f : delta / dot_pq;
+        // float alpha = dot_pq < pcg_epsilon ? 0.0f : delta / dot_pq;
         return alpha;
     };
     auto save_dot_rz = [](const uint blockIdx, std::vector<float>& sa_converage, const float dot_rz) -> void
@@ -535,7 +537,7 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
             exit(0);
         }
         // if (normR < 1e-4 * normR_0 || dot_rz == 0.0f)
-        if (dot_rz < 1e-8)
+        if (dot_rz < pcg_epsilon)
         // if (dot_rz == 0.0f)
         {
             break;
@@ -606,7 +608,7 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
             float alpha = rz_old / (p.dot(Ap));
             x += alpha * p;
             r -= alpha * Ap; 
-            if (r.norm() < 1e-8)
+            if (r.norm() < pcg_epsilon)
             {
                 break;
             }
@@ -717,7 +719,7 @@ void ConjugateGradientSolver::device_solve(  // TODO: input sa_x
                 LUISA_ERROR("Exist NAN/INF in PCG iteration");
                 exit(0);
             }
-            if (dot_rz < 1e-8)
+            if (dot_rz < pcg_epsilon)
             // if (normR / normR_0 < 1e-4f)
             // if (dot_rz == 0.0f)
             {
