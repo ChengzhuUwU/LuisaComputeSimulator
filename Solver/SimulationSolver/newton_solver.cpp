@@ -57,6 +57,16 @@ void buffer_add(const luisa::compute::BufferView<T>& buffer, const Var<uint> des
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
+template <typename T>
+void buffer_add(std::vector<T>& buffer, const uint dest, const T& value)
+{
+    buffer[dest] = buffer[dest] + value;
+}
+template <typename T>
+void buffer_add(T* buffer, const uint dest, const T& value)
+{
+    buffer[dest] = buffer[dest] + value;
+}
 
 void atomic_buffer_add(const Var<luisa::compute::BufferView<float3>>& buffer, const Var<uint> dest, const Var<float3>& value)
 {
@@ -2406,139 +2416,107 @@ void NewtonSolver::host_material_energy_assembly()
 {
     // Assemble material forces and stiffness matrix
     {
-        // Non-conflict
-        CpuParallel::parallel_for(
-            0,
-            host_sim_data->num_dof,
-            [&](const uint vid)
+        auto assembly_template =
+            [sa_vert_adj_material_force_verts_csr = host_sim_data->sa_vert_adj_material_force_verts_csr.data(),
+             sa_cgB      = host_sim_data->sa_cgB.data(),
+             sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
+             sa_cgA_offdiag_triplet =
+                 host_sim_data->sa_cgA_fixtopo_offdiag_triplet.data()](const uint N,
+                                                                       const uint vid,
+                                                                       const uint* vert_adj_constraints_csr,
+                                                                       const auto&   constaints,
+                                                                       const float3* constaint_gradients,
+                                                                       const float3x3* constaint_hessians,
+                                                                       const ushort* constaint_offsets_in_adjlist)
+        {
+            const uint curr_prefix = sa_vert_adj_material_force_verts_csr[vid];
+            const uint next_prefix = sa_vert_adj_material_force_verts_csr[vid + 1];
+
+            const uint curr_prefix_bending = vert_adj_constraints_csr[vid];
+            const uint next_prefix_bending = vert_adj_constraints_csr[vid + 1];
+
+            for (uint j = curr_prefix_bending; j < next_prefix_bending; j++)
             {
-                const uint curr_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid];
-                const uint next_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
-
-                if (next_prefix - curr_prefix != 0)
+                const uint adj_eid = vert_adj_constraints_csr[j];
+                const auto edge    = constaints[adj_eid];
+                uint       offset  = -1u;
+                for (uint k = 0; k < N; k++)
                 {
-                    float3                total_gradiant = Zero3;
-                    float3x3              total_diag_A   = Zero3x3;
-                    std::vector<float3x3> total_offdiag_A(next_prefix - curr_prefix, Zero3x3);
-                    const auto&           adj_springs = host_sim_data->vert_adj_stretch_springs[vid];
-                    for (const uint adj_eid : adj_springs)
+                    if (vid == edge[k])
                     {
-                        auto       edge   = host_sim_data->sa_stretch_springs[adj_eid];
-                        const uint offset = vid == edge[0] ? 0 : 1;
-                        float3 grad = host_sim_data->sa_stretch_springs_gradients[adj_eid * 2 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_stretch_springs_hessians[adj_eid * 4 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        float3x3 offdiag_hess =
-                            host_sim_data->sa_stretch_springs_hessians[adj_eid * 4 + 2 + offset * 1 + 0];
-                        auto* offsets_in_adjlist_ptr =
-                            host_sim_data->sa_stretch_springs_offsets_in_adjlist.data() + adj_eid * 2 + offset * 1;
-                        uint offdiag_offset             = offsets_in_adjlist_ptr[0];
-                        total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                    }
-
-                    const auto& adj_bending_edges = host_sim_data->vert_adj_bending_edges[vid];
-                    for (const uint adj_eid : adj_bending_edges)
-                    {
-                        auto edge   = host_sim_data->sa_bending_edges[adj_eid];
-                        uint offset = 0;
-                        if (vid == edge[0])
-                        {
-                            offset = 0;
-                        }
-                        else if (vid == edge[1])
-                        {
-                            offset = 1;
-                        }
-                        else if (vid == edge[2])
-                        {
-                            offset = 2;
-                        }
-                        else if (vid == edge[3])
-                        {
-                            offset = 3;
-                        }
-                        // const float3* gradient_ptr = host_sim_data->sa_bending_edges_gradients.data() + adj_eid * 4;
-                        // const float3x3* diag_hessian_ptr = host_sim_data->sa_bending_edges_hessians.data() + adj_eid * 16;
-                        // const float3x3* offdiag_hessian_ptr = host_sim_data->sa_bending_edges_hessians.data() + adj_eid * 16 + 4;
-                        float3 grad = host_sim_data->sa_bending_edges_gradients[adj_eid * 4 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_bending_edges_hessians[adj_eid * 16 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        // auto* offsets_in_adjlist_ptr = host_sim_data->sa_bending_edges_offsets_in_adjlist.data() + adj_eid * 4 + offset * 3;
-                        for (uint ii = 0; ii < 3; ii++)
-                        {
-                            uint offdiag_offset =
-                                host_sim_data->sa_bending_edges_offsets_in_adjlist[adj_eid * 12 + offset * 3 + ii];
-                            // float3x3 offdiag_hess = offdiag_hessian_ptr[offset * 3 + ii];
-                            float3x3 offdiag_hess =
-                                host_sim_data->sa_bending_edges_hessians[adj_eid * 16 + 4 + offset * 3 + ii];
-                            total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                            if (offdiag_offset >= total_offdiag_A.size())
-                            {
-                                LUISA_ERROR("Bending hessian offset out of range! {} vs {}",
-                                            offdiag_offset,
-                                            total_offdiag_A.size());
-                            }
-                        }
-                    }
-
-                    const auto& adj_affine_bodies = host_sim_data->vert_adj_affine_bodies[vid];
-                    for (const uint adj_bid : adj_affine_bodies)
-                    {
-                        auto edge   = host_sim_data->sa_affine_bodies[adj_bid];
-                        uint offset = 0;
-                        if (vid == edge[0])
-                        {
-                            offset = 0;
-                        }
-                        else if (vid == edge[1])
-                        {
-                            offset = 1;
-                        }
-                        else if (vid == edge[2])
-                        {
-                            offset = 2;
-                        }
-                        else if (vid == edge[3])
-                        {
-                            offset = 3;
-                        }
-                        float3 grad = host_sim_data->sa_affine_bodies_gradients[adj_bid * 4 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_affine_bodies_hessians[adj_bid * 16 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        for (uint ii = 0; ii < 3; ii++)
-                        {
-                            uint offdiag_offset =
-                                host_sim_data->sa_affine_bodies_offsets_in_adjlist[adj_bid * 12 + offset * 3 + ii];
-                            float3x3 offdiag_hess =
-                                host_sim_data->sa_affine_bodies_hessians[adj_bid * 16 + 4 + offset * 3 + ii];
-                            total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                            if (offdiag_offset >= total_offdiag_A.size())
-                            {
-                                LUISA_ERROR("Affine body hessian offset out of range! {} vs {}",
-                                            offdiag_offset,
-                                            total_offdiag_A.size());
-                            }
-                        }
-                    }
-
-                    host_sim_data->sa_cgB[vid]      = host_sim_data->sa_cgB[vid] - total_gradiant;
-                    host_sim_data->sa_cgA_diag[vid] = host_sim_data->sa_cgA_diag[vid] + total_diag_A;
-                    for (uint ii = curr_prefix; ii < next_prefix; ii++)
-                    {
-                        uint offset  = ii - curr_prefix;
-                        auto triplet = host_sim_data->sa_cgA_fixtopo_offdiag_triplet[ii];
-                        add_triplet_matrix(triplet, total_offdiag_A[offset]);
-                        host_sim_data->sa_cgA_fixtopo_offdiag_triplet[ii] = triplet;
+                        offset = k;
                     }
                 }
-            },
-            32);
+                LUISA_ASSERT(offset != -1u, "Error in assembly: offset not found.");
+
+                const float3   grad      = constaint_gradients[adj_eid * N + offset];
+                const float3x3 diag_hess = constaint_hessians[adj_eid * (N * N) + offset];
+
+                buffer_add(sa_cgB, vid, -grad);
+                buffer_add(sa_cgA_diag, vid, diag_hess);
+
+                const uint N_off = N - 1;
+                for (uint ii = 0; ii < N_off; ii++)  // For each off-diagonal in curr row
+                {
+                    float3x3 offdiag_hess = constaint_hessians[adj_eid * (N * N) + N + offset * N_off + ii];
+                    uint offdiag_offset =
+                        constaint_offsets_in_adjlist[adj_eid * (N * N_off) + offset * N_off + ii];
+                    auto triplet = sa_cgA_offdiag_triplet[curr_prefix + offdiag_offset];
+                    add_triplet_matrix(triplet, offdiag_hess);
+                    sa_cgA_offdiag_triplet[curr_prefix + offdiag_offset] = triplet;
+                }
+            };
+        };
+
+
+        if (host_sim_data->sa_stretch_springs.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_springs_csr.data(),
+                 constaints               = host_sim_data->sa_stretch_springs.data(),
+                 constaint_gradients      = host_sim_data->sa_stretch_springs_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_stretch_springs_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_springs_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_bending_edges.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_bending_edges_csr.data(),
+                 constaints               = host_sim_data->sa_bending_edges.data(),
+                 constaint_gradients      = host_sim_data->sa_bending_edges_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_bending_edges_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_bending_edges_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_affine_bodies.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->sa_affine_bodies.size() * 4,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_affine_bodies_csr.data(),
+                 constaints               = host_sim_data->sa_affine_bodies.data(),
+                 constaint_gradients      = host_sim_data->sa_affine_bodies_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_affine_bodies_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_affine_bodies_offsets_in_adjlist.data(),
+                 prefix = host_sim_data->num_verts_soft,
+                 assembly_template](const uint block_idx)
+                {
+                    assembly_template(4,
+                                      prefix + block_idx,
+                                      vert_adj_constraints_csr,
+                                      constaints,
+                                      constaint_gradients,
+                                      constaint_hessians,
+                                      constaint_offsets_in_adjlist);
+                });
     }
 }
 
