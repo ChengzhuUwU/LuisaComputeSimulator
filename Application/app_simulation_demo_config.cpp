@@ -347,13 +347,19 @@ void pinned_cloth(std::vector<ShellInfo>& shell_list)
 {
     auto& shell = shell_list
                       .emplace_back(ShellInfo{
-                          .model_name  = obj_mesh_path + "square2K.obj",
+                          .model_name  = obj_mesh_path + "square2.obj",
                           .translation = luisa::make_float3(0, 0.2, 0),
                           .scale       = luisa::make_float3(0.2f),
                       })
                       .load_mesh_data();
     shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
                                               { return (norm_pos.x < 0.001f) && (norm_pos.z < 0.001f); });
+    lcs::get_scene_params().use_floor            = false;
+    lcs::get_scene_params().use_self_collision   = false;
+    lcs::get_scene_params().use_gpu              = false;
+    lcs::get_scene_params().nonlinear_iter_count = 1;
+    lcs::get_scene_params().use_ccd_linesearch   = false;
+    lcs::get_scene_params().pcg_iter_count       = 50;
 }
 void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
 {

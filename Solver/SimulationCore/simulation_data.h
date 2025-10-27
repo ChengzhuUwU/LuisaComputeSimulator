@@ -110,10 +110,11 @@ struct SimulationData : SimulationType
     BufferType<float3x3> sa_stretch_springs_hessians;
 
     BufferType<uint3>    sa_stretch_faces;
+    BufferType<float>    sa_stretch_faces_rest_area;
     BufferType<float2x2> sa_stretch_faces_Dm_inv;
-    BufferType<ushort>   sa_stretch_face_offsets_in_adjlist;
-    BufferType<float3>   sa_stretch_face_gradients;
-    BufferType<float3x3> sa_stretch_face_hessians;
+    BufferType<ushort>   sa_stretch_faces_offsets_in_adjlist;
+    BufferType<float3>   sa_stretch_faces_gradients;
+    BufferType<float3x3> sa_stretch_faces_hessians;
 
     BufferType<uint4>    sa_bending_edges;
     BufferType<float>    sa_bending_edges_rest_angle;

@@ -4,6 +4,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Energy/bending_energy.h"
+#include "Energy/stretch_energy.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
@@ -206,9 +207,10 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Rest stretch face length
         sim_data->sa_stretch_faces.resize(num_stretch_faces);
+        sim_data->sa_stretch_faces_rest_area.resize(num_stretch_faces);
         sim_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
-        sim_data->sa_stretch_face_gradients.resize(num_stretch_faces * 3);
-        sim_data->sa_stretch_face_hessians.resize(num_stretch_faces * 9);
+        sim_data->sa_stretch_faces_gradients.resize(num_stretch_faces * 3);
+        sim_data->sa_stretch_faces_hessians.resize(num_stretch_faces * 9);
         CpuParallel::parallel_for(0,
                                   num_stretch_faces,
                                   [&](const uint fid)
@@ -231,9 +233,17 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                       float2 uv2  = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
                                       float2 duv0 = uv1 - uv0;
                                       float2 duv1 = uv2 - uv0;
-                                      const float2x2 duv                     = float2x2(duv0, duv1);
-                                      sim_data->sa_stretch_faces[fid]        = face;
-                                      sim_data->sa_stretch_faces_Dm_inv[fid] = luisa::inverse(duv);
+                                      const float2x2 duv     = float2x2(duv0, duv1);
+                                      const float2x2 inv_duv = luisa::inverse(duv);
+
+                                      // Eigen::Matrix<float, 2, 2> IB = StretchEnergy::libuipc::Dm2x2(
+                                      //     float3_to_eigen3(x_0), float3_to_eigen3(x_1), float3_to_eigen3(x_2));
+                                      // IB                     = IB.inverse();
+                                      // const float2x2 inv_duv = XMatrix<2, 2>::from_eigen_matrix(IB).to_lc_matrix();
+
+                                      sim_data->sa_stretch_faces[fid] = face;
+                                      sim_data->sa_stretch_faces_rest_area[fid] = compute_face_area(x_0, x_1, x_2);
+                                      sim_data->sa_stretch_faces_Dm_inv[fid] = inv_duv;
                                   });
 
         // Rest bending info
@@ -788,7 +798,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
         }
 
         // Stretch face energy
-        sim_data->sa_stretch_face_offsets_in_adjlist.resize(sim_data->sa_stretch_faces.size() * 6);
+        sim_data->sa_stretch_faces_offsets_in_adjlist.resize(sim_data->sa_stretch_faces.size() * 6);
         CpuParallel::parallel_for(0,
                                   sim_data->sa_stretch_faces.size(),
                                   [&](const uint fid)
@@ -796,7 +806,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                       auto face = sim_data->sa_stretch_faces[fid];
                                       auto mask = get_offsets_in_adjlist_from_adjacent_list<3>(reference_adj_list,
                                                                                                face);  // size = 6
-                                      std::memcpy(sim_data->sa_stretch_face_offsets_in_adjlist.data() + fid * 6,
+                                      std::memcpy(sim_data->sa_stretch_faces_offsets_in_adjlist.data() + fid * 6,
                                                   mask.data(),
                                                   sizeof(ushort) * 6);
                                   });
@@ -999,10 +1009,11 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     {
         stream
             << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
+            << upload_buffer(device, output_data->sa_stretch_faces_rest_area, input_data->sa_stretch_faces_rest_area)
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
-            << upload_buffer(device, output_data->sa_stretch_face_offsets_in_adjlist, input_data->sa_stretch_face_offsets_in_adjlist)
-            << upload_buffer(device, output_data->sa_stretch_face_gradients, input_data->sa_stretch_face_gradients)
-            << upload_buffer(device, output_data->sa_stretch_face_hessians, input_data->sa_stretch_face_hessians)
+            << upload_buffer(device, output_data->sa_stretch_faces_offsets_in_adjlist, input_data->sa_stretch_faces_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_stretch_faces_gradients, input_data->sa_stretch_faces_gradients)
+            << upload_buffer(device, output_data->sa_stretch_faces_hessians, input_data->sa_stretch_faces_hessians)
 
             << upload_buffer(device,
                              output_data->colored_data.sa_clusterd_springs,

@@ -27,7 +27,7 @@ inline float safe_devide(const float a, const float b)
 }
 inline Var<float> safe_devide(const Var<float> a, const Var<float> b)
 {
-    return lcs::select(b < pcg_epsilon, Float(0.0f), a / b);
+    return lcs::select(b < pcg_epsilon, Var<float>(0.0f), a / b);
 }
 
 void ConjugateGradientSolver::compile(AsyncCompiler& compiler)

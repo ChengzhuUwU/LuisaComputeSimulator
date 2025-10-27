@@ -67,7 +67,8 @@ class NewtonSolver : public lcs::SolverInterface
     void host_evaluate_dirichlet();
     void host_reset_off_diag();
     void host_reset_cgB_cgX_diagA();
-    void host_evaluete_spring();
+    void host_evaluete_stretch_spring();
+    void host_evaluete_stretch_face();
     void host_evaluete_bending();
     void host_material_energy_assembly();
     void host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy);

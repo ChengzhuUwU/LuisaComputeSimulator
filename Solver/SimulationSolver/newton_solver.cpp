@@ -5,6 +5,7 @@
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Energy/bending_energy.h"
+#include "Energy/stretch_energy.h"
 #include "Initializer/init_mesh_data.h"
 #include "SimulationSolver/descent_solver.h"
 #include "SimulationSolver/newton_solver.h"
@@ -1799,8 +1800,68 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
-    // Soft stretch
+    // Soft stretch face
     // if constexpr (false)
+    {
+        std::vector<EigenTripletBlock<3>> hessian_blocks(host_sim_data->sa_stretch_faces.size());
+        CpuParallel::single_thread_for(
+            0,
+            host_sim_data->sa_stretch_faces.size(),
+            [sa_x                       = host_sim_data->sa_x.data(),
+             sa_rest_x                  = host_mesh_data->sa_rest_x.data(),
+             sa_faces                   = host_sim_data->sa_stretch_faces.data(),
+             sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
+             sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
+             youngs_modulus_cloth       = get_scene_params().youngs_modulus_cloth,
+             poisson_ratio_cloth        = get_scene_params().poisson_ratio_cloth,
+             &hessian_blocks,
+             &cgB](const uint fid)
+            {
+                uint3 face = sa_faces[fid];
+
+                float3   vert_pos[3]  = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+                float3   x_bars[3]    = {sa_rest_x[face[0]], sa_rest_x[face[1]], sa_rest_x[face[2]]};
+                float3   gradients[3] = {Zero3, Zero3, Zero3};
+                float3x3 hessians[3][3];
+                for (auto& tmp : hessians)
+                {
+                    for (auto& hess : tmp)
+                        hess = Zero3x3;
+                }
+                float2x2 Dm_inv = sa_stretch_faces_Dm_inv[fid];
+                float    area   = sa_stretch_faces_rest_area[fid];
+
+                Eigen::Matrix<float, 9, 1> G;
+                Eigen::Matrix<float, 9, 9> H;
+
+                StretchEnergy::compute_gradient_hessian(
+                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, 1e4f, 0.46f, area, gradients, hessians);
+                // LUISA_INFO("Face {}: grad = {}", face, gradients);
+                cgB.block<3, 1>(3 * face[0], 0) -= float3_to_eigen3(gradients[0]);
+                cgB.block<3, 1>(3 * face[1], 0) -= float3_to_eigen3(gradients[1]);
+                cgB.block<3, 1>(3 * face[2], 0) -= float3_to_eigen3(gradients[2]);
+                EigenFloat9x9 tmpH;
+                for (uint ii = 0; ii < 3; ii++)
+                {
+                    for (uint jj = 0; jj < 3; jj++)
+                    {
+                        tmpH.block<3, 3>(ii * 3, jj * 3) = float3x3_to_eigen3x3(hessians[ii][jj]);
+                    }
+                }
+                // StretchEnergy::libuipc::compute_gradient_hessian(
+                //     vert_pos[0], vert_pos[1], vert_pos[2], x_bars[0], x_bars[1], x_bars[2], 1e7f, 0.46f, area, G, H);
+                // cgB.block<3, 1>(3 * face[0], 0) -= G.block<3, 1>(0, 0);
+                // cgB.block<3, 1>(3 * face[1], 0) -= G.block<3, 1>(3, 0);
+                // cgB.block<3, 1>(3 * face[2], 0) -= G.block<3, 1>(6, 0);
+                // EigenFloat9x9 tmpH  = H;
+
+                hessian_blocks[fid] = {.indices = {face[0], face[1], face[2]}, .matrix = tmpH};
+            });
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
+    }
+
+    // Soft stretch spring
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<2>> hessian_blocks(host_sim_data->sa_stretch_springs.size());
         CpuParallel::single_thread_for(
@@ -2269,7 +2330,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                (cgB - cgA * cgX).norm(),
                fast_infinity_norm(host_sim_data->sa_cgX));
 }
-void NewtonSolver::host_evaluete_spring()
+void NewtonSolver::host_evaluete_stretch_spring()
 {
     CpuParallel::parallel_for(0,
                               host_sim_data->sa_stretch_springs.size(),
@@ -2278,7 +2339,6 @@ void NewtonSolver::host_evaluete_spring()
                                sa_rest_length = host_sim_data->sa_stretch_spring_rest_state_length.data(),
                                output_gradient_ptr = host_sim_data->sa_stretch_springs_gradients.data(),
                                output_hessian_ptr  = host_sim_data->sa_stretch_springs_hessians.data(),
-                               sa_rest_edge_area   = host_mesh_data->sa_rest_edge_area.data(),
                                stiffness_stretch   = get_scene_params().stiffness_spring](const uint eid)
                               {
                                   uint2 edge = sa_edges[eid];
@@ -2318,6 +2378,64 @@ void NewtonSolver::host_evaluete_spring()
                                       output_hessian_ptr[eid * 4 + 3] = -1.0f * He;
                                   }
                               });
+}
+void NewtonSolver::host_evaluete_stretch_face()
+{
+    CpuParallel::single_thread_for(
+        0,
+        host_sim_data->sa_stretch_faces.size(),
+        [sa_x                       = host_sim_data->sa_x.data(),
+         sa_faces                   = host_sim_data->sa_stretch_faces.data(),
+         sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
+         sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
+         output_gradient_ptr        = host_sim_data->sa_stretch_faces_gradients.data(),
+         output_hessian_ptr         = host_sim_data->sa_stretch_faces_hessians.data(),
+         youngs_modulus_cloth       = get_scene_params().youngs_modulus_cloth,
+         poisson_ratio_cloth        = get_scene_params().poisson_ratio_cloth](const uint fid)
+        {
+            uint3 face = sa_faces[fid];
+
+            float3   vert_pos[3]  = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+            float3   gradients[3] = {Zero3, Zero3, Zero3};
+            float3x3 hessians[9]  = {Zero3x3};
+            float2x2 Dm_inv       = sa_stretch_faces_Dm_inv[fid];
+            float    area         = sa_stretch_faces_rest_area[fid];
+
+            // StretchEnergy::compute_gradient_hessian(float3_to_eigen3(vert_pos[0]),
+            //                                         float3_to_eigen3(vert_pos[1]),
+            //                                         float3_to_eigen3(vert_pos[2]),
+            //                                         Dm_inv,
+            //                                         1e4f,
+            //                                         poisson_ratio_cloth,
+            //                                         area,
+            //                                         gradients,
+            //                                         hessians);
+
+            LUISA_INFO("Face {} ({}): grad = {}", fid, face, gradients);
+            LUISA_INFO("Face {} ({}): hess = {}", fid, face, hessians[0]);
+
+            // Output
+            {
+                output_gradient_ptr[fid * 3 + 0] = gradients[0];
+                output_gradient_ptr[fid * 3 + 1] = gradients[1];
+                output_gradient_ptr[fid * 3 + 2] = gradients[2];
+            }
+            {
+                // 0 1 2
+                // 3 4 5
+                // 6 7 8
+                output_hessian_ptr[fid * 9 + 0] = hessians[0];
+                output_hessian_ptr[fid * 9 + 1] = hessians[4];
+                output_hessian_ptr[fid * 9 + 2] = hessians[8];
+
+                output_hessian_ptr[fid * 9 + 3] = hessians[1];
+                output_hessian_ptr[fid * 9 + 4] = hessians[2];
+                output_hessian_ptr[fid * 9 + 5] = hessians[3];
+                output_hessian_ptr[fid * 9 + 6] = hessians[5];
+                output_hessian_ptr[fid * 9 + 7] = hessians[6];
+                output_hessian_ptr[fid * 9 + 8] = hessians[7];
+            }
+        });
 }
 void NewtonSolver::host_evaluete_bending()
 {
@@ -2469,7 +2587,7 @@ void NewtonSolver::host_material_energy_assembly()
         };
 
 
-        if (host_sim_data->sa_stretch_springs.size() != 0)
+        if (host_sim_data->sa_stretch_springs.size() != 0 && false)
             CpuParallel::parallel_for(
                 0,
                 host_sim_data->num_verts_soft,
@@ -2481,6 +2599,20 @@ void NewtonSolver::host_material_energy_assembly()
                  assembly_template](const uint vid)
                 {
                     assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_stretch_faces.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_faces_csr.data(),
+                 constaints               = host_sim_data->sa_stretch_faces.data(),
+                 constaint_gradients      = host_sim_data->sa_stretch_faces_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_stretch_faces_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_faces_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(3, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
                 });
 
         if (host_sim_data->sa_bending_edges.size() != 0)
@@ -3106,7 +3238,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             {
                 prev_state_energy = compute_energy_interface();
             }
-            if constexpr (true)
+            if constexpr (false)
             {
                 host_evaluate_inertia();
 
@@ -3114,7 +3246,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 host_evaluate_orthogonality();
 
-                host_evaluete_spring();
+                host_evaluete_stretch_spring();
+                host_evaluete_stretch_face();
 
                 host_evaluete_bending();
 

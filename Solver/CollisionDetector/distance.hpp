@@ -31,12 +31,12 @@ namespace distance
         return luisa::compute::all(vec);
     }
 
-    using Mat2x2f = Float2x2;
-    using Mat2x3f = Float3x2;
-    using Mat3x2f = Float2x3;
-    using Vec2f   = Float2;
-    using Vec3f   = Float3;
-    using Vec4f   = Float4;
+    using Mat2x2f = Var<float2x2>;
+    using Mat2x3f = Var<float3x2>;
+    using Mat3x2f = Var<float2x3>;
+    using Vec2f   = Var<float2>;
+    using Vec3f   = Var<float3>;
+    using Vec4f   = Var<float4>;
 
     inline Var<bool> solve(const Mat2x2f& a, const Vec2f& b, Vec2f& x)
     {

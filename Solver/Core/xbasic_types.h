@@ -250,6 +250,16 @@ struct LargeMatrix
     static constexpr size_t block_M = M / 3;
     static constexpr size_t block_N = N / 3;
 
+    template <size_t I, size_t J>
+    static constexpr size_t block_i = I / 3;
+    template <size_t I, size_t J>
+    static constexpr size_t block_j = J / 3;
+    template <size_t I, size_t J>
+    static constexpr size_t inner_i = I % 3;
+    template <size_t I, size_t J>
+    static constexpr size_t inner_j = J % 3;
+
+
     using Float3   = luisa::float3;
     using Float3x3 = luisa::float3x3;
     Float3x3 mat[block_M][block_N];
@@ -265,12 +275,35 @@ struct LargeMatrix
     {
         return mat[(idx1 / 3)][(idx2 / 3)][(idx1 % 3)][(idx2 % 3)];
     }
+    template <size_t I, size_t J>
+    constexpr float& scalar()
+    {
+        static_assert(I < M && J < N, "Index out of bounds");
+        return mat[block_i<I, J>][block_j<I, J>][inner_i<I, J>][inner_j<I, J>];
+    }
+    template <size_t I, size_t J>
+    constexpr const float& scalar() const
+    {
+        static_assert(I < M && J < N, "Index out of bounds");
+        return mat[block_i<I, J>][block_j<I, J>][inner_i<I, J>][inner_j<I, J>];
+    }
     const LargeVector<N> column(size_t col_idx)
     {
         LargeVector<N> result;
         for (size_t i = 0; i < block_N; i++)
         {
             result.block(i) = this->block(col_idx / 3, i)[col_idx % 3];
+        }
+        return result;
+    }
+    template <size_t ColIdx>
+    const LargeVector<N> column()
+    {
+        static_assert(ColIdx < N, "Index out of bounds");
+        LargeVector<N> result;
+        for (size_t i = 0; i < block_N; i++)
+        {
+            result.block(i) = this->block(ColIdx / 3, i)[ColIdx % 3];
         }
         return result;
     }
