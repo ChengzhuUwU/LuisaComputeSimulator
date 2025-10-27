@@ -70,14 +70,85 @@ namespace Initializer
         ShellTypeTetrahedral,
         ShellTypeRigid,
     };
+
+    enum class ConstitutiveModelCloth
+    {
+        None     = 0,
+        Spring   = 1,  // Impl
+        FEM_BW98 = 2,  // Impl
+    };
+    enum class ConstitutiveModelTet
+    {
+        None             = 0,
+        StVK             = 1,
+        StableNeoHookean = 2,
+        Corotated        = 3,
+    };
+    enum class ConstitutiveModelRigid
+    {
+        None          = 0,
+        Orthogonality = 1,  // Impl
+        ARAP          = 2,
+    };
+    enum class ConstitutiveModelRod
+    {
+        ConstModel_None = 0,
+    };
+
+    struct ClothMaterial
+    {
+        ConstitutiveModelCloth model;
+        float                  youngs_modulus    = 1e6f;
+        float                  poisson_ratio     = 0.3f;
+        float                  bending_stiffness = 5e-2f;
+    };
+    struct TetMaterial
+    {
+        ConstitutiveModelTet model;
+        float                youngs_modulus      = 1e6f;
+        float                poisson_ratio       = 0.3f;
+        float                volume_preservation = 1.0f;
+    };
+    struct RigidMaterial
+    {
+        ConstitutiveModelRigid model;
+        float                  stiffness = 1e9f;
+        bool                   is_solid  = false;
+    };
+    struct RodMaterial
+    {
+        ConstitutiveModelRod model;
+        float                bending_stiffness  = 1e4f;
+        float                twisting_stiffness = 1e4f;
+    };
+
+    using MaterialVariant = std::variant<ClothMaterial, TetMaterial, RigidMaterial, RodMaterial>;
+
     struct ShellInfo
     {
         std::string model_name  = "square8K.obj";
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
-        float3 scale   = luisa::make_float3(1.0f);
-        float  mass    = 0.0f;    // If mass > 0, use mass to compute density
-        float  density = 100.0f;  //
+        float3          scale   = luisa::make_float3(1.0f);
+        float           mass    = 0.0f;    // If mass > 0, use mass to compute density
+        float           density = 100.0f;  //
+        MaterialVariant physics_material;
+
+        template <typename T>
+        bool holds() const
+        {
+            return std::holds_alternative<T>(physics_material);
+        }
+        template <typename T>
+        T& get()
+        {
+            return std::get<T>(physics_material);
+        }
+        template <typename T>
+        T* get_if()
+        {
+            return std::get_if<T>(&physics_material);
+        }
 
         std::vector<FixedPointInfo> fixed_point_info;
         std::vector<uint>           fixed_point_list;

@@ -146,8 +146,8 @@ namespace Initializer
                   shell_infos.end(),
                   [](const Initializer::ShellInfo& left, const Initializer::ShellInfo& right)
                   { return int(left.shell_type) < int(right.shell_type); });
-        const uint                             num_meshes = shell_infos.size();
-        std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
+        const uint num_meshes = shell_infos.size();
+        // std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
         mesh_data->num_meshes         = num_meshes;
         mesh_data->num_verts          = 0;
@@ -166,19 +166,56 @@ namespace Initializer
 
         mesh_data->fixed_verts_map.resize(num_meshes);
 
-        // Constant scalar and init MeshData
-        // TODO: Identity cloth, tet, rigid-body
+        // Pre-process materials
         for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            const auto& shell_info = shell_infos[meshIdx];
-            auto& input_mesh = input_meshes[meshIdx];  // TODO: Get (multiple) original mesh data from params
-            bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
+            auto& shell_info = shell_infos[meshIdx];
+            auto& input_mesh = shell_info.input_mesh;
+            if (input_mesh.model_positions.empty())
+            {
+                bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
+            }
 
-            // std::string obj_name = model_name;
-            // {
-            //     std::filesystem::path path(obj_name);
-            //     obj_name = path.stem().string();
-            // }
+            if (shell_info.shell_type == ShellTypeCloth)
+            {
+                if (shell_info.holds<ClothMaterial>())
+                {
+                    auto& mat = shell_info.get<ClothMaterial>();
+                    if (mat.model != ConstitutiveModelCloth::None)
+                    {
+                        mat.model = ConstitutiveModelCloth::FEM_BW98;
+                    }
+                }
+            }
+            else if (shell_info.shell_type == ShellTypeTetrahedral)
+            {
+                if (shell_info.holds<TetMaterial>())
+                {
+                    auto& mat = shell_info.get<TetMaterial>();
+                    if (mat.model != ConstitutiveModelTet::None)
+                    {
+                        mat.model = ConstitutiveModelTet::StableNeoHookean;
+                    }
+                }
+            }
+            else if (shell_info.shell_type == ShellTypeRigid)
+            {
+                if (shell_info.holds<RigidMaterial>())
+                {
+                    auto& mat = shell_info.get<RigidMaterial>();
+                    if (mat.model != ConstitutiveModelRigid::None)
+                    {
+                        mat.model = ConstitutiveModelRigid::Orthogonality;
+                    }
+                }
+            }
+        }
+
+        // Constant scalar and init MeshData
+        for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
+        {
+            auto& shell_info = shell_infos[meshIdx];
+            auto& input_mesh = shell_info.input_mesh;
 
             mesh_data->prefix_num_verts[meshIdx]          = mesh_data->num_verts;
             mesh_data->prefix_num_faces[meshIdx]          = mesh_data->num_faces;
@@ -194,7 +231,6 @@ namespace Initializer
             mesh_data->num_faces += curr_num_faces;
             mesh_data->num_edges += curr_num_edges;
             mesh_data->num_dihedral_edges += curr_num_dihedral_edges;
-            // mesh_data->num_tets += shell_info.shell_type == ShellTypeTetrahedral ? input_mesh.tets.size() : 0;
         }
 
         mesh_data->prefix_num_verts[num_meshes]          = mesh_data->num_verts;
@@ -235,7 +271,7 @@ namespace Initializer
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
                 auto&       curr_shell_info = shell_infos[meshIdx];
-                const auto& curr_input_mesh = input_meshes[meshIdx];
+                const auto& curr_input_mesh = curr_shell_info.input_mesh;
 
                 // Model info
                 {
