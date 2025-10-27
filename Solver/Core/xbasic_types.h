@@ -242,6 +242,50 @@ struct LargeVector
             vec[i] = luisa::make_float3(0.0f);
         }
     }
+    float squared_norm() const
+    {
+        float length = 0.0f;
+        for (size_t i = 0; i < block_N; i++)
+        {
+            length += luisa::dot(vec[i], vec[i]);
+        }
+        return length;
+    }
+    float norm() const { return luisa::sqrt(squared_norm()); }
+
+    LargeVector<N> normalize() const
+    {
+        float          length = norm();
+        LargeVector<N> output;
+        for (size_t i = 0; i < block_N; i++)
+        {
+            output.vec[i] = vec[i] / length;
+        }
+        return output;
+    }
+
+  public:
+    static LargeVector<N> from_eigen_matrix(const Eigen::Matrix<float, N, 1>& mat)
+    {
+        LargeVector<N> output;
+        for (size_t j = 0; j < N; j++)
+        {
+            output.scalar(j) = mat(j, 0);
+        }
+        return output;
+    }
+
+    Eigen::Matrix<float, N, 1> to_eigen_matrix() const
+    {
+        Eigen::Matrix<float, N, 1> output;
+        {
+            for (size_t j = 0; j < N; j++)
+            {
+                output(j, 0) = this->scalar(j);
+            }
+        }
+        return output;
+    }
 };
 
 template <size_t M, size_t N>
@@ -321,6 +365,18 @@ struct LargeMatrix
             for (size_t j = 0; j < block_N; j++)
                 (*this).block(i, j) = input_mat(i, j);
     }
+    static luisa::float3x3 convert_helper(const Eigen::Matrix3f& input)
+    {
+        return luisa::make_float3x3(
+            input(0, 0), input(1, 0), input(2, 0), input(0, 1), input(1, 1), input(2, 1), input(0, 2), input(1, 2), input(2, 2));
+    };
+    static Eigen::Matrix3f convert_helper(const luisa::float3x3& input)
+    {
+        Eigen::Matrix3f mat;
+        mat << input[0][0], input[1][0], input[2][0], input[0][1], input[1][1], input[2][1], input[0][2],
+            input[1][2], input[2][2];
+        return mat;
+    };
 
   public:
     void set_diag(const Float3x3 input)
@@ -350,7 +406,7 @@ struct LargeMatrix
             {
                 const auto& left_v  = left.block(i);
                 const auto& right_v = right.block(j);
-                result.block(i, j) =
+                result.block(j, i) =
                     luisa::make_float3x3(left_v * right_v[0], left_v * right_v[1], left_v * right_v[2]);
             }
         }
@@ -362,6 +418,50 @@ struct LargeMatrix
         LargeMatrix<M, N> result;
         result.set_zero();
         return result;
+    }
+    static LargeMatrix<M, N> identity()
+    {
+        static_assert(M == N, "Matrix is not Square Matrix");
+        LargeMatrix<M, N> result;
+        for (size_t i = 0; i < block_M; i++)
+            for (size_t j = 0; j < block_N; j++)
+                if (i == j)
+                {
+                    result.block(i, j) = luisa::float3x3::eye(1.0f);
+                }
+                else
+                {
+                    result.block(i, j) = luisa::make_float3x3(0.0f);
+                }
+        return result;
+    }
+
+  public:
+    static LargeMatrix<M, N> from_eigen_matrix(const Eigen::Matrix<float, N, M>& mat)
+    {
+        LargeMatrix<M, N> output;
+        for (size_t i = 0; i < block_M; i++)
+        {
+            for (size_t j = 0; j < block_N; j++)
+            {
+                output.block(i, j) = LargeMatrix<M, N>::convert_helper(mat.block<3, 3>(3 * j, 3 * i));
+            }
+        }
+        return output;
+    }
+
+    Eigen::Matrix<float, N, M> to_eigen_matrix() const
+    {
+        Eigen::Matrix<float, N, M> output;
+        for (size_t i = 0; i < M; i++)
+        {
+            for (size_t j = 0; j < N; j++)
+            {
+                output(j, i) = this->scalar(i, j);
+                // output.template block<3, 3>(3 * j, 3 * i) = LargeMatrix<M, N>::convert_helper(mat[i][j]);
+            }
+        }
+        return output;
     }
 };
 

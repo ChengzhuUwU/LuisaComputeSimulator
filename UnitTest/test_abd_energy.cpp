@@ -4,6 +4,7 @@
 #include <Eigen/Eigenvalues>
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
+#include "Energy/stretch_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>
 #include <vector>
@@ -107,6 +108,216 @@ auto compute_ortho_gradient_hessian(const std::vector<luisa::float3>& abd_q, con
     return std::make_pair(cgB, cgA);
 }
 
+typedef Eigen::Matrix<float, 2, 1> Vector2;
+typedef Eigen::Matrix<float, 3, 1> Vector3;
+typedef Eigen::Matrix<float, 6, 1> Vector6;
+typedef Eigen::Matrix<float, 3, 2> Matrix3x2;
+typedef Eigen::Matrix<float, 6, 6> Matrix6x6;
+
+Vector6 flatten(const Matrix3x2& A)
+{
+    Vector6      column;
+    unsigned int index = 0;
+    for (unsigned int j = 0; j < 2; j++)
+        for (unsigned int i = 0; i < 3; i++, index++)
+            column[index] = A(i, j);
+    return column;
+}
+
+void stretchHessian(const Matrix3x2& F, Matrix6x6& H, const float _mu)
+{
+    H.setZero();
+    const Vector2 u(1.0, 0.0);
+    const Vector2 v(0.0, 1.0);
+    const double  I5u        = (F * u).transpose() * (F * u);
+    const double  I5v        = (F * v).transpose() * (F * v);
+    const double  invSqrtI5u = 1.0 / sqrt(I5u);
+    const double  invSqrtI5v = 1.0 / sqrt(I5v);
+    // set the block diagonals, build the rank-three
+    // subspace with all-(1 / invSqrtI5) eigenvalues
+    H(0, 0) = H(1, 1) = H(2, 2) = std::max((1.0 - invSqrtI5u), 0.0);
+    H(3, 3) = H(4, 4) = H(5, 5) = std::max((1.0 - invSqrtI5v), 0.0);
+    // modify the upper block diagonal, bump the single
+    // outer-product eigenvalue back to just 1, unless it
+    // was clamped, then just set it directly to 1
+    const Vector3 fu     = F.col(0).normalized();
+    const double  uCoeff = (1.0 - invSqrtI5u >= 0.0) ? invSqrtI5u : 1.0;
+    H.block<3, 3>(0, 0) += uCoeff * (fu * fu.transpose());
+    // modify the lower block diagonal similarly
+    const Vector3 fv     = F.col(1).normalized();
+    const double  vCoeff = (1.0 - invSqrtI5v >= 0.0) ? invSqrtI5v : 1.0;
+    H.block<3, 3>(3, 3) += vCoeff * (fv * fv.transpose());
+    // the leading 2 is absorbed by the mu / 2 coefficient
+    H *= _mu;
+}
+
+using namespace lcs;
+inline float6x6 shear_hessian(const float2x3& F, float mu)
+{
+    float6x6 H = float6x6::zero();
+
+    const float3& Fu = F.cols[0];
+    const float3& Fv = F.cols[1];
+
+    const float I6     = luisa::dot(Fu, Fv);
+    const float signI6 = luisa::sign(I6);
+
+    H.scalar<3, 0>() = H.scalar<4, 1>() = H.scalar<5, 2>() = H.scalar<0, 3>() = H.scalar<1, 4>() =
+        H.scalar<2, 5>()                                                      = 1.0f;
+
+    const float6 g = StretchEnergy::detail::flatten(F * luisa::make_float2x2(0, 1, 1, 0));  // F * (a b^T + b a^T)
+
+    const float I2      = luisa::dot(Fu, Fu) + luisa::dot(Fv, Fv);  // F.squaredNorm();
+    const float lambda0 = 0.5f * (I2 + luisa::sqrt(I2 * I2 + 12.0f * I6 * I6));
+
+    const float6 q0     = (I6 * H * g + lambda0 * g).normalize();
+    float6x6     T      = float6x6::identity();
+    T                   = 0.5f * (T + signI6 * H);
+    const float6 Tq     = T * q0;
+    const float  normTq = Tq.squared_norm();
+
+    H = luisa::abs(I6) * (T - float6x6::outer_product(Tq, Tq) / normTq) + lambda0 * float6x6::outer_product(q0, q0);
+
+    return mu * H;
+}
+void shearHessian(const Matrix3x2& F, Matrix6x6& pPpF, const float _mu)
+{
+    const Vector2 u(1.0, 0.0);
+    const Vector2 v(0.0, 1.0);
+    const double  I6     = (F * u).transpose() * (F * v);
+    const double  signI6 = (I6 >= 0) ? 1.0 : -1.0;
+    Matrix6x6     H      = Matrix6x6::Zero();
+    H(3, 0) = H(4, 1) = H(5, 2) = H(0, 3) = H(1, 4) = H(2, 5) = 1.0;
+    const Vector6 g = flatten(F * (u * v.transpose() + v * u.transpose()));
+
+    // get the novel eigenvalue
+    const double I2      = F.squaredNorm();
+    const double lambda0 = 0.5 * (I2 + sqrt(I2 * I2 + 12.0 * I6 * I6));
+
+    // get the novel eigenvector
+    // the H multiply is a column swap; could be optimized more
+    const Vector6 q0 = (I6 * H * g + lambda0 * g).normalized();
+    Matrix6x6     T  = Matrix6x6::Identity();
+
+    T                    = 0.5 * (T + signI6 * H);
+    const Vector6 Tq     = T * q0;
+    const double  normTq = Tq.squaredNorm();
+
+    // std::cout << "q0 \n" << (q0) << std::endl;
+    // std::cout << "q0 q0T = \n" << (q0 * q0.transpose()) << std::endl;
+    pPpF = fabs(I6) * (T - (Tq * Tq.transpose()) / normTq) + lambda0 * (q0 * q0.transpose());
+    // half from mu and leading 2 on Hessian cancel
+    pPpF *= _mu;
+}
+void test_FEM_BW98()
+{
+    using namespace lcs;
+
+    std::vector<luisa::float3> sa_x = {
+        luisa::make_float3(0.0f, 0.0f, 0.0f),
+        luisa::make_float3(2.0f, 0.0f, 0.0f),
+        luisa::make_float3(1.0f, 2.0f, 0.0f),
+    };
+    std::vector<luisa::float3> sa_rest_x = {
+        luisa::make_float3(0.0f, 0.0f, 0.0f),
+        luisa::make_float3(1.0f, 0.0f, 0.0f),
+        luisa::make_float3(0.0f, 1.0f, 0.0f),
+    };
+
+    const auto& x0 = sa_x[0];
+    const auto& x1 = sa_x[1];
+    const auto& x2 = sa_x[2];
+    const auto& X0 = sa_rest_x[0];
+    const auto& X1 = sa_rest_x[1];
+    const auto& X2 = sa_rest_x[2];
+
+    uint3       face = uint3(0, 1, 2);
+    const float area = 0.5f;
+
+    float3   r_1    = X1 - X0;
+    float3   r_2    = X2 - X0;
+    float3   cross  = cross_vec(r_1, r_2);
+    float3   axis_1 = normalize_vec(r_1);
+    float3   axis_2 = normalize_vec(cross_vec(cross, axis_1));
+    float2   uv0    = float2(dot_vec(axis_1, X0), dot_vec(axis_2, X0));
+    float2   uv1    = float2(dot_vec(axis_1, X1), dot_vec(axis_2, X1));
+    float2   uv2    = float2(dot_vec(axis_1, X2), dot_vec(axis_2, X2));
+    float2   duv0   = uv1 - uv0;
+    float2   duv1   = uv2 - uv0;
+    float2x2 Dm1    = float2x2(duv0, duv1);
+    auto Dm2 = StretchEnergy::libuipc::Dm2x2(float3_to_eigen3(X0), float3_to_eigen3(X1), float3_to_eigen3(X2));
+
+    std::cout << "Dm1 = " << luisa::format("{}", Dm1) << std::endl;
+    std::cout << "Dm2 = " << Dm2 << std::endl;
+
+    float3   vert_pos[3]  = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+    float3   x_bars[3]    = {sa_rest_x[face[0]], sa_rest_x[face[1]], sa_rest_x[face[2]]};
+    float3   gradients[3] = {Zero3, Zero3, Zero3};
+    float3x3 hessians[3][3];
+    for (auto& tmp : hessians)
+    {
+        for (auto& hess : tmp)
+            hess = Zero3x3;
+    }
+
+    Eigen::Matrix<float, 9, 1> G;
+    Eigen::Matrix<float, 9, 9> H;
+
+    const float                      mass = 0.01f;
+    const float                      dt   = 0.01f;
+    const Eigen::Matrix<float, 9, 9> M    = mass / dt / dt * Eigen::Matrix<float, 9, 9>::Identity();
+
+    const float youngs        = 1e4f;
+    const float possion_rate  = 0.2f;
+    auto [mu_tmp, lambda_tmp] = StretchEnergy::convert_prop(youngs, possion_rate);
+    const float mu            = mu_tmp;
+    const float lambda        = lambda_tmp;
+
+    {
+        float2x3 F = makeFloat2x3(x1 - x0, x2 - x0) * luisa::inverse(Dm1);
+
+        float6x6 H_stretch = StretchEnergy::detail::stretch_hessian(F, mu);
+        // float6x6 H_shear   = StretchEnergy::detail::shear_hessian(F, lambda);
+        float6x6 H_shear = shear_hessian(F, lambda);
+        // StretchEnergy::compute_gradient_hessian(
+        //     vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu, lambda, area, gradients, hessians);
+
+        for (uint ii = 0; ii < 3; ii++)
+        {
+            G.block<3, 1>(ii * 3, 0) = float3_to_eigen3(gradients[ii]);
+            for (uint jj = 0; jj < 3; jj++)
+            {
+                H.block<3, 3>(ii * 3, jj * 3) = float3x3_to_eigen3x3(hessians[ii][jj]);
+            }
+        }
+        std::cout << "Impl : \n";
+        // std::cout << "Gradient : \n" << G << std::endl;
+        // std::cout << "Result : \n" << (M + H).inverse() * G << std::endl;
+        // std::cout << "Hessian : \n" << H << std::endl;
+        std::cout << "F : \n" << F.to_eigen_matrix() << std::endl;
+        std::cout << "Hessian_stretch : \n" << H_stretch.to_eigen_matrix() << std::endl;
+        std::cout << "Hessian_shear : \n" << H_shear.to_eigen_matrix() << std::endl;
+    }
+    {
+        auto F = (makeFloat2x3(x1 - x0, x2 - x0) * Dm1).to_eigen_matrix();
+        // auto F = StretchEnergy::libuipc::Ds3x2(float3_to_eigen3(x0), float3_to_eigen3(x1), float3_to_eigen3(x2))
+        //          * Dm2.inverse();
+
+        // float2x3 de0dF   = detail::stretch_gradient(F, mu);
+        // float2x3 de1dF   = detail::shear_gradient(F, lambda);
+
+        Matrix6x6 H_stretch;
+        Matrix6x6 H_shear;
+        Matrix3x2 F_eigen = F;
+        stretchHessian(F_eigen, H_stretch, mu);
+        shearHessian(F_eigen, H_shear, lambda);
+
+        std::cout << "F : \n" << F << std::endl;
+        std::cout << "Hessian_stretch : \n" << H_stretch << std::endl;
+        std::cout << "Hessian_shear : \n" << H_shear << std::endl;
+    }
+}
+
 int main()
 {
     using namespace lcs;
@@ -128,7 +339,23 @@ int main()
         luisa::make_float3(0.0f, 0.0f, 1.0f),
     };
 
-    auto result = compute_ortho_gradient_hessian(abd_q, 1e5f);
-    std::cout << "Ortho gradient: " << std::endl << result.first << std::endl;
-    std::cout << "Ortho hessian: " << std::endl << result.second << std::endl;
+    // auto result = compute_ortho_gradient_hessian(abd_q, 1e5f);
+    // std::cout << "Ortho gradient: " << std::endl << result.first << std::endl;
+    // std::cout << "Ortho hessian: " << std::endl << result.second << std::endl;
+
+    test_FEM_BW98();
+
+    // float6 vec1;
+    // vec1.vec[0] = luisa::make_float3(0, 1, 2);
+    // vec1.vec[1] = luisa::make_float3(3, 4, 5);
+
+    // float6 vec2;
+    // vec2.vec[0] = luisa::make_float3(0, 1, 100);
+    // vec2.vec[1] = luisa::make_float3(1000, 10000, 100000);
+    // std::cout << "Val 1 = \n" << float6x6::outer_product(vec1, vec2).to_eigen_matrix() << std::endl;
+    // std::cout << "Val 2 = \n"
+    //           << vec1.to_eigen_matrix() * vec2.to_eigen_matrix().transpose() << std::endl;
+    // std::cout << "Val 1 = \n" << float6x6::outer_product(vec2, vec1).to_eigen_matrix() << std::endl;
+    // std::cout << "Val 2 = \n"
+    //           << vec2.to_eigen_matrix() * vec1.to_eigen_matrix().transpose() << std::endl;
 }

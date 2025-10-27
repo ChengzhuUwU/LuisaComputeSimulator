@@ -36,7 +36,7 @@ int main(int argc, char** argv)
         lcs::VECTOR12 vec2;
         lcs::set_largevec(vec1, 1.0f);
         lcs::set_largevec(vec2, 1.0f);
-        vec1[1] = luisa::make_float3(0);
+        vec1.block(1) = luisa::make_float3(0);
 
         auto large_mat = lcs::outer_product_largevec(vec1, vec2);
         lcs::print_largemat(large_mat);

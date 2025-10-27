@@ -51,7 +51,7 @@ void SolverInterface::init_data(luisa::compute::Device&                   device
     }
 
     {
-        lcs::Initializer::init_sim_data(host_mesh_data, host_sim_data);
+        lcs::Initializer::init_sim_data(shell_list, host_mesh_data, host_sim_data);
         lcs::Initializer::upload_sim_buffers(device, stream, host_sim_data, sim_data);
         lcs::Initializer::resize_pcg_data(device, stream, host_mesh_data, host_sim_data, sim_data);
     }

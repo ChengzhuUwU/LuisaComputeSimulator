@@ -111,6 +111,7 @@ struct SimulationData : SimulationType
 
     BufferType<uint3>    sa_stretch_faces;
     BufferType<float>    sa_stretch_faces_rest_area;
+    BufferType<float2>   sa_stretch_faces_mu_lambda;
     BufferType<float2x2> sa_stretch_faces_Dm_inv;
     BufferType<ushort>   sa_stretch_faces_offsets_in_adjlist;
     BufferType<float3>   sa_stretch_faces_gradients;

@@ -347,7 +347,7 @@ void pinned_cloth(std::vector<ShellInfo>& shell_list)
 {
     auto& shell = shell_list
                       .emplace_back(ShellInfo{
-                          .model_name  = obj_mesh_path + "square2.obj",
+                          .model_name  = obj_mesh_path + "square2K.obj",
                           .translation = luisa::make_float3(0, 0.2, 0),
                           .scale       = luisa::make_float3(0.2f),
                       })

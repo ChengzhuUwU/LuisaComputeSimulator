@@ -1812,6 +1812,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
              sa_faces                   = host_sim_data->sa_stretch_faces.data(),
              sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
              sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
+             sa_stretch_faces_mu_lambda = host_sim_data->sa_stretch_faces_mu_lambda.data(),
              youngs_modulus_cloth       = get_scene_params().youngs_modulus_cloth,
              poisson_ratio_cloth        = get_scene_params().poisson_ratio_cloth,
              &hessian_blocks,
@@ -1828,14 +1829,17 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                     for (auto& hess : tmp)
                         hess = Zero3x3;
                 }
-                float2x2 Dm_inv = sa_stretch_faces_Dm_inv[fid];
-                float    area   = sa_stretch_faces_rest_area[fid];
+                float2x2    Dm_inv    = sa_stretch_faces_Dm_inv[fid];
+                float2      mu_lambda = sa_stretch_faces_mu_lambda[fid];  // {lambda, mu}
+                const float lambda    = mu_lambda[1];
+                const float mu        = mu_lambda[0];
+                float       area      = sa_stretch_faces_rest_area[fid];
 
                 Eigen::Matrix<float, 9, 1> G;
                 Eigen::Matrix<float, 9, 9> H;
 
                 StretchEnergy::compute_gradient_hessian(
-                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, 1e4f, 0.46f, area, gradients, hessians);
+                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu, lambda, area, gradients, hessians);
                 // LUISA_INFO("Face {}: grad = {}", face, gradients);
                 cgB.block<3, 1>(3 * face[0], 0) -= float3_to_eigen3(gradients[0]);
                 cgB.block<3, 1>(3 * face[1], 0) -= float3_to_eigen3(gradients[1]);
@@ -2325,10 +2329,16 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                    [&](const uint vid) {
                                        host_sim_data->sa_cgX[vid] = eigen3_to_float3(cgX.block<3, 1>(3 * vid, 0));
                                    });
+
+    const float error = (cgB - cgA * cgX).norm();
     LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
                get_scene_params().current_nonlinear_iter,
-               (cgB - cgA * cgX).norm(),
+               error,
                fast_infinity_norm(host_sim_data->sa_cgX));
+    if (std::isnan(error) || std::isinf(error))
+    {
+        LUISA_ERROR("NaN/INF detected in Eigen PCG solve!");
+    }
 }
 void NewtonSolver::host_evaluete_stretch_spring()
 {

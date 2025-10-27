@@ -47,7 +47,9 @@ std::array<luisa::ushort, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
     return offsets;
 }
 
-void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* sim_data)
+void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+                   lcs::MeshData<std::vector>*               mesh_data,
+                   lcs::SimulationData<std::vector>*         sim_data)
 {
     sim_data->sa_x_tilde.resize(mesh_data->num_verts);
     sim_data->sa_x.resize(mesh_data->num_verts);
@@ -207,6 +209,7 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
 
         // Rest stretch face length
         sim_data->sa_stretch_faces.resize(num_stretch_faces);
+        sim_data->sa_stretch_faces_mu_lambda.resize(num_stretch_faces);
         sim_data->sa_stretch_faces_rest_area.resize(num_stretch_faces);
         sim_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
         sim_data->sa_stretch_faces_gradients.resize(num_stretch_faces * 3);
@@ -236,14 +239,25 @@ void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<st
                                       const float2x2 duv     = float2x2(duv0, duv1);
                                       const float2x2 inv_duv = luisa::inverse(duv);
 
+                                      const float area = compute_face_area(x_0, x_1, x_2);
+
                                       // Eigen::Matrix<float, 2, 2> IB = StretchEnergy::libuipc::Dm2x2(
                                       //     float3_to_eigen3(x_0), float3_to_eigen3(x_1), float3_to_eigen3(x_2));
                                       // IB                     = IB.inverse();
                                       // const float2x2 inv_duv = XMatrix<2, 2>::from_eigen_matrix(IB).to_lc_matrix();
 
-                                      sim_data->sa_stretch_faces[fid] = face;
-                                      sim_data->sa_stretch_faces_rest_area[fid] = compute_face_area(x_0, x_1, x_2);
-                                      sim_data->sa_stretch_faces_Dm_inv[fid] = inv_duv;
+                                      //   1e4f, 0.46f
+                                      const float E  = 1e4f;  // Young's modulus
+                                      const float nu = 0.2f;  // Poisson's ratio
+                                      float       mu;
+                                      float       lambda;
+                                      auto [mu_tmp, lambda_tmp] = StretchEnergy::convert_prop(E, nu);
+                                      mu                        = mu_tmp;
+                                      lambda                    = lambda_tmp;
+                                      sim_data->sa_stretch_faces_mu_lambda[fid] = luisa::make_float2(mu, lambda);
+                                      sim_data->sa_stretch_faces[fid]           = face;
+                                      sim_data->sa_stretch_faces_rest_area[fid] = area;
+                                      sim_data->sa_stretch_faces_Dm_inv[fid]    = inv_duv;
                                   });
 
         // Rest bending info
@@ -1009,6 +1023,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     {
         stream
             << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
+            << upload_buffer(device, output_data->sa_stretch_faces_mu_lambda, input_data->sa_stretch_faces_mu_lambda)
             << upload_buffer(device, output_data->sa_stretch_faces_rest_area, input_data->sa_stretch_faces_rest_area)
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
             << upload_buffer(device, output_data->sa_stretch_faces_offsets_in_adjlist, input_data->sa_stretch_faces_offsets_in_adjlist)

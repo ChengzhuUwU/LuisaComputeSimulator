@@ -346,6 +346,14 @@ namespace StretchEnergy
             return result;
         }
 
+        inline float6 flatten(const float2x3& F)
+        {
+            float6 R;
+            R.vec[0] = F.cols[0];
+            R.vec[1] = F.cols[1];
+            return R;
+        }
+
         inline LargeMatrix<9, 6> get_dFdx(const luisa::float2x2& InverseDm)
         {
             const float d0 = InverseDm[0][0];
@@ -467,8 +475,8 @@ namespace StretchEnergy
 
         inline float stretch_energy(const float2x3& F, float mu)
         {
-            const auto i5u = luisa::dot(F[0], F[0]);
-            const auto i5v = luisa::dot(F[1], F[1]);
+            const float i5u = luisa::dot(F[0], F[0]);
+            const float i5v = luisa::dot(F[1], F[1]);
             return 0.5f * mu * (sqr(luisa::sqrt(i5u) - 1.0f) + sqr(luisa::sqrt(i5v) - 1.0f));
         }
 
@@ -478,16 +486,7 @@ namespace StretchEnergy
             return 0.5f * lmd * sqr(i6);
         }
 
-        inline float2x3 shear_gradient(const float2x3& F, float lmd)
-        {
-            float    w = luisa::dot(F[0], F[1]);
-            float2x3 result;
-            result[0] = w * F[1];
-            result[1] = w * F[0];
-            return lmd * result;
-        }
-
-        inline float2x3 stretch_gradient(const float2x3& F, float mu)
+        inline float2x3 stretch_gradient(const float2x3& F, const float mu)
         {
             const float3& Fu = F.cols[0];
             const float3& Fv = F.cols[1];
@@ -500,15 +499,20 @@ namespace StretchEnergy
             float invSqrtI5u = 1.0f / sqrtI5u;
             float invSqrtI5v = 1.0f / sqrtI5v;
 
-            // float uCoeff = (invSqrtI5u < 1.0f) ? invSqrtI5u : 1.0f;
-            // float vCoeff = (invSqrtI5v < 1.0f) ? invSqrtI5v : 1.0f;
-
             float2x3 result;
-            result.cols[0] = (sqrtI5u - 1.0f) * invSqrtI5u * F.cols[0];
-            result.cols[1] = (sqrtI5v - 1.0f) * invSqrtI5v * F.cols[1];
-            // LUISA_INFO("Fu = {}, Fv = {}, norm_u -1 = {}, norm_v -1 = {}", fu, fv, norm_u - 1, norm_v - 1);
+            result.cols[0] = (sqrtI5u - 1.0f) * invSqrtI5u * Fu;
+            result.cols[1] = (sqrtI5v - 1.0f) * invSqrtI5v * Fv;
             return mu * result;
         }
+        inline float2x3 shear_gradient(const float2x3& F, const float lmd)
+        {
+            float    w = luisa::dot(F.cols[0], F.cols[1]);
+            float2x3 result;
+            result[0] = w * F.cols[1];
+            result[1] = w * F.cols[0];
+            return lmd * result;
+        }
+
         inline float6x6 stretch_hessian(const float2x3& F, float mu)
         {
             float6x6 H = float6x6::zero();
@@ -536,9 +540,43 @@ namespace StretchEnergy
             H.block(1, 1) = H.block(1, 1) + vCoeff * outer_product(fv, fv);
             return mu * H;
         }
+        inline float6x6 shear_hessian(const float2x3& F, float mu)
+        {
+            float6x6 H = float6x6::zero();
+
+            const float3& Fu = F.cols[0];
+            const float3& Fv = F.cols[1];
+
+            const float I6     = luisa::dot(Fu, Fv);
+            const float signI6 = luisa::sign(I6);
+
+            H.scalar<3, 0>() = H.scalar<4, 1>() = H.scalar<5, 2>() = H.scalar<0, 3>() =
+                H.scalar<1, 4>() = H.scalar<2, 5>() = 1.0f;
+
+            const float6 g = flatten(F * luisa::make_float2x2(0, 1, 1, 0));  // F * (a b^T + b a^T)
+
+            const float I2      = luisa::dot(Fu, Fu) + luisa::dot(Fv, Fv);  // F.squaredNorm();
+            const float lambda0 = 0.5f * (I2 + luisa::sqrt(I2 * I2 + 12.0f * I6 * I6));
+
+            const float6 q0     = (I6 * H * g + lambda0 * g).normalize();
+            float6x6     T      = float6x6::identity();
+            T                   = 0.5f * (T + signI6 * H);
+            const float6 Tq     = T * q0;
+            const float  normTq = Tq.squared_norm();
+
+            H = luisa::abs(I6) * (T - float6x6::outer_product(Tq, Tq) / normTq)
+                + lambda0 * float6x6::outer_product(q0, q0);
+
+            return mu * H;
+        }
     }  // namespace detail
 
-
+    inline std::array<double, 2> convert_prop(const float young_mod, const float poiss_rat)
+    {
+        double mu     = young_mod / (2.0 * (1.0 + poiss_rat));
+        double lambda = young_mod * poiss_rat / ((1.0 + poiss_rat) * (1.0 - 2.0 * poiss_rat));
+        return {mu, lambda};
+    }
     inline void compute_gradient_hessian(const float3&   x0,
                                          const float3&   x1,
                                          const float3&   x2,
@@ -557,8 +595,11 @@ namespace StretchEnergy
         float2x3 de0dF   = detail::stretch_gradient(F, mu);
         float6x6 d2e0dF2 = detail::stretch_hessian(F, mu);
 
-        float2x3 dedF   = de0dF;
-        float6x6 d2edF2 = d2e0dF2;
+        float2x3 de1dF   = detail::shear_gradient(F, lambda);
+        float6x6 d2e1dF2 = detail::shear_hessian(F, lambda);
+
+        float2x3 dedF   = de0dF + de1dF;
+        float6x6 d2edF2 = d2e0dF2 + d2e1dF2;
 
         dedx   = area * detail::convert_force(dedF, Dm);
         d2edx2 = area * detail::convert_hessian(d2edF2, Dm);
@@ -570,7 +611,7 @@ namespace StretchEnergy
         {
             for (uint jj = 0; jj < 3; jj++)
             {
-                hessian[ii][jj] = d2edx2.block(ii, jj);
+                hessian[jj][ii] = d2edx2.block(ii, jj);
             }
         }
     }
