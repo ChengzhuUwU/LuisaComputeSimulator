@@ -1,3 +1,7 @@
+// This file incorporates code from dihedral_angle.hpp
+// Original Author: Ryoichi Ando (ryoichi.ando@zozo.com)
+// Original License: Apache v2.0
+
 #pragma once
 
 #include "Core/float_n.h"
@@ -154,6 +158,8 @@ namespace BendingEnergy
 
     };  // namespace LibShell
 
+    using Float3 = luisa::compute::Float3;
+    using Float  = luisa::compute::Float;
 
     namespace detail
     {

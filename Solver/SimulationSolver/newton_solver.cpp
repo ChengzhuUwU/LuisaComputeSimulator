@@ -5,6 +5,7 @@
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Energy/bending_energy.h"
+#include "Energy/stretch_energy.h"
 #include "Initializer/init_mesh_data.h"
 #include "SimulationSolver/descent_solver.h"
 #include "SimulationSolver/newton_solver.h"
@@ -56,6 +57,16 @@ template <typename T>
 void buffer_add(const luisa::compute::BufferView<T>& buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
+}
+template <typename T>
+void buffer_add(std::vector<T>& buffer, const uint dest, const T& value)
+{
+    buffer[dest] = buffer[dest] + value;
+}
+template <typename T>
+void buffer_add(T* buffer, const uint dest, const T& value)
+{
+    buffer[dest] = buffer[dest] + value;
 }
 
 void atomic_buffer_add(const Var<luisa::compute::BufferView<float3>>& buffer, const Var<uint> dest, const Var<float3>& value)
@@ -495,38 +506,40 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    compiler.compile<1>(
-        fn_apply_dx_affine_bodies,
-        [sa_x               = sim_data->sa_x.view(),
-         sa_scaled_model_x  = mesh_data->sa_scaled_model_x.view(),
-         sa_x_iter_start    = sim_data->sa_x_iter_start.view(),
-         sa_cgX             = sim_data->sa_cgX.view(),
-         sa_affine_bodies_q = sim_data->sa_affine_bodies_q.view(),
-         sa_vert_affine_bodies_id = sim_data->sa_vert_affine_bodies_id.view()](const Float alpha, const Uint prefix)
-        {
-            const Uint vid      = prefix + dispatch_id().x;
-            const Uint body_idx = sa_vert_affine_bodies_id->read(vid);
-            Float3     new_x;
-            Float3     p;
-            Float3x3   A;
-            AffineBodyDynamics::extract_Ap_from_q(sa_affine_bodies_q, body_idx, A, p);
-            const Float3 rest_x = sa_scaled_model_x->read(vid);
-            new_x               = A * rest_x + p;  // Affine position
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dx_affine_bodies,
+            [sa_x               = sim_data->sa_x.view(),
+             sa_scaled_model_x  = mesh_data->sa_scaled_model_x.view(),
+             sa_x_iter_start    = sim_data->sa_x_iter_start.view(),
+             sa_cgX             = sim_data->sa_cgX.view(),
+             sa_affine_bodies_q = sim_data->sa_affine_bodies_q.view(),
+             sa_vert_affine_bodies_id = sim_data->sa_vert_affine_bodies_id.view()](const Float alpha, const Uint prefix)
+            {
+                const Uint vid      = prefix + dispatch_id().x;
+                const Uint body_idx = sa_vert_affine_bodies_id->read(vid);
+                Float3     new_x;
+                Float3     p;
+                Float3x3   A;
+                AffineBodyDynamics::extract_Ap_from_q(sa_affine_bodies_q, body_idx, A, p);
+                const Float3 rest_x = sa_scaled_model_x->read(vid);
+                new_x               = A * rest_x + p;  // Affine position
 
-            sa_x->write(vid, new_x);
-        },
-        default_option);
+                sa_x->write(vid, new_x);
+            },
+            default_option);
 
-    compiler.compile<1>(
-        fn_apply_dq,
-        [sa_q            = sim_data->sa_affine_bodies_q.view(),
-         sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
-         sa_cgX          = sim_data->sa_cgX.view()](const Float alpha, const Uint prefix)
-        {
-            const UInt vid = dispatch_id().x;
-            sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
-        },
-        default_option);
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dq,
+            [sa_q            = sim_data->sa_affine_bodies_q.view(),
+             sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
+             sa_cgX          = sim_data->sa_cgX.view()](const Float alpha, const Uint prefix)
+            {
+                const UInt vid = dispatch_id().x;
+                sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
+            },
+            default_option);
 
     compiler.compile<1>(
         fn_apply_dx_non_constant,
@@ -545,17 +558,18 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         },
         default_option);
 
-    compiler.compile<1>(
-        fn_apply_dq_non_constant,
-        [sa_q            = sim_data->sa_affine_bodies_q.view(),
-         sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
-         sa_cgX = sim_data->sa_cgX.view()](Var<BufferView<float>> alpha_buffer, const Uint prefix)
-        {
-            const Float alpha = alpha_buffer.read(0);
-            const UInt  vid   = dispatch_id().x;
-            sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
-        },
-        default_option);
+    if (host_sim_data->sa_affine_bodies_q.size() != 0)
+        compiler.compile<1>(
+            fn_apply_dq_non_constant,
+            [sa_q            = sim_data->sa_affine_bodies_q.view(),
+             sa_q_iter_start = sim_data->sa_affine_bodies_q_iter_start.view(),
+             sa_cgX = sim_data->sa_cgX.view()](Var<BufferView<float>> alpha_buffer, const Uint prefix)
+            {
+                const Float alpha = alpha_buffer.read(0);
+                const UInt  vid   = dispatch_id().x;
+                sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_cgX->read(prefix + vid));
+            },
+            default_option);
 }
 
 void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
@@ -749,41 +763,58 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
     };
 
     // Assembly
-    compiler.compile(fn_material_energy_assembly_stretch_spring,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_stretch_springs_csr.view(),
-                      constaints               = sim_data->sa_stretch_springs.view(),
-                      constaint_gradients      = sim_data->sa_stretch_springs_gradients.view(),
-                      constaint_hessians       = sim_data->sa_stretch_springs_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_stretch_springs_offsets_in_adjlist.view(),
-                      assembly_template]()
-                     {
-                         const Uint vid = dispatch_x();
-                         assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_stretch_springs.size() != 0)
+        compiler.compile(
+            fn_material_energy_assembly_stretch_spring,
+            [vert_adj_constraints_csr     = sim_data->sa_vert_adj_stretch_springs_csr.view(),
+             constaints                   = sim_data->sa_stretch_springs.view(),
+             constaint_gradients          = sim_data->sa_stretch_springs_gradients.view(),
+             constaint_hessians           = sim_data->sa_stretch_springs_hessians.view(),
+             constaint_offsets_in_adjlist = sim_data->sa_stretch_springs_offsets_in_adjlist.view(),
+             assembly_template]()
+            {
+                const Uint vid = dispatch_x();
+                assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+            });
 
-    compiler.compile(fn_material_energy_assembly_bending,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_bending_edges_csr.view(),
-                      constaints               = sim_data->sa_bending_edges.view(),
-                      constaint_gradients      = sim_data->sa_bending_edges_gradients.view(),
-                      constaint_hessians       = sim_data->sa_bending_edges_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_bending_edges_offsets_in_adjlist.view(),
-                      assembly_template]()
-                     {
-                         const Uint vid = dispatch_x();
-                         assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_stretch_faces.size() != 0)
+        compiler.compile(fn_material_energy_assembly_stretch_face,
+                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_stretch_faces_csr.view(),
+                          constaints               = sim_data->sa_stretch_faces.view(),
+                          constaint_gradients      = sim_data->sa_stretch_faces_gradients.view(),
+                          constaint_hessians       = sim_data->sa_stretch_faces_hessians.view(),
+                          constaint_offsets_in_adjlist = sim_data->sa_stretch_faces_offsets_in_adjlist.view(),
+                          assembly_template]()
+                         {
+                             const Uint vid = dispatch_x();
+                             assembly_template(3, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                         });
 
-    compiler.compile(fn_material_energy_assembly_affine_body,
-                     [vert_adj_constraints_csr = sim_data->sa_vert_adj_affine_bodies_csr.view(),
-                      constaints               = sim_data->sa_affine_bodies.view(),
-                      constaint_gradients      = sim_data->sa_affine_bodies_gradients.view(),
-                      constaint_hessians       = sim_data->sa_affine_bodies_hessians.view(),
-                      constaint_offsets_in_adjlist = sim_data->sa_affine_bodies_offsets_in_adjlist.view(),
-                      assembly_template](const Uint prefix)
-                     {
-                         const Uint vid = prefix + dispatch_x();
-                         assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                     });
+    if (host_sim_data->sa_bending_edges.size() != 0)
+        compiler.compile(fn_material_energy_assembly_bending,
+                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_bending_edges_csr.view(),
+                          constaints               = sim_data->sa_bending_edges.view(),
+                          constaint_gradients      = sim_data->sa_bending_edges_gradients.view(),
+                          constaint_hessians       = sim_data->sa_bending_edges_hessians.view(),
+                          constaint_offsets_in_adjlist = sim_data->sa_bending_edges_offsets_in_adjlist.view(),
+                          assembly_template]()
+                         {
+                             const Uint vid = dispatch_x();
+                             assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                         });
+
+    if (host_sim_data->sa_affine_bodies.size() != 0)
+        compiler.compile(fn_material_energy_assembly_affine_body,
+                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_affine_bodies_csr.view(),
+                          constaints               = sim_data->sa_affine_bodies.view(),
+                          constaint_gradients      = sim_data->sa_affine_bodies_gradients.view(),
+                          constaint_hessians       = sim_data->sa_affine_bodies_hessians.view(),
+                          constaint_offsets_in_adjlist = sim_data->sa_affine_bodies_offsets_in_adjlist.view(),
+                          assembly_template](const Uint prefix)
+                         {
+                             const Uint vid = prefix + dispatch_x();
+                             assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                         });
 }
 void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
 {
@@ -898,7 +929,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
              output_gradient_ptr = sim_data->sa_stretch_springs_gradients.view(),
              output_hessian_ptr  = sim_data->sa_stretch_springs_hessians.view(),
              sa_edges            = sim_data->sa_stretch_springs.view(),
-             sa_rest_length = sim_data->sa_stretch_spring_rest_state_length.view()](const Float stiffness_stretch)
+             sa_rest_length      = sim_data->sa_stretch_spring_rest_state_length.view(),
+             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view()](const Float stiffness_stretch)
             {
                 const UInt eid  = dispatch_id().x;
                 UInt2      edge = sa_edges->read(eid);
@@ -908,7 +940,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                 Float3x3 He           = make_float3x3(0.0f);
 
                 const Float L                = sa_rest_length->read(eid);
-                const Float stiffness_spring = stiffness_stretch;
+                const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
+                // const Float stiffness_spring = stiffness_stretch;
 
                 Float3 diff = vert_pos[0] - vert_pos[1];
                 Float  l    = max(length(diff), Epsilon);
@@ -938,6 +971,55 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             },
             default_option);
 
+    if (host_sim_data->sa_stretch_faces.size() != 0)
+        compiler.compile<1>(
+            fn_evaluate_stretch_face,
+            [sa_x                       = sim_data->sa_x.view(),
+             output_gradient_ptr        = sim_data->sa_stretch_faces_gradients.view(),
+             output_hessian_ptr         = sim_data->sa_stretch_faces_hessians.view(),
+             sa_faces                   = sim_data->sa_stretch_faces.view(),
+             sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
+             sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
+             sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view()]()
+            {
+                const UInt  fid  = dispatch_id().x;
+                const UInt3 face = sa_faces->read(fid);
+
+                Float3   vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
+                Float3x3 gradients;
+                Float9x9 hessians;
+
+                Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
+                Float    area   = sa_stretch_faces_rest_area->read(fid);
+
+                Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
+                Float  mu_cloth     = mu_lambda[0];
+                Float  lambda_cloth = mu_lambda[1];
+
+                StretchEnergy::compute_gradient_hessian(
+                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
+
+                // Output
+                {
+                    output_gradient_ptr->write(fid * 3 + 0, gradients[0]);
+                    output_gradient_ptr->write(fid * 3 + 1, gradients[1]);
+                    output_gradient_ptr->write(fid * 3 + 2, gradients[2]);
+                }
+                {
+                    output_hessian_ptr->write(fid * 9 + 0, hessians->block(0, 0));
+                    output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 1));
+                    output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 2));
+
+                    output_hessian_ptr->write(fid * 9 + 3, hessians->block(1, 0));  // lower triangle
+                    output_hessian_ptr->write(fid * 9 + 4, hessians->block(2, 0));
+                    output_hessian_ptr->write(fid * 9 + 5, hessians->block(0, 1));
+                    output_hessian_ptr->write(fid * 9 + 6, hessians->block(2, 1));
+                    output_hessian_ptr->write(fid * 9 + 7, hessians->block(0, 2));
+                    output_hessian_ptr->write(fid * 9 + 8, hessians->block(1, 2));
+                }
+            },
+            default_option);
+
     if (host_sim_data->sa_bending_edges.size() != 0)
         compiler.compile<1>(
             fn_evaluate_bending,
@@ -945,12 +1027,13 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
              // sa_cgB = sim_data->sa_cgB.view(),
              // sa_cgA_diag = sim_data->sa_cgA_diag.view(),
              // sa_cgA_offdiag_bending = sim_data->sa_cgA_offdiag_bending.view(),
-             output_gradient_ptr        = sim_data->sa_bending_edges_gradients.view(),
-             output_hessian_ptr         = sim_data->sa_bending_edges_hessians.view(),
-             sa_edges                   = sim_data->sa_bending_edges.view(),
-             sa_bending_edges_Q         = sim_data->sa_bending_edges_Q.view(),
-             sa_bending_edges_rest_area = sim_data->sa_bending_edges_rest_area.view(),
-             sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view()](const Float stiffness_bending)
+             output_gradient_ptr         = sim_data->sa_bending_edges_gradients.view(),
+             output_hessian_ptr          = sim_data->sa_bending_edges_hessians.view(),
+             sa_edges                    = sim_data->sa_bending_edges.view(),
+             sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
+             sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
+             sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
+             sa_bending_edges_stiffness = sim_data->sa_bending_edges_stiffness.view()](const Float scaling)
             {
                 const UInt  eid  = dispatch_id().x;
                 const UInt4 edge = sa_edges->read(eid);
@@ -975,7 +1058,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                 const Float delta_angle = angle - rest_angle;
 
                 const Float area  = sa_bending_edges_rest_area->read(eid);
-                const Float stiff = stiffness_bending * area;
+                const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
 
                 {
                     output_gradient_ptr->write(eid * 4 + 0, stiff * delta_angle * gradients[0]);
@@ -1765,6 +1848,13 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                                gradient = stiffness_dirichlet * gradient;
                                                hessian  = stiffness_dirichlet * hessian;
                                            }
+                                           // LUISA_INFO("vid {}: is_fixed? {}, x_k = {}, x_tilde = {}, mass = {} inertia gradient = {}",
+                                           //            vid,
+                                           //            sa_is_fixed[vid] == 1,
+                                           //            x_k,
+                                           //            x_tilde,
+                                           //            mass,
+                                           //            gradient);
                                            {
                                                cgB.block<3, 1>(vid * 3, 0) = -float3_to_eigen3(gradient);
                                                hessian_blocks[vid]         = {.indices = {vid},
@@ -1775,19 +1865,87 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
-    // Soft stretch
+    // Soft stretch face
     // if constexpr (false)
+    {
+        std::vector<EigenTripletBlock<3>> hessian_blocks(host_sim_data->sa_stretch_faces.size());
+        CpuParallel::single_thread_for(
+            0,
+            host_sim_data->sa_stretch_faces.size(),
+            [sa_x                       = host_sim_data->sa_x.data(),
+             sa_rest_x                  = host_mesh_data->sa_rest_x.data(),
+             sa_faces                   = host_sim_data->sa_stretch_faces.data(),
+             sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
+             sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
+             sa_stretch_faces_mu_lambda = host_sim_data->sa_stretch_faces_mu_lambda.data(),
+             youngs_modulus_cloth       = get_scene_params().youngs_modulus_cloth,
+             poisson_ratio_cloth        = get_scene_params().poisson_ratio_cloth,
+             &hessian_blocks,
+             &cgB](const uint fid)
+            {
+                uint3 face = sa_faces[fid];
+
+                float3 vert_pos[3] = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+                float3 x_bars[3]   = {sa_rest_x[face[0]], sa_rest_x[face[1]], sa_rest_x[face[2]]};
+                // float3   gradients[3] = {Zero3, Zero3, Zero3};
+                // float3x3 hessians[3][3];
+                // for (auto& tmp : hessians)
+                // {
+                //     for (auto& hess : tmp)
+                //         hess = Zero3x3;
+                // }
+                float2x2    Dm_inv    = sa_stretch_faces_Dm_inv[fid];
+                float2      mu_lambda = sa_stretch_faces_mu_lambda[fid];  // {lambda, mu}
+                const float lambda    = mu_lambda[1];
+                const float mu        = mu_lambda[0];
+                float       area      = sa_stretch_faces_rest_area[fid];
+
+                Eigen::Matrix<float, 9, 1> G;
+                Eigen::Matrix<float, 9, 9> H;
+
+                float3x3 gradients;
+                float9x9 hessians;
+                StretchEnergy::compute_gradient_hessian(
+                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu, lambda, area, gradients, hessians);
+                // LUISA_INFO("Face {}: grad = {}", face, gradients);
+                cgB.block<3, 1>(3 * face[0], 0) -= float3_to_eigen3(gradients[0]);
+                cgB.block<3, 1>(3 * face[1], 0) -= float3_to_eigen3(gradients[1]);
+                cgB.block<3, 1>(3 * face[2], 0) -= float3_to_eigen3(gradients[2]);
+                EigenFloat9x9 tmpH = hessians.to_eigen_matrix();
+                // EigenFloat9x9 tmpH;
+                // for (uint ii = 0; ii < 3; ii++)
+                // {
+                //     for (uint jj = 0; jj < 3; jj++)
+                //     {
+                //         tmpH.block<3, 3>(ii * 3, jj * 3) = float3x3_to_eigen3x3(hessians[ii][jj]);
+                //     }
+                // }
+                // StretchEnergy::libuipc::compute_gradient_hessian(
+                //     vert_pos[0], vert_pos[1], vert_pos[2], x_bars[0], x_bars[1], x_bars[2], 1e7f, 0.46f, area, G, H);
+                // cgB.block<3, 1>(3 * face[0], 0) -= G.block<3, 1>(0, 0);
+                // cgB.block<3, 1>(3 * face[1], 0) -= G.block<3, 1>(3, 0);
+                // cgB.block<3, 1>(3 * face[2], 0) -= G.block<3, 1>(6, 0);
+                // EigenFloat9x9 tmpH  = H;
+
+                hessian_blocks[fid] = {.indices = {face[0], face[1], face[2]}, .matrix = tmpH};
+            });
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
+    }
+
+    // Soft stretch spring
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<2>> hessian_blocks(host_sim_data->sa_stretch_springs.size());
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_stretch_springs.size(),
-            [sa_x                = host_sim_data->sa_x.data(),
-             sa_edges            = host_sim_data->sa_stretch_springs.data(),
-             sa_rest_length      = host_sim_data->sa_stretch_spring_rest_state_length.data(),
-             output_gradient_ptr = host_sim_data->sa_stretch_springs_gradients.data(),
-             output_hessian_ptr  = host_sim_data->sa_stretch_springs_hessians.data(),
-             stiffness_stretch   = get_scene_params().stiffness_spring,
+            [sa_x                        = host_sim_data->sa_x.data(),
+             sa_edges                    = host_sim_data->sa_stretch_springs.data(),
+             sa_rest_length              = host_sim_data->sa_stretch_spring_rest_state_length.data(),
+             sa_stretch_spring_stiffness = host_sim_data->sa_stretch_spring_stiffness.data(),
+             output_gradient_ptr         = host_sim_data->sa_stretch_springs_gradients.data(),
+             output_hessian_ptr          = host_sim_data->sa_stretch_springs_hessians.data(),
+             stiffness_stretch           = get_scene_params().stiffness_spring,
              &cgB,
              &hessian_blocks](const uint eid)
             {
@@ -1798,7 +1956,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 float3x3 He           = luisa::make_float3x3(0.0f);
 
                 const float L                        = sa_rest_length[eid];
-                const float stiffness_stretch_spring = stiffness_stretch;
+                const float stiffness_stretch_spring = sa_stretch_spring_stiffness[eid];
+                // const float stiffness_stretch_spring = stiffness_stretch;
 
                 float3 diff = vert_pos[0] - vert_pos[1];
                 float  l    = max_scalar(length_vec(diff), Epsilon);
@@ -1846,9 +2005,10 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
              sa_bending_edges_Q          = host_sim_data->sa_bending_edges_Q.data(),
              sa_bending_edges_rest_angle = host_sim_data->sa_bending_edges_rest_angle.data(),
              sa_bending_edges_rest_area  = host_sim_data->sa_bending_edges_rest_area.data(),
+             sa_bending_edges_stiffness  = host_sim_data->sa_bending_edges_stiffness.data(),
              output_gradient_ptr         = host_sim_data->sa_bending_edges_gradients.data(),
              output_hessian_ptr          = host_sim_data->sa_bending_edges_hessians.data(),
-             stiffness_bending           = get_scene_params().get_stiffness_bending(),
+             scaling                     = get_scene_params().get_bending_stiffness_scaling(),
              &hessian_blocks,
              &cgB](const uint eid)
             {
@@ -1857,7 +2017,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
 
 
                 const float area       = sa_bending_edges_rest_area[eid];
-                const float stiff      = stiffness_bending * area;
+                const float stiff      = sa_bending_edges_stiffness[eid] * area * scaling;
                 const float rest_angle = sa_bending_edges_rest_angle[eid];
 
                 float3 gradients[4] = {Zero3, Zero3, Zero3, Zero3};
@@ -1882,7 +2042,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // ABD Ground Collision
-    // if constexpr (false)
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
         for (uint body_idx = 0; body_idx < host_sim_data->sa_affine_bodies.size(); body_idx++)
@@ -1947,7 +2107,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // ABD Inertia
-    // if constexpr (false)
+    if constexpr (false)
     {
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
@@ -1996,7 +2156,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Orthogonality
-    // if constexpr (false)
+    if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
@@ -2073,7 +2233,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Contact
     if constexpr (false)
     {
-        mp_narrowphase_detector->download_narrowphase_list(stream);
+        narrow_phase_detector->download_narrowphase_list(stream);
 
         const auto& host_count = host_collision_data->narrow_phase_collision_count;
         const uint  num_pairs  = host_count.front();
@@ -2188,19 +2348,19 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     {
         stream << fn_reset_vector(sim_data->sa_cgB).dispatch(num_dof)
                << fn_reset_float3x3(sim_data->sa_cgA_diag).dispatch(num_dof);
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          get_scene_params().d_hat,
-                                                                          get_scene_params().thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        get_scene_params().d_hat,
+                                                                        get_scene_params().thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
-        mp_narrowphase_detector->download_contact_triplet(stream);
+        narrow_phase_detector->download_contact_triplet(stream);
 
         {
             std::vector<float3>   contact_force(num_dof);
@@ -2240,12 +2400,18 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                    [&](const uint vid) {
                                        host_sim_data->sa_cgX[vid] = eigen3_to_float3(cgX.block<3, 1>(3 * vid, 0));
                                    });
+
+    const float error = (cgB - cgA * cgX).norm();
     LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
                get_scene_params().current_nonlinear_iter,
-               (cgB - cgA * cgX).norm(),
+               error,
                fast_infinity_norm(host_sim_data->sa_cgX));
+    if (std::isnan(error) || std::isinf(error))
+    {
+        LUISA_ERROR("NaN/INF detected in Eigen PCG solve!");
+    }
 }
-void NewtonSolver::host_evaluete_spring()
+void NewtonSolver::host_evaluete_stretch_spring()
 {
     CpuParallel::parallel_for(0,
                               host_sim_data->sa_stretch_springs.size(),
@@ -2294,6 +2460,68 @@ void NewtonSolver::host_evaluete_spring()
                                   }
                               });
 }
+void NewtonSolver::host_evaluete_stretch_face()
+{
+    CpuParallel::parallel_for(
+        0,
+        host_sim_data->sa_stretch_faces.size(),
+        [sa_x                       = host_sim_data->sa_x.data(),
+         sa_faces                   = host_sim_data->sa_stretch_faces.data(),
+         sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
+         sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
+         sa_stretch_faces_mu_lambda = host_sim_data->sa_stretch_faces_mu_lambda.data(),
+         output_gradient_ptr        = host_sim_data->sa_stretch_faces_gradients.data(),
+         output_hessian_ptr         = host_sim_data->sa_stretch_faces_hessians.data()](const uint fid)
+        {
+            uint3 face = sa_faces[fid];
+
+            float3 vert_pos[3] = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+            // float3   gradients[3] = {Zero3, Zero3, Zero3};
+            // float3x3 hessians[9]  = {Zero3x3};
+            float3x3 gradients;
+            float9x9 hessians;
+            float2x2 Dm_inv = sa_stretch_faces_Dm_inv[fid];
+            float    area   = sa_stretch_faces_rest_area[fid];
+
+            auto [mu_cloth, lambda_cloth] = sa_stretch_faces_mu_lambda[fid];
+
+            StretchEnergy::compute_gradient_hessian(
+                vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
+
+            // Output
+            {
+                output_gradient_ptr[fid * 3 + 0] = gradients[0];
+                output_gradient_ptr[fid * 3 + 1] = gradients[1];
+                output_gradient_ptr[fid * 3 + 2] = gradients[2];
+            }
+            {
+                // 0 1 2
+                // 3 4 5
+                // 6 7 8
+                output_hessian_ptr[fid * 9 + 0] = hessians.block(0, 0);
+                output_hessian_ptr[fid * 9 + 1] = hessians.block(1, 1);
+                output_hessian_ptr[fid * 9 + 2] = hessians.block(2, 2);
+
+                output_hessian_ptr[fid * 9 + 3] = hessians.block(1, 0);  // lower triangle
+                output_hessian_ptr[fid * 9 + 4] = hessians.block(2, 0);
+                output_hessian_ptr[fid * 9 + 5] = hessians.block(0, 1);
+                output_hessian_ptr[fid * 9 + 6] = hessians.block(2, 1);
+                output_hessian_ptr[fid * 9 + 7] = hessians.block(0, 2);
+                output_hessian_ptr[fid * 9 + 8] = hessians.block(1, 2);
+
+                // output_hessian_ptr[fid * 9 + 0] = hessians[0];
+                // output_hessian_ptr[fid * 9 + 1] = hessians[4];
+                // output_hessian_ptr[fid * 9 + 2] = hessians[8];
+
+                // output_hessian_ptr[fid * 9 + 3] = hessians[1];
+                // output_hessian_ptr[fid * 9 + 4] = hessians[2];
+                // output_hessian_ptr[fid * 9 + 5] = hessians[3];
+                // output_hessian_ptr[fid * 9 + 6] = hessians[5];
+                // output_hessian_ptr[fid * 9 + 7] = hessians[6];
+                // output_hessian_ptr[fid * 9 + 8] = hessians[7];
+            }
+        });
+}
 void NewtonSolver::host_evaluete_bending()
 {
     CpuParallel::parallel_for(
@@ -2304,9 +2532,10 @@ void NewtonSolver::host_evaluete_bending()
          sa_bending_edges_Q          = host_sim_data->sa_bending_edges_Q.data(),
          sa_bending_edges_rest_angle = host_sim_data->sa_bending_edges_rest_angle.data(),
          sa_bending_edges_rest_area  = host_sim_data->sa_bending_edges_rest_area.data(),
+         sa_bending_edges_stiffness  = host_sim_data->sa_bending_edges_stiffness.data(),
          output_gradient_ptr         = host_sim_data->sa_bending_edges_gradients.data(),
          output_hessian_ptr          = host_sim_data->sa_bending_edges_hessians.data(),
-         stiffness_bending           = get_scene_params().get_stiffness_bending()](const uint eid)
+         scaling = get_scene_params().get_bending_stiffness_scaling()](const uint eid)
         {
             uint4  edge         = sa_bending_edges[eid];
             float3 vert_pos[4]  = {sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]]};
@@ -2320,7 +2549,7 @@ void NewtonSolver::host_evaluete_bending()
                 const float delta_angle = angle - rest_angle;
 
                 const float area                 = sa_bending_edges_rest_area[eid];
-                const float stiff                = stiffness_bending * area;
+                const float stiff                = sa_bending_edges_stiffness[eid] * scaling * area;
                 output_gradient_ptr[eid * 4 + 0] = stiff * delta_angle * gradients[0];
                 output_gradient_ptr[eid * 4 + 1] = stiff * delta_angle * gradients[1];
                 output_gradient_ptr[eid * 4 + 2] = stiff * delta_angle * gradients[2];
@@ -2360,14 +2589,14 @@ void NewtonSolver::host_evaluete_bending()
                     {
                         gradients[ii] += m_Q[ii][jj] * vert_pos[jj];  // -Qx
                     }
-                    gradients[ii] = stiffness_bending * gradients[ii];
+                    gradients[ii] = scaling * gradients[ii];
                 }
 
                 output_gradient_ptr[eid * 4 + 0] = gradients[0];
                 output_gradient_ptr[eid * 4 + 1] = gradients[1];
                 output_gradient_ptr[eid * 4 + 2] = gradients[2];
                 output_gradient_ptr[eid * 4 + 3] = gradients[3];
-                auto hess                        = stiffness_bending * luisa::make_float3x3(1.0f);
+                auto hess                        = scaling * luisa::make_float3x3(1.0f);
                 output_hessian_ptr[eid * 16 + 0] = m_Q[0][0] * hess;
                 output_hessian_ptr[eid * 16 + 1] = m_Q[1][1] * hess;
                 output_hessian_ptr[eid * 16 + 2] = m_Q[2][2] * hess;
@@ -2391,139 +2620,121 @@ void NewtonSolver::host_material_energy_assembly()
 {
     // Assemble material forces and stiffness matrix
     {
-        // Non-conflict
-        CpuParallel::parallel_for(
-            0,
-            host_sim_data->num_dof,
-            [&](const uint vid)
+        auto assembly_template =
+            [sa_vert_adj_material_force_verts_csr = host_sim_data->sa_vert_adj_material_force_verts_csr.data(),
+             sa_cgB      = host_sim_data->sa_cgB.data(),
+             sa_cgA_diag = host_sim_data->sa_cgA_diag.data(),
+             sa_cgA_offdiag_triplet =
+                 host_sim_data->sa_cgA_fixtopo_offdiag_triplet.data()](const uint N,
+                                                                       const uint vid,
+                                                                       const uint* vert_adj_constraints_csr,
+                                                                       const auto&   constaints,
+                                                                       const float3* constaint_gradients,
+                                                                       const float3x3* constaint_hessians,
+                                                                       const ushort* constaint_offsets_in_adjlist)
+        {
+            const uint curr_prefix = sa_vert_adj_material_force_verts_csr[vid];
+            const uint next_prefix = sa_vert_adj_material_force_verts_csr[vid + 1];
+
+            const uint curr_prefix_bending = vert_adj_constraints_csr[vid];
+            const uint next_prefix_bending = vert_adj_constraints_csr[vid + 1];
+
+            for (uint j = curr_prefix_bending; j < next_prefix_bending; j++)
             {
-                const uint curr_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid];
-                const uint next_prefix = host_sim_data->sa_vert_adj_material_force_verts_csr[vid + 1];
-
-                if (next_prefix - curr_prefix != 0)
+                const uint adj_eid = vert_adj_constraints_csr[j];
+                const auto edge    = constaints[adj_eid];
+                uint       offset  = -1u;
+                for (uint k = 0; k < N; k++)
                 {
-                    float3                total_gradiant = Zero3;
-                    float3x3              total_diag_A   = Zero3x3;
-                    std::vector<float3x3> total_offdiag_A(next_prefix - curr_prefix, Zero3x3);
-                    const auto&           adj_springs = host_sim_data->vert_adj_stretch_springs[vid];
-                    for (const uint adj_eid : adj_springs)
+                    if (vid == edge[k])
                     {
-                        auto       edge   = host_sim_data->sa_stretch_springs[adj_eid];
-                        const uint offset = vid == edge[0] ? 0 : 1;
-                        float3 grad = host_sim_data->sa_stretch_springs_gradients[adj_eid * 2 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_stretch_springs_hessians[adj_eid * 4 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        float3x3 offdiag_hess =
-                            host_sim_data->sa_stretch_springs_hessians[adj_eid * 4 + 2 + offset * 1 + 0];
-                        auto* offsets_in_adjlist_ptr =
-                            host_sim_data->sa_stretch_springs_offsets_in_adjlist.data() + adj_eid * 2 + offset * 1;
-                        uint offdiag_offset             = offsets_in_adjlist_ptr[0];
-                        total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                    }
-
-                    const auto& adj_bending_edges = host_sim_data->vert_adj_bending_edges[vid];
-                    for (const uint adj_eid : adj_bending_edges)
-                    {
-                        auto edge   = host_sim_data->sa_bending_edges[adj_eid];
-                        uint offset = 0;
-                        if (vid == edge[0])
-                        {
-                            offset = 0;
-                        }
-                        else if (vid == edge[1])
-                        {
-                            offset = 1;
-                        }
-                        else if (vid == edge[2])
-                        {
-                            offset = 2;
-                        }
-                        else if (vid == edge[3])
-                        {
-                            offset = 3;
-                        }
-                        // const float3* gradient_ptr = host_sim_data->sa_bending_edges_gradients.data() + adj_eid * 4;
-                        // const float3x3* diag_hessian_ptr = host_sim_data->sa_bending_edges_hessians.data() + adj_eid * 16;
-                        // const float3x3* offdiag_hessian_ptr = host_sim_data->sa_bending_edges_hessians.data() + adj_eid * 16 + 4;
-                        float3 grad = host_sim_data->sa_bending_edges_gradients[adj_eid * 4 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_bending_edges_hessians[adj_eid * 16 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        // auto* offsets_in_adjlist_ptr = host_sim_data->sa_bending_edges_offsets_in_adjlist.data() + adj_eid * 4 + offset * 3;
-                        for (uint ii = 0; ii < 3; ii++)
-                        {
-                            uint offdiag_offset =
-                                host_sim_data->sa_bending_edges_offsets_in_adjlist[adj_eid * 12 + offset * 3 + ii];
-                            // float3x3 offdiag_hess = offdiag_hessian_ptr[offset * 3 + ii];
-                            float3x3 offdiag_hess =
-                                host_sim_data->sa_bending_edges_hessians[adj_eid * 16 + 4 + offset * 3 + ii];
-                            total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                            if (offdiag_offset >= total_offdiag_A.size())
-                            {
-                                LUISA_ERROR("Bending hessian offset out of range! {} vs {}",
-                                            offdiag_offset,
-                                            total_offdiag_A.size());
-                            }
-                        }
-                    }
-
-                    const auto& adj_affine_bodies = host_sim_data->vert_adj_affine_bodies[vid];
-                    for (const uint adj_bid : adj_affine_bodies)
-                    {
-                        auto edge   = host_sim_data->sa_affine_bodies[adj_bid];
-                        uint offset = 0;
-                        if (vid == edge[0])
-                        {
-                            offset = 0;
-                        }
-                        else if (vid == edge[1])
-                        {
-                            offset = 1;
-                        }
-                        else if (vid == edge[2])
-                        {
-                            offset = 2;
-                        }
-                        else if (vid == edge[3])
-                        {
-                            offset = 3;
-                        }
-                        float3 grad = host_sim_data->sa_affine_bodies_gradients[adj_bid * 4 + offset];
-                        float3x3 diag_hess = host_sim_data->sa_affine_bodies_hessians[adj_bid * 16 + offset];
-                        total_gradiant = total_gradiant + grad;
-                        total_diag_A   = total_diag_A + diag_hess;
-
-                        for (uint ii = 0; ii < 3; ii++)
-                        {
-                            uint offdiag_offset =
-                                host_sim_data->sa_affine_bodies_offsets_in_adjlist[adj_bid * 12 + offset * 3 + ii];
-                            float3x3 offdiag_hess =
-                                host_sim_data->sa_affine_bodies_hessians[adj_bid * 16 + 4 + offset * 3 + ii];
-                            total_offdiag_A[offdiag_offset] = total_offdiag_A[offdiag_offset] + offdiag_hess;
-                            if (offdiag_offset >= total_offdiag_A.size())
-                            {
-                                LUISA_ERROR("Affine body hessian offset out of range! {} vs {}",
-                                            offdiag_offset,
-                                            total_offdiag_A.size());
-                            }
-                        }
-                    }
-
-                    host_sim_data->sa_cgB[vid]      = host_sim_data->sa_cgB[vid] - total_gradiant;
-                    host_sim_data->sa_cgA_diag[vid] = host_sim_data->sa_cgA_diag[vid] + total_diag_A;
-                    for (uint ii = curr_prefix; ii < next_prefix; ii++)
-                    {
-                        uint offset  = ii - curr_prefix;
-                        auto triplet = host_sim_data->sa_cgA_fixtopo_offdiag_triplet[ii];
-                        add_triplet_matrix(triplet, total_offdiag_A[offset]);
-                        host_sim_data->sa_cgA_fixtopo_offdiag_triplet[ii] = triplet;
+                        offset = k;
                     }
                 }
-            },
-            32);
+                LUISA_ASSERT(offset != -1u, "Error in assembly: offset not found.");
+
+                const float3   grad      = constaint_gradients[adj_eid * N + offset];
+                const float3x3 diag_hess = constaint_hessians[adj_eid * (N * N) + offset];
+
+                buffer_add(sa_cgB, vid, -grad);
+                buffer_add(sa_cgA_diag, vid, diag_hess);
+
+                const uint N_off = N - 1;
+                for (uint ii = 0; ii < N_off; ii++)  // For each off-diagonal in curr row
+                {
+                    float3x3 offdiag_hess = constaint_hessians[adj_eid * (N * N) + N + offset * N_off + ii];
+                    uint offdiag_offset =
+                        constaint_offsets_in_adjlist[adj_eid * (N * N_off) + offset * N_off + ii];
+                    auto triplet = sa_cgA_offdiag_triplet[curr_prefix + offdiag_offset];
+                    add_triplet_matrix(triplet, offdiag_hess);
+                    sa_cgA_offdiag_triplet[curr_prefix + offdiag_offset] = triplet;
+                }
+            };
+        };
+
+
+        if (host_sim_data->sa_stretch_springs.size() != 0 && false)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_springs_csr.data(),
+                 constaints               = host_sim_data->sa_stretch_springs.data(),
+                 constaint_gradients      = host_sim_data->sa_stretch_springs_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_stretch_springs_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_springs_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_stretch_faces.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_faces_csr.data(),
+                 constaints               = host_sim_data->sa_stretch_faces.data(),
+                 constaint_gradients      = host_sim_data->sa_stretch_faces_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_stretch_faces_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_faces_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(3, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_bending_edges.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->num_verts_soft,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_bending_edges_csr.data(),
+                 constaints               = host_sim_data->sa_bending_edges.data(),
+                 constaint_gradients      = host_sim_data->sa_bending_edges_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_bending_edges_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_bending_edges_offsets_in_adjlist.data(),
+                 assembly_template](const uint vid)
+                {
+                    assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
+                });
+
+        if (host_sim_data->sa_affine_bodies.size() != 0)
+            CpuParallel::parallel_for(
+                0,
+                host_sim_data->sa_affine_bodies.size() * 4,
+                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_affine_bodies_csr.data(),
+                 constaints               = host_sim_data->sa_affine_bodies.data(),
+                 constaint_gradients      = host_sim_data->sa_affine_bodies_gradients.data(),
+                 constaint_hessians       = host_sim_data->sa_affine_bodies_hessians.data(),
+                 constaint_offsets_in_adjlist = host_sim_data->sa_affine_bodies_offsets_in_adjlist.data(),
+                 prefix = host_sim_data->num_verts_soft,
+                 assembly_template](const uint block_idx)
+                {
+                    assembly_template(4,
+                                      prefix + block_idx,
+                                      vert_adj_constraints_csr,
+                                      constaints,
+                                      constaint_gradients,
+                                      constaint_hessians,
+                                      constaint_offsets_in_adjlist);
+                });
     }
 }
 
@@ -2533,12 +2744,12 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
     const float thickness       = get_scene_params().thickness;
     const float ccd_query_range = thickness + 0;  // + d_hat ???
 
-    mp_narrowphase_detector->reset_broadphase_count(stream);
+    narrow_phase_detector->reset_broadphase_count(stream);
 
-    mp_lbvh_face->update_face_tree_leave_aabb(
+    lbvh_face->update_face_tree_leave_aabb(
         stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
-    mp_lbvh_face->refit(stream);
-    mp_lbvh_face->broad_phase_query_from_verts(
+    lbvh_face->refit(stream);
+    lbvh_face->broad_phase_query_from_verts(
         stream,
         sim_data->sa_x_iter_start,
         sim_data->sa_x,
@@ -2546,10 +2757,10 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
         collision_data->broad_phase_list_vf,
         ccd_query_range);
 
-    mp_lbvh_edge->update_edge_tree_leave_aabb(
+    lbvh_edge->update_edge_tree_leave_aabb(
         stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
-    mp_lbvh_edge->refit(stream);
-    mp_lbvh_edge->broad_phase_query_from_edges(
+    lbvh_edge->refit(stream);
+    lbvh_edge->broad_phase_query_from_edges(
         stream,
         sim_data->sa_x_iter_start,
         sim_data->sa_x,
@@ -2564,10 +2775,9 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
     const float d_hat           = get_scene_params().d_hat;
     const float dcd_query_range = d_hat + thickness;
 
-    mp_lbvh_face->update_face_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
-    mp_lbvh_face->refit(stream);
-    mp_lbvh_face->broad_phase_query_from_verts(
+    lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+    lbvh_face->refit(stream);
+    lbvh_face->broad_phase_query_from_verts(
         stream,
         sim_data->sa_x,
         sim_data->sa_x,
@@ -2575,10 +2785,9 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
         collision_data->broad_phase_list_vf,
         dcd_query_range);
 
-    mp_lbvh_edge->update_edge_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
-    mp_lbvh_edge->refit(stream);
-    mp_lbvh_edge->broad_phase_query_from_edges(
+    lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+    lbvh_edge->refit(stream);
+    lbvh_edge->broad_phase_query_from_edges(
         stream,
         sim_data->sa_x,
         sim_data->sa_x,
@@ -2591,27 +2800,27 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 {
     const float thickness = get_scene_params().thickness;
     const float d_hat     = get_scene_params().d_hat;
-    // mp_narrowphase_detector->reset_narrowphase_count(stream);
-    mp_narrowphase_detector->reset_toi(stream);
+    // narrow_phase_detector->reset_narrowphase_count(stream);
+    narrow_phase_detector->reset_toi(stream);
 
-    mp_narrowphase_detector->vf_ccd_query(stream,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x,
-                                          sim_data->sa_x,
-                                          mesh_data->sa_faces,
-                                          d_hat,
-                                          thickness);
+    narrow_phase_detector->vf_ccd_query(stream,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x,
+                                        sim_data->sa_x,
+                                        mesh_data->sa_faces,
+                                        d_hat,
+                                        thickness);
 
-    mp_narrowphase_detector->ee_ccd_query(stream,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x_iter_start,
-                                          sim_data->sa_x,
-                                          sim_data->sa_x,
-                                          mesh_data->sa_edges,
-                                          mesh_data->sa_edges,
-                                          d_hat,
-                                          thickness);
+    narrow_phase_detector->ee_ccd_query(stream,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x_iter_start,
+                                        sim_data->sa_x,
+                                        sim_data->sa_x,
+                                        mesh_data->sa_edges,
+                                        mesh_data->sa_edges,
+                                        d_hat,
+                                        thickness);
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {
@@ -2619,58 +2828,58 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
     const float d_hat     = get_scene_params().d_hat;
     const float kappa     = get_scene_params().stiffness_collision;
 
-    mp_narrowphase_detector->vf_dcd_query_repulsion(stream,
-                                                    sim_data->sa_x,
-                                                    sim_data->sa_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_vert_area,
-                                                    mesh_data->sa_rest_face_area,
-                                                    mesh_data->sa_faces,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    d_hat,
-                                                    thickness,
-                                                    kappa);
+    narrow_phase_detector->vf_dcd_query_repulsion(stream,
+                                                  sim_data->sa_x,
+                                                  sim_data->sa_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_vert_area,
+                                                  mesh_data->sa_rest_face_area,
+                                                  mesh_data->sa_faces,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  d_hat,
+                                                  thickness,
+                                                  kappa);
 
-    mp_narrowphase_detector->ee_dcd_query_repulsion(stream,
-                                                    sim_data->sa_x,
-                                                    sim_data->sa_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_x,
-                                                    mesh_data->sa_rest_edge_area,
-                                                    mesh_data->sa_rest_edge_area,
-                                                    mesh_data->sa_edges,
-                                                    mesh_data->sa_edges,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    sim_data->sa_vert_affine_bodies_id,
-                                                    d_hat,
-                                                    thickness,
-                                                    kappa);
+    narrow_phase_detector->ee_dcd_query_repulsion(stream,
+                                                  sim_data->sa_x,
+                                                  sim_data->sa_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_x,
+                                                  mesh_data->sa_rest_edge_area,
+                                                  mesh_data->sa_rest_edge_area,
+                                                  mesh_data->sa_edges,
+                                                  mesh_data->sa_edges,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  sim_data->sa_vert_affine_bodies_id,
+                                                  d_hat,
+                                                  thickness,
+                                                  kappa);
 }
 void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
 {
-    mp_narrowphase_detector->reset_broadphase_count(stream);
-    mp_narrowphase_detector->reset_narrowphase_count(stream);
-    mp_narrowphase_detector->reset_pervert_collision_count(stream);
+    narrow_phase_detector->reset_broadphase_count(stream);
+    narrow_phase_detector->reset_narrowphase_count(stream);
+    narrow_phase_detector->reset_pervert_collision_count(stream);
 
     if (get_scene_params().use_self_collision)
         device_broadphase_dcd(stream);
 
-    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    narrow_phase_detector->download_broadphase_collision_count(stream);
 
     if (get_scene_params().use_self_collision)
         device_narrowphase_dcd(stream);
 
-    mp_narrowphase_detector->download_narrowphase_collision_count(stream);
-    mp_narrowphase_detector->construct_pervert_adj_list(
+    narrow_phase_detector->download_narrowphase_collision_count(stream);
+    narrow_phase_detector->construct_pervert_adj_list(
         stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 {
     device_broadphase_ccd(stream);
 
-    mp_narrowphase_detector->download_broadphase_collision_count(stream);
+    narrow_phase_detector->download_broadphase_collision_count(stream);
 
     device_narrowphase_ccd(stream);
 }
@@ -2681,20 +2890,20 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
     const float d_hat     = get_scene_params().d_hat;
     const float kappa     = get_scene_params().stiffness_collision;
 
-    mp_narrowphase_detector->reset_energy(stream);
-    mp_narrowphase_detector->compute_contact_energy_from_iter_start_list(stream,
-                                                                         sim_data->sa_x,
-                                                                         sim_data->sa_x,
-                                                                         mesh_data->sa_rest_x,
-                                                                         mesh_data->sa_rest_x,
-                                                                         mesh_data->sa_rest_vert_area,
-                                                                         mesh_data->sa_rest_face_area,
-                                                                         mesh_data->sa_faces,
-                                                                         d_hat,
-                                                                         thickness,
-                                                                         kappa);
+    narrow_phase_detector->reset_energy(stream);
+    narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
+                                                                       sim_data->sa_x,
+                                                                       sim_data->sa_x,
+                                                                       mesh_data->sa_rest_x,
+                                                                       mesh_data->sa_rest_x,
+                                                                       mesh_data->sa_rest_vert_area,
+                                                                       mesh_data->sa_rest_face_area,
+                                                                       mesh_data->sa_faces,
+                                                                       d_hat,
+                                                                       thickness,
+                                                                       kappa);
 
-    auto contact_energy = mp_narrowphase_detector->download_energy(stream);
+    auto contact_energy = narrow_phase_detector->download_energy(stream);
     energy_list.insert(std::make_pair("Contact", contact_energy));
 }
 void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
@@ -2725,8 +2934,8 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
                   .dispatch(aligned_diaptch_count);
 
-    // mp_narrowphase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
-    // mp_narrowphase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
+    // narrow_phase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
+    // narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
@@ -2974,28 +3183,28 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_update_contact_list(stream);
-        // mp_narrowphase_detector->download_narrowphase_list(stream);
-        // mp_narrowphase_detector->download_pervert_adjacent_list(stream);
-        mp_narrowphase_detector->device_sort_contact_triplet(stream);
+        // narrow_phase_detector->download_narrowphase_list(stream);
+        // narrow_phase_detector->download_pervert_adjacent_list(stream);
+        narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
     {
         stream << sim_data->sa_cgB.copy_from(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_from(host_sim_data->sa_cgA_diag.data());
 
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          d_hat,
-                                                                          thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        d_hat,
+                                                                        thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
-        mp_narrowphase_detector->download_contact_triplet(stream);
+        narrow_phase_detector->download_contact_triplet(stream);
 
         stream << sim_data->sa_cgB.copy_to(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_to(host_sim_data->sa_cgA_diag.data())
@@ -3008,7 +3217,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         device_ccd_line_search(stream);
 
-        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
         // return 1.0f;
     };
@@ -3076,10 +3285,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     // Init LBVH
     {
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        mp_lbvh_face->construct_tree(stream);
-        mp_lbvh_edge->construct_tree(stream);
+        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+        lbvh_face->construct_tree(stream);
+        lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
@@ -3123,7 +3332,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 host_evaluate_orthogonality();
 
-                host_evaluete_spring();
+                host_evaluete_stretch_spring();
+
+                host_evaluete_stretch_face();
 
                 host_evaluete_bending();
 
@@ -3174,8 +3385,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     {
                         if (host_mesh_data->sa_is_fixed[vid])
                         {
-                            // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
                             return luisa::length(delta);
                         }
                         return 0.0f;  // Non-fixed point
@@ -3307,28 +3517,28 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto        update_contact_set = [&]()
     {
         device_update_contact_list(stream);
-        mp_narrowphase_detector->device_sort_contact_triplet(stream);
+        narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
     {
-        mp_narrowphase_detector->device_perPair_evaluate_gradient_hessian(stream,
-                                                                          sim_data->sa_x,
-                                                                          sim_data->sa_x,
-                                                                          d_hat,
-                                                                          thickness,
-                                                                          sim_data->sa_vert_affine_bodies_id,
-                                                                          mesh_data->sa_scaled_model_x,
-                                                                          host_sim_data->num_verts_soft,
-                                                                          sim_data->sa_cgB,
-                                                                          sim_data->sa_cgA_diag);
+        narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
+                                                                        sim_data->sa_x,
+                                                                        sim_data->sa_x,
+                                                                        d_hat,
+                                                                        thickness,
+                                                                        sim_data->sa_vert_affine_bodies_id,
+                                                                        mesh_data->sa_scaled_model_x,
+                                                                        host_sim_data->num_verts_soft,
+                                                                        sim_data->sa_cgB,
+                                                                        sim_data->sa_cgA_diag);
 
-        mp_narrowphase_detector->device_assemble_contact_triplet(
+        narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
     };
     auto ccd_get_toi = [&]() -> float
     {
         device_ccd_line_search(stream);
-        float toi = mp_narrowphase_detector->get_global_toi(stream);
+        float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
     };
 
@@ -3370,10 +3580,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         ADD_HOST_TIME_STAMP("Init LBVH");
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
-        mp_lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        mp_lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        mp_lbvh_face->construct_tree(stream);
-        mp_lbvh_edge->construct_tree(stream);
+        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+        lbvh_face->construct_tree(stream);
+        lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
@@ -3444,9 +3654,15 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_material_energy_assembly_stretch_spring().dispatch(host_sim_data->num_verts_soft);
                 }
 
+                if (host_sim_data->sa_stretch_faces.size() != 0)
+                {
+                    stream << fn_evaluate_stretch_face().dispatch(host_sim_data->sa_stretch_faces.size());
+                    stream << fn_material_energy_assembly_stretch_face().dispatch(host_sim_data->num_verts_soft);
+                }
+
                 if (host_sim_data->sa_bending_edges.size() != 0)
                 {
-                    stream << fn_evaluate_bending(get_scene_params().get_stiffness_bending())
+                    stream << fn_evaluate_bending(get_scene_params().get_bending_stiffness_scaling())
                                   .dispatch(host_sim_data->sa_bending_edges.size());
                     stream << fn_material_energy_assembly_bending().dispatch(host_sim_data->num_verts_soft);
                 }
@@ -3573,8 +3789,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     {
                         if (host_mesh_data->sa_is_fixed[vid])
                         {
-                            // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-                            float3 delta = host_sim_data->sa_x[vid] - host_mesh_data->sa_x_frame_outer_next[vid];
+                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
                             return luisa::length(delta);
                         }
                         return 0.0f;  // Non-fixed point

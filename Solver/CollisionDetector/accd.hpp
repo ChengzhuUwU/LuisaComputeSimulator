@@ -23,6 +23,7 @@ namespace accd
     using Vec2f   = luisa::compute::Float2;
     using Vec3f   = luisa::compute::Float3;
     using Vec4f   = luisa::compute::Float4;
+    using Float   = luisa::compute::Float;
 
 
     inline void centerize(Mat3x4f& x)

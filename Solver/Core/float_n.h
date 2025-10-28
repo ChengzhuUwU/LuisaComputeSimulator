@@ -164,45 +164,45 @@ using float12x12 = MATRIX12;
 // using float4x2 = luisa::float4x2;
 // using float4x3 = luisa::float4x3;
 
-using Int      = luisa::compute::Int;
-using Int2     = luisa::compute::Int2;
-using Int3     = luisa::compute::Int3;
-using Int4     = luisa::compute::Int4;
-using UInt     = luisa::compute::UInt;
-using UInt2    = luisa::compute::UInt2;
-using UInt3    = luisa::compute::UInt3;
-using UInt4    = luisa::compute::UInt4;
-using Float    = luisa::compute::Float;
-using Float2   = luisa::compute::Float2;
-using Float3   = luisa::compute::Float3;
-using Float4   = luisa::compute::Float4;
-using Bool     = luisa::compute::Bool;
-using Bool2    = luisa::compute::Bool2;
-using Bool3    = luisa::compute::Bool3;
-using Bool4    = luisa::compute::Bool4;
-using Float2x2 = luisa::compute::Float2x2;
-using Float3x3 = luisa::compute::Float3x3;
-using Float4x4 = luisa::compute::Float4x4;
-using Short    = luisa::compute::Short;
-using Short2   = luisa::compute::Short2;
-using Short3   = luisa::compute::Short3;
-using Short4   = luisa::compute::Short4;
-using UShort   = luisa::compute::UShort;
-using UShort2  = luisa::compute::UShort2;
-using UShort3  = luisa::compute::UShort3;
-using UShort4  = luisa::compute::UShort4;
-using SLong    = luisa::compute::SLong;
-using SLong2   = luisa::compute::SLong2;
-using SLong3   = luisa::compute::SLong3;
-using SLong4   = luisa::compute::SLong4;
-using ULong    = luisa::compute::ULong;
-using ULong2   = luisa::compute::ULong2;
-using ULong3   = luisa::compute::ULong3;
-using ULong4   = luisa::compute::ULong4;
-using Half     = luisa::compute::Half;
-using Half2    = luisa::compute::Half2;
-using Half3    = luisa::compute::Half3;
-using Half4    = luisa::compute::Half4;
+// using Int      = luisa::compute::Int;
+// using Int2     = luisa::compute::Int2;
+// using Int3     = luisa::compute::Int3;
+// using Int4     = luisa::compute::Int4;
+// using UInt     = luisa::compute::UInt;
+// using UInt2    = luisa::compute::UInt2;
+// using UInt3    = luisa::compute::UInt3;
+// using UInt4    = luisa::compute::UInt4;
+// using Float    = luisa::compute::Float;
+// using Float2   = luisa::compute::Float2;
+// using Float3   = luisa::compute::Float3;
+// using Float4   = luisa::compute::Float4;
+// using Bool     = luisa::compute::Bool;
+// using Bool2    = luisa::compute::Bool2;
+// using Bool3    = luisa::compute::Bool3;
+// using Bool4    = luisa::compute::Bool4;
+// using Float2x2 = luisa::compute::Float2x2;
+// using Float3x3 = luisa::compute::Float3x3;
+// using Float4x4 = luisa::compute::Float4x4;
+// using Short    = luisa::compute::Short;
+// using Short2   = luisa::compute::Short2;
+// using Short3   = luisa::compute::Short3;
+// using Short4   = luisa::compute::Short4;
+// using UShort   = luisa::compute::UShort;
+// using UShort2  = luisa::compute::UShort2;
+// using UShort3  = luisa::compute::UShort3;
+// using UShort4  = luisa::compute::UShort4;
+// using SLong    = luisa::compute::SLong;
+// using SLong2   = luisa::compute::SLong2;
+// using SLong3   = luisa::compute::SLong3;
+// using SLong4   = luisa::compute::SLong4;
+// using ULong    = luisa::compute::ULong;
+// using ULong2   = luisa::compute::ULong2;
+// using ULong3   = luisa::compute::ULong3;
+// using ULong4   = luisa::compute::ULong4;
+// using Half     = luisa::compute::Half;
+// using Half2    = luisa::compute::Half2;
+// using Half3    = luisa::compute::Half3;
+// using Half4    = luisa::compute::Half4;
 
 using Float2x3 = luisa::compute::Var<float2x3>;
 using Float2x4 = luisa::compute::Var<float2x4>;
@@ -582,9 +582,9 @@ inline bool is_inf_vec(const luisa::Vector<T, N>& vec)
     return is_inf;
 }
 template <typename T, size_t N>
-inline Bool is_inf_vec(const Var<luisa::Vector<T, N>>& vec)
+inline Var<bool> is_inf_vec(const Var<luisa::Vector<T, N>>& vec)
 {
-    Bool is_inf = false;
+    Var<bool> is_inf = false;
     for (uint i = 0; i < N; i++)
     {
         $if(luisa::compute::isinf(vec[i]))
@@ -608,9 +608,9 @@ inline bool is_nan_vec(const luisa::Vector<T, N>& vec)
     return is_nan;
 }
 template <typename T, size_t N>
-inline Bool is_nan_vec(const Var<luisa::Vector<T, N>>& vec)
+inline Var<bool> is_nan_vec(const Var<luisa::Vector<T, N>>& vec)
 {
-    Bool is_nan = false;
+    Var<bool> is_nan = false;
     for (uint i = 0; i < N; i++)
     {
         $if(luisa::compute::isnan(vec[i]))
@@ -658,6 +658,14 @@ inline float3 compute_face_normal(const float3& p1, const float3& p2, const floa
     float3 t = p3 - p1;
     float3 n = normalize_vec(cross_vec(s, t));
     return n;
+}
+inline float compute_tet_volume(const float3& p0, const float3& p1, const float3& p2, const float3& p3)
+{
+    float3 v1     = p1 - p0;
+    float3 v2     = p2 - p0;
+    float3 v3     = p3 - p0;
+    float  volume = dot_vec(v1, cross_vec(v2, v3)) / 6.0f;
+    return volume;
 }
 
 };  // namespace lcs

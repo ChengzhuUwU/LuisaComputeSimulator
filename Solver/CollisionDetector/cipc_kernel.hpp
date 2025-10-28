@@ -134,26 +134,27 @@ namespace cipc
 
 namespace DistanceGradient
 {
-
+    using Float  = luisa::compute::Float;
+    using Float3 = luisa::compute::Float3;
     namespace details
     {
 
         template <uint idx, typename LargeVector>
-        constexpr lcs::Float& getVec(LargeVector& G)
+        constexpr Float& getVec(LargeVector& G)
         {
             constexpr uint outer_row_idx = idx / 3;
             constexpr uint inner_row_idx = idx % 3;
             return G.vec[outer_row_idx][inner_row_idx];
         }
         template <uint idx, typename LargeVector>
-        constexpr void setVec(LargeVector& G, const lcs::Float& value)
+        constexpr void setVec(LargeVector& G, const Float& value)
         {
             constexpr uint outer_row_idx        = idx / 3;
             constexpr uint inner_row_idx        = idx % 3;
             G.vec[outer_row_idx][inner_row_idx] = value;
         }
         template <uint idx, typename LargeMatrix>
-        constexpr lcs::Float& getMat9x9(LargeMatrix& H)
+        constexpr Float& getMat9x9(LargeMatrix& H)
         {
             constexpr uint col_idx       = idx % 9;
             constexpr uint row_idx       = idx / 9;
@@ -164,7 +165,7 @@ namespace DistanceGradient
             return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
         }
         template <uint idx, typename LargeMatrix>
-        constexpr lcs::Float& getMat12x12(LargeMatrix& H)
+        constexpr Float& getMat12x12(LargeMatrix& H)
         {
             constexpr uint col_idx       = idx % 12;
             constexpr uint row_idx       = idx / 12;
@@ -175,7 +176,7 @@ namespace DistanceGradient
             return H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx];
         }
         template <uint idx, typename LargeMatrix>
-        constexpr void setMat9x9(LargeMatrix& H, const lcs::Float& value)
+        constexpr void setMat9x9(LargeMatrix& H, const Float& value)
         {
             constexpr uint col_idx                                            = idx % 9;
             constexpr uint row_idx                                            = idx / 9;
@@ -186,7 +187,7 @@ namespace DistanceGradient
             H.mat[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
         }
         template <uint idx, typename LargeMatrix>
-        constexpr void setMat12x12(LargeMatrix& H, const lcs::Float& value)
+        constexpr void setMat12x12(LargeMatrix& H, const Float& value)
         {
             constexpr uint col_idx                                            = idx % 12;
             constexpr uint row_idx                                            = idx / 12;
@@ -402,7 +403,7 @@ namespace DistanceGradient
     {
 
         // template <uint idx, typename Mat>
-        // constexpr void setMat9x9(Mat H[3][3], const lcs::Float& value)
+        // constexpr void setMat9x9(Mat H[3][3], const Float& value)
         // {
         //     constexpr uint col_idx = idx % 9;
         //     constexpr uint row_idx = idx / 9;
@@ -413,7 +414,7 @@ namespace DistanceGradient
         //     H[outer_row_idx][outer_col_idx][inner_row_idx][inner_col_idx] = value;
         // }
         // template <uint idx, typename Mat>
-        // constexpr void setMat12x12(Mat H[4][4], const lcs::Float& value)
+        // constexpr void setMat12x12(Mat H[4][4], const Float& value)
         // {
         //     constexpr uint col_idx = idx % 16;
         //     constexpr uint row_idx = idx / 16;

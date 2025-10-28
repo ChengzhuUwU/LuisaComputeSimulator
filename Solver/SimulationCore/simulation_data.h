@@ -93,6 +93,8 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_x_step_start;
     BufferType<float3> sa_x_iter_start;
 
+    BufferType<float3> sa_target_positions;
+
     // Energy
     uint              num_verts_soft    = 0;
     uint              num_verts_rigid   = 0;
@@ -103,18 +105,22 @@ struct SimulationData : SimulationType
 
     BufferType<uint2>    sa_stretch_springs;
     BufferType<float>    sa_stretch_spring_rest_state_length;
+    BufferType<float>    sa_stretch_spring_stiffness;
     BufferType<ushort>   sa_stretch_springs_offsets_in_adjlist;
     BufferType<float3>   sa_stretch_springs_gradients;
     BufferType<float3x3> sa_stretch_springs_hessians;
 
     BufferType<uint3>    sa_stretch_faces;
+    BufferType<float>    sa_stretch_faces_rest_area;
+    BufferType<float2>   sa_stretch_faces_mu_lambda;  // scaled by thickness, thus only multiply by area
     BufferType<float2x2> sa_stretch_faces_Dm_inv;
-    BufferType<ushort>   sa_stretch_face_offsets_in_adjlist;
-    BufferType<float3>   sa_stretch_face_gradients;
-    BufferType<float3x3> sa_stretch_face_hessians;
+    BufferType<ushort>   sa_stretch_faces_offsets_in_adjlist;
+    BufferType<float3>   sa_stretch_faces_gradients;
+    BufferType<float3x3> sa_stretch_faces_hessians;
 
     BufferType<uint4>    sa_bending_edges;
     BufferType<float>    sa_bending_edges_rest_angle;
+    BufferType<float>    sa_bending_edges_stiffness;
     BufferType<float4x4> sa_bending_edges_Q;
     BufferType<float>    sa_bending_edges_rest_area;
     BufferType<ushort>   sa_bending_edges_offsets_in_adjlist;

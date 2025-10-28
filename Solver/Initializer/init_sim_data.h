@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Initializer/init_mesh_data.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
 
@@ -8,7 +9,9 @@ namespace lcs::Initializer
 {
 
 
-void init_sim_data(lcs::MeshData<std::vector>* mesh_data, lcs::SimulationData<std::vector>* sim_data);
+void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+                   lcs::MeshData<std::vector>*               mesh_data,
+                   lcs::SimulationData<std::vector>*         sim_data);
 void upload_sim_buffers(luisa::compute::Device&                      device,
                         luisa::compute::Stream&                      stream,
                         lcs::SimulationData<std::vector>*            input_data,

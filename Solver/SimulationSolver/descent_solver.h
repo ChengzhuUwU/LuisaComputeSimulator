@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/float_n.h"
-#include "SimulationCore/solver_interface.h"
+#include "SimulationSolver/solver_interface.h"
 
 namespace lcs
 {

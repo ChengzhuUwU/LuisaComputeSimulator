@@ -35,11 +35,11 @@ struct SceneParams
 
     // Global Config
     bool use_explicit          = false;
-    bool use_gpu               = false;
+    bool use_gpu               = true;
     bool fix_scene             = false;
     bool use_substep           = true;
     bool use_energy_linesearch = false;
-    bool use_ccd_linesearch    = false;
+    bool use_ccd_linesearch    = true;
 
     bool print_system_energy    = false;
     bool print_pcg_convergence  = false;
@@ -74,7 +74,7 @@ struct SceneParams
     uint num_iteration        = 96;
     uint num_substep          = 1;
     uint nonlinear_iter_count = 8;
-    uint pcg_iter_count       = 50;
+    uint pcg_iter_count       = 100;
 
     uint current_frame          = 0;
     uint current_nonlinear_iter = 0;
@@ -105,7 +105,7 @@ struct SceneParams
     uint use_big_damping_frame = 999999;
     uint dag_mode              = -1u;  // -1u:non, 0:full cloth, 1:full tet, 2:hybrid
 
-    float implicit_dt = 1.f / 30.f;
+    float implicit_dt = 1.f / 60.f;
     float explicit_dt = 1E-4;
     float dt          = implicit_dt;
     float dt_inv      = 1.0f / dt;
@@ -124,7 +124,7 @@ struct SceneParams
     float poisson_ratio_cloth  = 0.2f;
     float poisson_ratio_tet    = 0.2f;
 
-    float stiffness_bending_ui        = 0.5f;
+    float stiffness_bending_ui        = 1.0f;
     float stiffness_quadratic_bending = 5e-3f;
     float stiffness_DAB_bending       = 5e-2f;
     float stiffness_collision         = 1e9;
@@ -179,7 +179,7 @@ struct SceneParams
         return num_substep * current_substep + current_nonlinear_iter;
     }
     float get_substep_dt() { return implicit_dt / float(num_substep); }
-    float get_stiffness_bending() { return stiffness_DAB_bending * stiffness_bending_ui; }
+    float get_bending_stiffness_scaling() { return stiffness_bending_ui; }
 };
 
 #ifndef METAL_CODE

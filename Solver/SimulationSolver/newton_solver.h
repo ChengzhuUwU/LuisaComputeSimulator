@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/float_n.h"
-#include "SimulationCore/solver_interface.h"
+#include "SimulationSolver/solver_interface.h"
 #include "LinearSolver/precond_cg.h"
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/device.h"
@@ -28,9 +28,30 @@ class NewtonSolver : public lcs::SolverInterface
   public:
     void physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(AsyncCompiler& compiler);
+    void init_solver(luisa::compute::Device&                   device,
+                     luisa::compute::Stream&                   stream,
+                     std::vector<lcs::Initializer::ShellInfo>& shell_list)
+    {
+        LUISA_INFO("Init mesh data...");
+        SolverInterface::init_data(device, stream, shell_list);
+
+        luisa::compute::Clock clk;
+        {
+            AsyncCompiler compiler(device);
+            {
+                SolverInterface::compile(compiler);
+                this->compile(compiler);
+            }
+            compiler.wait();
+        }
+        LUISA_INFO("Shader compile done with time {} seconds.", clk.toc() * 1e-3);
+
+        SolverInterface::restart_system();
+        LUISA_INFO("Simulation begin...");
+    }
 
   private:
+    void compile(AsyncCompiler& compiler);
     void compile_advancing(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);
     void compile_assembly(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);
     void compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option);
@@ -46,7 +67,8 @@ class NewtonSolver : public lcs::SolverInterface
     void host_evaluate_dirichlet();
     void host_reset_off_diag();
     void host_reset_cgB_cgX_diagA();
-    void host_evaluete_spring();
+    void host_evaluete_stretch_spring();
+    void host_evaluete_stretch_face();
     void host_evaluete_bending();
     void host_material_energy_assembly();
     void host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy);
@@ -86,7 +108,8 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float, float> fn_evaluate_inertia;  // Float substep_dt, Float stiffness_dirichlet
     luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet;  // Float substep_dt, stiffness_dirichlet
     luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision;
-    luisa::compute::Shader<1, float> fn_evaluate_spring;   // Float stiffness_stretch
+    luisa::compute::Shader<1, float> fn_evaluate_spring;  // Float stiffness_stretch
+    luisa::compute::Shader<1>        fn_evaluate_stretch_face;
     luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
 
     luisa::compute::Shader<1, float, float3> fn_abd_predict_position;
