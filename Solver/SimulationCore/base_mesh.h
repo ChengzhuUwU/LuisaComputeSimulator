@@ -56,18 +56,30 @@ struct MeshData : SimulationType
     BufferType<uint3> sa_faces;
     BufferType<uint2> sa_edges;
     BufferType<uint4> sa_dihedral_edges;
+    BufferType<uint4> sa_tetrahedrons;
 
     // Mesh attrubution
     BufferType<float> sa_body_mass;
     BufferType<float> sa_vert_mass;
     BufferType<float> sa_vert_mass_inv;
     BufferType<uint>  sa_is_fixed;  // TODO: uchar
-    BufferType<uint>  sa_vert_mesh_id;
     BufferType<uint>  sa_vert_mesh_type;
+    // BufferType<uint>  sa_vert_is_on_surface; // For collision detection on surface
+
+    BufferType<uint> sa_vert_mesh_id;
+    BufferType<uint> sa_face_mesh_id;
+    BufferType<uint> sa_edge_mesh_id;
+    BufferType<uint> sa_dihedral_edge_mesh_id;
+    BufferType<uint> sa_tet_mesh_id;
 
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;
     BufferType<float> sa_rest_face_area;
+    BufferType<float> sa_rest_tet_volume;
+    BufferType<float> sa_rest_vert_volume;
+    BufferType<float> sa_vert_thickness;
+    BufferType<float> sa_edge_thickness;
+    BufferType<float> sa_face_thickness;
 
     // Affine
     BufferType<float3> sa_rest_translate;
@@ -79,6 +91,7 @@ struct MeshData : SimulationType
     BufferType<uint>  sa_vert_adj_faces_csr;
     BufferType<uint>  sa_vert_adj_edges_csr;
     BufferType<uint>  sa_vert_adj_dihedral_edges_csr;
+    BufferType<uint>  sa_vert_adj_tets_csr;
     BufferType<uint2> edge_adj_faces;
     BufferType<uint3> face_adj_edges;
     BufferType<uint3> face_adj_faces;
@@ -93,11 +106,13 @@ struct MeshData : SimulationType
     std::vector<uint> prefix_num_faces;
     std::vector<uint> prefix_num_edges;
     std::vector<uint> prefix_num_dihedral_edges;
+    std::vector<uint> prefix_num_tets;
 
     std::vector<std::vector<uint>> vert_adj_verts;
     std::vector<std::vector<uint>> vert_adj_faces;
     std::vector<std::vector<uint>> vert_adj_edges;
     std::vector<std::vector<uint>> vert_adj_dihedral_edges;
+    std::vector<std::vector<uint>> vert_adj_tets;
 
     std::vector<uint>              fixed_verts;
     std::vector<std::vector<uint>> fixed_verts_map;

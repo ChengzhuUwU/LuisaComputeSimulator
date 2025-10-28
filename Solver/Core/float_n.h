@@ -659,5 +659,13 @@ inline float3 compute_face_normal(const float3& p1, const float3& p2, const floa
     float3 n = normalize_vec(cross_vec(s, t));
     return n;
 }
+inline float compute_tet_volume(const float3& p0, const float3& p1, const float3& p2, const float3& p3)
+{
+    float3 v1     = p1 - p0;
+    float3 v2     = p2 - p0;
+    float3 v3     = p3 - p0;
+    float  volume = dot_vec(v1, cross_vec(v2, v3)) / 6.0f;
+    return volume;
+}
 
 };  // namespace lcs

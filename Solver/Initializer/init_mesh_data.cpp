@@ -149,16 +149,19 @@ namespace Initializer
         const uint num_meshes = shell_infos.size();
         // std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
-        mesh_data->num_meshes         = num_meshes;
+        mesh_data->num_meshes = num_meshes;
+
         mesh_data->num_verts          = 0;
         mesh_data->num_faces          = 0;
         mesh_data->num_edges          = 0;
         mesh_data->num_dihedral_edges = 0;
+        mesh_data->num_tets           = 0;
 
         mesh_data->prefix_num_verts.resize(1 + num_meshes, 0);
         mesh_data->prefix_num_faces.resize(1 + num_meshes, 0);
         mesh_data->prefix_num_edges.resize(1 + num_meshes, 0);
         mesh_data->prefix_num_dihedral_edges.resize(1 + num_meshes, 0);
+        mesh_data->prefix_num_tets.resize(1 + num_meshes, 0);
 
         mesh_data->sa_rest_translate.resize(num_meshes);
         mesh_data->sa_rest_rotation.resize(num_meshes);
@@ -181,31 +184,36 @@ namespace Initializer
                 if (shell_info.holds<ClothMaterial>())
                 {
                     auto& mat = shell_info.get<ClothMaterial>();
-                    if (mat.model != ConstitutiveModelCloth::None)
-                    {
-                        mat.model = ConstitutiveModelCloth::FEM_BW98;
-                    }
+                    shell_info.density = mat.density;  // Update density in shell_info for mass computation
+                    shell_info.is_shell  = true;
+                    shell_info.thickness = mat.thickness;
                 }
             }
             else if (shell_info.shell_type == ShellTypeTetrahedral)
             {
                 if (shell_info.holds<TetMaterial>())
                 {
-                    auto& mat = shell_info.get<TetMaterial>();
-                    if (mat.model != ConstitutiveModelTet::None)
-                    {
-                        mat.model = ConstitutiveModelTet::StableNeoHookean;
-                    }
+                    auto& mat            = shell_info.get<TetMaterial>();
+                    shell_info.density   = mat.density;
+                    shell_info.is_shell  = false;
+                    shell_info.thickness = 0.0f;
                 }
             }
             else if (shell_info.shell_type == ShellTypeRigid)
             {
                 if (shell_info.holds<RigidMaterial>())
                 {
-                    auto& mat = shell_info.get<RigidMaterial>();
-                    if (mat.model != ConstitutiveModelRigid::None)
+                    auto& mat          = shell_info.get<RigidMaterial>();
+                    shell_info.density = mat.density;
+                    if (mat.is_solid)
                     {
-                        mat.model = ConstitutiveModelRigid::Orthogonality;
+                        shell_info.is_shell  = false;
+                        shell_info.thickness = 0.0f;
+                    }
+                    else
+                    {
+                        shell_info.is_shell  = true;
+                        shell_info.thickness = mat.shell_thickness;
                     }
                 }
             }
@@ -221,33 +229,39 @@ namespace Initializer
             mesh_data->prefix_num_faces[meshIdx]          = mesh_data->num_faces;
             mesh_data->prefix_num_edges[meshIdx]          = mesh_data->num_edges;
             mesh_data->prefix_num_dihedral_edges[meshIdx] = mesh_data->num_dihedral_edges;
+            mesh_data->prefix_num_tets[meshIdx]           = mesh_data->num_tets;
 
             const uint curr_num_verts          = input_mesh.model_positions.size();
             const uint curr_num_faces          = input_mesh.faces.size();
             const uint curr_num_edges          = input_mesh.edges.size();
             const uint curr_num_dihedral_edges = input_mesh.dihedral_edges.size();
+            const uint curr_num_tets           = input_mesh.tetrahedrons.size();
 
             mesh_data->num_verts += curr_num_verts;
             mesh_data->num_faces += curr_num_faces;
             mesh_data->num_edges += curr_num_edges;
             mesh_data->num_dihedral_edges += curr_num_dihedral_edges;
+            mesh_data->num_tets += curr_num_tets;
         }
 
         mesh_data->prefix_num_verts[num_meshes]          = mesh_data->num_verts;
         mesh_data->prefix_num_faces[num_meshes]          = mesh_data->num_faces;
         mesh_data->prefix_num_edges[num_meshes]          = mesh_data->num_edges;
         mesh_data->prefix_num_dihedral_edges[num_meshes] = mesh_data->num_dihedral_edges;
+        mesh_data->prefix_num_tets[num_meshes]           = mesh_data->num_tets;
 
         uint num_verts          = mesh_data->num_verts;
         uint num_faces          = mesh_data->num_faces;
         uint num_edges          = mesh_data->num_edges;
         uint num_dihedral_edges = mesh_data->num_dihedral_edges;
+        uint num_tets           = mesh_data->num_tets;
 
-        LUISA_INFO("Cloth : (numVerts : {}) (numFaces : {})  (numEdges : {}) (numDihedralEdges : {})",
+        LUISA_INFO("Mesh : (numVerts : {}) (numFaces : {})  (numEdges : {}) (numDihedralEdges : {}), (numTets : {})",
                    num_verts,
                    num_faces,
                    num_edges,
-                   num_dihedral_edges);
+                   num_dihedral_edges,
+                   num_tets);
 
         // Read information
         {
@@ -257,16 +271,23 @@ namespace Initializer
             mesh_data->sa_faces.resize(num_faces);
             mesh_data->sa_edges.resize(num_edges);
             mesh_data->sa_dihedral_edges.resize(num_dihedral_edges);
+            mesh_data->sa_tetrahedrons.resize(num_tets);
 
             mesh_data->sa_rest_v.resize(num_verts);
             mesh_data->sa_is_fixed.resize(num_verts);
-            mesh_data->sa_vert_mesh_id.resize(num_verts);
             mesh_data->sa_vert_mesh_type.resize(num_verts);
+
+            mesh_data->sa_vert_mesh_id.resize(num_verts);
+            mesh_data->sa_face_mesh_id.resize(num_faces);
+            mesh_data->sa_edge_mesh_id.resize(num_edges);
+            mesh_data->sa_dihedral_edge_mesh_id.resize(num_dihedral_edges);
+            mesh_data->sa_tet_mesh_id.resize(num_tets);
 
             uint prefix_num_verts          = 0;
             uint prefix_num_faces          = 0;
             uint prefix_num_edges          = 0;
             uint prefix_num_dihedral_edges = 0;
+            uint prefix_num_tets           = 0;
 
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
@@ -284,6 +305,7 @@ namespace Initializer
                 const uint curr_num_faces          = curr_input_mesh.faces.size();
                 const uint curr_num_edges          = curr_input_mesh.edges.size();
                 const uint curr_num_dihedral_edges = curr_input_mesh.dihedral_edges.size();
+                const uint curr_num_tets           = curr_input_mesh.tetrahedrons.size();
 
                 // Read position with affine
                 CpuParallel::parallel_for(
@@ -311,6 +333,7 @@ namespace Initializer
                                               auto face = curr_input_mesh.faces[fid];
                                               mesh_data->sa_faces[prefix_num_faces + fid] =
                                                   prefix_num_verts + luisa::make_uint3(face[0], face[1], face[2]);
+                                              mesh_data->sa_face_mesh_id[prefix_num_faces + fid] = meshIdx;
                                           });
                 // Read edge
                 CpuParallel::parallel_for(0,
@@ -320,19 +343,31 @@ namespace Initializer
                                               auto edge = curr_input_mesh.edges[eid];
                                               mesh_data->sa_edges[prefix_num_edges + eid] =
                                                   prefix_num_verts + luisa::make_uint2(edge[0], edge[1]);
+                                              mesh_data->sa_edge_mesh_id[prefix_num_edges + eid] = meshIdx;
                                           });
                 // Read bending edge
+                CpuParallel::parallel_for(
+                    0,
+                    curr_num_dihedral_edges,
+                    [&](const uint eid)
+                    {
+                        auto bending_edge = curr_input_mesh.dihedral_edges[eid];
+                        mesh_data->sa_dihedral_edges[prefix_num_dihedral_edges + eid] =
+                            prefix_num_verts
+                            + luisa::make_uint4(bending_edge[0], bending_edge[1], bending_edge[2], bending_edge[3]);
+                        mesh_data->sa_dihedral_edge_mesh_id[prefix_num_dihedral_edges + eid] = meshIdx;
+                    });
+
+                // Read tetrahedrons
                 CpuParallel::parallel_for(0,
-                                          curr_num_dihedral_edges,
-                                          [&](const uint eid)
+                                          curr_num_tets,
+                                          [&](const uint tid)
                                           {
-                                              auto bending_edge = curr_input_mesh.dihedral_edges[eid];
-                                              mesh_data->sa_dihedral_edges[prefix_num_dihedral_edges + eid] =
+                                              auto tet = curr_input_mesh.tetrahedrons[tid];
+                                              mesh_data->sa_tetrahedrons[prefix_num_tets + tid] =
                                                   prefix_num_verts
-                                                  + luisa::make_uint4(bending_edge[0],
-                                                                      bending_edge[1],
-                                                                      bending_edge[2],
-                                                                      bending_edge[3]);
+                                                  + luisa::make_uint4(tet[0], tet[1], tet[2], tet[3]);
+                                              mesh_data->sa_tet_mesh_id[prefix_num_tets + tid] = meshIdx;
                                           });
 
                 // Read fixed points
@@ -372,12 +407,12 @@ namespace Initializer
                             })
                         / float(curr_num_edges);
 
-
-                    LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, avgEdgeLength = {:2.4f}, AABB range = {}",
+                    LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, numTets = {:5} avgEdgeLength = {:2.4f}, AABB range = {}",
                                meshIdx,
                                curr_num_verts,
                                curr_num_faces,
                                curr_num_edges,
+                               curr_num_tets,
                                avg_spring_length,
                                pos_max - pos_min);
                 }
@@ -386,6 +421,7 @@ namespace Initializer
                 prefix_num_faces += curr_num_faces;
                 prefix_num_edges += curr_num_edges;
                 prefix_num_dihedral_edges += curr_num_dihedral_edges;
+                prefix_num_tets += curr_num_tets;
             }
         }
 
@@ -395,6 +431,7 @@ namespace Initializer
             mesh_data->vert_adj_edges.resize(num_verts);
             mesh_data->vert_adj_dihedral_edges.resize(num_verts);
             mesh_data->vert_adj_verts.resize(num_verts);
+            mesh_data->vert_adj_tets.resize(num_verts);
 
             // Vert adj faces
             for (uint eid = 0; eid < num_faces; eid++)
@@ -422,6 +459,15 @@ namespace Initializer
                     mesh_data->vert_adj_dihedral_edges[edge[j]].push_back(eid);
             }
             upload_2d_csr_from(mesh_data->sa_vert_adj_dihedral_edges_csr, mesh_data->vert_adj_dihedral_edges);
+
+            // Vert adj tets
+            for (uint tid = 0; tid < num_tets; tid++)
+            {
+                auto tet = mesh_data->sa_tetrahedrons[tid];
+                for (uint j = 0; j < 4; j++)
+                    mesh_data->vert_adj_tets[tet[j]].push_back(tid);
+            }
+            upload_2d_csr_from(mesh_data->sa_vert_adj_tets_csr, mesh_data->vert_adj_tets);
 
             // Vert adj verts based on 1-order connection
             for (uint eid = 0; eid < num_edges; eid++)
@@ -526,6 +572,11 @@ namespace Initializer
             mesh_data->sa_rest_vert_area.resize(num_verts);
             mesh_data->sa_rest_edge_area.resize(num_edges);
             mesh_data->sa_rest_face_area.resize(num_faces);
+            mesh_data->sa_rest_tet_volume.resize(num_tets);
+            mesh_data->sa_rest_vert_volume.resize(num_verts);
+            mesh_data->sa_vert_thickness.resize(num_verts);
+            mesh_data->sa_edge_thickness.resize(num_edges);
+            mesh_data->sa_face_thickness.resize(num_faces);
 
             CpuParallel::parallel_for(0,
                                       num_faces,
@@ -536,7 +587,22 @@ namespace Initializer
                                                                          mesh_data->sa_rest_x[face[1]],
                                                                          mesh_data->sa_rest_x[face[2]]);
                                           mesh_data->sa_rest_face_area[fid] = area;
+
+                                          const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
+                                          mesh_data->sa_face_thickness[fid] = shell_infos[mesh_idx].thickness;
                                       });
+            CpuParallel::parallel_for(0,
+                                      num_tets,
+                                      [&](const uint tid)
+                                      {
+                                          const uint4 tet = mesh_data->sa_tetrahedrons[tid];
+                                          float volume = compute_tet_volume(mesh_data->sa_rest_x[tet[0]],
+                                                                            mesh_data->sa_rest_x[tet[1]],
+                                                                            mesh_data->sa_rest_x[tet[2]],
+                                                                            mesh_data->sa_rest_x[tet[3]]);
+                                          mesh_data->sa_rest_tet_volume[tid] = volume;
+                                      });
+
             CpuParallel::parallel_for(0,
                                       num_verts,
                                       [&](const uint vid)
@@ -546,6 +612,24 @@ namespace Initializer
                                           for (const uint& adj_fid : adj_faces)
                                               area += mesh_data->sa_rest_face_area[adj_fid] / 3.0;
                                           mesh_data->sa_rest_vert_area[vid] = area;
+
+                                          const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
+                                          const auto& shell_info = shell_infos[mesh_idx];
+                                          mesh_data->sa_vert_thickness[vid] = shell_info.thickness;
+
+                                          const auto& adj_tets = mesh_data->vert_adj_tets[vid];
+                                          if (shell_info.is_shell || adj_tets.empty())
+                                          {
+                                              // TODO: For solid rigid body, we may not have tet mesh, need to handle this case
+                                              mesh_data->sa_rest_vert_volume[vid] = area * shell_info.thickness;
+                                          }
+                                          else
+                                          {
+                                              double volume = 0.0;
+                                              for (const uint& adj_tid : adj_tets)
+                                                  volume += mesh_data->sa_rest_tet_volume[adj_tid] / 4.0;
+                                              mesh_data->sa_rest_vert_volume[vid] = volume;
+                                          }
                                       });
             CpuParallel::parallel_for(0,
                                       num_edges,
@@ -562,6 +646,9 @@ namespace Initializer
                                               }
                                           }
                                           mesh_data->sa_rest_edge_area[eid] = area;
+
+                                          const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
+                                          mesh_data->sa_edge_thickness[eid] = shell_infos[mesh_idx].thickness;
                                       });
 
             // float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
@@ -577,8 +664,37 @@ namespace Initializer
         // Init mass info
         {
             mesh_data->sa_body_mass.resize(num_meshes);
-            std::vector<float> mesh_areas(num_meshes, 0.0f);
+            std::vector<float> body_areas(num_meshes, 0.0f);
+            std::vector<float> body_volumes(num_meshes, 0.0f);
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
+            // {
+            //     const auto& shell_info = shell_infos[meshIdx];
+            //     float       sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
+            //         0,
+            //         mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx],
+            //         [&](const uint vid)
+            //         { return mesh_data->sa_rest_vert_volume[mesh_data->prefix_num_verts[meshIdx] + vid]; });
+            //     body_volumes[meshIdx] = sum_volume;
+
+            //     float sum_surface_area = CpuParallel::parallel_for_and_reduce_sum<float>(
+            //         0,
+            //         mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
+            //         [&](const uint fid)
+            //         { return mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid]; });
+            //     body_areas[meshIdx] = sum_surface_area;
+
+            //     mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
+            //                                            shell_infos[meshIdx].mass :
+            //                                            sum_volume * shell_infos[meshIdx].density;
+
+            //     LUISA_INFO("Mesh {}'s volume = {}{}, total mass = {}, avg vert mass = {}",
+            //                meshIdx,
+            //                sum_volume,
+            //                shell_info.is_shell ? luisa::format(", total area = {}", sum_surface_area) : "",
+            //                mesh_data->sa_body_mass[meshIdx],
+            //                mesh_data->sa_body_mass[meshIdx]
+            //                    / float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));
+            // }
             {
                 uint  prefix_num_faces = mesh_data->prefix_num_faces[meshIdx];
                 uint  curr_num_faces   = mesh_data->prefix_num_faces[meshIdx + 1] - prefix_num_faces;
@@ -586,7 +702,7 @@ namespace Initializer
                     0,
                     curr_num_faces,
                     [&](const uint fid) { return mesh_data->sa_rest_face_area[prefix_num_faces + fid]; });
-                mesh_areas[meshIdx]              = mesh_area;
+                body_areas[meshIdx]              = mesh_area;
                 mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
                                                        shell_infos[meshIdx].mass :
                                                        mesh_area * shell_infos[meshIdx].density;
@@ -597,16 +713,18 @@ namespace Initializer
             mesh_data->sa_vert_mass.resize(num_verts);
             mesh_data->sa_vert_mass_inv.resize(num_verts);
 
-            const float defulat_density = 100.0f;
             CpuParallel::parallel_for(0,
                                       num_verts,
                                       [&](const uint vid)
                                       {
-                                          bool        is_fixed  = mesh_data->sa_is_fixed[vid] != 0;
-                                          const uint  mesh_id   = mesh_data->sa_vert_mesh_id[vid];
-                                          const float vert_area = mesh_data->sa_rest_vert_area[vid];
-                                          const float mesh_area = mesh_areas[mesh_id];
-                                          const float weight    = vert_area / mesh_area;
+                                          bool        is_fixed    = mesh_data->sa_is_fixed[vid] != 0;
+                                          const uint  mesh_id     = mesh_data->sa_vert_mesh_id[vid];
+                                          const float vert_volume = mesh_data->sa_rest_vert_volume[vid];
+                                          const float body_volume = body_volumes[mesh_id];
+                                          const float weight      = vert_volume / body_volume;
+                                          //   const float vert_area = mesh_data->sa_rest_vert_area[vid];
+                                          //   const float mesh_area = body_areas[mesh_id];
+                                          //   const float weight    = vert_area / mesh_area;
                                           const float mass = weight * mesh_data->sa_body_mass[mesh_id];
                                           mesh_data->sa_vert_mass[vid] = mass;
                                           mesh_data->sa_vert_mass_inv[vid] = is_fixed ? 0.0f : 1.0f / (mass);
@@ -642,6 +760,7 @@ namespace Initializer
         output_data->num_faces          = input_data->num_faces;
         output_data->num_edges          = input_data->num_edges;
         output_data->num_dihedral_edges = input_data->num_dihedral_edges;
+        output_data->num_tets           = input_data->num_tets;
 
         stream << upload_buffer(device, output_data->sa_rest_translate, input_data->sa_rest_translate)
                << upload_buffer(device, output_data->sa_rest_rotation, input_data->sa_rest_rotation)
@@ -655,25 +774,40 @@ namespace Initializer
                << upload_buffer(device, output_data->sa_edges, input_data->sa_edges);
 
         if (input_data->num_dihedral_edges > 0)
-            stream << upload_buffer(device, output_data->sa_dihedral_edges, input_data->sa_dihedral_edges);
+            stream << upload_buffer(device, output_data->sa_dihedral_edges, input_data->sa_dihedral_edges)
+                   << upload_buffer(device, output_data->sa_dihedral_edge_mesh_id, input_data->sa_dihedral_edge_mesh_id);
 
+        if (!input_data->sa_tetrahedrons.empty())
+            stream << upload_buffer(device, output_data->sa_tetrahedrons, input_data->sa_tetrahedrons)
+                   << upload_buffer(device, output_data->sa_tet_mesh_id, input_data->sa_tet_mesh_id)
+                   << upload_buffer(device, output_data->sa_rest_tet_volume, input_data->sa_rest_tet_volume);
+
+        // TODO: We may not have face
         stream
             << upload_buffer(device, output_data->sa_body_mass, input_data->sa_body_mass)
             << upload_buffer(device, output_data->sa_vert_mass, input_data->sa_vert_mass)
             << upload_buffer(device, output_data->sa_vert_mass_inv, input_data->sa_vert_mass_inv)
             << upload_buffer(device, output_data->sa_is_fixed, input_data->sa_is_fixed)
             << upload_buffer(device, output_data->sa_vert_mesh_id, input_data->sa_vert_mesh_id)
+            << upload_buffer(device, output_data->sa_edge_mesh_id, input_data->sa_edge_mesh_id)
+            << upload_buffer(device, output_data->sa_face_mesh_id, input_data->sa_face_mesh_id)
             << upload_buffer(device, output_data->sa_vert_mesh_type, input_data->sa_vert_mesh_type)
 
             << upload_buffer(device, output_data->sa_rest_vert_area, input_data->sa_rest_vert_area)
             << upload_buffer(device, output_data->sa_rest_edge_area, input_data->sa_rest_edge_area)
             << upload_buffer(device, output_data->sa_rest_face_area, input_data->sa_rest_face_area)
 
+            << upload_buffer(device, output_data->sa_rest_vert_volume, input_data->sa_rest_vert_volume)
+            << upload_buffer(device, output_data->sa_vert_thickness, input_data->sa_vert_thickness)
+            << upload_buffer(device, output_data->sa_edge_thickness, input_data->sa_edge_thickness)
+            << upload_buffer(device, output_data->sa_face_thickness, input_data->sa_face_thickness)
+
             // No std::vector<std::vector<uint>> vert_adj_verts info
             << upload_buffer(device, output_data->sa_vert_adj_verts_csr, input_data->sa_vert_adj_verts_csr)
             << upload_buffer(device, output_data->sa_vert_adj_faces_csr, input_data->sa_vert_adj_faces_csr)
             << upload_buffer(device, output_data->sa_vert_adj_edges_csr, input_data->sa_vert_adj_edges_csr)
             << upload_buffer(device, output_data->sa_vert_adj_dihedral_edges_csr, input_data->sa_vert_adj_dihedral_edges_csr)
+            << upload_buffer(device, output_data->sa_vert_adj_tets_csr, input_data->sa_vert_adj_tets_csr)
             << upload_buffer(device, output_data->edge_adj_faces, input_data->edge_adj_faces)
             << upload_buffer(device, output_data->face_adj_edges, input_data->face_adj_edges)
             << upload_buffer(device, output_data->face_adj_faces, input_data->face_adj_faces)

@@ -45,6 +45,11 @@ struct TriangleMeshData
     std::vector<Int2>   edge_adj_faces;
     std::vector<Int2>   bending_edge_adj_faces;
 
+    std::vector<Int4> tetrahedrons;
+    std::vector<uint> surface_verts;
+    std::vector<Int2> surface_edges;
+    std::vector<Int3> surface_faces;
+
     std::vector<std::string> material_names;
     std::vector<int>         material_ids;
     std::vector<int>         invalid_material_ids;
@@ -71,6 +76,10 @@ struct TriangleMeshData
         , material_names(input.material_names)
         , material_ids(input.material_ids)
         , invalid_material_ids(input.invalid_material_ids)
+        , tetrahedrons(input.tetrahedrons)
+        , surface_verts(input.surface_verts)
+        , surface_edges(input.surface_edges)
+        , surface_faces(input.surface_faces)
     {
     }
 };

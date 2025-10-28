@@ -69,55 +69,76 @@ namespace Initializer
         ShellTypeCloth,
         ShellTypeTetrahedral,
         ShellTypeRigid,
+        ShellTypeRod,
     };
 
-    enum class ConstitutiveModelCloth
+    enum class ConstitutiveStretchModelCloth
     {
-        None     = 0,
-        Spring   = 1,  // Impl
-        FEM_BW98 = 2,  // Impl
+        // None     = 0,
+        Spring   = 0,  // Impl
+        FEM_BW98 = 1,  // Impl
+    };
+    enum class ConstitutiveBendingModelCloth
+    {
+        // None     = 0,
+        QuadraticBending = 0,  // Impl
+        DihedralAngle    = 1,  // Impl
     };
     enum class ConstitutiveModelTet
     {
-        None             = 0,
+        // None             = 0,
+        Spring           = 0,  // Impl
         StVK             = 1,
         StableNeoHookean = 2,
         Corotated        = 3,
+        ARAP             = 4,
     };
     enum class ConstitutiveModelRigid
     {
-        None          = 0,
-        Orthogonality = 1,  // Impl
-        ARAP          = 2,
+        // None          = 0,
+        Spring           = 0,
+        Orthogonality    = 1,  // Impl
+        ARAP             = 2,
+        StableNeoHookean = 3,  // Full space simulation
     };
     enum class ConstitutiveModelRod
     {
-        ConstModel_None = 0,
+        Spring = 0,
     };
 
     struct ClothMaterial
     {
-        ConstitutiveModelCloth model;
-        float                  youngs_modulus    = 1e6f;
-        float                  poisson_ratio     = 0.3f;
-        float                  bending_stiffness = 5e-2f;
+        ConstitutiveStretchModelCloth stretch_model  = ConstitutiveStretchModelCloth::FEM_BW98;
+        ConstitutiveBendingModelCloth bending_model  = ConstitutiveBendingModelCloth::DihedralAngle;
+        float                         thickness      = 1e-3f;
+        float                         density        = 1e3f;
+        float                         youngs_modulus = 1e5f;
+        float                         poisson_ratio  = 0.25f;
+        float                         area_bending_stiffness = 5e-3f;
+        // float                         area_youngs_modulus = 1e3f;
     };
     struct TetMaterial
     {
-        ConstitutiveModelTet model;
-        float                youngs_modulus      = 1e6f;
-        float                poisson_ratio       = 0.3f;
-        float                volume_preservation = 1.0f;
+        ConstitutiveModelTet model          = ConstitutiveModelTet::Spring;
+        float                density        = 1e3f;
+        float                youngs_modulus = 1e6f;
+        float                poisson_ratio  = 0.35f;
     };
     struct RigidMaterial
     {
-        ConstitutiveModelRigid model;
-        float                  stiffness = 1e9f;
-        bool                   is_solid  = false;
+        ConstitutiveModelRigid model                   = ConstitutiveModelRigid::Orthogonality;
+        bool                   is_solid                = false;
+        float                  density                 = 1e3f;
+        float                  shell_thickness         = 3e-3f;
+        float                  stiffness_orthogonality = 1e6f;
+        // float                  youngs_modulus  = 1e9f;
+        // float                  poisson_ratio   = 0.35f;
     };
     struct RodMaterial
     {
-        ConstitutiveModelRod model;
+        ConstitutiveModelRod model              = ConstitutiveModelRod::Spring;
+        float                density            = 1e3f;
+        float                radius             = 1e-3f;
         float                bending_stiffness  = 1e4f;
         float                twisting_stiffness = 1e4f;
     };
@@ -129,9 +150,13 @@ namespace Initializer
         std::string model_name  = "square8K.obj";
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
-        float3          scale   = luisa::make_float3(1.0f);
-        float           mass    = 0.0f;    // If mass > 0, use mass to compute density
-        float           density = 100.0f;  //
+        float3 scale   = luisa::make_float3(1.0f);
+        float  mass    = 0.0f;  // If mass > 0, use mass to compute density
+        float  density = 1e3f;
+
+        bool  is_shell  = true;
+        float thickness = 1e-3f;
+
         MaterialVariant physics_material;
 
         template <typename T>
@@ -141,6 +166,11 @@ namespace Initializer
         }
         template <typename T>
         T& get()
+        {
+            return std::get<T>(physics_material);
+        }
+        template <typename T>
+        const T& get() const
         {
             return std::get<T>(physics_material);
         }

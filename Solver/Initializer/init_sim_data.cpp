@@ -192,6 +192,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         // Rest spring length
         sim_data->sa_stretch_springs.resize(num_stretch_springs);
         sim_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
+        sim_data->sa_stretch_spring_stiffness.resize(num_stretch_springs);
         sim_data->sa_stretch_springs_gradients.resize(num_stretch_springs * 2);
         sim_data->sa_stretch_springs_hessians.resize(num_stretch_springs * 4);
         CpuParallel::parallel_for(0,
@@ -202,9 +203,18 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       uint2      edge                   = mesh_data->sa_edges[orig_eid];
                                       float3     x1                     = mesh_data->sa_rest_x[edge[0]];
                                       float3     x2                     = mesh_data->sa_rest_x[edge[1]];
-                                      sim_data->sa_stretch_springs[eid] = edge;  ///
+                                      sim_data->sa_stretch_springs[eid] = edge;
                                       sim_data->sa_stretch_spring_rest_state_length[eid] =
-                                          lcs::length_vec(x1 - x2);  ///
+                                          lcs::length_vec(x1 - x2);
+
+                                      const auto& shell_info = shell_infos[mesh_data->sa_edge_mesh_id[orig_eid]];
+                                      const auto& material = shell_info.get<ClothMaterial>();
+
+                                      const float E     = material.youngs_modulus;
+                                      const float nu    = material.poisson_ratio;
+                                      auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
+                                      mu                = mu * material.thickness;  // scale by thickness
+                                      sim_data->sa_stretch_spring_stiffness[eid] = mu;
                                   });
 
         // Rest stretch face length
@@ -226,34 +236,19 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       const float3& x_0         = vert_pos[0];
                                       const float3& x_1         = vert_pos[1];
                                       const float3& x_2         = vert_pos[2];
-                                      float3        r_1         = x_1 - x_0;
-                                      float3        r_2         = x_2 - x_0;
-                                      float3        cross       = cross_vec(r_1, r_2);
-                                      float3        axis_1      = normalize_vec(r_1);
-                                      float3        axis_2 = normalize_vec(cross_vec(cross, axis_1));
-                                      float2 uv0  = float2(dot_vec(axis_1, x_0), dot_vec(axis_2, x_0));
-                                      float2 uv1  = float2(dot_vec(axis_1, x_1), dot_vec(axis_2, x_1));
-                                      float2 uv2  = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
-                                      float2 duv0 = uv1 - uv0;
-                                      float2 duv1 = uv2 - uv0;
-                                      const float2x2 duv     = float2x2(duv0, duv1);
-                                      const float2x2 inv_duv = luisa::inverse(duv);
 
-                                      const float area = compute_face_area(x_0, x_1, x_2);
+                                      const float2x2 inv_duv = StretchEnergy::get_Dm_inv(x_0, x_1, x_2);
+                                      const float    area    = compute_face_area(x_0, x_1, x_2);
 
-                                      // Eigen::Matrix<float, 2, 2> IB = StretchEnergy::libuipc::Dm2x2(
-                                      //     float3_to_eigen3(x_0), float3_to_eigen3(x_1), float3_to_eigen3(x_2));
-                                      // IB                     = IB.inverse();
-                                      // const float2x2 inv_duv = XMatrix<2, 2>::from_eigen_matrix(IB).to_lc_matrix();
+                                      const auto& shell_info = shell_infos[mesh_data->sa_face_mesh_id[orig_fid]];
+                                      const auto& material = shell_info.get<ClothMaterial>();
 
-                                      //   1e4f, 0.46f
-                                      const float E  = 1e4f;  // Young's modulus
-                                      const float nu = 0.2f;  // Poisson's ratio
-                                      float       mu;
-                                      float       lambda;
-                                      auto [mu_tmp, lambda_tmp] = StretchEnergy::convert_prop(E, nu);
-                                      mu                        = mu_tmp;
-                                      lambda                    = lambda_tmp;
+                                      const float E  = material.youngs_modulus;
+                                      const float nu = material.poisson_ratio;
+
+                                      auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
+                                      mu                = material.thickness * mu;  // scale by thickness
+                                      lambda            = material.thickness * lambda;
                                       sim_data->sa_stretch_faces_mu_lambda[fid] = luisa::make_float2(mu, lambda);
                                       sim_data->sa_stretch_faces[fid]           = face;
                                       sim_data->sa_stretch_faces_rest_area[fid] = area;
@@ -264,6 +259,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         sim_data->sa_bending_edges.resize(num_bending_edges);
         sim_data->sa_bending_edges_rest_area.resize(num_bending_edges);
         sim_data->sa_bending_edges_rest_angle.resize(num_bending_edges);
+        sim_data->sa_bending_edges_stiffness.resize(num_bending_edges);
         sim_data->sa_bending_edges_Q.resize(num_bending_edges);
         sim_data->sa_bending_edges_gradients.resize(num_bending_edges * 4);
         sim_data->sa_bending_edges_hessians.resize(num_bending_edges * 16);
@@ -290,8 +286,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
 
                     const float angle = lcs::BendingEnergy::compute_theta(x0, x1, x2, x3);
 
-                    const float A1    = 0.5f * luisa::length(luisa::cross(x1 - x0, x2 - x0));
-                    const float A2    = 0.5f * luisa::length(luisa::cross(x1 - x0, x3 - x0));
+                    const float A1    = compute_face_area(x0, x1, x2);
+                    const float A2    = compute_face_area(x0, x1, x3);
                     const float L0    = luisa::length(x0 - x1);
                     const float h_bar = (A1 + A2) / (3.0f * L0);
 
@@ -301,6 +297,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                     sim_data->sa_bending_edges_rest_area[eid]  = h_bar;
                     sim_data->sa_bending_edges[eid]            = edge;
                     sim_data->sa_bending_edges_rest_angle[eid] = angle;
+                    sim_data->sa_bending_edges_stiffness[eid] =
+                        shell_infos[mesh_data->sa_dihedral_edge_mesh_id[orig_eid]].get<ClothMaterial>().area_bending_stiffness;
                 }
 
                 // Rest state Q
@@ -1008,6 +1006,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
         stream
             << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
             << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
+            << upload_buffer(device, output_data->sa_stretch_spring_stiffness, input_data->sa_stretch_spring_stiffness)
             << upload_buffer(device, output_data->sa_stretch_springs_offsets_in_adjlist, input_data->sa_stretch_springs_offsets_in_adjlist)
             << upload_buffer(device, output_data->sa_stretch_springs_gradients, input_data->sa_stretch_springs_gradients)
             << upload_buffer(device, output_data->sa_stretch_springs_hessians, input_data->sa_stretch_springs_hessians)
@@ -1047,6 +1046,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_bending_edges, input_data->sa_bending_edges)
             << upload_buffer(device, output_data->sa_bending_edges_rest_area, input_data->sa_bending_edges_rest_area)
             << upload_buffer(device, output_data->sa_bending_edges_rest_angle, input_data->sa_bending_edges_rest_angle)
+            << upload_buffer(device, output_data->sa_bending_edges_stiffness, input_data->sa_bending_edges_stiffness)
             << upload_buffer(device, output_data->sa_bending_edges_Q, input_data->sa_bending_edges_Q)
             << upload_buffer(device, output_data->sa_bending_edges_offsets_in_adjlist, input_data->sa_bending_edges_offsets_in_adjlist)
             << upload_buffer(device, output_data->sa_bending_edges_gradients, input_data->sa_bending_edges_gradients)
