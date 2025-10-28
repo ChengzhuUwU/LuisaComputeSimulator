@@ -1,4 +1,5 @@
 #include "Utils/cpu_parallel.h"
+#include "luisa/core/fiber.h"
 #include <iostream>
 #include <atomic>
 #include <luisa/core/basic_types.h>

@@ -288,6 +288,8 @@ struct LargeVector
     }
 };
 
+// TODO: optimize these functions with SIMD operations
+// TODO: save upper triangle matrix only
 template <size_t M, size_t N>
 struct LargeMatrix
 {
@@ -308,23 +310,29 @@ struct LargeMatrix
     using Float3x3 = luisa::float3x3;
     Float3x3 mat[block_M][block_N];
 
-    Float3x3&       block(size_t idx1, size_t idx2) { return mat[idx1][idx2]; }
+    // NOTE: using row-major
+    Float3x3& block(size_t idx1, size_t idx2) { return mat[idx1][idx2]; }
+    // NOTE: using row-major
     const Float3x3& block(size_t idx1, size_t idx2) const { return mat[idx1][idx2]; }
 
+    // NOTE: using row-major
     float& scalar(size_t idx1, size_t idx2)
     {
         return mat[(idx1 / 3)][(idx2 / 3)][(idx1 % 3)][(idx2 % 3)];
     }
+    // NOTE: using row-major
     const float& scalar(size_t idx1, size_t idx2) const
     {
         return mat[(idx1 / 3)][(idx2 / 3)][(idx1 % 3)][(idx2 % 3)];
     }
+    // NOTE: using row-major
     template <size_t I, size_t J>
     constexpr float& scalar()
     {
         static_assert(I < M && J < N, "Index out of bounds");
         return mat[block_i<I, J>][block_j<I, J>][inner_i<I, J>][inner_j<I, J>];
     }
+    // NOTE: using row-major
     template <size_t I, size_t J>
     constexpr const float& scalar() const
     {
