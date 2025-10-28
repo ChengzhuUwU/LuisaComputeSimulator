@@ -247,8 +247,8 @@ void test_FEM_BW98()
     float2x2 Dm1    = float2x2(duv0, duv1);
     auto Dm2 = StretchEnergy::libuipc::Dm2x2(float3_to_eigen3(X0), float3_to_eigen3(X1), float3_to_eigen3(X2));
 
-    std::cout << "Dm1 = " << luisa::format("{}", Dm1) << std::endl;
-    std::cout << "Dm2 = " << Dm2 << std::endl;
+    // std::cout << "Dm1 = " << luisa::format("{}", Dm1) << std::endl;
+    // std::cout << "Dm2 = " << Dm2 << std::endl;
 
     float3   vert_pos[3]  = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
     float3   x_bars[3]    = {sa_rest_x[face[0]], sa_rest_x[face[1]], sa_rest_x[face[2]]};
@@ -274,6 +274,62 @@ void test_FEM_BW98()
     const float lambda        = lambda_tmp;
 
     {
+        float2x2 Dm_inv = luisa::inverse(Dm1);
+        {
+            auto dfdx = StretchEnergy::detail::get_dFdx(Dm_inv);
+            std::cout << "dFdx1 = \n" << dfdx.to_eigen_matrix() << std::endl;
+        }
+        {
+            lcs::LargeMatrix<6, 9> dfdx_T = lcs::LargeMatrix<6, 9>::zero();
+
+            const auto& InverseDm = Dm_inv;
+            const float d0        = InverseDm[0][0];
+            const float d1        = InverseDm[0][1];
+            const float d2        = InverseDm[1][0];
+            const float d3        = InverseDm[1][1];
+            const float s0        = d0 + d1;
+            const float s1        = d2 + d3;
+            dfdx_T.scalar<0, 0>() = -s0;
+            dfdx_T.scalar<3, 0>() = -s1;
+            dfdx_T.scalar<1, 1>() = -s0;
+            dfdx_T.scalar<4, 1>() = -s1;
+            dfdx_T.scalar<2, 2>() = -s0;
+            dfdx_T.scalar<5, 2>() = -s1;
+            dfdx_T.scalar<0, 3>() = d0;
+            dfdx_T.scalar<3, 3>() = d2;
+            dfdx_T.scalar<1, 4>() = d0;
+            dfdx_T.scalar<4, 4>() = d2;
+            dfdx_T.scalar<2, 5>() = d0;
+            dfdx_T.scalar<5, 5>() = d2;
+            dfdx_T.scalar<0, 6>() = d1;
+            dfdx_T.scalar<3, 6>() = d3;
+            dfdx_T.scalar<1, 7>() = d1;
+            dfdx_T.scalar<4, 7>() = d3;
+            dfdx_T.scalar<2, 8>() = d1;
+            dfdx_T.scalar<5, 8>() = d3;
+            std::cout << "dFdx2 = \n" << lcs::transpose(dfdx_T).to_eigen_matrix() << std::endl;
+        }
+        {
+            // lcs::LargeMatrix<9, 6> result;
+            // const float2x3         diff_mat = StretchEnergy::detail::make_diff_mat3x2();
+            // for (unsigned i = 0; i < 3; ++i)
+            // {
+            //     for (unsigned j = 0; j < 2; ++j)
+            //     {
+            //         for (unsigned dim = 0; dim < 3; ++dim)
+            //         {
+            //             result.scalar(i, 3 * j + dim)     = diff_mat[j][dim] * Dm_inv[0][i];
+            //             result.scalar(i + 3, 3 * j + dim) = diff_mat[j][dim] * Dm_inv[1][i];
+            //         }
+            //     }
+            // }
+            // std::cout << "dFdx3 = \n" << (result).to_eigen_matrix() << std::endl;
+        }
+    }
+
+    return;
+
+    {
         float2x3 F = makeFloat2x3(x1 - x0, x2 - x0) * luisa::inverse(Dm1);
 
         float6x6 H_stretch = StretchEnergy::detail::stretch_hessian(F, mu);
@@ -294,7 +350,7 @@ void test_FEM_BW98()
         // std::cout << "Gradient : \n" << G << std::endl;
         // std::cout << "Result : \n" << (M + H).inverse() * G << std::endl;
         // std::cout << "Hessian : \n" << H << std::endl;
-        std::cout << "F : \n" << F.to_eigen_matrix() << std::endl;
+        // std::cout << "F : \n" << F.to_eigen_matrix() << std::endl;
         std::cout << "Hessian_stretch : \n" << H_stretch.to_eigen_matrix() << std::endl;
         std::cout << "Hessian_shear : \n" << H_shear.to_eigen_matrix() << std::endl;
     }
@@ -344,6 +400,7 @@ int main()
     // std::cout << "Ortho hessian: " << std::endl << result.second << std::endl;
 
     test_FEM_BW98();
+
 
     // float6 vec1;
     // vec1.vec[0] = luisa::make_float3(0, 1, 2);

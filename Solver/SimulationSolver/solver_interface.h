@@ -72,7 +72,6 @@ class SolverInterface
     void save_current_frame_state_to_host(const uint frame, const std::string& addition_str);
     void load_saved_state_from_host(const uint frame, const std::string& addition_str);
     void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
-    void host_compute_elastic_energy(std::map<std::string, double>& energy_list);
     void device_compute_elastic_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list);
     void compile_compute_energy(AsyncCompiler& compiler);
 
@@ -167,6 +166,10 @@ class SolverInterface
                            float                                // stiffness_spring
                            >
         fn_calc_energy_spring;
+    luisa::compute::Shader<1,
+                           luisa::compute::BufferView<float3>  // sa_x
+                           >
+        fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,
                            luisa::compute::BufferView<float3>,  // sa_q
                            float                                // stiffness_spring

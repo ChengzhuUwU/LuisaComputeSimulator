@@ -78,12 +78,31 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         mesh_data->num_edges,
         [&](const uint eid)
         {
+            const uint  mesh_idx   = mesh_data->sa_edge_mesh_id[eid];
+            const auto& shell_info = shell_infos[mesh_idx];
+            bool        use_spring = false;
+            if (shell_info.holds<ClothMaterial>())
+            {
+                use_spring = shell_info.get<ClothMaterial>().stretch_model == ConstitutiveStretchModelCloth::Spring;
+            }
+            else if (shell_info.holds<TetMaterial>())
+            {
+                use_spring = shell_info.get<TetMaterial>().model == ConstitutiveModelTet::Spring;
+            }
+            // else if (shell_info.holds<RigidMaterial>())
+            // {
+            //     use_spring = shell_info.get<RigidMaterial>().model == ConstitutiveModelRigid::Spring;
+            // }
+            else if (shell_info.holds<RodMaterial>())
+            {
+                use_spring = shell_info.get<RodMaterial>().model == ConstitutiveModelRod::Spring;
+            }
+            // bool  is_cloth   = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
             uint2 edge       = mesh_data->sa_edges[eid];
-            bool  is_cloth   = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
             bool  is_dynamic = cull_unused_constraints ?
                                    !mesh_data->sa_is_fixed[edge[0]] || !mesh_data->sa_is_fixed[edge[1]] :
                                    true;
-            return (is_cloth && is_dynamic) ? 1 : 0;
+            return (use_spring && is_dynamic) ? 1 : 0;
         },
         [&](const uint eid, const uint global_prefix, const uint parallel_result)
         {
@@ -99,13 +118,17 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         mesh_data->num_faces,
         [&](const uint fid)
         {
+            const uint  mesh_idx   = mesh_data->sa_face_mesh_id[fid];
+            const auto& shell_info = shell_infos[mesh_idx];
+            bool        use_stretch_face =
+                shell_info.holds<ClothMaterial>()
+                && shell_info.get<ClothMaterial>().stretch_model == ConstitutiveStretchModelCloth::FEM_BW98;
             uint3 face       = mesh_data->sa_faces[fid];
-            bool  is_cloth   = mesh_data->sa_vert_mesh_type[face[0]] == uint(ShellTypeCloth);
             bool  is_dynamic = cull_unused_constraints ?
                                    !mesh_data->sa_is_fixed[face[0]] || !mesh_data->sa_is_fixed[face[1]]
                                       || !mesh_data->sa_is_fixed[face[2]] :
                                    true;
-            return (is_cloth && is_dynamic) ? 1 : 0;
+            return (use_stretch_face && is_dynamic) ? 1 : 0;
         },
         [&](const uint fid, const uint global_prefix, const uint parallel_result)
         {
@@ -121,13 +144,17 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         mesh_data->num_dihedral_edges,
         [&](const uint eid)
         {
+            const uint  mesh_idx   = mesh_data->sa_dihedral_edge_mesh_id[eid];
+            const auto& shell_info = shell_infos[mesh_idx];
+            bool        use_bending =
+                shell_info.holds<ClothMaterial>()
+                && shell_info.get<ClothMaterial>().bending_model != ConstitutiveBendingModelCloth::None;
             uint4 edge       = mesh_data->sa_dihedral_edges[eid];
-            bool  is_cloth   = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
             bool  is_dynamic = cull_unused_constraints ?
                                    !mesh_data->sa_is_fixed[edge[0]] || !mesh_data->sa_is_fixed[edge[1]]
                                       || !mesh_data->sa_is_fixed[edge[2]] || !mesh_data->sa_is_fixed[edge[3]] :
                                    true;
-            return (is_cloth && is_dynamic) ? 1 : 0;
+            return (use_bending && is_dynamic) ? 1 : 0;
         },
         [&](const uint eid, const uint global_prefix, const uint parallel_result)
         {
@@ -1016,7 +1043,17 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                              input_data->colored_data.sa_merged_stretch_springs)
             << upload_buffer(device,
                              output_data->colored_data.sa_merged_stretch_spring_rest_length,
-                             input_data->colored_data.sa_merged_stretch_spring_rest_length);
+                             input_data->colored_data.sa_merged_stretch_spring_rest_length)
+
+            << upload_buffer(device,
+                             output_data->colored_data.sa_clusterd_springs,
+                             input_data->colored_data.sa_clusterd_springs)
+            << upload_buffer(device,
+                             output_data->colored_data.sa_prefix_merged_springs,
+                             input_data->colored_data.sa_prefix_merged_springs)
+            << upload_buffer(device,
+                             output_data->colored_data.sa_lambda_stretch_mass_spring,
+                             input_data->colored_data.sa_lambda_stretch_mass_spring);  // just resize
     }
     if (input_data->sa_stretch_faces.size() > 0)
     {
@@ -1027,18 +1064,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
             << upload_buffer(device, output_data->sa_stretch_faces_offsets_in_adjlist, input_data->sa_stretch_faces_offsets_in_adjlist)
             << upload_buffer(device, output_data->sa_stretch_faces_gradients, input_data->sa_stretch_faces_gradients)
-            << upload_buffer(device, output_data->sa_stretch_faces_hessians, input_data->sa_stretch_faces_hessians)
-
-            << upload_buffer(device,
-                             output_data->colored_data.sa_clusterd_springs,
-                             input_data->colored_data.sa_clusterd_springs)
-            << upload_buffer(device,
-                             output_data->colored_data.sa_prefix_merged_springs,
-                             input_data->colored_data.sa_prefix_merged_springs)
-            << upload_buffer(device,
-                             output_data->colored_data.sa_lambda_stretch_mass_spring,
-                             input_data->colored_data.sa_lambda_stretch_mass_spring)  // just resize
-            ;
+            << upload_buffer(device, output_data->sa_stretch_faces_hessians, input_data->sa_stretch_faces_hessians);
     }
     if (input_data->sa_bending_edges.size() > 0)
     {

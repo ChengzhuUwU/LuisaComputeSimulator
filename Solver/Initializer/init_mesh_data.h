@@ -80,9 +80,9 @@ namespace Initializer
     };
     enum class ConstitutiveBendingModelCloth
     {
-        // None     = 0,
-        QuadraticBending = 0,  // Impl
-        DihedralAngle    = 1,  // Impl
+        None             = 0,
+        QuadraticBending = 1,  // Impl
+        DihedralAngle    = 2,  // Impl
     };
     enum class ConstitutiveModelTet
     {

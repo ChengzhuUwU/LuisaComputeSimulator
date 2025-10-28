@@ -746,7 +746,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         auto get_energy_template = [&](std::vector<float3>& positions)
         {
             std::map<std::string, double> energy_map;
-            host_compute_elastic_energy(energy_map);
+            device_compute_elastic_energy(stream, energy_map);
             return std::accumulate(energy_map.begin(),
                                    energy_map.end(),
                                    0.0,
