@@ -577,6 +577,22 @@ namespace StretchEnergy
         double lambda = young_mod * poiss_rat / ((1.0 + poiss_rat) * (1.0 - 2.0 * poiss_rat));
         return {mu, lambda};
     }
+    inline float2x2 get_Dm_inv(const float3& x_0, const float3& x_1, const float3& x_2)
+    {
+        float3         r_1     = x_1 - x_0;
+        float3         r_2     = x_2 - x_0;
+        float3         cross   = cross_vec(r_1, r_2);
+        float3         axis_1  = normalize_vec(r_1);
+        float3         axis_2  = normalize_vec(cross_vec(cross, axis_1));
+        float2         uv0     = float2(dot_vec(axis_1, x_0), dot_vec(axis_2, x_0));
+        float2         uv1     = float2(dot_vec(axis_1, x_1), dot_vec(axis_2, x_1));
+        float2         uv2     = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
+        float2         duv0    = uv1 - uv0;
+        float2         duv1    = uv2 - uv0;
+        const float2x2 duv     = float2x2(duv0, duv1);
+        const float2x2 inv_duv = luisa::inverse(duv);
+        return inv_duv;
+    }
     inline void compute_gradient_hessian(const float3&   x0,
                                          const float3&   x1,
                                          const float3&   x2,
@@ -584,12 +600,14 @@ namespace StretchEnergy
                                          const float     mu,
                                          const float     lambda,
                                          const float     area,
-                                         float3          gradient[3],
-                                         float3x3        hessian[3][3])
+                                         float3x3&       dedx,
+                                         float9x9&       d2edx2)
     {
-        float3x3 dedx   = luisa::make_float3x3(0.0f);
-        float9x9 d2edx2 = float9x9::zero();
-        float2x3 F      = makeFloat2x3(x1 - x0, x2 - x0) * Dm;
+        dedx = luisa::make_float3x3(0.0f);
+        d2edx2.set_zero();
+
+        float2x3 F = makeFloat2x3(x1 - x0, x2 - x0) * Dm;
+
         // float2x3 de0dF   = libuipc::stretch_gradient(F, mu, 1.0f);
         // float6x6 d2e0dF2 = libuipc::stretch_hessian(F, mu, 1.0f);
         float2x3 de0dF   = detail::stretch_gradient(F, mu);
@@ -604,16 +622,16 @@ namespace StretchEnergy
         dedx   = area * detail::convert_force(dedF, Dm);
         d2edx2 = area * detail::convert_hessian(d2edF2, Dm);
 
-        gradient[0] = dedx[0];
-        gradient[1] = dedx[1];
-        gradient[2] = dedx[2];
-        for (uint ii = 0; ii < 3; ii++)
-        {
-            for (uint jj = 0; jj < 3; jj++)
-            {
-                hessian[jj][ii] = d2edx2.block(ii, jj);
-            }
-        }
+        // gradient[0] = dedx[0];
+        // gradient[1] = dedx[1];
+        // gradient[2] = dedx[2];
+        // for (uint ii = 0; ii < 3; ii++)
+        // {
+        //     for (uint jj = 0; jj < 3; jj++)
+        //     {
+        //         hessian[jj][ii] = d2edx2.block(ii, jj);
+        //     }
+        // }
     }
 
     // inline float compute_theta(const float3& x2, const float3& x1, const float3& x0, const float3& x3)

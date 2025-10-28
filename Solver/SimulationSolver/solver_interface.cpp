@@ -594,7 +594,7 @@ void SolverInterface::host_compute_elastic_energy(std::map<std::string, double>&
                                          curr_x,
                                          host_sim_data->sa_stretch_springs,
                                          host_sim_data->sa_stretch_spring_rest_state_length,
-                                         get_scene_params().stiffness_spring);
+                                         host_sim_data->sa_stretch_spring_stiffness[eid]);
         });
     double energy_bending = CpuParallel::parallel_for_and_reduce_sum<double>(
         0,
@@ -607,7 +607,8 @@ void SolverInterface::host_compute_elastic_energy(std::map<std::string, double>&
                                           host_sim_data->sa_bending_edges_Q,
                                           host_sim_data->sa_bending_edges_rest_angle,
                                           host_sim_data->sa_bending_edges_rest_area,
-                                          get_scene_params().get_stiffness_bending());
+                                          get_scene_params().get_bending_stiffness_scaling()
+                                              * host_sim_data->sa_bending_edges_stiffness[eid]);
         });
     double energy_abd_inertia = CpuParallel::parallel_for_and_reduce_sum<double>(
         0,
@@ -776,8 +777,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
     if (host_sim_data->sa_stretch_springs.size() > 0)
         compiler.compile<1>(
             fn_calc_energy_spring,
-            [sa_edges                  = sim_data->sa_stretch_springs.view(),
-             sa_edge_rest_state_length = sim_data->sa_stretch_spring_rest_state_length.view(),
+            [sa_edges                    = sim_data->sa_stretch_springs.view(),
+             sa_edge_rest_state_length   = sim_data->sa_stretch_spring_rest_state_length.view(),
+             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view(),
              sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float stiffness_spring)
             {
                 const Uint eid    = dispatch_id().x;
@@ -791,7 +793,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                     Float       l0               = rest_edge_length;
                     Float       C                = l - l0;
                     // if (C > 0.0f)
-                    energy = 0.5f * stiffness_spring * C * C;
+                    energy = 0.5f * sa_stretch_spring_stiffness->read(eid) * C * C;
                 };
                 energy = ParallelIntrinsic::block_intrinsic_reduce(
                     eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -810,7 +812,8 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
              sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
              sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
              sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float stiffness_bending)
+             sa_bending_edges_stiffness  = sim_data->sa_bending_edges_stiffness.view(),
+             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float scaling)
             {
                 const Uint eid    = dispatch_id().x;
                 Float      energy = 0.0f;
@@ -828,7 +831,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                         BendingEnergy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
                     Float delta_angle = angle - rest_angle;
                     Float area        = sa_bending_edges_rest_area->read(eid);
-                    energy            = 0.5f * stiffness_bending * area * delta_angle * delta_angle;
+                    energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
 
                     // const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
                     // for (uint ii = 0; ii < 4; ii++)
@@ -969,7 +972,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     }
     if (host_sim_data->sa_bending_edges.size() != 0)
     {
-        stream << fn_calc_energy_bending(curr_x, get_scene_params().get_stiffness_bending())
+        stream << fn_calc_energy_bending(curr_x, get_scene_params().get_bending_stiffness_scaling())
                       .dispatch(host_sim_data->sa_bending_edges.size());
     }
 

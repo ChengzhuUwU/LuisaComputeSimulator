@@ -667,47 +667,47 @@ namespace Initializer
             std::vector<float> body_areas(num_meshes, 0.0f);
             std::vector<float> body_volumes(num_meshes, 0.0f);
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
-            // {
-            //     const auto& shell_info = shell_infos[meshIdx];
-            //     float       sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
-            //         0,
-            //         mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx],
-            //         [&](const uint vid)
-            //         { return mesh_data->sa_rest_vert_volume[mesh_data->prefix_num_verts[meshIdx] + vid]; });
-            //     body_volumes[meshIdx] = sum_volume;
-
-            //     float sum_surface_area = CpuParallel::parallel_for_and_reduce_sum<float>(
-            //         0,
-            //         mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
-            //         [&](const uint fid)
-            //         { return mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid]; });
-            //     body_areas[meshIdx] = sum_surface_area;
-
-            //     mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
-            //                                            shell_infos[meshIdx].mass :
-            //                                            sum_volume * shell_infos[meshIdx].density;
-
-            //     LUISA_INFO("Mesh {}'s volume = {}{}, total mass = {}, avg vert mass = {}",
-            //                meshIdx,
-            //                sum_volume,
-            //                shell_info.is_shell ? luisa::format(", total area = {}", sum_surface_area) : "",
-            //                mesh_data->sa_body_mass[meshIdx],
-            //                mesh_data->sa_body_mass[meshIdx]
-            //                    / float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));
-            // }
             {
-                uint  prefix_num_faces = mesh_data->prefix_num_faces[meshIdx];
-                uint  curr_num_faces   = mesh_data->prefix_num_faces[meshIdx + 1] - prefix_num_faces;
-                float mesh_area        = CpuParallel::parallel_for_and_reduce_sum<float>(
+                const auto& shell_info = shell_infos[meshIdx];
+                float       sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
                     0,
-                    curr_num_faces,
-                    [&](const uint fid) { return mesh_data->sa_rest_face_area[prefix_num_faces + fid]; });
-                body_areas[meshIdx]              = mesh_area;
+                    mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx],
+                    [&](const uint vid)
+                    { return mesh_data->sa_rest_vert_volume[mesh_data->prefix_num_verts[meshIdx] + vid]; });
+                body_volumes[meshIdx] = sum_volume;
+
+                float sum_surface_area = CpuParallel::parallel_for_and_reduce_sum<float>(
+                    0,
+                    mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
+                    [&](const uint fid)
+                    { return mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid]; });
+                body_areas[meshIdx] = sum_surface_area;
+
                 mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
                                                        shell_infos[meshIdx].mass :
-                                                       mesh_area * shell_infos[meshIdx].density;
-                LUISA_INFO("Mesh {}'s area = {}, total mass = {}", meshIdx, mesh_area, mesh_data->sa_body_mass[meshIdx]);
+                                                       sum_volume * shell_infos[meshIdx].density;
+
+                LUISA_INFO("Mesh {}'s volume = {}{}, total mass = {}, avg vert mass = {}",
+                           meshIdx,
+                           sum_volume,
+                           shell_info.is_shell ? luisa::format(", total area = {}", sum_surface_area) : "",
+                           mesh_data->sa_body_mass[meshIdx],
+                           mesh_data->sa_body_mass[meshIdx]
+                               / float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));
             }
+            // {
+            //     uint  prefix_num_faces = mesh_data->prefix_num_faces[meshIdx];
+            //     uint  curr_num_faces   = mesh_data->prefix_num_faces[meshIdx + 1] - prefix_num_faces;
+            //     float mesh_area        = CpuParallel::parallel_for_and_reduce_sum<float>(
+            //         0,
+            //         curr_num_faces,
+            //         [&](const uint fid) { return mesh_data->sa_rest_face_area[prefix_num_faces + fid]; });
+            //     body_areas[meshIdx]              = mesh_area;
+            //     mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
+            //                                            shell_infos[meshIdx].mass :
+            //                                            mesh_area * shell_infos[meshIdx].density;
+            //     LUISA_INFO("Mesh {}'s area = {}, total mass = {}", meshIdx, mesh_area, mesh_data->sa_body_mass[meshIdx]);
+            // }
 
             // Set vert mass
             mesh_data->sa_vert_mass.resize(num_verts);

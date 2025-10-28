@@ -124,7 +124,7 @@ struct SceneParams
     float poisson_ratio_cloth  = 0.2f;
     float poisson_ratio_tet    = 0.2f;
 
-    float stiffness_bending_ui        = 0.5f;
+    float stiffness_bending_ui        = 1.0f;
     float stiffness_quadratic_bending = 5e-3f;
     float stiffness_DAB_bending       = 5e-2f;
     float stiffness_collision         = 1e9;
@@ -179,7 +179,7 @@ struct SceneParams
         return num_substep * current_substep + current_nonlinear_iter;
     }
     float get_substep_dt() { return implicit_dt / float(num_substep); }
-    float get_stiffness_bending() { return stiffness_DAB_bending * stiffness_bending_ui; }
+    float get_bending_stiffness_scaling() { return stiffness_bending_ui; }
 };
 
 #ifndef METAL_CODE
