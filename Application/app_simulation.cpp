@@ -153,7 +153,7 @@ int main(int argc, char** argv)
     {
         SimMesh::saveToOBJ_combined(sa_rendering_vertices,
                                     sa_rendering_faces,
-                                    std::format("0{}", lcs::get_scene_params().scene_id),
+                                    luisa::format("0{}", lcs::get_scene_params().scene_id),
                                     additional_info,
                                     lcs::get_scene_params().current_frame);
     };
@@ -391,7 +391,7 @@ int main(int argc, char** argv)
                     // First frame
                     SimMesh::saveToOBJ_combined(sa_rendering_vertices,
                                                 sa_rendering_faces,
-                                                std::format("0{}", lcs::get_scene_params().scene_id),
+                                                luisa::format("0{}", lcs::get_scene_params().scene_id),
                                                 "start",
                                                 lcs::get_scene_params().current_frame);
                 }
@@ -404,7 +404,7 @@ int main(int argc, char** argv)
                 {
                     SimMesh::saveToOBJ_combined(sa_rendering_vertices,
                                                 sa_rendering_faces,
-                                                std::format("0{}", lcs::get_scene_params().scene_id),
+                                                luisa::format("0{}", lcs::get_scene_params().scene_id),
                                                 "",
                                                 lcs::get_scene_params().current_frame);
                 }

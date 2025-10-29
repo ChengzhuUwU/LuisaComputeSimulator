@@ -4,7 +4,6 @@
 #include <iostream>
 #include <string>
 #include <fstream>
-#include <format>
 #include <array>
 #include <algorithm>
 

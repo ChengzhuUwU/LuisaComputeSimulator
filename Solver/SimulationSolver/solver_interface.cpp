@@ -186,7 +186,7 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
     std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer);
     std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer);
 
-    const std::string filename = std::format("frame_{}{}.state", frame, addition_str);
+    const std::string filename = luisa::format("frame_{}{}.state", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
 
@@ -248,7 +248,7 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
 }
 void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
 {
-    const std::string filename = std::format("frame_{}{}.state", frame, addition_str);
+    const std::string filename = luisa::format("frame_{}{}.state", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
     std::string full_path      = full_directory + filename;
@@ -362,7 +362,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
 {
     // , lcs::get_scene_params().current_frame
-    const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
+    const std::string filename = luisa::format("frame_{}{}.obj", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
 

@@ -37,11 +37,11 @@ bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data)
     {
         if (!reader.Warning().empty())
         {
-            std::cerr << std::format("Warning : {}", reader.Warning());
+            std::cerr << "Warning : " << reader.Warning();
         }
         if (!reader.Error().empty())
         {
-            std::cerr << std::format("Warning : {}", reader.Error());
+            std::cerr << "Error : " << reader.Error();
         }
         exit(1);
     }
@@ -171,8 +171,8 @@ bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data)
 
                 if (orig_face[0] == orig_face[1] || orig_face[0] == orig_face[2] || orig_face[1] == orig_face[2])
                 {
-                    std::cerr << std::format(
-                        "Illigal Face Input {} : {}/{}/{}", fid, (orig_face[0]), orig_face[1], orig_face[2]);
+                    std::cerr << "Illigal Face Input " << fid << " : " << (orig_face[0]) << "/" << orig_face[1] << "/"
+                              << orig_face[2];
                     mesh_data.invalid_material_ids.push_back(material_id);
                     mesh_data.invalid_faces.push_back(makeInt3(v0.vertex_index, v1.vertex_index, v2.vertex_index));
                     mesh_data.invalid_normal_faces.push_back(makeInt3(v0.normal_index, v1.normal_index, v2.normal_index));
@@ -334,9 +334,7 @@ bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, st
 
     if (positions.empty() || tets.empty())
     {
-        std::cerr << std::format("Reading Result is Empty!!! Actual Get {} Verts And {} Tetrahedrals",
-                                 positions.size(),
-                                 tets.size());
+        std::cerr << "Input Tetrahedral Mesh is Empty!!!";
         exit(0);
     }
 
@@ -354,7 +352,7 @@ bool saveToOBJ_combined(std::vector<std::vector<Float3>> sa_rendering_vertices,
                         const std::string&               addition_str,
                         const uint                       frame)
 {
-    const std::string filename = std::format("frame_{}{}.obj", frame, addition_str);
+    const std::string filename = std::string("frame_") + std::to_string(frame) + addition_str + ".obj";
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/") + addition_path + "/";
     std::string full_path = full_directory + filename;
 
