@@ -35,8 +35,30 @@ namespace Initializer
         {
         }
     };
-    std::vector<uint> ShellInfo::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
-                                                                     const FixedPointInfo& fixed_info)
+    void ShellInfo::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
+                                                    const FixedPointAnimationInfo&   fixed_info)
+    {
+        if (input_mesh.model_positions.size() == 0)
+        {
+            load_mesh_data();
+        }
+
+        for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
+        {
+            if (func(vid))
+            {
+                auto   read_pos = input_mesh.model_positions[vid];
+                float3 pos      = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
+                // LUISA_INFO("Found fixed point vert : local_vid {}, pos {}", vid, pos);
+                auto affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
+                fixed_point_indices.emplace_back(vid);
+                fixed_point_target_positions.emplace_back(affine_pos);
+                fixed_point_animations.push_back(fixed_info);
+            }
+        }
+    }
+    void ShellInfo::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
+                                                        const FixedPointAnimationInfo& fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
         {
@@ -57,9 +79,6 @@ namespace Initializer
         auto pos_max     = local_aabb.packed_max;
         auto pos_dim_inv = 1.0f / luisa::max(pos_max - pos_min, 0.0001f);
 
-        std::vector<uint>           curr_fixed_point_verts;
-        std::vector<FixedPointInfo> curr_fixed_point_info;
-        std::vector<float3>         curr_fixed_point_target_positions;
         for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
         {
             auto   read_pos = input_mesh.model_positions[vid];
@@ -69,40 +88,199 @@ namespace Initializer
             if (func(norm_pos))
             {
                 // LUISA_INFO("Found fixed point vert : local_vid {}, pos {}", vid, pos);
-                auto affine_pos = FixedPointInfo::fn_affine_position(fixed_info, 0.0f, pos);
-                curr_fixed_point_verts.emplace_back(vid);
-                curr_fixed_point_target_positions.emplace_back(affine_pos);
-                auto tmp                = fixed_info;
-                tmp.is_fixed_point_func = func;
-                curr_fixed_point_info.push_back(tmp);
+                auto affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
+                fixed_point_indices.emplace_back(vid);
+                fixed_point_target_positions.emplace_back(affine_pos);
+                fixed_point_animations.push_back(fixed_info);
+            }
+        }
+    }
+    void ShellInfo::set_pinned_verts_from_indices(const std::vector<uint>&       indices,
+                                                  const FixedPointAnimationInfo& fixed_info)
+    {
+        if (input_mesh.model_positions.size() == 0)
+        {
+            load_mesh_data();
+        }
+
+        for (const uint vid : indices)
+        {
+            auto   read_pos   = input_mesh.model_positions[vid];
+            float3 pos        = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
+            auto   affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
+
+            fixed_point_indices.emplace_back(vid);
+            fixed_point_target_positions.emplace_back(affine_pos);
+            fixed_point_animations.push_back(fixed_info);
+        }
+    }
+    ShellInfo& ShellInfo::load_fixed_points()
+    {
+        if (input_mesh.model_positions.size() == 0)
+        {
+            load_mesh_data();
+        }
+
+        for (const auto& fixed_point_func : fixed_point_range_info)
+        {
+            const auto& range = fixed_point_func.range;
+            if (fixed_point_func.method == FixedPointsType::All)
+            {
+                from_norm_position([](const float3& norm_pos) { return true; }, fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Left)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Right)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Front)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.z < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Back)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Up)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.y > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::Down)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.y < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::LeftUp)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < range && norm_pos.y > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::LeftDown)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < range && norm_pos.y < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::LeftFront)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < range && norm_pos.z > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::LeftBack)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x < range && norm_pos.z < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::RightUp)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x > 1.0f - range && norm_pos.y > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::RightDown)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x > 1.0f - range && norm_pos.y < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::RightFront)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x > 1.0f - range && norm_pos.z > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::RightBack)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.x > 1.0f - range && norm_pos.z < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::FrontUp)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.z < range && norm_pos.y > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::FrontDown)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.z < range && norm_pos.y < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::BackUp)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.z > 1.0f - range && norm_pos.y > 1.0f - range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::BackDown)
+            {
+                from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+                                   { return norm_pos.z > 1.0f - range && norm_pos.y < range; },
+                                   fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::FromIndices)
+            {
+                auto indices = *((std::vector<uint>*)fixed_point_func.data_ptr);
+                set_pinned_verts_from_indices(indices, fixed_point_func.fixed_info);
+            }
+            else if (fixed_point_func.method == FixedPointsType::FromFunction)
+            {
+                auto func = *((std::function<bool(uint)>*)fixed_point_func.data_ptr);
+                set_pinned_verts_from_functions(func, fixed_point_func.fixed_info);
+            }
+            else
+            {
+                LUISA_ERROR("Unsupported FixedPointsType {} in ShellInfo::load_fixed_points().",
+                            int(fixed_point_func.method));
             }
         }
 
-        fixed_point_list.insert(
-            fixed_point_list.end(), curr_fixed_point_verts.begin(), curr_fixed_point_verts.end());
-        fixed_point_target_positions.insert(fixed_point_target_positions.end(),
-                                            curr_fixed_point_target_positions.begin(),
-                                            curr_fixed_point_target_positions.end());
-        fixed_point_info.insert(
-            fixed_point_info.end(), curr_fixed_point_info.begin(), curr_fixed_point_info.end());
-        return curr_fixed_point_verts;
+        return *this;
+
+        // fixed_point_list.insert(
+        //     fixed_point_list.end(), curr_fixed_point_verts.begin(), curr_fixed_point_verts.end());
+        // fixed_point_target_positions.insert(fixed_point_target_positions.end(),
+        //                                     curr_fixed_point_target_positions.begin(),
+        //                                     curr_fixed_point_target_positions.end());
+        // fixed_point_info.insert(
+        //     fixed_point_info.end(), curr_fixed_point_info.begin(), curr_fixed_point_info.end());
+        // return curr_fixed_point_verts;
     }
-    void ShellInfo::update_pinned_verts(const float time)
+
+    std::vector<float3> ShellInfo::get_fixed_point_target_positions(const float time)
     {
         CpuParallel::parallel_for(
             0,
-            fixed_point_list.size(),
+            fixed_point_indices.size(),
             [&](const uint index)
             {
-                const uint  local_vid        = fixed_point_list[index];
-                const auto& fixed_info       = fixed_point_info[index];
+                const uint  local_vid        = fixed_point_indices[index];
+                const auto& fixed_info       = fixed_point_animations[index];
                 const auto  model_pos        = input_mesh.model_positions[local_vid];
                 auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
                 const auto  rest_pos =
                     (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
                         .xyz();
 
-                auto target = FixedPointInfo::fn_affine_position(fixed_info, time, rest_pos);
+                auto target = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
                 auto orig   = fixed_point_target_positions[index];
                 fixed_point_target_positions[index] = target;
                 // LUISA_INFO("For FixedVert {}: local vid = {} try to push delta {} : from {} to {}",
@@ -112,6 +290,7 @@ namespace Initializer
                 //            rest_pos,
                 //            target);
             });
+        return fixed_point_target_positions;
     }
     void ShellInfo::update_pinned_verts(const std::vector<float3>& new_positions)
     {
@@ -393,12 +572,12 @@ namespace Initializer
                                           });
 
                 // Read fixed points
-                mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_list.size());
+                mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_indices.size());
                 CpuParallel::parallel_for(0,
-                                          curr_shell_info.fixed_point_list.size(),
+                                          curr_shell_info.fixed_point_indices.size(),
                                           [&](const uint index)
                                           {
-                                              const uint local_vid = curr_shell_info.fixed_point_list[index];
+                                              const uint local_vid = curr_shell_info.fixed_point_indices[index];
                                               const uint global_vid = prefix_num_verts + local_vid;
                                               mesh_data->sa_is_fixed[global_vid] = true;
                                               mesh_data->fixed_verts.push_back(global_vid);

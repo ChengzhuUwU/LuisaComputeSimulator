@@ -107,9 +107,9 @@ int main(int argc, char** argv)
         // Animation for fixed points
         for (uint mesh_idx = 0; mesh_idx < shell_list.size(); mesh_idx++)
         {
+            const float                  curr_time  = curr_frame * lcs::get_scene_params().implicit_dt;
             lcs::Initializer::ShellInfo& shell_info = shell_list[mesh_idx];
-            shell_info.update_pinned_verts(curr_frame * lcs::get_scene_params().implicit_dt);
-            solver.update_pinned_verts_information(mesh_idx, shell_info.fixed_point_target_positions);
+            solver.update_pinned_verts_information(mesh_idx, shell_info.get_fixed_point_target_positions(curr_time));
         }
     };
 
