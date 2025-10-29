@@ -181,7 +181,10 @@ namespace Initializer
 
             if (shell_info.shell_type == ShellTypeCloth)
             {
-                if (shell_info.holds<ClothMaterial>())
+                if (!shell_info.holds<ClothMaterial>())
+                {
+                    shell_info.physics_material = ClothMaterial();
+                }
                 {
                     auto& mat = shell_info.get<ClothMaterial>();
                     shell_info.density = mat.density;  // Update density in shell_info for mass computation
@@ -191,7 +194,10 @@ namespace Initializer
             }
             else if (shell_info.shell_type == ShellTypeTetrahedral)
             {
-                if (shell_info.holds<TetMaterial>())
+                if (!shell_info.holds<TetMaterial>())
+                {
+                    shell_info.physics_material = TetMaterial();
+                }
                 {
                     auto& mat            = shell_info.get<TetMaterial>();
                     shell_info.density   = mat.density;
@@ -201,7 +207,10 @@ namespace Initializer
             }
             else if (shell_info.shell_type == ShellTypeRigid)
             {
-                if (shell_info.holds<RigidMaterial>())
+                if (!shell_info.holds<RigidMaterial>())
+                {
+                    shell_info.physics_material = RigidMaterial();
+                }
                 {
                     auto& mat          = shell_info.get<RigidMaterial>();
                     shell_info.density = mat.density;
@@ -215,6 +224,19 @@ namespace Initializer
                         shell_info.is_shell  = true;
                         shell_info.thickness = mat.shell_thickness;
                     }
+                }
+            }
+            else if (shell_info.shell_type == ShellTypeRod)
+            {
+                if (!shell_info.holds<RodMaterial>())
+                {
+                    shell_info.physics_material = RodMaterial();
+                }
+                {
+                    auto& mat            = shell_info.get<RodMaterial>();
+                    shell_info.density   = mat.density;
+                    shell_info.is_shell  = true;
+                    shell_info.thickness = 2.0f * mat.radius;
                 }
             }
         }
@@ -620,7 +642,6 @@ namespace Initializer
                                           const auto& adj_tets = mesh_data->vert_adj_tets[vid];
                                           if (shell_info.is_shell || adj_tets.empty())
                                           {
-                                              // TODO: For solid rigid body, we may not have tet mesh, need to handle this case
                                               mesh_data->sa_rest_vert_volume[vid] = area * shell_info.thickness;
                                           }
                                           else
@@ -664,33 +685,79 @@ namespace Initializer
         // Init mass info
         {
             mesh_data->sa_body_mass.resize(num_meshes);
-            std::vector<float> body_areas(num_meshes, 0.0f);
-            std::vector<float> body_volumes(num_meshes, 0.0f);
+            mesh_data->sa_rest_body_volume.resize(num_meshes, 0.0f);
+            mesh_data->sa_rest_body_area.resize(num_meshes, 0.0f);
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
                 const auto& shell_info = shell_infos[meshIdx];
-                float       sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
-                    0,
-                    mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx],
-                    [&](const uint vid)
-                    { return mesh_data->sa_rest_vert_volume[mesh_data->prefix_num_verts[meshIdx] + vid]; });
-                body_volumes[meshIdx] = sum_volume;
+
+                float sum_volume = 0.0f;
+                if (shell_info.is_shell)  // Shell volume = area * thickness
+                {
+                    sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
+                        0,
+                        mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
+                        [&](const uint fid)
+                        {
+                            float face_area =
+                                mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid];
+                            return face_area * shell_infos[meshIdx].thickness;
+                        });
+                }
+                else  // For solid body, compute volume from tets or faces integration
+                {
+                    if (shell_info.input_mesh.tetrahedrons.empty())
+                    {
+                        if (shell_info.shell_type == ShellTypeTetrahedral)
+                        {
+                            LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
+                        }
+                        else  // Use face integration
+                        {
+                            sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
+                                0,
+                                mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
+                                [&](const uint fid)
+                                {
+                                    uint3 face = mesh_data->sa_faces[mesh_data->prefix_num_faces[meshIdx] + fid];
+                                    float3 v0 = mesh_data->sa_rest_x[face[0]];
+                                    float3 v1 = mesh_data->sa_rest_x[face[1]];
+                                    float3 v2 = mesh_data->sa_rest_x[face[2]];
+
+                                    float3 e1 = v1 - v0;
+                                    float3 e2 = v2 - v0;
+                                    float3 N  = cross(e1, e2);
+                                    return luisa::dot(v0, N) / 6.0f;
+                                });
+                        }
+                    }
+                    else
+                    {
+                        sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
+                            0,
+                            mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx],
+                            [&](const uint tid) {
+                                return mesh_data->sa_rest_tet_volume[mesh_data->prefix_num_tets[meshIdx] + tid];
+                            });
+                    }
+                }
+                mesh_data->sa_rest_body_volume[meshIdx] = sum_volume;
 
                 float sum_surface_area = CpuParallel::parallel_for_and_reduce_sum<float>(
                     0,
                     mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx],
                     [&](const uint fid)
                     { return mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid]; });
-                body_areas[meshIdx] = sum_surface_area;
+                mesh_data->sa_rest_body_area[meshIdx] = sum_surface_area;
 
                 mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
                                                        shell_infos[meshIdx].mass :
                                                        sum_volume * shell_infos[meshIdx].density;
 
-                LUISA_INFO("Mesh {}'s volume = {}{}, total mass = {}, avg vert mass = {}",
+                LUISA_INFO("Mesh {}'s volume = {}{}, body mass = {}, avg vert mass = {}",
                            meshIdx,
                            sum_volume,
-                           shell_info.is_shell ? luisa::format(", total area = {}", sum_surface_area) : "",
+                           shell_info.is_shell ? luisa::format(", surface area = {}", sum_surface_area) : "",
                            mesh_data->sa_body_mass[meshIdx],
                            mesh_data->sa_body_mass[meshIdx]
                                / float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));
@@ -720,8 +787,8 @@ namespace Initializer
                                           bool        is_fixed    = mesh_data->sa_is_fixed[vid] != 0;
                                           const uint  mesh_id     = mesh_data->sa_vert_mesh_id[vid];
                                           const float vert_volume = mesh_data->sa_rest_vert_volume[vid];
-                                          const float body_volume = body_volumes[mesh_id];
-                                          const float weight      = vert_volume / body_volume;
+                                          const float body_volume = mesh_data->sa_rest_body_volume[mesh_id];
+                                          const float weight = vert_volume / body_volume;
                                           //   const float vert_area = mesh_data->sa_rest_vert_area[vid];
                                           //   const float mesh_area = body_areas[mesh_id];
                                           //   const float weight    = vert_area / mesh_area;
@@ -792,6 +859,9 @@ namespace Initializer
             << upload_buffer(device, output_data->sa_edge_mesh_id, input_data->sa_edge_mesh_id)
             << upload_buffer(device, output_data->sa_face_mesh_id, input_data->sa_face_mesh_id)
             << upload_buffer(device, output_data->sa_vert_mesh_type, input_data->sa_vert_mesh_type)
+
+            << upload_buffer(device, output_data->sa_rest_body_area, input_data->sa_rest_body_area)
+            << upload_buffer(device, output_data->sa_rest_body_volume, input_data->sa_rest_body_volume)
 
             << upload_buffer(device, output_data->sa_rest_vert_area, input_data->sa_rest_vert_area)
             << upload_buffer(device, output_data->sa_rest_edge_area, input_data->sa_rest_edge_area)

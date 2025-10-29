@@ -126,11 +126,11 @@ namespace Initializer
     };
     struct RigidMaterial
     {
-        ConstitutiveModelRigid model                   = ConstitutiveModelRigid::Orthogonality;
-        bool                   is_solid                = false;
-        float                  density                 = 1e3f;
-        float                  shell_thickness         = 3e-3f;
-        float                  stiffness_orthogonality = 1e6f;
+        ConstitutiveModelRigid model           = ConstitutiveModelRigid::Orthogonality;
+        bool                   is_solid        = false;
+        float                  density         = 1e3f;
+        float                  shell_thickness = 3e-3f;
+        float                  stiffness       = 1e6f;
         // float                  youngs_modulus  = 1e9f;
         // float                  poisson_ratio   = 0.35f;
     };
@@ -150,12 +150,14 @@ namespace Initializer
         std::string model_name  = "square8K.obj";
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
-        float3 scale   = luisa::make_float3(1.0f);
-        float  mass    = 0.0f;  // If mass > 0, use mass to compute density
-        float  density = 1e3f;
+        float3 scale = luisa::make_float3(1.0f);
 
+        float mass    = 0.0f;  // If mass > 0, use mass to compute density
+        float density = 1e3f;
+
+        // For cloth, rod, non-solid rigid body, is_shell = true. For solid rigid body and tet mesh, is_shell = false
         bool  is_shell  = true;
-        float thickness = 1e-3f;
+        float thickness = 1e-3f;  // defulat 1mm for shell, ignored for volumn mesh
 
         MaterialVariant physics_material;
 

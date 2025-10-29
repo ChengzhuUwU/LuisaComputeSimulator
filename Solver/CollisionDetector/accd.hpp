@@ -57,9 +57,14 @@ namespace accd
         Var<uint>  iter_count = 0;
         $while(true)
         {
-            // $while (iter_count < 10000) {
-            if constexpr (print_ccd_iter_count)
-                iter_count += 1;
+            $if(iter_count > 1000)
+            {
+                luisa::compute::device_assert(false, "CCD iteration not converged in 1000 iteration!");
+                $break;
+            };
+            // if constexpr (print_ccd_iter_count)
+            iter_count += 1;
+
             Var<float> d2             = square_dist_func(add(x0, mult(toi, dx)));
             Var<float> d_minus_target = (d2 - target * target) / (sqrt_scalar(d2) + target);
             $if((max_t - toi) * u_max < d_minus_target - eps)
@@ -241,6 +246,13 @@ namespace host_accd
         uint  iter_count = 0;
         while (true)
         {
+            if (iter_count > 1000)
+            {
+                LUISA_ASSERT(false, "CCD iteration not converged in 1000 iteration!");
+                break;
+            }
+            iter_count += 1;
+
             if constexpr (print_ccd_iter_count)
                 iter_count += 1;
             float d2             = square_dist_func(x0 + toi * dx);

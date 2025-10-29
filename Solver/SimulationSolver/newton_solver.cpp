@@ -1170,7 +1170,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
              abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
              abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
              abd_is_fixed  = sim_data->sa_affine_bodies_is_fixed.view(),
-             abd_volume    = sim_data->sa_affine_bodies_volume.view()](const Float kappa)
+             abd_volume    = sim_data->sa_affine_bodies_volume.view(),
+             abd_kappa     = sim_data->sa_affine_bodies_kappa.view()]()
             {
                 const UInt body_idx = dispatch_id().x;
 
@@ -1181,9 +1182,10 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                                            abd_q->read(4 * body_idx + 2),
                                            abd_q->read(4 * body_idx + 3));
 
-                const Float V = abd_volume->read(body_idx);
+                const Float kappa = abd_kappa->read(body_idx);
+                const Float V     = abd_volume->read(body_idx);
 
-                Float stiff = kappa;  //* V;
+                Float stiff = kappa * V;
                 for (uint ii = 0; ii < 3; ii++)
                 {
                     Float3 grad = (-1.0f) * A[ii];
@@ -1581,10 +1583,10 @@ void NewtonSolver::host_evaluate_orthogonality()
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
 
-            const float kappa = get_scene_params().stiffness_orthogonality;
+            const float kappa = host_sim_data->sa_affine_bodies_kappa[body_idx];
             const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
 
-            float stiff = kappa;  //* V;
+            float stiff = kappa * V;
             for (uint ii = 0; ii < 3; ii++)
             {
                 float3 grad = (-1.0f) * A[ii];
@@ -2175,10 +2177,10 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                                       host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
                     // A          = luisa::transpose(A);
 
-                    const float kappa = get_scene_params().stiffness_orthogonality;
+                    const float kappa = host_sim_data->sa_affine_bodies_kappa[body_idx];
                     const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
 
-                    float stiff = kappa;  //* V;
+                    float stiff = kappa * V;
                     for (uint ii = 0; ii < 3; ii++)
                     {
                         float3 grad = (-1.0f) * A[ii];
@@ -3212,6 +3214,19 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto ccd_get_toi = [&]() -> float
     {
+        for (uint vid = 0; vid < host_sim_data->sa_x.size(); vid++)
+        {
+            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
+            if (length(delta) > 1.0f)
+            {
+                LUISA_ERROR("Large delta detected at vert {} : delta = {}, start = {}, end = {}",
+                            vid,
+                            delta,
+                            host_sim_data->sa_x_iter_start[vid],
+                            host_sim_data->sa_x[vid]);
+            }
+        }
+
         stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
                << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
@@ -3672,8 +3687,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_evaluate_abd_inertia(substep_dt, get_scene_params().stiffness_dirichlet)
                                   .dispatch(host_sim_data->num_affine_bodies);
 
-                    stream << fn_evaluate_abd_orthogonality(get_scene_params().stiffness_orthogonality)
-                                  .dispatch(host_sim_data->num_affine_bodies);
+                    stream << fn_evaluate_abd_orthogonality().dispatch(host_sim_data->num_affine_bodies);
 
                     stream << fn_evaluate_abd_ground_collision(get_scene_params().floor.y,
                                                                get_scene_params().use_floor,

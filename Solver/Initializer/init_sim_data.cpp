@@ -47,6 +47,144 @@ std::array<luisa::ushort, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
     return offsets;
 }
 
+static void compute_trimesh_dyadic_mass(const std::vector<float3>& pos_view,
+                                        const std::vector<uint3>&  tri_view,
+                                        const uint                 prefix_face_start,
+                                        const uint                 prefix_face_end,
+                                        float                      rho,
+                                        float&                     m,
+                                        float3&                    m_x_bar,
+                                        float3x3&                  m_x_bar_x_bar)
+{
+    m             = 0.0;
+    m_x_bar       = float3(0.0f);
+    m_x_bar_x_bar = float3x3::fill(0.0f);
+
+    // Using Divergence theorem to compute the dyadic mass
+    // by integrating on the surface of the trimesh
+    // for(auto&& [i, F] : (tri_view))
+
+    for (size_t fid = prefix_face_start; fid < prefix_face_end; fid++)
+    {
+        const auto& F = tri_view[fid];
+
+        const auto& p0 = pos_view[F[0]];
+        const auto& p1 = pos_view[F[1]];
+        const auto& p2 = pos_view[F[2]];
+
+        auto e1 = p1 - p0;
+        auto e2 = p2 - p0;
+
+        auto N = luisa::cross(e1, e2);  // e1.cross(e2);
+
+        m += rho * luisa::dot(p0, N) / 6.0;
+
+        {
+            auto Q = [](const uint a, const float rho, const float3& N, const float3& p0, const float3& p1, const float3& p2)
+            {
+                float V = 0.0;
+
+                V += p0[a] * p0[a] / 12;
+                V += p0[a] * p1[a] / 12;
+                V += p0[a] * p2[a] / 12;
+
+                V += p1[a] * p1[a] / 12;
+                V += p1[a] * p2[a] / 12;
+                V += p2[a] * p2[a] / 12;
+
+                return rho / 2 * N[a] * V;
+            };
+
+            for (uint a = 0; a < 3; a++)
+            {
+                m_x_bar[a] += Q(a, rho, N, p0, p1, p2);
+            }
+        }
+
+        {
+            auto Q = [](const uint a, float rho, const float3& N, const float3& p0, const float3& p1, const float3& p2)
+            {
+                float V = 0.0;
+
+                float p0a_2 = p0[a] * p0[a];
+                float p1a_2 = p1[a] * p1[a];
+                float p2a_2 = p2[a] * p2[a];
+
+                float p0a_3 = p0a_2 * p0[a];
+                float p1a_3 = p1a_2 * p1[a];
+                float p2a_3 = p2a_2 * p2[a];
+
+                V += p0a_3 / 20;
+                V += p0a_2 * p1[a] / 20;
+                V += p0a_2 * p2[a] / 20;
+
+                V += p0[a] * p1a_2 / 20;
+                V += p0[a] * p1[a] * p2[a] / 20;
+                V += p0[a] * p2a_2 / 20;
+
+                V += p1a_3 / 20;
+                V += p1a_2 * p2[a] / 20;
+                V += p1[a] * p2a_2 / 20;
+
+                V += p2a_3 / 20;
+
+                return rho / 3 * N[a] * V;
+            };
+
+            for (uint j = 0; j < 3; j++)  // diagonal
+                m_x_bar_x_bar[j][j] += Q(j, rho, N, p0, p1, p2);
+        }
+
+        {
+            auto Q = [](const uint a, const uint b, float rho, const float3& N, const float3& p0, const float3& p1, const float3& p2)
+            {
+                float V = 0.0;
+
+                float p0a_2 = p0[a] * p0[a];
+                float p1a_2 = p1[a] * p1[a];
+                float p2a_2 = p2[a] * p2[a];
+
+                V += p0a_2 * p0[b] / 20;
+                V += p0a_2 * p1[b] / 60;
+                V += p0a_2 * p2[b] / 60;
+                V += p0[a] * p0[b] * p1[a] / 30;
+
+                V += p0[a] * p0[b] * p2[a] / 30;
+                V += p0[a] * p1[a] * p1[b] / 30;
+                V += p0[a] * p1[a] * p2[b] / 60;
+                V += p0[a] * p1[b] * p2[a] / 60;
+
+                V += p0[a] * p2[a] * p2[b] / 30;
+                V += p0[b] * p1a_2 / 60;
+                V += p0[b] * p1[a] * p2[a] / 60;
+                V += p0[b] * p2a_2 / 60;
+
+                V += p1a_2 * p1[b] / 20;
+                V += p1a_2 * p2[b] / 60;
+                V += p1[a] * p1[b] * p2[a] / 30;
+                V += p1[a] * p2[a] * p2[b] / 30;
+
+                V += p1[b] * p2a_2 / 60;
+                V += p2a_2 * p2[b] / 20;
+
+                return rho / 2 * N[a] * V;
+            };
+
+            m_x_bar_x_bar[0][1] += Q(0, 1, rho, N, p0, p1, p2);
+            m_x_bar_x_bar[0][2] += Q(0, 2, rho, N, p0, p1, p2);
+            m_x_bar_x_bar[1][2] += Q(1, 2, rho, N, p0, p1, p2);
+        }
+
+        // symmetric
+        m_x_bar_x_bar[1][0] = m_x_bar_x_bar[0][1];
+        m_x_bar_x_bar[2][0] = m_x_bar_x_bar[0][2];
+        m_x_bar_x_bar[2][1] = m_x_bar_x_bar[1][2];
+    }
+
+    // m_x_bar_x_bar = luisa::transpose(m_x_bar_x_bar);
+}
+
+
 void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                    lcs::MeshData<std::vector>*               mesh_data,
                    lcs::SimulationData<std::vector>*         sim_data)
@@ -191,7 +329,9 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 (mesh_data->prefix_num_edges[meshIdx + 1] - mesh_data->prefix_num_edges[meshIdx])
                 != (mesh_data->prefix_num_dihedral_edges[meshIdx + 1] - mesh_data->prefix_num_dihedral_edges[meshIdx]);
             // bool has_dynamic_vert = mesh_data->sa_is_fixed[first_vid];
-            bool is_rigid = (mesh_data->sa_vert_mesh_type[first_vid] == uint(ShellTypeRigid));  // ;&& !has_boundary_edge;
+            // bool is_rigid = (mesh_data->sa_vert_mesh_type[first_vid] == uint(ShellTypeRigid));  // ;&& !has_boundary_edge;
+            bool is_rigid = shell_infos[meshIdx].holds<RigidMaterial>();
+            LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
             return (is_rigid) ? 1 : 0;  // has_dynamic_vert
         },
         [&](const uint meshIdx, const uint global_prefix, const uint parallel_result)
@@ -379,6 +519,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         sim_data->sa_affine_bodies_q_outer.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
+        sim_data->sa_affine_bodies_kappa.resize(num_blocks_affine_body);
 
         sim_data->sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
         sim_data->sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
@@ -393,7 +534,9 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             num_affine_bodies,
             [&](const uint body_idx)
             {
-                const uint meshIdx                           = affine_body_indices[body_idx];
+                const uint  meshIdx    = affine_body_indices[body_idx];
+                const auto& shell_info = shell_infos[meshIdx];
+
                 sim_data->sa_affine_bodies_mesh_id[body_idx] = meshIdx;
                 sim_data->sa_affine_bodies[body_idx] = luisa::make_uint4(num_verts_soft + 4 * body_idx + 0,
                                                                          num_verts_soft + 4 * body_idx + 1,
@@ -430,32 +573,50 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 const uint num_verts_body = next_prefix - curr_prefix;
 
                 EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
-                CpuParallel::single_thread_for(curr_prefix,
-                                               next_prefix,
-                                               [&](const uint vid)
-                                               {
-                                                   float mass = mesh_data->sa_vert_mass[vid];
-                                                   float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
-                                                   auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
-                                                   // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
-                                                   body_mass += mass * J.transpose() * J;
-                                               });
+                float4x4        compressed_mass_matrix;
+
+                if (shell_info.is_shell
+                    || (mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                {
+                    // Shell or Tet mesh: integrate from vertices
+                    CpuParallel::single_thread_for(curr_prefix,
+                                                   next_prefix,
+                                                   [&](const uint vid)
+                                                   {
+                                                       float mass = mesh_data->sa_vert_mass[vid];
+                                                       float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
+                                                       auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
+                                                       // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
+                                                       body_mass += mass * J.transpose() * J;
+                                                   });
+                }
+                else  // Solid body: integrate from surface triangles
+                {
+                    float    rho = shell_info.get<RigidMaterial>().density;
+                    float    m;
+                    float3   m_x_bar;
+                    float3x3 m_x_bar_x_bar;
+
+                    compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
+                                                mesh_data->sa_faces,
+                                                mesh_data->prefix_num_faces[meshIdx],
+                                                mesh_data->prefix_num_faces[meshIdx + 1],
+                                                rho,
+                                                m,
+                                                m_x_bar,
+                                                m_x_bar_x_bar);
+
+                    EigenFloat3x3 I = EigenFloat3x3::Identity();
+                    for (uint i = 0; i < 3; i++)
+                        body_mass.block<3, 3>(3 + i * 3, 0) = body_mass.block<3, 3>(0, 3 + i * 3) =
+                            m_x_bar[i] * I;
+                    for (uint i = 0; i < 3; i++)
+                        for (uint j = 0; j < 3; j++)
+                            body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = m_x_bar_x_bar[i][j] * I;
+                }
+
                 body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
-                // TODO: Weighted squared sum in some dimension is zero => Mass matrix diagonal = 0 => Can not get inverse
-                // TODO: Mass distribution
-                // TODO: Integrate mass matrix with tetrahedral element
 
-                // std::cout << "Test J for (1,2,3) = \n"
-                //           << AffineBodyDynamics::get_jacobian_dxdq(luisa::make_float3(1, 2, 3)) << std::endl;
-
-                // std::cout
-                //     << "Sum of mass = \n"
-                //     << std::reduce(&mesh_data->sa_vert_mass[curr_prefix], &mesh_data->sa_vert_mass[next_prefix], 0.0f)
-                //     << std::endl;
-                // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                // std::cout << "Inv Mass Matrix = \n" << body_mass.inverse() << std::endl;
-
-                float4x4 compressed_mass_matrix;
                 for (uint i = 0; i < 4; i++)
                 {
                     for (uint j = 0; j < 4; j++)
@@ -467,24 +628,24 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                // LUISA_INFO("Affine Body {} Mass Matrix = \n{}", body_idx, compressed_mass_matrix);
+                LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
 
                 sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
-                for (uint vid = curr_prefix; vid < next_prefix; vid++)
-                {
-                    if (mesh_data->sa_is_fixed[vid])
-                    {
-                        sim_data->sa_affine_bodies_is_fixed[body_idx] = true;
-                        break;
-                    }
-                }
+                sim_data->sa_affine_bodies_is_fixed[body_idx] =
+                    std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix,
+                                mesh_data->sa_is_fixed.begin() + next_prefix,
+                                [](const bool is_fixed) { return is_fixed; });
 
                 float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
                                          mesh_data->sa_rest_vert_area.begin() + next_prefix,
                                          0.0f);
 
-                const float defulat_density                 = 10.0f;
-                sim_data->sa_affine_bodies_volume[body_idx] = area;
+                sim_data->sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
+                sim_data->sa_affine_bodies_kappa[body_idx]  = shell_info.get<RigidMaterial>().stiffness;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
                 CpuParallel::single_thread_for(curr_prefix,
@@ -1113,6 +1274,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_affine_bodies_q_iter_start, input_data->sa_affine_bodies_q_iter_start)
             << upload_buffer(device, output_data->sa_affine_bodies_q_step_start, input_data->sa_affine_bodies_q_step_start)
             << upload_buffer(device, output_data->sa_affine_bodies_volume, input_data->sa_affine_bodies_volume)
+            << upload_buffer(device, output_data->sa_affine_bodies_kappa, input_data->sa_affine_bodies_kappa)
             << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix, input_data->sa_affine_bodies_mass_matrix)
             << upload_buffer(device, output_data->sa_affine_bodies_gradients, input_data->sa_affine_bodies_gradients)
             << upload_buffer(device, output_data->sa_affine_bodies_hessians, input_data->sa_affine_bodies_hessians)

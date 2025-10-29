@@ -72,12 +72,15 @@ struct MeshData : SimulationType
     BufferType<uint> sa_dihedral_edge_mesh_id;
     BufferType<uint> sa_tet_mesh_id;
 
+    BufferType<float> sa_rest_body_area;
+    BufferType<float> sa_rest_body_volume;
+
     BufferType<float> sa_rest_vert_area;
     BufferType<float> sa_rest_edge_area;
     BufferType<float> sa_rest_face_area;
     BufferType<float> sa_rest_tet_volume;
     BufferType<float> sa_rest_vert_volume;
-    BufferType<float> sa_vert_thickness;
+    BufferType<float> sa_vert_thickness;  // For contact offset
     BufferType<float> sa_edge_thickness;
     BufferType<float> sa_face_thickness;
 

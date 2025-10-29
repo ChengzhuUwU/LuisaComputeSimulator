@@ -384,7 +384,7 @@ void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
 }
 void load_default_scene(std::vector<ShellInfo>& shell_list)
 {
-    lcs::get_scene_params().scene_id = 1;
+    lcs::get_scene_params().scene_id = 9;
     const uint case_number           = lcs::get_scene_params().scene_id;
 
     switch (case_number)

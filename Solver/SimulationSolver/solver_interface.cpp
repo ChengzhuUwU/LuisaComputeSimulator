@@ -697,7 +697,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
         compiler.compile<1>(
             fn_calc_energy_abd_ortho,
-            [sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_q, Float stiffness_ortho)
+            [sa_system_energy = sim_data->sa_system_energy.view(),
+             abd_volume       = sim_data->sa_affine_bodies_volume.view(),
+             abd_kappa        = sim_data->sa_affine_bodies_kappa.view()](Var<BufferView<float3>> sa_q)
             {
                 const Uint body_idx = dispatch_id().x;
 
@@ -715,7 +717,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                             energy += term * term;
                         }
                     }
-                    energy *= stiffness_ortho;
+                    Float stiffness_ortho = abd_kappa->read(body_idx);
+                    Float volume          = abd_volume->read(body_idx);
+                    energy *= stiffness_ortho * volume;
                 };
 
                 energy = ParallelIntrinsic::block_intrinsic_reduce(
@@ -746,8 +750,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                                              get_scene_params().get_substep_dt(),
                                              get_scene_params().stiffness_dirichlet)
                       .dispatch(host_sim_data->num_affine_bodies);
-        stream << fn_calc_energy_abd_ortho(sim_data->sa_affine_bodies_q, get_scene_params().stiffness_orthogonality)
-                      .dispatch(host_sim_data->num_affine_bodies);
+        stream << fn_calc_energy_abd_ortho(sim_data->sa_affine_bodies_q).dispatch(host_sim_data->num_affine_bodies);
     }
 
     stream << fn_calc_energy_ground_collision(curr_x,
