@@ -171,8 +171,7 @@ class SolverInterface
                            >
         fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,  // sa_q
-                           float                                // stiffness_spring
+                           luisa::compute::BufferView<float3>  // sa_q
                            >
         fn_calc_energy_abd_ortho;
     luisa::compute::Shader<1,

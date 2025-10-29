@@ -132,6 +132,7 @@ struct SimulationData : SimulationType
     BufferType<uint>             sa_affine_bodies_mesh_id;
     BufferType<uint>             sa_affine_bodies_is_fixed;
     BufferType<uint4>            sa_affine_bodies;
+    BufferType<float>            sa_affine_bodies_kappa;
     BufferType<float>            sa_affine_bodies_volume;
     BufferType<float4x4>         sa_affine_bodies_mass_matrix;
     BufferType<float3>           sa_affine_bodies_rest_q;
