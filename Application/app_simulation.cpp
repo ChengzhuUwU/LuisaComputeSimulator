@@ -78,10 +78,6 @@ int main(int argc, char** argv)
     {
         backend = argv[1];
     }
-    if (argc >= 3)
-    {
-        lcs::get_scene_params().scene_id = static_cast<uint>(std::stoul(argv[2]));
-    }
     luisa::compute::Device device = context.create_device(backend,
                                                           nullptr,
 #ifndef NDEBUG
@@ -95,8 +91,19 @@ int main(int argc, char** argv)
     lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
     // Read Mesh
+    std::string scene_json_path = std::string(LCSV_RESOURCE_PATH) + "/Scenes/default_scene.json";
+    if (argc >= 3)
+    {
+        LUISA_INFO("Load target scene {}", argv[2]);
+        scene_json_path = argv[2];
+    }
+    else
+    {
+        LUISA_INFO("Load default scene {}", scene_json_path);
+    }
     std::vector<lcs::Initializer::ShellInfo> shell_list;
-    Demo::Simulation::load_default_scene(shell_list);
+    // Demo::Simulation::load_default_scene(shell_list);
+    Demo::Simulation::load_scene_params_from_json(shell_list, scene_json_path);
 
     // Init Solver
     lcs::NewtonSolver solver;

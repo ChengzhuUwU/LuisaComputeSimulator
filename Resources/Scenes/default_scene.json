@@ -1,0 +1,43 @@
+{
+    "scene_id": 1,
+    "use_floor": false,
+    "use_gpu": false,
+    "implicit_dt": 0.01,
+    "nonlinear_iter_count": 3,
+    "pcg_iter_count": 100,
+    "gravity": [
+        0,
+        -9.8,
+        0
+    ],
+    "contact_energy_type": 0,
+    "shells": [
+        {
+            "model_name": "square2K.obj",
+            "translation": [
+                0.0,
+                0.2,
+                0.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                0.2,
+                0.2,
+                0.2
+            ],
+            "shell_type": "Cloth",
+            "fixed_points": [
+                {
+                    "method": "LeftBack",
+                    "range": [
+                        0.001
+                    ]
+                }
+            ]
+        }
+    ]
+}

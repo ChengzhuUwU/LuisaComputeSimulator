@@ -283,12 +283,12 @@ namespace Initializer
                 auto target = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
                 auto orig   = fixed_point_target_positions[index];
                 fixed_point_target_positions[index] = target;
-                // LUISA_INFO("For FixedVert {}: local vid = {} try to push delta {} : from {} to {}",
-                //            index,
-                //            local_vid,
-                //            target - orig,
-                //            rest_pos,
-                //            target);
+                LUISA_INFO("For FixedVert {}: local vid = {} try to push delta {} : from {} to {}",
+                           index,
+                           local_vid,
+                           target - orig,
+                           rest_pos,
+                           target);
             });
         return fixed_point_target_positions;
     }

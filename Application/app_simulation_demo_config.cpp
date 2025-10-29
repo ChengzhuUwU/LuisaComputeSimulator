@@ -370,10 +370,9 @@ void load_default_scene(std::vector<ShellInfo>& shell_list)
     }
 }
 
-void load_scene_params_from_json(std::vector<ShellInfo>& shell_list)
+void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::string& json_path)
 {
-    const std::string json_path = std::string(LCSV_RESOURCE_PATH) + "/scene_config.json";
-    std::ifstream     ifs(json_path);
+    std::ifstream ifs(json_path);
     if (!ifs.is_open())
     {
         LUISA_WARNING("Cannot open json file: {}, using default scene params", json_path);
@@ -389,6 +388,336 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list)
         LUISA_WARNING("Cannot parse json file: {}, using default scene params", json_path);
         return;
     }
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    if (!root)
+    {
+        LUISA_WARNING("Empty json root: {}, using default scene params", json_path);
+        yyjson_doc_free(doc);
+        return;
+    }
+
+    // Helper lambdas
+    auto get_bool = [&](const char* key, bool& out)
+    {
+        yyjson_val* v = yyjson_obj_get(root, key);
+        if (v && yyjson_is_bool(v))
+            out = yyjson_get_bool(v);
+    };
+    auto get_uint = [&](const char* key, uint& out)
+    {
+        yyjson_val* v = yyjson_obj_get(root, key);
+        if (v && yyjson_is_uint(v))
+            out = static_cast<uint>(yyjson_get_uint(v));
+    };
+    auto get_int = [&](const char* key, int& out)
+    {
+        yyjson_val* v = yyjson_obj_get(root, key);
+        if (v && yyjson_is_int(v))
+            out = yyjson_get_int(v);
+    };
+    auto get_real = [&](const char* key, float& out)
+    {
+        yyjson_val* v = yyjson_obj_get(root, key);
+        if (v && yyjson_is_num(v))
+            out = static_cast<float>(yyjson_get_num(v));
+    };
+    auto get_vec3 = [&](const char* key, luisa::float3& out)
+    {
+        yyjson_val* v = yyjson_obj_get(root, key);
+        if (v && yyjson_is_arr(v) && yyjson_get_len(v) >= 3)
+        {
+            yyjson_val* elem;
+            size_t      idx, max;
+            float       vals[3] = {0.f, 0.f, 0.f};
+            yyjson_arr_foreach(v, idx, max, elem)
+            {
+                if (idx < 3 && yyjson_is_num(elem))
+                    vals[idx] = static_cast<float>(yyjson_get_num(elem));
+            }
+            out = luisa::make_float3(vals[0], vals[1], vals[2]);
+        }
+    };
+
+    // Scene-level params (common ones used in demo code)
+    yyjson_val* val = nullptr;
+    val             = yyjson_obj_get(root, "scene_id");
+    if (val && yyjson_is_uint(val))
+        lcs::get_scene_params().scene_id = static_cast<uint>(yyjson_get_uint(val));
+
+    get_bool("use_floor", lcs::get_scene_params().use_floor);
+    get_bool("use_gpu", lcs::get_scene_params().use_gpu);
+    get_bool("use_self_collision", lcs::get_scene_params().use_self_collision);
+    get_bool("use_ccd_linesearch", lcs::get_scene_params().use_ccd_linesearch);
+
+    get_real("implicit_dt", lcs::get_scene_params().implicit_dt);
+
+    get_int("nonlinear_iter_count", reinterpret_cast<int&>(lcs::get_scene_params().nonlinear_iter_count));
+    get_int("pcg_iter_count", reinterpret_cast<int&>(lcs::get_scene_params().pcg_iter_count));
+
+    get_vec3("gravity", lcs::get_scene_params().gravity);
+
+    // contact_energy_type may be provided as uint
+    val = yyjson_obj_get(root, "contact_energy_type");
+    if (val && yyjson_is_uint(val))
+        lcs::get_scene_params().contact_energy_type = static_cast<uint>(yyjson_get_uint(val));
+
+    // Helper to parse FixedPointsType from string
+    auto parse_fixed_method = [](const char* s)
+    {
+        using namespace lcs::Initializer;
+        if (!s)
+            return FixedPointsType::All;
+        if (strcmp(s, "None") == 0)
+            return FixedPointsType::None;
+        if (strcmp(s, "FromIndices") == 0)
+            return FixedPointsType::FromIndices;
+        if (strcmp(s, "FromFunction") == 0)
+            return FixedPointsType::FromFunction;
+        if (strcmp(s, "Left") == 0)
+            return FixedPointsType::Left;
+        if (strcmp(s, "Right") == 0)
+            return FixedPointsType::Right;
+        if (strcmp(s, "Front") == 0)
+            return FixedPointsType::Front;
+        if (strcmp(s, "Back") == 0)
+            return FixedPointsType::Back;
+        if (strcmp(s, "Up") == 0)
+            return FixedPointsType::Up;
+        if (strcmp(s, "Down") == 0)
+            return FixedPointsType::Down;
+        if (strcmp(s, "LeftBack") == 0)
+            return FixedPointsType::LeftBack;
+        if (strcmp(s, "LeftFront") == 0)
+            return FixedPointsType::LeftFront;
+        if (strcmp(s, "RightBack") == 0)
+            return FixedPointsType::RightBack;
+        if (strcmp(s, "RightFront") == 0)
+            return FixedPointsType::RightFront;
+        if (strcmp(s, "All") == 0)
+            return FixedPointsType::All;
+        return FixedPointsType::All;
+    };
+
+    // Parse shells array
+    yyjson_val* shells = yyjson_obj_get(root, "shells");
+    if (shells && yyjson_is_arr(shells))
+    {
+        yyjson_val* shell_val;
+        size_t      i, n;
+        yyjson_arr_foreach(shells, i, n, shell_val)
+        {
+            if (!yyjson_is_obj(shell_val))
+                continue;
+            lcs::Initializer::ShellInfo info;
+
+            // model_name
+            yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
+            if (m && yyjson_is_str(m))
+            {
+                const char* s         = yyjson_get_str(m);
+                std::string model_str = s ? s : "";
+                if (!model_str.empty() && model_str.front() != '/')
+                    info.model_name = obj_mesh_path + model_str;
+                else
+                    info.model_name = model_str;
+            }
+
+            // translation / rotation / scale
+            yyjson_val* t = yyjson_obj_get(shell_val, "translation");
+            if (t && yyjson_is_arr(t) && yyjson_get_len(t) >= 3)
+            {
+                yyjson_val* e;
+                size_t      idx, max;
+                float       tv[3] = {0};
+                yyjson_arr_foreach(t, idx, max, e)
+                {
+                    if (idx < 3 && yyjson_is_num(e))
+                        tv[idx] = static_cast<float>(yyjson_get_num(e));
+                }
+                info.translation = luisa::make_float3(tv[0], tv[1], tv[2]);
+            }
+            yyjson_val* r = yyjson_obj_get(shell_val, "rotation");
+            if (r && yyjson_is_arr(r) && yyjson_get_len(r) >= 3)
+            {
+                yyjson_val* e;
+                size_t      idx, max;
+                float       rv[3] = {0};
+                yyjson_arr_foreach(r, idx, max, e)
+                {
+                    if (idx < 3 && yyjson_is_num(e))
+                        rv[idx] = static_cast<float>(yyjson_get_num(e));
+                }
+                info.rotation = luisa::make_float3(rv[0], rv[1], rv[2]);
+            }
+            yyjson_val* sc = yyjson_obj_get(shell_val, "scale");
+            if (sc)
+            {
+                if (yyjson_is_arr(sc) && yyjson_get_len(sc) >= 3)
+                {
+                    yyjson_val* e;
+                    size_t      idx, max;
+                    float       sv[3] = {1.f, 1.f, 1.f};
+                    yyjson_arr_foreach(sc, idx, max, e)
+                    {
+                        if (idx < 3 && yyjson_is_num(e))
+                            sv[idx] = static_cast<float>(yyjson_get_num(e));
+                    }
+                    info.scale = luisa::make_float3(sv[0], sv[1], sv[2]);
+                }
+                else if (yyjson_is_num(sc))
+                {
+                    float sval = static_cast<float>(yyjson_get_num(sc));
+                    info.scale = luisa::make_float3(sval);
+                }
+            }
+
+            // shell_type
+            yyjson_val* stype = yyjson_obj_get(shell_val, "shell_type");
+            if (stype && yyjson_is_str(stype))
+            {
+                const char* ss = yyjson_get_str(stype);
+                if (strcmp(ss, "Rigid") == 0)
+                    info.shell_type = lcs::Initializer::ShellTypeRigid;
+                else if (strcmp(ss, "Tetrahedral") == 0)
+                    info.shell_type = lcs::Initializer::ShellTypeTetrahedral;
+                else if (strcmp(ss, "Rod") == 0)
+                    info.shell_type = lcs::Initializer::ShellTypeRod;
+                else
+                    info.shell_type = lcs::Initializer::ShellTypeCloth;
+            }
+
+            // fixed_points
+            yyjson_val* fp_arr = yyjson_obj_get(shell_val, "fixed_points");
+            if (fp_arr && yyjson_is_arr(fp_arr))
+            {
+                yyjson_val* fpv;
+                size_t      j, jm;
+                yyjson_arr_foreach(fp_arr, j, jm, fpv)
+                {
+                    if (!yyjson_is_obj(fpv))
+                        continue;
+                    lcs::Initializer::MakeFixedPointsInterface mfp;
+                    // method
+                    yyjson_val* mth = yyjson_obj_get(fpv, "method");
+                    if (mth && yyjson_is_str(mth))
+                        mfp.method = parse_fixed_method(yyjson_get_str(mth));
+                    // range
+                    yyjson_val* rng = yyjson_obj_get(fpv, "range");
+                    if (rng && yyjson_is_arr(rng))
+                    {
+                        yyjson_val* ev;
+                        size_t      ri, rmax;
+                        mfp.range.clear();
+                        yyjson_arr_foreach(rng, ri, rmax, ev)
+                        {
+                            if (yyjson_is_num(ev))
+                                mfp.range.push_back(static_cast<float>(yyjson_get_num(ev)));
+                        }
+                    }
+                    // fixed_info (animation)
+                    yyjson_val* fin = yyjson_obj_get(fpv, "fixed_info");
+                    if (fin && yyjson_is_obj(fin))
+                    {
+                        auto&       fi = mfp.fixed_info;
+                        yyjson_val* b;
+                        b = yyjson_obj_get(fin, "use_translate");
+                        if (b && yyjson_is_bool(b))
+                            fi.use_translate = yyjson_get_bool(b);
+                        b = yyjson_obj_get(fin, "translate");
+                        if (b && yyjson_is_arr(b) && yyjson_get_len(b) >= 3)
+                        {
+                            yyjson_val* e;
+                            size_t      idx, max;
+                            float       tv2[3] = {0};
+                            yyjson_arr_foreach(b, idx, max, e)
+                            {
+                                if (idx < 3 && yyjson_is_num(e))
+                                    tv2[idx] = static_cast<float>(yyjson_get_num(e));
+                            }
+                            fi.translate = luisa::make_float3(tv2[0], tv2[1], tv2[2]);
+                        }
+                        b = yyjson_obj_get(fin, "use_rotate");
+                        if (b && yyjson_is_bool(b))
+                            fi.use_rotate = yyjson_get_bool(b);
+                        b = yyjson_obj_get(fin, "rotCenter");
+                        if (b && yyjson_is_arr(b) && yyjson_get_len(b) >= 3)
+                        {
+                            yyjson_val* e;
+                            size_t      idx, max;
+                            float       rv2[3] = {0};
+                            yyjson_arr_foreach(b, idx, max, e)
+                            {
+                                if (idx < 3 && yyjson_is_num(e))
+                                    rv2[idx] = static_cast<float>(yyjson_get_num(e));
+                            }
+                            fi.rotCenter = luisa::make_float3(rv2[0], rv2[1], rv2[2]);
+                        }
+                        b = yyjson_obj_get(fin, "rotAxis");
+                        if (b && yyjson_is_arr(b) && yyjson_get_len(b) >= 3)
+                        {
+                            yyjson_val* e;
+                            size_t      idx, max;
+                            float       av[3] = {0};
+                            yyjson_arr_foreach(b, idx, max, e)
+                            {
+                                if (idx < 3 && yyjson_is_num(e))
+                                    av[idx] = static_cast<float>(yyjson_get_num(e));
+                            }
+                            fi.rotAxis = luisa::make_float3(av[0], av[1], av[2]);
+                        }
+                        b = yyjson_obj_get(fin, "rotAngVelDeg");
+                        if (b && yyjson_is_num(b))
+                            fi.rotAngVelDeg = static_cast<float>(yyjson_get_num(b));
+                        b = yyjson_obj_get(fin, "use_scale");
+                        if (b && yyjson_is_bool(b))
+                            fi.use_scale = yyjson_get_bool(b);
+                        b = yyjson_obj_get(fin, "scale");
+                        if (b && yyjson_is_arr(b) && yyjson_get_len(b) >= 3)
+                        {
+                            yyjson_val* e;
+                            size_t      idx, max;
+                            float       sv2[3] = {1.f, 1.f, 1.f};
+                            yyjson_arr_foreach(b, idx, max, e)
+                            {
+                                if (idx < 3 && yyjson_is_num(e))
+                                    sv2[idx] = static_cast<float>(yyjson_get_num(e));
+                            }
+                            fi.scale     = luisa::make_float3(sv2[0], sv2[1], sv2[2]);
+                            fi.use_scale = true;
+                        }
+                        b = yyjson_obj_get(fin, "use_setting_position");
+                        if (b && yyjson_is_bool(b))
+                            fi.use_setting_position = yyjson_get_bool(b);
+                        b = yyjson_obj_get(fin, "setting_position");
+                        if (b && yyjson_is_arr(b) && yyjson_get_len(b) >= 3)
+                        {
+                            yyjson_val* e;
+                            size_t      idx, max;
+                            float       sv3[3] = {0};
+                            yyjson_arr_foreach(b, idx, max, e)
+                            {
+                                if (idx < 3 && yyjson_is_num(e))
+                                    sv3[idx] = static_cast<float>(yyjson_get_num(e));
+                            }
+                            fi.setting_position     = luisa::make_float3(sv3[0], sv3[1], sv3[2]);
+                            fi.use_setting_position = true;
+                        }
+                    }
+
+                    info.fixed_point_range_info.push_back(mfp);
+                }
+            }
+
+            // finally add to shell_list and load mesh (and fixed points if provided)
+            shell_list.emplace_back(info);
+            if (!shell_list.back().input_mesh.model_positions.empty())
+                shell_list.back().load_mesh_data();
+            if (!shell_list.back().fixed_point_range_info.empty())
+                shell_list.back().load_fixed_points();
+        }
+    }
+
+    yyjson_doc_free(doc);
 }
 
 
