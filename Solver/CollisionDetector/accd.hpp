@@ -253,8 +253,7 @@ namespace host_accd
             }
             iter_count += 1;
 
-            if constexpr (print_ccd_iter_count)
-                iter_count += 1;
+            // Removed redundant increment for print_ccd_iter_count
             float d2             = square_dist_func(x0 + toi * dx);
             float d_minus_target = (d2 - target * target) / (sqrtf(d2) + target);
             if ((max_t - toi) * u_max < d_minus_target - eps)
