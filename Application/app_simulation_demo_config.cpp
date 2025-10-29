@@ -43,39 +43,6 @@ void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().stiffness_DAB_bending = 200.0f;
     lcs::get_scene_params().use_gpu               = false;
 }
-void rigid_body_cube_unit_case(std::vector<ShellInfo>& shell_list)
-{
-    shell_list
-        .emplace_back(ShellInfo{// .model_name = obj_mesh_path + "square2.obj",
-                                .model_name = obj_mesh_path + "cube.obj",
-                                //   .translation = luisa::make_float3(0, -0.1, 0),
-                                .rotation = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
-                                //   .rotation = luisa::make_float3(0.0, 0, 0.0),
-                                .scale      = luisa::make_float3(0.1f),
-                                .shell_type = ShellTypeRigid})
-        .load_mesh_data();
-    shell_list
-        .emplace_back(ShellInfo{// .model_name = obj_mesh_path + "square2.obj",
-                                .model_name  = obj_mesh_path + "cube.obj",
-                                .translation = luisa::make_float3(0.6, 0.4, 0),
-                                .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 3),
-                                .scale       = luisa::make_float3(0.2),
-                                .shell_type  = ShellTypeRigid})
-        .load_mesh_data();
-    shell_list
-        .emplace_back(ShellInfo{// .model_name = obj_mesh_path + "square2.obj",
-                                .model_name  = obj_mesh_path + "cube.obj",
-                                .translation = luisa::make_float3(0.9, 0.6, 0),
-                                .rotation    = luisa::make_float3(lcs::Pi / 3, lcs::Pi / 6, 0),
-                                .scale       = luisa::make_float3(0.5),
-                                .shell_type  = ShellTypeRigid})
-        .load_mesh_data();
-
-    // lcs::get_scene_params().use_gpu     = false;
-    lcs::get_scene_params().nonlinear_iter_count = 2;
-    lcs::get_scene_params().use_self_collision   = false;
-    lcs::get_scene_params().use_ccd_linesearch   = false;
-}
 void rigid_body_folding_cube_case(std::vector<ShellInfo>& shell_list)
 {
     shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
@@ -99,74 +66,6 @@ void rigid_body_folding_cube_case(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().use_floor = true;
     // lcs::get_scene_params().implicit_dt          = 0.003;
     // lcs::get_scene_params().nonlinear_iter_count = 1;
-}
-void moving_dirichlet_unit(std::vector<ShellInfo>& shell_list)
-{
-    shell_list
-        .emplace_back(ShellInfo{
-            .model_name = obj_mesh_path + "square2.obj",
-        })
-        .load_mesh_data();
-
-    auto moving_func = FixedPointAnimationInfo{
-        .use_translate = true,
-        .translate     = luisa::make_float3(0, 1, 0),
-    };
-    auto& down =
-        shell_list
-            .emplace_back(ShellInfo{
-                .model_name  = obj_mesh_path + "square2.obj",
-                .translation = luisa::make_float3(0.1, -0.3, 0),
-                .fixed_point_range_info = {MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Left,
-                                                                    .fixed_info = moving_func},
-                                           MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Right,
-                                                                    .fixed_info = moving_func}},
-            })
-            .load_mesh_data()
-            .load_fixed_points();
-
-    lcs::get_scene_params().use_floor             = false;
-    lcs::get_scene_params().implicit_dt           = 0.05;
-    lcs::get_scene_params().nonlinear_iter_count  = 1;
-    lcs::get_scene_params().use_energy_linesearch = true;
-}
-void cloth_bottle4(std::vector<ShellInfo>& shell_list)
-{
-    shell_list.emplace_back(ShellInfo{
-        .model_name  = obj_mesh_path + "square2K.obj",
-        .translation = luisa::make_float3(0.0, 0.1, 0),
-        .scale       = luisa::make_float3(0.2f),
-    });
-    shell_list.emplace_back(ShellInfo{
-        .model_name  = obj_mesh_path + "square2K.obj",
-        .translation = luisa::make_float3(0.0, 0.12, 0),
-        .rotation    = luisa::make_float3(0, lcs::Pi / 6.0f, 0),
-        .scale       = luisa::make_float3(0.2f),
-    });
-    shell_list.emplace_back(ShellInfo{
-        .model_name  = obj_mesh_path + "square2K.obj",
-        .translation = luisa::make_float3(0.0, 0.14, 0),
-        .rotation    = luisa::make_float3(0, lcs::Pi / 6.0f * 2, 0),
-        .scale       = luisa::make_float3(0.2f),
-    });
-    for (auto& shell : shell_list)
-    {
-        shell.load_mesh_data();
-    }
-
-    auto& bottle = shell_list
-                       .emplace_back(ShellInfo{.model_name  = obj_mesh_path + "bowl/bottle4.obj",
-                                               .translation = luisa::make_float3(0.0, -0.4, 0),
-                                               .scale       = luisa::make_float3(0.6f),
-                                               .fixed_point_range_info = {MakeFixedPointsInterface{
-                                                   .method = lcs::Initializer::FixedPointsType::All}}})
-                       .load_mesh_data()
-                       .set_fixed_points();
-
-    lcs::get_scene_params().implicit_dt          = 0.01f;
-    lcs::get_scene_params().nonlinear_iter_count = 5;
-    lcs::get_scene_params().pcg_iter_count       = 200;
-    lcs::get_scene_params().use_floor            = false;
 }
 void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
 {
@@ -200,67 +99,6 @@ void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().use_floor            = false;
     lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
 }
-void ccd_rotation_square(std::vector<ShellInfo>& shell_list)
-{
-    auto& shell = shell_list
-                      .emplace_back(ShellInfo{
-                          .model_name = obj_mesh_path + "square2K.obj",
-                      })
-                      .load_mesh_data();
-
-    shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
-                                              { return (norm_pos.x < 0.001f); },
-                                              {
-                                                  .use_rotate   = true,
-                                                  .rotCenter    = luisa::make_float3(0.005, 0, 0),
-                                                  .rotAxis      = luisa::make_float3(1, 0, 0),
-                                                  .rotAngVelDeg = -72,
-                                              });
-    shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
-                                              { return (norm_pos.x > 0.999f); },
-                                              {
-                                                  .use_rotate   = true,
-                                                  .rotCenter    = luisa::make_float3(-0.005, 0, 0),
-                                                  .rotAxis      = luisa::make_float3(1, 0, 0),
-                                                  .rotAngVelDeg = 72,
-                                              });
-
-    lcs::get_scene_params().pcg_iter_count       = 50;
-    lcs::get_scene_params().nonlinear_iter_count = 1;
-    lcs::get_scene_params().gravity              = luisa::make_float3(0.0f);
-    lcs::get_scene_params().use_floor            = false;
-    lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
-}
-void ccd_rotation_cylinder_highres(std::vector<ShellInfo>& shell_list)
-{
-    auto& shell = shell_list
-                      .emplace_back(ShellInfo{
-                          .model_name = obj_mesh_path + "Cylinder/cylinder88K.obj",
-                      })
-                      .load_mesh_data();
-
-    shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
-                                              { return (norm_pos.x < 0.001f); },
-                                              {
-                                                  .use_rotate   = true,
-                                                  .rotCenter    = luisa::make_float3(0.005, 0, 0),
-                                                  .rotAxis      = luisa::make_float3(1, 0, 0),
-                                                  .rotAngVelDeg = -72,
-                                              });
-    shell.set_pinned_verts_from_norm_position([](const luisa::float3& norm_pos)
-                                              { return (norm_pos.x > 0.999f); },
-                                              {
-                                                  .use_rotate   = true,
-                                                  .rotCenter    = luisa::make_float3(-0.005, 0, 0),
-                                                  .rotAxis      = luisa::make_float3(1, 0, 0),
-                                                  .rotAngVelDeg = 72,
-                                              });
-
-    lcs::get_scene_params().nonlinear_iter_count = 3;
-    lcs::get_scene_params().gravity              = luisa::make_float3(0.0f);
-    lcs::get_scene_params().use_floor            = false;
-    lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
-}
 void pinned_cloth(std::vector<ShellInfo>& shell_list)
 {
     auto& shell = shell_list
@@ -279,31 +117,6 @@ void pinned_cloth(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().use_ccd_linesearch   = false;
     lcs::get_scene_params().pcg_iter_count       = 50;
 }
-void cloth_rigid_coupling(std::vector<ShellInfo>& shell_list)
-{
-    auto& cloth = shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "square2K.obj",
-                                                    .translation = luisa::make_float3(0, 0.22, 0),
-                                                    .scale       = luisa::make_float3(0.4f)});
-
-    // shell_list.push_back({.model_name  = obj_mesh_path + "square2K.obj",
-    //                       .translation = luisa::make_float3(0, 0.24, 0),
-    //                       .scale       = luisa::make_float3(0.1f)});
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
-                                      .translation = luisa::make_float3(0, 0.24, 0),
-                                      .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
-                                      .scale       = luisa::make_float3(0.1),
-                                      .shell_type  = ShellTypeRigid}
-                                .load_mesh_data());
-    // shell_list.back()
-
-    shell_list.front().load_mesh_data().set_pinned_verts_from_norm_position(
-        [](const auto& pos) { return pos.x < 0.001f | pos.x > 0.999f; });
-
-    // for (auto& shell : shell_list)
-    //     shell.load_mesh_data();
-
-    lcs::get_scene_params().contact_energy_type = uint(lcs::ContactEnergyType::Barrier);
-}
 void load_default_scene(std::vector<ShellInfo>& shell_list)
 {
     lcs::get_scene_params().scene_id = 1;
@@ -319,43 +132,14 @@ void load_default_scene(std::vector<ShellInfo>& shell_list)
             pinned_cloth(shell_list);
             break;
         };
-        case 2: {
-            moving_dirichlet_unit(shell_list);
-            break;
-        };
         case 3: {
             ccd_rotation_cylinder_7K(shell_list);
-            break;
-        };
-        case 5: {
-            ccd_rotation_cylinder_highres(shell_list);
-            break;
-        };
-        case 6: {
-            ccd_rotation_square(shell_list);
-            break;
-        };
-        // case 7: {
-        //     energy_linesearch_vf_unit_case(shell_list);
-        //     break;
-        // };
-        case 8: {
-            rigid_body_cube_unit_case(shell_list);
             break;
         };
         case 9: {
             rigid_body_folding_cube_case(shell_list);
             break;
         };
-        case 10: {
-            cloth_rigid_coupling(shell_list);
-            break;
-        };
-        case 11: {
-            cloth_bottle4(shell_list);
-            break;
-        };
-
         default:
             ccd_vf_unit_case(shell_list);
             break;

@@ -1,0 +1,37 @@
+{
+    "scene_id": 9,
+    "use_floor": true,
+    "use_gpu": false,
+    "shells": [
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.7,
+                0.0
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.1,
+                0.0
+            ],
+            "scale": 0.5,
+            "shell_type": "Rigid"
+        }
+    ]
+}

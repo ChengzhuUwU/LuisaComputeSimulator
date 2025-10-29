@@ -1,0 +1,35 @@
+{
+    "scene_id": 0,
+    "use_floor": false,
+    "use_gpu": false,
+    "implicit_dt": 0.2,
+    "use_energy_linesearch": true,
+    "stiffness_DAB_bending": 200.0,
+    "shells": [
+        {
+            "model_name": "square2.obj",
+            "scale": 1.0,
+            "fixed_points": [
+                {
+                    "method": "LeftBack"
+                }
+            ]
+        },
+        {
+            "model_name": "square2.obj",
+            "translation": [
+                0.1,
+                -0.3,
+                0.0
+            ],
+            "fixed_points": [
+                {
+                    "method": "Left"
+                },
+                {
+                    "method": "Right"
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,53 @@
+{
+    "scene_id": 6,
+    "pcg_iter_count": 50,
+    "nonlinear_iter_count": 1,
+    "gravity": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "use_floor": false,
+    "contact_energy_type": 1,
+    "shells": [
+        {
+            "model_name": "square2K.obj",
+            "fixed_points": [
+                {
+                    "method": "Left",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": -72.0
+                    }
+                },
+                {
+                    "method": "Right",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            -0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": 72.0
+                    }
+                }
+            ]
+        }
+    ]
+}
