@@ -12,6 +12,11 @@
     "shells": [
         {
             "model_name": "Cylinder/cylinder7K.obj",
+            "scale": [
+                0.2,
+                0.2,
+                0.2
+            ],
             "fixed_points": [
                 {
                     "method": "Left",

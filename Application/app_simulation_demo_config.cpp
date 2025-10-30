@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
 #include <yyjson.h>
 
 namespace Demo::Simulation
@@ -298,12 +299,63 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
             yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
             if (m && yyjson_is_str(m))
             {
-                const char* s         = yyjson_get_str(m);
-                std::string model_str = s ? s : "";
-                if (!model_str.empty() && model_str.front() != '/')
-                    info.model_name = obj_mesh_path + model_str;
-                else
+                const char* s           = yyjson_get_str(m);
+                std::string model_str   = s ? s : "";
+                auto        file_exists = [](const std::string& p)
+                {
+                    try
+                    {
+                        return std::filesystem::exists(p);
+                    }
+                    catch (...)  // in case filesystem is not available or path is invalid
+                    {
+                        return false;
+                    }
+                };
+
+                if (model_str.empty())
+                {
                     info.model_name = model_str;
+                }
+                else if (file_exists(model_str))
+                {
+                    // user provided a path that exists (absolute or relative)
+                    info.model_name = model_str;
+                }
+                else
+                {
+                    // try Resources/InputMesh/<model_str>
+                    std::string candidate = obj_mesh_path + model_str;
+                    if (file_exists(candidate))
+                    {
+                        info.model_name = candidate;
+                    }
+                    else
+                    {
+                        // try basename in InputMesh (user may give subpath or just name)
+                        size_t pos = model_str.find_last_of("/\\");
+                        std::string base = (pos == std::string::npos) ? model_str : model_str.substr(pos + 1);
+                        candidate = obj_mesh_path + base;
+                        if (file_exists(candidate))
+                        {
+                            info.model_name = candidate;
+                        }
+                        else
+                        {
+                            // try tet mesh path (vtks)
+                            candidate = tet_mesh_path + model_str;
+                            if (file_exists(candidate))
+                            {
+                                info.model_name = candidate;
+                            }
+                            else
+                            {
+                                // fallback: keep as provided (load_mesh_data will try to read it)
+                                info.model_name = model_str;
+                            }
+                        }
+                    }
+                }
             }
 
             // translation / rotation / scale
