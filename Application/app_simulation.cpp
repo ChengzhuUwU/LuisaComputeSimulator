@@ -50,7 +50,7 @@ int main(int argc, char** argv)
 #ifndef NDEBUG
     luisa::log_level_info();  // log_level_verbose
 #else
-    luisa::log_level_verbose();
+    luisa::log_level_info();
 #endif
 
     luisa::fiber::scheduler scheduler;  // Initialize the fiber scheduler, which is also need in HostParallel functions

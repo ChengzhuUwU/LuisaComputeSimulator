@@ -10,6 +10,7 @@
 #include <string>
 #include <filesystem>
 #include <yyjson.h>
+#include <cassert>
 
 namespace Demo::Simulation
 {
@@ -22,7 +23,11 @@ using namespace lcs::Initializer;
 void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
 {
     auto& up = shell_list
-                   .emplace_back(ShellInfo{.model_name             = obj_mesh_path + "square2.obj",
+                   .emplace_back(ShellInfo{.model_name = obj_mesh_path + "square2.obj",
+                                           .physics_material =
+                                               ClothMaterial{
+                                                   .thickness = 0.1f,
+                                               },
                                            .fixed_point_range_info = {MakeFixedPointsInterface{
                                                .method = lcs::Initializer::FixedPointsType::LeftBack}}})
                    .load_mesh_data()
@@ -420,6 +425,249 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     info.shell_type = lcs::Initializer::ShellTypeRod;
                 else
                     info.shell_type = lcs::Initializer::ShellTypeCloth;
+            }
+
+            // physics_material
+            yyjson_val* pm = yyjson_obj_get(shell_val, "material");
+            if (pm)
+            {
+                // material may be an object or an array of objects (take first)
+                yyjson_val* mat_obj = nullptr;
+                if (yyjson_is_arr(pm))
+                {
+                    yyjson_val* e;
+                    size_t      idx, max;
+                    yyjson_arr_foreach(pm, idx, max, e)
+                    {
+                        if (yyjson_is_obj(e))
+                        {
+                            mat_obj = e;
+                            break;
+                        }
+                    }
+                }
+                else if (yyjson_is_obj(pm))
+                {
+                    mat_obj = pm;
+                }
+
+                if (mat_obj)
+                {
+                    // Determine material type: explicit "type" field preferred
+                    const char* mtype_str = nullptr;
+                    yyjson_val* mtv       = yyjson_obj_get(mat_obj, "type");
+                    if (mtv && yyjson_is_str(mtv))
+                        mtype_str = yyjson_get_str(mtv);
+
+                    // auto infer_type_if_missing = [&]() -> std::string
+                    // {
+                    //     // Heuristics: presence of certain keys -> material kind
+                    //     if (yyjson_obj_get(mat_obj, "radius") || yyjson_obj_get(mat_obj, "bending_stiffness")
+                    //         || yyjson_obj_get(mat_obj, "twisting_stiffness"))
+                    //         return std::string("Rod");
+                    //     if (yyjson_obj_get(mat_obj, "stiffness") || yyjson_obj_get(mat_obj, "model")
+                    //         || yyjson_obj_get(mat_obj, "constitutive"))
+                    //         return std::string("Rigid");
+                    //     // default to Cloth when uncertain (thickness commonly used for shells)
+                    //     return std::string("Cloth");
+                    // };
+                    // std::string material_type = mtype_str ? std::string(mtype_str) : infer_type_if_missing();
+
+
+                    std::string material_type = mtype_str ? std::string(mtype_str) :
+                                                stype && yyjson_is_str(stype) ?
+                                                            std::string(yyjson_get_str(stype)) :
+                                                            "Cloth";
+
+                    // Helper to map material type -> shell type
+                    auto material_to_shell = [&](const std::string& s)
+                    {
+                        if (s == "Rigid")
+                            return lcs::Initializer::ShellTypeRigid;
+                        else if (s == "Tetrahedral" || s == "Tet" || s == "TetMaterial")
+                            return lcs::Initializer::ShellTypeTetrahedral;
+                        else if (s == "Rod")
+                            return lcs::Initializer::ShellTypeRod;
+                        return lcs::Initializer::ShellTypeCloth;
+                    };
+
+                    // Parse and fill material struct based on material_type
+                    if (material_type == "Cloth")
+                    {
+                        lcs::Initializer::ClothMaterial mat;
+                        yyjson_val*                     v = nullptr;
+                        v                                 = yyjson_obj_get(mat_obj, "thickness");
+                        if (v && yyjson_is_num(v))
+                            mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "youngs_modulus");
+                        if (v && yyjson_is_num(v))
+                            mat.youngs_modulus = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "poisson_ratio");
+                        if (v && yyjson_is_num(v))
+                            mat.poisson_ratio = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "area_bending_stiffness");
+                        if (v && yyjson_is_num(v))
+                            mat.area_bending_stiffness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "mass");
+                        if (v && yyjson_is_num(v))
+                            mat.mass = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "density");
+                        if (v && yyjson_is_num(v))
+                            mat.density = static_cast<float>(yyjson_get_num(v));
+
+                        // stretch_model may be string or integer
+                        v = yyjson_obj_get(mat_obj, "stretch_model");
+                        if (v)
+                        {
+                            if (yyjson_is_str(v))
+                            {
+                                const char* s = yyjson_get_str(v);
+                                if (strcmp(s, "Spring") == 0)
+                                    mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring;
+                                else
+                                    mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::FEM_BW98;
+                            }
+                            else if (yyjson_is_int(v) || yyjson_is_uint(v) || yyjson_is_num(v))
+                            {
+                                int iv = yyjson_get_int(v);
+                                mat.stretch_model =
+                                    static_cast<lcs::Initializer::ConstitutiveStretchModelCloth>(iv);
+                            }
+                        }
+
+                        v = yyjson_obj_get(mat_obj, "bending_model");
+                        if (v)
+                        {
+                            if (yyjson_is_str(v))
+                            {
+                                const char* s = yyjson_get_str(v);
+                                if (strcmp(s, "None") == 0)
+                                    mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::None;
+                                else if (strcmp(s, "QuadraticBending") == 0)
+                                    mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::QuadraticBending;
+                                else
+                                    mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::DihedralAngle;
+                            }
+                            else if (yyjson_is_int(v) || yyjson_is_uint(v) || yyjson_is_num(v))
+                            {
+                                int iv = yyjson_get_int(v);
+                                mat.bending_model =
+                                    static_cast<lcs::Initializer::ConstitutiveBendingModelCloth>(iv);
+                            }
+                        }
+
+                        info.physics_material = mat;
+                        // if shell_type not provided explicitly, set from material
+                        if (stype == nullptr)
+                        {
+                            info.shell_type = lcs::Initializer::ShellTypeCloth;
+                        }
+                        else
+                        {
+                            // ensure consistency when both provided
+                            auto mt = material_to_shell(material_type);
+                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                        }
+                    }
+                    else if (material_type == "Tetrahedral" || material_type == "Tet" || material_type == "TetMaterial")
+                    {
+                        lcs::Initializer::TetMaterial mat;
+                        yyjson_val*                   v = nullptr;
+                        v                               = yyjson_obj_get(mat_obj, "youngs_modulus");
+                        if (v && yyjson_is_num(v))
+                            mat.youngs_modulus = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "poisson_ratio");
+                        if (v && yyjson_is_num(v))
+                            mat.poisson_ratio = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "mass");
+                        if (v && yyjson_is_num(v))
+                            mat.mass = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "density");
+                        if (v && yyjson_is_num(v))
+                            mat.density = static_cast<float>(yyjson_get_num(v));
+
+                        info.physics_material = mat;
+                        if (stype == nullptr)
+                        {
+                            info.shell_type = lcs::Initializer::ShellTypeTetrahedral;
+                        }
+                        else
+                        {
+                            auto mt = material_to_shell(material_type);
+                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                        }
+                    }
+                    else if (material_type == "Rigid")
+                    {
+                        lcs::Initializer::RigidMaterial mat;
+                        yyjson_val*                     v = nullptr;
+                        v                                 = yyjson_obj_get(mat_obj, "thickness");
+                        if (v && yyjson_is_num(v))
+                            mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "stiffness");
+                        if (v && yyjson_is_num(v))
+                            mat.stiffness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "mass");
+                        if (v && yyjson_is_num(v))
+                            mat.mass = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "density");
+                        if (v && yyjson_is_num(v))
+                            mat.density = static_cast<float>(yyjson_get_num(v));
+
+                        info.physics_material = mat;
+                        if (stype == nullptr)
+                        {
+                            info.shell_type = lcs::Initializer::ShellTypeRigid;
+                        }
+                        else
+                        {
+                            auto mt = material_to_shell(material_type);
+                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                        }
+                    }
+                    else if (material_type == "Rod")
+                    {
+                        lcs::Initializer::RodMaterial mat;
+                        yyjson_val*                   v = nullptr;
+                        v                               = yyjson_obj_get(mat_obj, "radius");
+                        if (v && yyjson_is_num(v))
+                            mat.radius = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "bending_stiffness");
+                        if (v && yyjson_is_num(v))
+                            mat.bending_stiffness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "twisting_stiffness");
+                        if (v && yyjson_is_num(v))
+                            mat.twisting_stiffness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "mass");
+                        if (v && yyjson_is_num(v))
+                            mat.mass = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "density");
+                        if (v && yyjson_is_num(v))
+                            mat.density = static_cast<float>(yyjson_get_num(v));
+
+                        info.physics_material = mat;
+                        if (stype == nullptr)
+                        {
+                            info.shell_type = lcs::Initializer::ShellTypeRod;
+                        }
+                        else
+                        {
+                            auto mt = material_to_shell(material_type);
+                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                        }
+                    }
+                    else
+                    {
+                        // fallback: treat as cloth
+                        lcs::Initializer::ClothMaterial mat;
+                        yyjson_val*                     v = yyjson_obj_get(mat_obj, "thickness");
+                        if (v && yyjson_is_num(v))
+                            mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        info.physics_material = mat;
+                        if (stype == nullptr)
+                            info.shell_type = lcs::Initializer::ShellTypeCloth;
+                    }
+                }
             }
 
             // fixed_points

@@ -144,38 +144,42 @@ namespace Initializer
         Spring = 0,
     };
 
-    struct ClothMaterial
+    struct MaterialBase
+    {
+        float mass    = 0.0f;
+        float density = 1e3f;
+        // float thickness = 1e-3f;
+        bool is_shell = true;
+    };
+
+    struct ClothMaterial : MaterialBase
     {
         ConstitutiveStretchModelCloth stretch_model  = ConstitutiveStretchModelCloth::FEM_BW98;
         ConstitutiveBendingModelCloth bending_model  = ConstitutiveBendingModelCloth::DihedralAngle;
         float                         thickness      = 1e-3f;
-        float                         density        = 1e3f;
         float                         youngs_modulus = 1e5f;
         float                         poisson_ratio  = 0.25f;
         float                         area_bending_stiffness = 5e-3f;
         // float                         area_youngs_modulus = 1e3f;
     };
-    struct TetMaterial
+    struct TetMaterial : MaterialBase
     {
         ConstitutiveModelTet model          = ConstitutiveModelTet::Spring;
-        float                density        = 1e3f;
         float                youngs_modulus = 1e6f;
         float                poisson_ratio  = 0.35f;
     };
-    struct RigidMaterial
+    struct RigidMaterial : MaterialBase
     {
-        ConstitutiveModelRigid model           = ConstitutiveModelRigid::Orthogonality;
-        bool                   is_solid        = false;
-        float                  density         = 1e3f;
-        float                  shell_thickness = 3e-3f;
-        float                  stiffness       = 1e6f;
+        ConstitutiveModelRigid model = ConstitutiveModelRigid::Orthogonality;
+        // bool                   is_solid        = false;
+        float thickness = 3e-3f;
+        float stiffness = 1e6f;
         // float                  youngs_modulus  = 1e9f;
         // float                  poisson_ratio   = 0.35f;
     };
-    struct RodMaterial
+    struct RodMaterial : MaterialBase
     {
         ConstitutiveModelRod model              = ConstitutiveModelRod::Spring;
-        float                density            = 1e3f;
         float                radius             = 1e-3f;
         float                bending_stiffness  = 1e4f;
         float                twisting_stiffness = 1e4f;
@@ -190,14 +194,7 @@ namespace Initializer
         float3 rotation = luisa::make_float3(0.0f * lcs::Pi);  // Rotation in x-channel means rotate along with x-axis
         float3 scale = luisa::make_float3(1.0f);
 
-        float mass    = 0.0f;  // If mass > 0, use mass to compute density
-        float density = 1e3f;
-
-        // For cloth, rod, non-solid rigid body, is_shell = true. For solid rigid body and tet mesh, is_shell = false
-        bool  is_shell  = true;
-        float thickness = 1e-3f;  // defulat 1mm for shell, ignored for volumn mesh
-
-        MaterialVariant physics_material;
+        MaterialVariant physics_material;  // Maybe we can use Polymorphism
 
         template <typename T>
         bool holds() const
@@ -205,19 +202,63 @@ namespace Initializer
             return std::holds_alternative<T>(physics_material);
         }
         template <typename T>
-        T& get()
+        T& get_material()
         {
             return std::get<T>(physics_material);
         }
         template <typename T>
-        const T& get() const
+        const T& get_material() const
         {
             return std::get<T>(physics_material);
         }
-        template <typename T>
-        T* get_if()
+        // template <typename T>
+        // T* get_if()
+        // {
+        //     return std::get_if<T>(&physics_material);
+        // }
+
+        // Return whether the contained material should be treated as a shell.
+        // We can't call std::get<MaterialBase>() because MaterialBase is not
+        // a variant alternative; instead expose this helper which visits the
+        // active alternative and reads its `is_shell` member.
+        bool get_is_shell() const
         {
-            return std::get_if<T>(&physics_material);
+            return std::visit([](auto const& m) noexcept { return m.is_shell; }, physics_material);
+        }
+        float get_mass() const
+        {
+            return std::visit([](auto const& m) noexcept { return m.mass; }, physics_material);
+        }
+        float get_density() const
+        {
+            return std::visit([](auto const& m) noexcept { return m.density; }, physics_material);
+        }
+        float get_thickness() const
+        {
+            if (get_is_shell())
+            {
+                if (holds<ClothMaterial>())
+                {
+                    return get_material<ClothMaterial>().thickness;
+                }
+                else if (holds<RigidMaterial>())
+                {
+                    return get_material<RigidMaterial>().thickness;
+                }
+                else if (holds<RodMaterial>())
+                {
+                    return get_material<RodMaterial>().radius * 2.0f;
+                }
+                else
+                {
+                    LUISA_ERROR("Mesh {} should not have thickness", model_name);
+                    return 0.0f;
+                }
+            }
+            else
+            {
+                return 0.0f;
+            }
         }
         std::vector<float3> get_fixed_point_target_positions(const float time);
 

@@ -355,7 +355,7 @@ namespace Initializer
             auto& input_mesh = shell_info.input_mesh;
             if (input_mesh.model_positions.empty())
             {
-                bool second_read = SimMesh::read_mesh_file(shell_info.model_name, input_mesh);
+                shell_info.load_mesh_data();
             }
 
             if (shell_info.shell_type == ShellTypeCloth)
@@ -364,12 +364,8 @@ namespace Initializer
                 {
                     shell_info.physics_material = ClothMaterial();
                 }
-                {
-                    auto& mat = shell_info.get<ClothMaterial>();
-                    shell_info.density = mat.density;  // Update density in shell_info for mass computation
-                    shell_info.is_shell  = true;
-                    shell_info.thickness = mat.thickness;
-                }
+                auto& mat    = shell_info.get_material<ClothMaterial>();
+                mat.is_shell = true;  // Cloth material must be shell
             }
             else if (shell_info.shell_type == ShellTypeTetrahedral)
             {
@@ -377,12 +373,8 @@ namespace Initializer
                 {
                     shell_info.physics_material = TetMaterial();
                 }
-                {
-                    auto& mat            = shell_info.get<TetMaterial>();
-                    shell_info.density   = mat.density;
-                    shell_info.is_shell  = false;
-                    shell_info.thickness = 0.0f;
-                }
+                auto& mat    = shell_info.get_material<TetMaterial>();
+                mat.is_shell = false;
             }
             else if (shell_info.shell_type == ShellTypeRigid)
             {
@@ -390,19 +382,13 @@ namespace Initializer
                 {
                     shell_info.physics_material = RigidMaterial();
                 }
+                auto& mat = shell_info.get_material<RigidMaterial>();
+                if (mat.is_shell)
                 {
-                    auto& mat          = shell_info.get<RigidMaterial>();
-                    shell_info.density = mat.density;
-                    if (mat.is_solid)
-                    {
-                        shell_info.is_shell  = false;
-                        shell_info.thickness = 0.0f;
-                    }
-                    else
-                    {
-                        shell_info.is_shell  = true;
-                        shell_info.thickness = mat.shell_thickness;
-                    }
+                }
+                else
+                {
+                    mat.thickness = 0.0f;
                 }
             }
             else if (shell_info.shell_type == ShellTypeRod)
@@ -411,12 +397,8 @@ namespace Initializer
                 {
                     shell_info.physics_material = RodMaterial();
                 }
-                {
-                    auto& mat            = shell_info.get<RodMaterial>();
-                    shell_info.density   = mat.density;
-                    shell_info.is_shell  = true;
-                    shell_info.thickness = 2.0f * mat.radius;
-                }
+                auto& mat    = shell_info.get_material<RodMaterial>();
+                mat.is_shell = true;
             }
         }
 
@@ -790,7 +772,8 @@ namespace Initializer
                                           mesh_data->sa_rest_face_area[fid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
-                                          mesh_data->sa_face_thickness[fid] = shell_infos[mesh_idx].thickness;
+                                          mesh_data->sa_face_thickness[fid] =
+                                              shell_infos[mesh_idx].get_thickness();
                                       });
             CpuParallel::parallel_for(0,
                                       num_tets,
@@ -816,12 +799,13 @@ namespace Initializer
 
                                           const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
                                           const auto& shell_info = shell_infos[mesh_idx];
-                                          mesh_data->sa_vert_thickness[vid] = shell_info.thickness;
+                                          mesh_data->sa_vert_thickness[vid] = shell_info.get_thickness();
 
                                           const auto& adj_tets = mesh_data->vert_adj_tets[vid];
-                                          if (shell_info.is_shell || adj_tets.empty())
+                                          if (shell_info.get_is_shell() || adj_tets.empty())
                                           {
-                                              mesh_data->sa_rest_vert_volume[vid] = area * shell_info.thickness;
+                                              mesh_data->sa_rest_vert_volume[vid] =
+                                                  area * shell_info.get_thickness();
                                           }
                                           else
                                           {
@@ -848,7 +832,8 @@ namespace Initializer
                                           mesh_data->sa_rest_edge_area[eid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
-                                          mesh_data->sa_edge_thickness[eid] = shell_infos[mesh_idx].thickness;
+                                          mesh_data->sa_edge_thickness[eid] =
+                                              shell_infos[mesh_idx].get_thickness();
                                       });
 
             // float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
@@ -871,7 +856,7 @@ namespace Initializer
                 const auto& shell_info = shell_infos[meshIdx];
 
                 float sum_volume = 0.0f;
-                if (shell_info.is_shell)  // Shell volume = area * thickness
+                if (shell_info.get_is_shell())  // Shell volume = area * thickness
                 {
                     sum_volume = CpuParallel::parallel_for_and_reduce_sum<float>(
                         0,
@@ -880,7 +865,7 @@ namespace Initializer
                         {
                             float face_area =
                                 mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid];
-                            return face_area * shell_infos[meshIdx].thickness;
+                            return face_area * shell_info.get_thickness();
                         });
                 }
                 else  // For solid body, compute volume from tets or faces integration
@@ -929,14 +914,15 @@ namespace Initializer
                     { return mesh_data->sa_rest_face_area[mesh_data->prefix_num_faces[meshIdx] + fid]; });
                 mesh_data->sa_rest_body_area[meshIdx] = sum_surface_area;
 
-                mesh_data->sa_body_mass[meshIdx] = shell_infos[meshIdx].mass != 0.0f ?
-                                                       shell_infos[meshIdx].mass :
-                                                       sum_volume * shell_infos[meshIdx].density;
+
+                const float input_mass    = shell_info.get_mass();
+                const float input_density = shell_info.get_density();
+                mesh_data->sa_body_mass[meshIdx] = input_mass != 0.0f ? input_mass : sum_volume * input_density;
 
                 LUISA_INFO("Mesh {}'s volume = {}{}, body mass = {}, avg vert mass = {}",
                            meshIdx,
                            sum_volume,
-                           shell_info.is_shell ? luisa::format(", surface area = {}", sum_surface_area) : "",
+                           shell_info.get_is_shell() ? luisa::format(", surface area = {}", sum_surface_area) : "",
                            mesh_data->sa_body_mass[meshIdx],
                            mesh_data->sa_body_mass[meshIdx]
                                / float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));
