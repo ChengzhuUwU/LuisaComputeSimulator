@@ -75,6 +75,8 @@ The simulator provides support for simulating cloth and rigid body and for **Int
 2. The GUI is disabled by default for broader platform compatibility.  
     To enable the GUI (using [polyscope](https://github.com/nmwsharp/polyscope)), set the `LUISA_COMPUTE_SOLVER_USE_GUI` option in CMake.
 
+3. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
+
 ## References
 
 - **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g) and its [notes](https://zhuanlan.zhihu.com/p/441088912), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), libuipc, [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)

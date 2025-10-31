@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv)
 {
-    luisa::log_level_info();
+    luisa::log_level_verbose();
     LUISA_INFO("Test jit");
 
     // Init GPU system
@@ -39,10 +39,39 @@ int main(int argc, char** argv)
     lbvh_data.sa_sorted_get_original = device.create_buffer<uint>(1000);
     lbvh_data.sa_positions           = device.create_buffer<float3>(1000);
 
-    stream << synchronize();
+    std::vector<uint>   host_sorted_get_original(1000, 0u);
+    std::vector<float3> host_positions(1000, float3(0.0f, 0.0f, 0.0f));
+
+    stream << lbvh_data.sa_sorted_get_original.copy_from(host_sorted_get_original.data())
+           << lbvh_data.sa_positions.copy_from(host_positions.data()) << synchronize();
+
+    // Some operations preventing data un-prepared
+    // float4x4 some_matrix = float4x4::eye(1.0f);
+    // for (uint ii = 0; ii < 1000000; ii++)
+    // {
+    //     some_matrix = some_matrix * some_matrix;
+    // }
+    // LUISA_INFO("Mult 1000000 result : {}", some_matrix);
+
+    LBVH_DATA* data_ptr = &lbvh_data;
 
     auto fn_test_compile_refit = [&](const uint loop)
     {
+        // OK
+        // auto fn_update_vert_tree_leave_aabb = device.compile<1>(
+        //     [](const Var<BufferView<uint>>   sa_sorted_get_original,
+        //        const Var<BufferView<float3>> sa_x_start,
+        //        const Var<BufferView<float3>> sa_x_end,
+        //        const Float                   thickness)
+        //     {
+        //         const UInt lid = dispatch_id().x;
+        //         UInt       vid = sa_sorted_get_original->read(lid);
+        //     });
+        // stream << fn_update_vert_tree_leave_aabb(
+        //               lbvh_data.sa_sorted_get_original, lbvh_data.sa_positions, lbvh_data.sa_positions, 0.001f)
+        //               .dispatch(1000)
+        //        << synchronize();
+
         auto fn_update_vert_tree_leave_aabb = device.compile<1>(
             [sa_sorted_get_original = lbvh_data.sa_sorted_get_original.view()](
                 const Var<Buffer<float3>> sa_x_start, const Var<Buffer<float3>> sa_x_end, const Float thickness)
@@ -50,11 +79,9 @@ int main(int argc, char** argv)
                 const UInt lid = dispatch_id().x;
                 UInt       vid = sa_sorted_get_original->read(lid);
             });
+        stream << fn_update_vert_tree_leave_aabb(lbvh_data.sa_positions, lbvh_data.sa_positions, 0.001f).dispatch(1000)
+               << synchronize();
 
-        const float thickness = 0.0f;
-        stream
-            << fn_update_vert_tree_leave_aabb(lbvh_data.sa_positions, lbvh_data.sa_positions, thickness).dispatch(1000)
-            << synchronize();
 
         std::cout << loop << " ";
     };
