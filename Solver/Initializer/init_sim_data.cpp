@@ -201,19 +201,10 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         CpuParallel::parallel_copy(mesh_data->sa_rest_x, sim_data->sa_target_positions);
     }
 
-    // Count for stretch springs, stretch faces, bending edges
-    std::vector<uint> stretch_spring_indices(mesh_data->num_edges, -1u);
-    uint              num_stretch_springs = 0;
-    std::vector<uint> stretch_face_indices(mesh_data->num_faces, -1u);
-    uint              num_stretch_faces = 0;
-    std::vector<uint> bending_edge_indices(mesh_data->num_dihedral_edges, -1u);
-    uint              num_bending_edges = 0;
-
     // Calculate number of energy element
     constexpr bool cull_unused_constraints = true;
-    CpuParallel::parallel_for_and_scan(
-        0,
-        mesh_data->num_edges,
+
+    std::vector<uint> stretch_spring_indices = fn_get_active_indices(
         [&](const uint eid)
         {
             const uint  mesh_idx   = mesh_data->sa_edge_mesh_id[eid];
@@ -243,18 +234,10 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                    true;
             return (use_spring && is_dynamic) ? 1 : 0;
         },
-        [&](const uint eid, const uint global_prefix, const uint parallel_result)
-        {
-            if (parallel_result == 1)
-                stretch_spring_indices[global_prefix - 1] = eid;
-            if (eid == mesh_data->num_edges - 1)
-                num_stretch_springs = global_prefix;
-        },
-        0);
+        mesh_data->num_edges);
+    const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
 
-    CpuParallel::parallel_for_and_scan(
-        0,
-        mesh_data->num_faces,
+    std::vector<uint> stretch_face_indices = fn_get_active_indices(
         [&](const uint fid)
         {
             const uint  mesh_idx         = mesh_data->sa_face_mesh_id[fid];
@@ -269,18 +252,10 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                    true;
             return (use_stretch_face && is_dynamic) ? 1 : 0;
         },
-        [&](const uint fid, const uint global_prefix, const uint parallel_result)
-        {
-            if (parallel_result == 1)
-                stretch_face_indices[global_prefix - 1] = fid;
-            if (fid == mesh_data->num_faces - 1)
-                num_stretch_faces = global_prefix;
-        },
-        0);
+        mesh_data->num_faces);
+    const uint num_stretch_faces = static_cast<uint>(stretch_face_indices.size());
 
-    CpuParallel::parallel_for_and_scan(
-        0,
-        mesh_data->num_dihedral_edges,
+    std::vector<uint> bending_edge_indices = fn_get_active_indices(
         [&](const uint eid)
         {
             const uint  mesh_idx    = mesh_data->sa_dihedral_edge_mesh_id[eid];
@@ -295,33 +270,10 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                    true;
             return (use_bending && is_dynamic) ? 1 : 0;
         },
-        [&](const uint eid, const uint global_prefix, const uint parallel_result)
-        {
-            if (parallel_result == 1)
-                bending_edge_indices[global_prefix - 1] = eid;
-            if (eid == mesh_data->num_dihedral_edges - 1)
-                num_bending_edges = global_prefix;
-        },
-        0);
+        mesh_data->num_dihedral_edges);
+    const uint num_bending_edges = static_cast<uint>(bending_edge_indices.size());
 
-    LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})",
-               num_stretch_springs,
-               mesh_data->num_edges,
-               num_stretch_faces,
-               mesh_data->num_faces,
-               num_bending_edges,
-               mesh_data->num_dihedral_edges);
-
-    const uint num_verts_soft = CpuParallel::parallel_for_and_reduce_sum<uint>(
-        0,
-        mesh_data->num_verts,
-        [&](const uint vid) { return mesh_data->sa_vert_mesh_type[vid] == ShellTypeRigid ? 0 : 1; });
-
-    std::vector<uint> affine_body_indices(mesh_data->num_meshes, -1u);
-    uint              num_affine_bodies = 0;
-    CpuParallel::parallel_for_and_scan(
-        0,
-        mesh_data->num_meshes,
+    std::vector<uint> affine_body_indices = fn_get_active_indices(
         [&](const uint meshIdx)
         {
             const uint curr_prefix       = mesh_data->prefix_num_verts[meshIdx];
@@ -335,14 +287,22 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
             return (is_rigid) ? 1 : 0;  // has_dynamic_vert
         },
-        [&](const uint meshIdx, const uint global_prefix, const uint parallel_result)
-        {
-            if (parallel_result == 1)
-                affine_body_indices[global_prefix - 1] = meshIdx;
-            if (meshIdx == mesh_data->num_meshes - 1)
-                num_affine_bodies = global_prefix;
-        },
-        0);
+        mesh_data->num_meshes);
+    const uint num_affine_bodies = static_cast<uint>(affine_body_indices.size());
+
+    std::vector<uint> soft_vert_indices =
+        fn_get_active_indices([&](const uint vid)
+                              { return mesh_data->sa_vert_mesh_type[vid] == ShellTypeRigid ? 0 : 1; },
+                              mesh_data->num_verts);
+    const uint num_verts_soft = static_cast<uint>(soft_vert_indices.size());
+
+    LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})",
+               num_stretch_springs,
+               mesh_data->num_edges,
+               num_stretch_faces,
+               mesh_data->num_faces,
+               num_bending_edges,
+               mesh_data->num_dihedral_edges);
 
     const uint num_dof          = num_verts_soft + num_affine_bodies * 4;
     sim_data->num_verts_soft    = num_verts_soft;
