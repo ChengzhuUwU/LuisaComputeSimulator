@@ -2743,13 +2743,13 @@ void NewtonSolver::host_material_energy_assembly()
 // Device functions
 void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
 {
-    const float thickness       = get_scene_params().thickness;
-    const float ccd_query_range = thickness + 0;  // + d_hat ???
-
     narrow_phase_detector->reset_broadphase_count(stream);
 
-    lbvh_face->update_face_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_faces);
+    lbvh_face->update_face_tree_leave_aabb(stream,
+                                           sim_data->sa_contact_active_verts_offset,
+                                           sim_data->sa_x_iter_start,
+                                           sim_data->sa_x,
+                                           mesh_data->sa_faces);
     lbvh_face->refit(stream);
     lbvh_face->broad_phase_query_from_verts(
         stream,
@@ -2757,10 +2757,14 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
         sim_data->sa_x,
         collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1),
         collision_data->broad_phase_list_vf,
-        ccd_query_range);
+        sim_data->sa_contact_active_verts_d_hat,
+        sim_data->sa_contact_active_verts_offset);
 
-    lbvh_edge->update_edge_tree_leave_aabb(
-        stream, thickness, sim_data->sa_x_iter_start, sim_data->sa_x, mesh_data->sa_edges);
+    lbvh_edge->update_edge_tree_leave_aabb(stream,
+                                           sim_data->sa_contact_active_verts_offset,
+                                           sim_data->sa_x_iter_start,
+                                           sim_data->sa_x,
+                                           mesh_data->sa_edges);
     lbvh_edge->refit(stream);
     lbvh_edge->broad_phase_query_from_edges(
         stream,
@@ -2769,15 +2773,13 @@ void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
         mesh_data->sa_edges,
         collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1),
         collision_data->broad_phase_list_ee,
-        ccd_query_range);
+        sim_data->sa_contact_active_verts_d_hat,
+        sim_data->sa_contact_active_verts_offset);
 }
 void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
 {
-    const float thickness       = get_scene_params().thickness;
-    const float d_hat           = get_scene_params().d_hat;
-    const float dcd_query_range = d_hat + thickness;
-
-    lbvh_face->update_face_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+    lbvh_face->update_face_tree_leave_aabb(
+        stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
     lbvh_face->refit(stream);
     lbvh_face->broad_phase_query_from_verts(
         stream,
@@ -2785,9 +2787,11 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
         sim_data->sa_x,
         collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1),
         collision_data->broad_phase_list_vf,
-        dcd_query_range);
+        sim_data->sa_contact_active_verts_d_hat,
+        sim_data->sa_contact_active_verts_offset);
 
-    lbvh_edge->update_edge_tree_leave_aabb(stream, thickness, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+    lbvh_edge->update_edge_tree_leave_aabb(
+        stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
     lbvh_edge->refit(stream);
     lbvh_edge->broad_phase_query_from_edges(
         stream,
@@ -2796,7 +2800,8 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
         mesh_data->sa_edges,
         collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1),
         collision_data->broad_phase_list_ee,
-        dcd_query_range);
+        sim_data->sa_contact_active_verts_d_hat,
+        sim_data->sa_contact_active_verts_offset);
 }
 void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 {
@@ -2811,8 +2816,8 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_x,
                                         sim_data->sa_x,
                                         mesh_data->sa_faces,
-                                        d_hat,
-                                        thickness);
+                                        sim_data->sa_contact_active_verts_d_hat,
+                                        sim_data->sa_contact_active_verts_offset);
 
     narrow_phase_detector->ee_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
@@ -2821,8 +2826,8 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_x,
                                         mesh_data->sa_edges,
                                         mesh_data->sa_edges,
-                                        d_hat,
-                                        thickness);
+                                        sim_data->sa_contact_active_verts_d_hat,
+                                        sim_data->sa_contact_active_verts_offset);
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {
@@ -2840,8 +2845,8 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
                                                   mesh_data->sa_faces,
                                                   sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_vert_affine_bodies_id,
-                                                  d_hat,
-                                                  thickness,
+                                                  sim_data->sa_contact_active_verts_d_hat,
+                                                  sim_data->sa_contact_active_verts_offset,
                                                   kappa);
 
     narrow_phase_detector->ee_dcd_query_repulsion(stream,
@@ -2855,8 +2860,8 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
                                                   mesh_data->sa_edges,
                                                   sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_vert_affine_bodies_id,
-                                                  d_hat,
-                                                  thickness,
+                                                  sim_data->sa_contact_active_verts_d_hat,
+                                                  sim_data->sa_contact_active_verts_offset,
                                                   kappa);
 }
 void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
@@ -3027,8 +3032,8 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
 
                             if (MatrixTriplet::write_use_atomic(matrix_property))
                             {
-                                auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
-                                atomic_view->fetch_add(sum_contrib);
+                                CpuParallel::spin_atomic<float3>::fetch_add(output_ptr[vid], sum_contrib);
+                                // auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
                                 // output_ptr[vid] += sum_contrib;
                             }
                             else

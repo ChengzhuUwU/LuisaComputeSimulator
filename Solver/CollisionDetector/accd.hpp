@@ -96,6 +96,12 @@ namespace accd
             {
                 luisa::compute::device_log("CCD iter for {}, toi = {}", iter_count, toi);
             };
+
+        // $if(toi != accd::line_search_max_t)
+        // {
+        //     luisa::compute::device_log(
+        //         "CCD detect toi at {}: init dist = {}, offset = {}", toi, sqrt_scalar(square_dist_func(x0)), offset);
+        // };
         luisa::compute::device_assert(toi > 0.0f);
         return toi;
     }

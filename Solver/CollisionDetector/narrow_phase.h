@@ -75,8 +75,8 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_left,
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint3>&  sa_faces_right,
-                      const float           d_hat,
-                      const float           thickness);
+                      const Buffer<float>&  d_hat,
+                      const Buffer<float>&  thickness);
 
     void ee_ccd_query(Stream&               stream,
                       const Buffer<float3>& sa_x_begin_left,
@@ -85,8 +85,8 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint2>&  sa_edges_left,
                       const Buffer<uint2>&  sa_edges_right,
-                      const float           d_hat,
-                      const float           thickness);
+                      const Buffer<float>&  d_hat,
+                      const Buffer<float>&  thickness);
 
     void host_vf_ccd_query(Stream&                    stream,
                            const std::vector<float3>& sa_x_begin_left,
@@ -119,8 +119,8 @@ class NarrowPhasesDetector
                                 const Buffer<uint3>&  sa_faces_right,
                                 const Buffer<uint>&   sa_vert_affine_bodies_id_left,
                                 const Buffer<uint>&   sa_vert_affine_bodies_id_right,
-                                const float           d_hat,
-                                const float           thickness,
+                                const Buffer<float>&  d_hat,
+                                const Buffer<float>&  thickness,
                                 const float           kappa);
 
     void ee_dcd_query_repulsion(Stream&               stream,
@@ -134,8 +134,8 @@ class NarrowPhasesDetector
                                 const Buffer<uint2>&  sa_edges_right,
                                 const Buffer<uint>&   sa_vert_affine_bodies_id_left,
                                 const Buffer<uint>&   sa_vert_affine_bodies_id_right,
-                                const float           d_hat,
-                                const float           thickness,
+                                const Buffer<float>&  d_hat,
+                                const Buffer<float>&  thickness,
                                 const float           kappa);
 
     void device_perPair_evaluate_gradient_hessian(Stream&               stream,
@@ -185,24 +185,24 @@ class NarrowPhasesDetector
 
   private:
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<uint3>,
-                           float,
-                           float>
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<uint3>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>>
         fn_narrow_phase_vf_ccd_query;
 
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<uint2>,
-                           luisa::compute::BufferView<uint2>,
-                           float,
-                           float>
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>>
         fn_narrow_phase_ee_ccd_query;
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
@@ -212,33 +212,33 @@ class NarrowPhasesDetector
 
 
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<uint3>,
-                           luisa::compute::BufferView<uint>,
-                           luisa::compute::BufferView<uint>,
-                           float,
-                           float,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<uint3>,
+                           luisa::compute::Buffer<uint>,
+                           luisa::compute::Buffer<uint>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>,
                            float>
         fn_narrow_phase_vf_dcd_query;
 
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<uint2>,
-                           luisa::compute::BufferView<uint2>,
-                           luisa::compute::BufferView<uint>,
-                           luisa::compute::BufferView<uint>,
-                           float,
-                           float,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint>,
+                           luisa::compute::Buffer<uint>,
+                           luisa::compute::Buffer<float>,
+                           luisa::compute::Buffer<float>,
                            float>
         fn_narrow_phase_ee_dcd_query;
 

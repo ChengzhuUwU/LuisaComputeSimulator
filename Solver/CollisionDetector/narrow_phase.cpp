@@ -272,13 +272,13 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
         fn_narrow_phase_vf_ccd_query,
         [sa_toi           = collision_data->toi_per_vert.view(),
          broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
-         broadphase_list = collision_data->broad_phase_list_vf.view()](Var<BufferView<float3>> sa_x_begin_left,
-                                                                       Var<BufferView<float3>> sa_x_begin_right,
-                                                                       Var<BufferView<float3>> sa_x_end_left,
-                                                                       Var<BufferView<float3>> sa_x_end_right,
-                                                                       Var<BufferView<uint3>> sa_faces_right,
-                                                                       Float d_hat,  // Not relavent to d_hat
-                                                                       Float thickness)
+         broadphase_list = collision_data->broad_phase_list_vf.view()](BufferVar<float3> sa_x_begin_left,
+                                                                       BufferVar<float3> sa_x_begin_right,
+                                                                       BufferVar<float3> sa_x_end_left,
+                                                                       BufferVar<float3> sa_x_end_right,
+                                                                       BufferVar<uint3>  sa_faces_right,
+                                                                       BufferVar<float> sa_vert_d_hat,  // Not relavent to d_hat
+                                                                       BufferVar<float> sa_vert_offset)
         {
             const Uint pair_idx = dispatch_x();
             const Uint vid      = broadphase_list->read(2 * pair_idx + 0);
@@ -302,13 +302,15 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 Float3 t1_f1 = sa_x_end_right->read(face[1]);
                 Float3 t1_f2 = sa_x_end_right->read(face[2]);
 
+                Float offset1   = sa_vert_offset.read(vid);
+                Float offset2   = sa_vert_offset.read(face[0]);
+                Float thickness = offset1 + offset2;
+
                 toi = accd::point_triangle_ccd(t0_p, t1_p, t0_f0, t0_f1, t0_f2, t1_f0, t1_f1, t1_f2, thickness);
 
-                // $if (toi != accd::line_search_max_t)
+                // $if(toi != accd::line_search_max_t)
                 // {
-                //     device_log("VF Pair {} : toi = {}, vid {} & fid {} (face {})",
-                //         pair_idx, toi, vid, fid, face
-                //     );
+                //     device_log("VF Pair {} : toi = {}, vid {} & fid {} (face {})", pair_idx, toi, vid, fid, face);
                 // };
             };
 
@@ -324,14 +326,14 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
         fn_narrow_phase_ee_ccd_query,
         [sa_toi           = collision_data->toi_per_vert.view(),
          broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
-         broadphase_list = collision_data->broad_phase_list_ee.view()](Var<BufferView<float3>> sa_x_begin_a,
-                                                                       Var<BufferView<float3>> sa_x_begin_b,
-                                                                       Var<BufferView<float3>> sa_x_end_a,
-                                                                       Var<BufferView<float3>> sa_x_end_b,
-                                                                       Var<BufferView<uint2>> sa_edges_left,
-                                                                       Var<BufferView<uint2>> sa_edges_right,
-                                                                       Float d_hat,  // Not relavent to d_hat
-                                                                       Float thickness)
+         broadphase_list  = collision_data->broad_phase_list_ee.view()](Var<Buffer<float3>> sa_x_begin_a,
+                                                                       Var<Buffer<float3>> sa_x_begin_b,
+                                                                       Var<Buffer<float3>> sa_x_end_a,
+                                                                       Var<Buffer<float3>> sa_x_end_b,
+                                                                       Var<Buffer<uint2>>  sa_edges_left,
+                                                                       Var<Buffer<uint2>> sa_edges_right,
+                                                                       BufferVar<float> sa_vert_d_hat,  // Not relavent to d_hat
+                                                                       BufferVar<float> sa_vert_offset)
         {
             const Uint  pair_idx   = dispatch_x();
             const Uint  left       = broadphase_list->read(2 * pair_idx + 0);
@@ -356,8 +358,13 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 Float3 eb_t1_p0 = (sa_x_end_b->read(right_edge[0]));
                 Float3 eb_t1_p1 = (sa_x_end_b->read(right_edge[1]));
 
+                Float offset1   = sa_vert_offset.read(left_edge[0]);
+                Float offset2   = sa_vert_offset.read(right_edge[0]);
+                Float thickness = offset1 + offset2;
+
                 toi = accd::edge_edge_ccd(
                     ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1, thickness);
+
                 // device_log("EE CCD : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, ea_t0_p0 = {}, ea_t0_p1 = {}, eb_t0_p0 = {}, eb_t0_p1 = {}, ea_t1_p0 = {}, ea_t1_p1 = {}, eb_t1_p0 = {}, eb_t1_p1 = {}",
                 //     left, left_edge, right, right_edge, toi,
                 //     ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1 , eb_t1_p0, eb_t1_p1
@@ -385,8 +392,8 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
                                         const Buffer<float3>& sa_x_end_left,
                                         const Buffer<float3>& sa_x_end_right,
                                         const Buffer<uint3>&  sa_faces_right,
-                                        const float           d_hat,
-                                        const float           thickness)
+                                        const Buffer<float>&  d_hat,
+                                        const Buffer<float>&  thickness)
 {
     auto& sa_toi           = collision_data->toi_per_vert;
     auto  broadphase_count = collision_data->broad_phase_collision_count.view();
@@ -434,8 +441,8 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
                                         const Buffer<float3>& sa_x_end_b,
                                         const Buffer<uint2>&  sa_edges_left,
                                         const Buffer<uint2>&  sa_edges_right,
-                                        const float           d_hat,
-                                        const float           thickness)
+                                        const Buffer<float>&  d_hat,
+                                        const Buffer<float>&  thickness)
 {
     auto  broadphase_count = collision_data->broad_phase_collision_count.view();
     auto& sa_toi           = collision_data->toi_per_vert;
@@ -506,18 +513,18 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
          broadphase_list   = collision_data->broad_phase_list_vf.view(),
          narrowphase_count = collision_data->narrow_phase_collision_count.view(),
          narrowphase_list  = collision_data->narrow_phase_list.view(),
-         contact_energy_type](Var<BufferView<float3>> sa_x_left,
-                              Var<BufferView<float3>> sa_x_right,
-                              Var<BufferView<float3>> sa_rest_x_a,
-                              Var<BufferView<float3>> sa_rest_x_b,
-                              Var<BufferView<float>>  sa_rest_area_a,
-                              Var<BufferView<float>>  sa_rest_area_b,
-                              Var<BufferView<uint3>>  sa_faces_right,
-                              Var<BufferView<uint>>   sa_vert_affine_bodies_id_left,
-                              Var<BufferView<uint>>   sa_vert_affine_bodies_id_right,
-                              Float                   d_hat,
-                              Float                   thickness,
-                              Float                   kappa)
+         contact_energy_type](BufferVar<float3> sa_x_left,
+                              BufferVar<float3> sa_x_right,
+                              BufferVar<float3> sa_rest_x_a,
+                              BufferVar<float3> sa_rest_x_b,
+                              BufferVar<float>  sa_rest_area_a,
+                              BufferVar<float>  sa_rest_area_b,
+                              BufferVar<uint3>  sa_faces_right,
+                              BufferVar<uint>   sa_vert_affine_bodies_id_left,
+                              BufferVar<uint>   sa_vert_affine_bodies_id_right,
+                              BufferVar<float>  sa_per_vert_d_hat,
+                              BufferVar<float>  sa_per_vert_offset,
+                              Float             kappa)
         {
             const Uint  pair_idx = dispatch_x();
             const Uint  vid      = broadphase_list->read(2 * pair_idx + 0);
@@ -547,17 +554,25 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 Float3 x  = bary[0] * (p - t0) + bary[1] * (p - t1) + bary[2] * (p - t2);
                 Float  d2 = length_squared_vec(x);
                 // luisa::compute::device_log("VF pair {}-{} : d = {}", vid, face, sqrt_scalar(d2));
+
+                Float d_hat1    = sa_per_vert_d_hat.read(vid);
+                Float d_hat2    = sa_per_vert_d_hat.read(face[0]);
+                Float offset1   = sa_per_vert_offset.read(vid);
+                Float offset2   = sa_per_vert_offset.read(face[0]);
+                Float d_hat     = (d_hat1 + d_hat2) * 0.5f;
+                Float thickness = offset1 + offset2;
+
                 $if(d2 < square_scalar(thickness + d_hat)
                     // & d2 > 1e-8f
                 )
                 {
-                    Float3 rest_p  = sa_rest_x_a->read(vid);
-                    Float3 rest_t0 = sa_rest_x_b->read(face[0]);
-                    Float3 rest_t1 = sa_rest_x_b->read(face[1]);
-                    Float3 rest_t2 = sa_rest_x_b->read(face[2]);
-                    Float  rest_d2 =
-                        distance::point_triangle_distance_squared_unclassified(rest_p, rest_t0, rest_t1, rest_t2);
-                    $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
+                    // Float3 rest_p  = sa_rest_x_a->read(vid);
+                    // Float3 rest_t0 = sa_rest_x_b->read(face[0]);
+                    // Float3 rest_t1 = sa_rest_x_b->read(face[1]);
+                    // Float3 rest_t2 = sa_rest_x_b->read(face[2]);
+                    // Float  rest_d2 =
+                    //     distance::point_triangle_distance_squared_unclassified(rest_p, rest_t0, rest_t1, rest_t2);
+                    // $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))  // | d2 < 0.5f * rest_d2
                     {
                         Float  d      = sqrt_scalar(d2);
                         Float3 normal = x / d;
@@ -587,8 +602,10 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             Float ddBddD;
                             // dBdD = kappa * ipc::barrier_first_derivative(d2 - square_scalar(thickness), square_scalar(d_hat));
                             // ddBddD = kappa * ipc::barrier_second_derivative(d2 - square_scalar(thickness), square_scalar(d_hat));
-                            cipc::dKappaBarrierdD(dBdD, avg_area * kappa, d2, d_hat, thickness);
-                            cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
+                            cipc::dKappaBarrierdD(
+                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
+                            cipc::ddKappaBarrierddD(
+                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
                             k1 = dBdD;
                             k2 = ddBddD;
                         }
@@ -612,19 +629,19 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
          broadphase_list   = collision_data->broad_phase_list_ee.view(),
          narrowphase_count = collision_data->narrow_phase_collision_count.view(),
          narrowphase_list  = collision_data->narrow_phase_list.view(),
-         contact_energy_type](Var<BufferView<float3>> sa_x_a,
-                              Var<BufferView<float3>> sa_x_b,
-                              Var<BufferView<float3>> sa_rest_x_a,
-                              Var<BufferView<float3>> sa_rest_x_b,
-                              Var<BufferView<float>>  sa_rest_area_a,
-                              Var<BufferView<float>>  sa_rest_area_b,
-                              Var<BufferView<uint2>>  sa_edges_left,
-                              Var<BufferView<uint2>>  sa_edges_right,
-                              Var<BufferView<uint>>   sa_vert_affine_bodies_id_left,
-                              Var<BufferView<uint>>   sa_vert_affine_bodies_id_right,
-                              Float                   d_hat,
-                              Float                   thickness,
-                              Float                   kappa)
+         contact_energy_type](BufferVar<float3> sa_x_a,
+                              BufferVar<float3> sa_x_b,
+                              BufferVar<float3> sa_rest_x_a,
+                              BufferVar<float3> sa_rest_x_b,
+                              BufferVar<float>  sa_rest_area_a,
+                              BufferVar<float>  sa_rest_area_b,
+                              BufferVar<uint2>  sa_edges_left,
+                              BufferVar<uint2>  sa_edges_right,
+                              BufferVar<uint>   sa_vert_affine_bodies_id_left,
+                              BufferVar<uint>   sa_vert_affine_bodies_id_right,
+                              BufferVar<float>  sa_per_vert_d_hat,
+                              BufferVar<float>  sa_per_vert_offset,
+                              Float             kappa)
         {
             const Uint  pair_idx   = dispatch_x();
             const Uint  left       = broadphase_list->read(2 * pair_idx + 0);
@@ -654,17 +671,24 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 Float  d2 = length_squared_vec(x);
                 // luisa::compute::device_log("EE pair {}-{} : d = {}", left_edge, right_edge, sqrt_scalar(d2));
 
+                Float d_hat1    = sa_per_vert_d_hat.read(left_edge[0]);
+                Float d_hat2    = sa_per_vert_d_hat.read(right_edge[0]);
+                Float offset1   = sa_per_vert_offset.read(left_edge[0]);
+                Float offset2   = sa_per_vert_offset.read(right_edge[0]);
+                Float d_hat     = (d_hat1 + d_hat2) * 0.5f;
+                Float thickness = offset1 + offset2;
+
                 $if(d2 < square_scalar(thickness + d_hat)
                     //  & d2 > 1e-8f
                 )
                 {
-                    Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
-                    Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
-                    Float3 rest_eb_p0 = (sa_rest_x_b->read(right_edge[0]));
-                    Float3 rest_eb_p1 = (sa_rest_x_b->read(right_edge[1]));
-                    Float  rest_d2 =
-                        distance::edge_edge_distance_squared_unclassified(rest_ea_p0, rest_ea_p1, rest_eb_p0, rest_eb_p1);
-                    $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat))
+                    // Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
+                    // Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
+                    // Float3 rest_eb_p0 = (sa_rest_x_b->read(right_edge[0]));
+                    // Float3 rest_eb_p1 = (sa_rest_x_b->read(right_edge[1]));
+                    // Float  rest_d2 =
+                    //     distance::edge_edge_distance_squared_unclassified(rest_ea_p0, rest_ea_p1, rest_eb_p0, rest_eb_p1);
+                    // $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat) | d2 < 0.5f * rest_d2)
                     {
                         Float d = sqrt_scalar(d2);
                         Float C = thickness + d_hat - d;
@@ -692,8 +716,10 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         {
                             Float dBdD;
                             Float ddBddD;
-                            cipc::dKappaBarrierdD(dBdD, avg_area * kappa, d2, d_hat, thickness);
-                            cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
+                            cipc::dKappaBarrierdD(
+                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
+                            cipc::ddKappaBarrierddD(
+                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
                             k1 = dBdD;
                             k2 = ddBddD;
                         }
@@ -729,8 +755,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream&               stream,
                                                   const Buffer<uint3>&  sa_faces_right,
                                                   const Buffer<uint>&   sa_vert_affine_bodies_id_left,
                                                   const Buffer<uint>&   sa_vert_affine_bodies_id_right,
-                                                  const float           d_hat,
-                                                  const float           thickness,
+                                                  const Buffer<float>&  d_hat,
+                                                  const Buffer<float>&  thickness,
                                                   const float           kappa)
 {
     auto&      host_count        = host_collision_data->broad_phase_collision_count;
@@ -763,8 +789,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
                                                   const Buffer<uint2>&  sa_edges_right,
                                                   const Buffer<uint>&   sa_vert_affine_bodies_id_left,
                                                   const Buffer<uint>&   sa_vert_affine_bodies_id_right,
-                                                  const float           d_hat,
-                                                  const float           thickness,
+                                                  const Buffer<float>&  d_hat,
+                                                  const Buffer<float>&  thickness,
                                                   const float           kappa)
 {
     auto&      host_count        = host_collision_data->broad_phase_collision_count;
@@ -1556,6 +1582,21 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             const Float    k1  = stiff[0];
             const Float    k2  = stiff[1];
             const Float3x3 nnT = outer_product(normal, normal);
+
+            $if(is_nan_vec(k1 * k2 * normal))
+            {
+                Float3 delta =
+                    weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
+                    + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
+                device_log("Assemble NaN/INF force in contact pair {}: dist {}, gap = {}, index {}, weight {}, normal {}, k1 {}",
+                           pair_idx,
+                           length(delta),
+                           length(delta) - thickness - d_hat,
+                           indices,
+                           weight,
+                           normal,
+                           k1);
+            };
 
             auto add_to_soft_body = [&](const uint start, const uint end)
             {

@@ -538,6 +538,74 @@ void LBVH::compile(AsyncCompiler& compiler)
             sa_node_aabb->write(num_inner_nodes + lid, aabb);
         });
 
+    LUISA_INFO("data1 {}, data2 {}, data3 {}",
+               lbvh_data->sa_node_aabb.size_bytes(),
+               lbvh_data->sa_sorted_get_original.size_bytes(),
+               lbvh_data->sa_num_leaves.size_bytes());
+
+    compiler.compile(fn_update_vert_tree_leave_aabb_v2,
+                     [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
+                                         Var<Buffer<aabbData>> sa_node_aabb,
+                                         Var<Buffer<float3>>   sa_x_start,
+                                         Var<Buffer<float3>>   sa_x_end,
+                                         Var<Buffer<float>>    thickness)
+                     {
+                         const Uint lid  = dispatch_id().x;
+                         Uint       vid  = sa_sorted_get_original->read(lid);
+                         Float2x3   aabb = AABB::make_aabb(sa_x_start->read(vid), sa_x_end->read(vid));
+                         aabb            = AABB::add_thickness(aabb, thickness->read(vid));
+                         const Uint num_inner_nodes = fn_get_num_leaves() - 1;
+                         sa_node_aabb->write(num_inner_nodes + lid, aabb);
+                     });
+
+    compiler.compile<1>(
+        fn_update_edge_tree_leave_aabb_v2,
+        [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
+                            Var<Buffer<aabbData>> sa_node_aabb,
+                            Var<Buffer<float3>>   sa_x_start,
+                            Var<Buffer<float3>>   sa_x_end,
+                            Var<Buffer<uint2>>    input_edge,
+                            Var<Buffer<float>>    thickness)
+        {
+            const Uint lid                = dispatch_id().x;
+            Uint       eid                = sa_sorted_get_original->read(lid);
+            UInt2      edge               = input_edge->read(eid);
+            Float3     start_positions[2] = {sa_x_start->read(edge[0]), sa_x_start->read(edge[1])};
+            Float3     end_positions[2]   = {sa_x_end->read(edge[0]), sa_x_end->read(edge[1])};
+            Float2x3   aabb =
+                AABB::make_aabb(start_positions[0], start_positions[1], end_positions[0], end_positions[1]);
+            aabb                       = AABB::add_thickness(aabb, thickness->read(edge[0]));
+            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
+            sa_node_aabb->write(num_inner_nodes + lid, aabb);
+        });
+
+    compiler.compile<1>(
+        fn_update_face_tree_leave_aabb_v2,
+        [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
+                            Var<Buffer<aabbData>> sa_node_aabb,
+                            Var<Buffer<float3>>   sa_x_start,
+                            Var<Buffer<float3>>   sa_x_end,
+                            Var<Buffer<uint3>>    input_face,
+                            Var<Buffer<float>>    thickness)
+        {
+            const Uint lid                = dispatch_id().x;
+            Uint       fid                = sa_sorted_get_original->read(lid);
+            UInt3      face               = input_face->read(fid);
+            Float3     start_positions[3] = {
+                sa_x_start->read(face[0]), sa_x_start->read(face[1]), sa_x_start->read(face[2])};
+            device_assert(!is_nan_vec(start_positions[0]) | !is_nan_vec(start_positions[1])
+                              | !is_nan_vec(start_positions[2]) | !is_inf_vec(start_positions[0])
+                              | !is_inf_vec(start_positions[1]) | !is_inf_vec(start_positions[2]),
+                          "Position exist NAN/INF");
+            Float3 end_positions[3] = {sa_x_end->read(face[0]), sa_x_end->read(face[1]), sa_x_end->read(face[2])};
+            Float2x3 start_aabb = AABB::make_aabb(start_positions[0], start_positions[1], start_positions[2]);
+            Float2x3 end_aabb = AABB::make_aabb(end_positions[0], end_positions[1], end_positions[2]);
+            Float2x3 aabb     = AABB::add_aabb(start_aabb, end_aabb);
+            aabb              = AABB::add_thickness(aabb, thickness->read(face[0]));
+            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
+            sa_node_aabb->write(num_inner_nodes + lid, aabb);
+        });
+
     compiler.compile<1>(fn_clear_apply_flag,
                         [sa_apply_flag = lbvh_data->sa_apply_flag.view()]()
                         {
@@ -607,9 +675,70 @@ void LBVH::compile(AsyncCompiler& compiler)
     auto query_template = [sa_node_aabb  = lbvh_data->sa_node_aabb.view(),
                            sa_children   = lbvh_data->sa_children.view(),
                            sa_object_idx = lbvh_data->sa_object_idx.view()](const Float2x3& input_aabb,
-                                                                            Var<BufferView<uint>>& broadphase_count,
-                                                                            Var<BufferView<uint>>& broad_phase_list,
+                                                                            BufferVar<uint>& broadphase_count,
+                                                                            BufferVar<uint>& broad_phase_list,
                                                                             auto is_valid_function)
+    {
+        const Uint                            vid        = dispatch_id().x;
+        constexpr uint                        STACK_SIZE = 32;
+        luisa::compute::ArrayUInt<STACK_SIZE> stack;
+        Int                                   stack_ptr = 0;
+        stack[stack_ptr]                                = 0u;
+        stack_ptr += 1;  // root node
+
+        Uint num_found = 0u;
+        Uint loop      = 0;
+        $while(stack_ptr > 0)
+        {
+            loop += 1;
+            $if(loop > 10000)
+            {
+                $break;
+            };
+
+            stack_ptr -= 1;
+            Uint  node  = stack[stack_ptr];
+            Uint2 child = sa_children->read(node);
+            for (uint ii = 0; ii < 2; ii++)
+            {
+                const Uint curr_select = child[ii];
+                Float2x3   left_aabb   = sa_node_aabb->read(curr_select);
+                $if(AABB::is_overlap_aabb(left_aabb, input_aabb))
+                {
+                    Uint adj_vid = sa_object_idx->read(curr_select);
+                    $if(adj_vid != -1u)  // is_leaf
+                    {
+                        $if(is_valid_function(adj_vid))
+                        {
+                            Uint idx = broadphase_count->atomic(0).fetch_add(1u);
+                            broad_phase_list->write(idx * 2 + 0, vid);
+                            broad_phase_list->write(idx * 2 + 1, adj_vid);
+                            num_found += 1u;
+                        };
+                    }
+                    $else
+                    {
+                        $if(stack_ptr < STACK_SIZE)
+                        {
+                            stack[stack_ptr] = curr_select;
+                            stack_ptr += 1;
+                        }
+                        $else
+                        {
+                            $break;
+                        };
+                    };
+                };
+            }
+        };
+    };
+    auto query_template2 = [](BufferVar<aabbData>& sa_node_aabb,
+                              BufferVar<uint2>&    sa_children,
+                              BufferVar<uint>&     sa_object_idx,
+                              const Float2x3&      input_aabb,
+                              BufferVar<uint>&     broadphase_count,
+                              BufferVar<uint>&     broad_phase_list,
+                              auto                 is_valid_function)
     {
         const Uint                            vid        = dispatch_id().x;
         constexpr uint                        STACK_SIZE = 32;
@@ -674,11 +803,11 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_verts,
-                        [query_template](Var<BufferView<float3>> sa_x_begin,
-                                         Var<BufferView<float3>> sa_x_end,
-                                         Var<BufferView<uint>>   broadphase_count,
-                                         Var<BufferView<uint>>   broad_phase_list,
-                                         const Float             thickness)
+                        [query_template](Var<Buffer<float3>> sa_x_begin,
+                                         Var<Buffer<float3>> sa_x_end,
+                                         Var<Buffer<uint>>   broadphase_count,
+                                         Var<Buffer<uint>>   broad_phase_list,
+                                         const Float         thickness)
                         {
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
@@ -692,12 +821,12 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_edges,
-                        [query_template](Var<BufferView<float3>> sa_x_begin,
-                                         Var<BufferView<float3>> sa_x_end,
-                                         Var<BufferView<uint2>>  sa_edges,
-                                         Var<BufferView<uint>>   broadphase_count,
-                                         Var<BufferView<uint>>   broad_phase_list,
-                                         const Float             thickness)
+                        [query_template](Var<Buffer<float3>> sa_x_begin,
+                                         Var<Buffer<float3>> sa_x_end,
+                                         Var<Buffer<uint2>>  sa_edges,
+                                         Var<Buffer<uint>>   broadphase_count,
+                                         Var<Buffer<uint>>   broad_phase_list,
+                                         const Float         thickness)
                         {
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);
@@ -710,6 +839,60 @@ void LBVH::compile(AsyncCompiler& compiler)
                                            broadphase_count,
                                            broad_phase_list,
                                            [&](const Uint adj_eid) { return Var<bool>(eid < adj_eid); });
+                        });
+
+    compiler.compile<1>(fn_query_from_verts_v2,
+                        [query_template2](BufferVar<aabbData> sa_node_aabb,
+                                          BufferVar<uint2>    sa_children,
+                                          BufferVar<uint>     sa_object_idx,
+                                          BufferVar<float3>   sa_x_begin,
+                                          BufferVar<float3>   sa_x_end,
+                                          BufferVar<uint>     broadphase_count,
+                                          BufferVar<uint>     broad_phase_list,
+                                          BufferVar<float>    d_hat,
+                                          BufferVar<float>    thickness)
+                        {
+                            const Uint vid = dispatch_id().x;
+                            // Float3 pos = sa_x_begin->read(vid);
+                            // Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
+                            Float2x3 vert_aabb = AABB::make_aabb(sa_x_begin.read(vid), sa_x_end.read(vid));
+                            vert_aabb = AABB::add_thickness(vert_aabb, thickness.read(vid) + d_hat.read(vid));
+                            query_template2(sa_node_aabb,
+                                            sa_children,
+                                            sa_object_idx,
+                                            vert_aabb,
+                                            broadphase_count,
+                                            broad_phase_list,
+                                            [&](const Uint adj_fid) { return Var<bool>(true); });
+                        });
+
+    compiler.compile<1>(fn_query_from_edges_v2,
+                        [query_template2](BufferVar<aabbData> sa_node_aabb,
+                                          BufferVar<uint2>    sa_children,
+                                          BufferVar<uint>     sa_object_idx,
+                                          BufferVar<float3>   sa_x_begin,
+                                          BufferVar<float3>   sa_x_end,
+                                          BufferVar<uint2>    sa_edges,
+                                          BufferVar<uint>     broadphase_count,
+                                          BufferVar<uint>     broad_phase_list,
+                                          BufferVar<float>    d_hat,
+                                          BufferVar<float>    thickness)
+                        {
+                            const Uint  eid       = dispatch_id().x;
+                            const Uint2 edge      = sa_edges->read(eid);
+                            Float2x3    vert_aabb = AABB::make_aabb(sa_x_begin.read(edge[0]),
+                                                                 sa_x_begin.read(edge[1]),
+                                                                 sa_x_end.read(edge[0]),
+                                                                 sa_x_end.read(edge[1]));
+                            vert_aabb =
+                                AABB::add_thickness(vert_aabb, thickness.read(edge[0]) + d_hat.read(edge[0]));
+                            query_template2(sa_node_aabb,
+                                            sa_children,
+                                            sa_object_idx,
+                                            vert_aabb,
+                                            broadphase_count,
+                                            broad_phase_list,
+                                            [&](const Uint adj_eid) { return Var<bool>(eid < adj_eid); });
                         });
 
     // auto buffer = device.create_buffer<bool>(1);
@@ -891,6 +1074,40 @@ void LBVH::update_face_tree_leave_aabb(Stream&               stream,
     stream << fn_update_face_tree_leave_aabb(start_position, end_position, input_faces, thickness)
                   .dispatch(input_faces.size());
 }
+
+void LBVH::update_vert_tree_leave_aabb(Stream&               stream,
+                                       const Buffer<float>&  thickness,
+                                       const Buffer<float3>& start_position,
+                                       const Buffer<float3>& end_position)
+{
+    //     sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+    //   sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
+    stream << fn_update_vert_tree_leave_aabb_v2(
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, thickness)
+                  .dispatch(start_position.size());
+}
+void LBVH::update_edge_tree_leave_aabb(Stream&               stream,
+                                       const Buffer<float>&  thickness,
+                                       const Buffer<float3>& start_position,
+                                       const Buffer<float3>& end_position,
+                                       const Buffer<uint2>&  input_edges)
+{
+    stream << fn_update_edge_tree_leave_aabb_v2(
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, input_edges, thickness)
+                  .dispatch(input_edges.size());
+}
+void LBVH::update_face_tree_leave_aabb(Stream&               stream,
+                                       const Buffer<float>&  thickness,
+                                       const Buffer<float3>& start_position,
+                                       const Buffer<float3>& end_position,
+                                       const Buffer<uint3>&  input_faces)
+{
+    stream << fn_update_face_tree_leave_aabb_v2(
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, input_faces, thickness)
+                  .dispatch(input_faces.size());
+}
+
+
 void LBVH::refit(Stream& stream)
 {
 
@@ -1018,6 +1235,50 @@ void LBVH::broad_phase_query_from_edges(Stream&                  stream,
         // << fn_reset_collision_count(broadphase_count).dispatch(1)
         << fn_query_from_edges(sa_x_begin, sa_x_end, sa_edges, broadphase_count, broad_phase_list, thickness)
                .dispatch(sa_edges.size());
+}
+
+void LBVH::broad_phase_query_from_verts(Stream&                 stream,
+                                        const Buffer<float3>&   sa_x_begin,
+                                        const Buffer<float3>&   sa_x_end,
+                                        const BufferView<uint>& broadphase_count,
+                                        const Buffer<uint>&     broad_phase_list,
+                                        const Buffer<float>&    d_hat,
+                                        const Buffer<float>&    thickness)
+{
+    stream << fn_query_from_verts_v2(lbvh_data->sa_node_aabb,
+                                     lbvh_data->sa_children,
+                                     lbvh_data->sa_object_idx,
+                                     sa_x_begin,
+                                     sa_x_end,
+                                     broadphase_count,
+                                     broad_phase_list,
+                                     d_hat,
+                                     thickness)
+                  .dispatch(sa_x_begin.size());
+}
+void LBVH::broad_phase_query_from_edges(Stream&                 stream,
+                                        const Buffer<float3>&   sa_x_begin,
+                                        const Buffer<float3>&   sa_x_end,
+                                        const Buffer<uint2>&    sa_edges,
+                                        const BufferView<uint>& broadphase_count,
+                                        const Buffer<uint>&     broad_phase_list,
+                                        const Buffer<float>&    d_hat,
+                                        const Buffer<float>&    thickness)
+{
+    // sa_node_aabb,
+    //                                         sa_children,
+    //                                         sa_object_idx,
+    stream << fn_query_from_edges_v2(lbvh_data->sa_node_aabb,
+                                     lbvh_data->sa_children,
+                                     lbvh_data->sa_object_idx,
+                                     sa_x_begin,
+                                     sa_x_end,
+                                     sa_edges,
+                                     broadphase_count,
+                                     broad_phase_list,
+                                     d_hat,
+                                     thickness)
+                  .dispatch(sa_edges.size());
 }
 
 
