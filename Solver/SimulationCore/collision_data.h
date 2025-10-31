@@ -391,13 +391,14 @@ struct CollisionData : SimulationType
     BufferType<uint> per_vert_num_broad_phase_vf;
     BufferType<uint> per_vert_num_broad_phase_ee;
 
-    BufferType<uint>                       per_vert_num_adj_pairs;
-    BufferType<uint>                       per_vert_num_adj_verts;
-    BufferType<uint>                       per_vert_prefix_adj_pairs;
-    BufferType<uint>                       per_vert_prefix_adj_verts;
-    BufferType<uint>                       vert_adj_pairs_csr;
-    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
-    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
+    BufferType<uint> per_vert_num_adj_pairs;
+    BufferType<uint> per_vert_num_adj_verts;
+    BufferType<uint> per_vert_prefix_adj_pairs;
+    BufferType<uint> per_vert_prefix_adj_verts;
+    BufferType<uint> vert_adj_pairs_csr;
+
+    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
+    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
 
 
     const uint get_vv_count_offset() { return 0; }
@@ -446,8 +447,8 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_dofs);
         lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_dofs + 1);
         lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
-        this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
-        this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
+        // this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
+        // this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
 
         const size_t collision_pair_bytes =
             sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()

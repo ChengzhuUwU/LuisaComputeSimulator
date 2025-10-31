@@ -12,6 +12,27 @@
 #include "Utils/reduce_helper.h"
 #include "luisa/core/basic_types.h"
 
+LUISA_BINDING_GROUP(lcs::CollisionData<luisa::compute::Buffer>,
+                    broad_phase_collision_count,
+                    narrow_phase_collision_count,
+                    broad_phase_list_vf,
+                    broad_phase_list_ee,
+                    toi_per_vert,
+                    contact_energy,
+                    narrow_phase_list,
+                    sa_cgA_contact_offdiag_triplet,
+                    sa_cgA_contact_offdiag_triplet_indices,
+                    sa_cgA_contact_offdiag_triplet_indices2,
+                    sa_cgA_contact_offdiag_triplet_property,
+                    sa_cgA_contact_offdiag_triplet_property2,
+                    per_vert_num_broad_phase_vf,
+                    per_vert_num_broad_phase_ee,
+                    per_vert_num_adj_pairs,
+                    per_vert_num_adj_verts,
+                    per_vert_prefix_adj_pairs,
+                    per_vert_prefix_adj_verts,
+                    vert_adj_pairs_csr){};
+
 namespace lcs  // Data IO
 {
 
@@ -270,16 +291,18 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_narrow_phase_vf_ccd_query,
-        [sa_toi           = collision_data->toi_per_vert.view(),
-         broadphase_count = collision_data->broad_phase_collision_count.view(offset_vf, 1),
-         broadphase_list = collision_data->broad_phase_list_vf.view()](BufferVar<float3> sa_x_begin_left,
-                                                                       BufferVar<float3> sa_x_begin_right,
-                                                                       BufferVar<float3> sa_x_end_left,
-                                                                       BufferVar<float3> sa_x_end_right,
-                                                                       BufferVar<uint3>  sa_faces_right,
-                                                                       BufferVar<float> sa_vert_d_hat,  // Not relavent to d_hat
-                                                                       BufferVar<float> sa_vert_offset)
+        [](Var<CDBG>         collision_data,
+           BufferVar<float3> sa_x_begin_left,
+           BufferVar<float3> sa_x_begin_right,
+           BufferVar<float3> sa_x_end_left,
+           BufferVar<float3> sa_x_end_right,
+           BufferVar<uint3>  sa_faces_right,
+           BufferVar<float>  sa_vert_d_hat,  // Not relavent to d_hat
+           BufferVar<float>  sa_vert_offset)
         {
+            auto& sa_toi          = collision_data->toi_per_vert;
+            auto& broadphase_list = collision_data->broad_phase_list_vf;
+
             const Uint pair_idx = dispatch_x();
             const Uint vid      = broadphase_list->read(2 * pair_idx + 0);
             const Uint fid      = broadphase_list->read(2 * pair_idx + 1);
@@ -324,20 +347,22 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_narrow_phase_ee_ccd_query,
-        [sa_toi           = collision_data->toi_per_vert.view(),
-         broadphase_count = collision_data->broad_phase_collision_count.view(offset_ee, 1),
-         broadphase_list  = collision_data->broad_phase_list_ee.view()](Var<Buffer<float3>> sa_x_begin_a,
-                                                                       Var<Buffer<float3>> sa_x_begin_b,
-                                                                       Var<Buffer<float3>> sa_x_end_a,
-                                                                       Var<Buffer<float3>> sa_x_end_b,
-                                                                       Var<Buffer<uint2>>  sa_edges_left,
-                                                                       Var<Buffer<uint2>> sa_edges_right,
-                                                                       BufferVar<float> sa_vert_d_hat,  // Not relavent to d_hat
-                                                                       BufferVar<float> sa_vert_offset)
+        [](Var<CDBG>           collision_data,
+           Var<Buffer<float3>> sa_x_begin_a,
+           Var<Buffer<float3>> sa_x_begin_b,
+           Var<Buffer<float3>> sa_x_end_a,
+           Var<Buffer<float3>> sa_x_end_b,
+           Var<Buffer<uint2>>  sa_edges_left,
+           Var<Buffer<uint2>>  sa_edges_right,
+           BufferVar<float>    sa_vert_d_hat,  // Not relavent to d_hat
+           BufferVar<float>    sa_vert_offset)
         {
+            auto& sa_toi          = collision_data->toi_per_vert;
+            auto& broadphase_list = collision_data->broad_phase_list_ee;
+
             const Uint  pair_idx   = dispatch_x();
-            const Uint  left       = broadphase_list->read(2 * pair_idx + 0);
-            const Uint  right      = broadphase_list->read(2 * pair_idx + 1);
+            const Uint  left       = broadphase_list.read(2 * pair_idx + 0);
+            const Uint  right      = broadphase_list.read(2 * pair_idx + 1);
             const Uint2 left_edge  = sa_edges_left.read(left);
             const Uint2 right_edge = sa_edges_right.read(right);
 
@@ -422,7 +447,8 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
 
     if (num_vf_broadphase != 0)
     {
-        stream << fn_narrow_phase_vf_ccd_query(sa_x_begin_left,
+        stream << fn_narrow_phase_vf_ccd_query(get_collision_data(),
+                                               sa_x_begin_left,
                                                sa_x_begin_right,  // sa_x_begin_right
                                                sa_x_end_left,
                                                sa_x_end_right,  // sa_x_end_right
@@ -475,7 +501,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
     if (num_ee_broadphase != 0)
     {
         stream << fn_narrow_phase_ee_ccd_query(
-                      sa_x_begin_a, sa_x_begin_b, sa_x_end_a, sa_x_end_b, sa_edges_left, sa_edges_left, d_hat, thickness)
+                      get_collision_data(), sa_x_begin_a, sa_x_begin_b, sa_x_end_a, sa_x_end_b, sa_edges_left, sa_edges_left, d_hat, thickness)
                       .dispatch(num_ee_broadphase);
     }
     stream << sa_toi.view(0, 1).copy_to(host_toi.data());
@@ -509,11 +535,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
     // TODO: PreScan, preventing buffer out of range
     compiler.compile<1>(
         fn_narrow_phase_vf_dcd_query,
-        [broadphase_count  = collision_data->broad_phase_collision_count.view(offset_vf, 1),
-         broadphase_list   = collision_data->broad_phase_list_vf.view(),
-         narrowphase_count = collision_data->narrow_phase_collision_count.view(),
-         narrowphase_list  = collision_data->narrow_phase_list.view(),
-         contact_energy_type](BufferVar<float3> sa_x_left,
+        [contact_energy_type](Var<CDBG>         collision_data,
+                              BufferVar<float3> sa_x_left,
                               BufferVar<float3> sa_x_right,
                               BufferVar<float3> sa_rest_x_a,
                               BufferVar<float3> sa_rest_x_b,
@@ -526,6 +549,10 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                               BufferVar<float>  sa_per_vert_offset,
                               Float             kappa)
         {
+            auto& broadphase_list   = collision_data->broad_phase_list_vf;
+            auto& narrowphase_count = collision_data->narrow_phase_collision_count;
+            auto& narrowphase_list  = collision_data->narrow_phase_list;
+
             const Uint  pair_idx = dispatch_x();
             const Uint  vid      = broadphase_list->read(2 * pair_idx + 0);
             const Uint  fid      = broadphase_list->read(2 * pair_idx + 1);
@@ -561,6 +588,15 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 Float offset2   = sa_per_vert_offset.read(face[0]);
                 Float d_hat     = (d_hat1 + d_hat2) * 0.5f;
                 Float thickness = offset1 + offset2;
+
+                $if(d2 < square_scalar(thickness))
+                {
+                    device_log("Exist penetration in DCD VF pair {}-{} : d = {}, thickness = {}",
+                               vid,
+                               face,
+                               sqrt_scalar(d2),
+                               thickness);
+                };
 
                 $if(d2 < square_scalar(thickness + d_hat)
                     // & d2 > 1e-8f
@@ -625,11 +661,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
     compiler.compile<1>(
         fn_narrow_phase_ee_dcd_query,
-        [broadphase_count  = collision_data->broad_phase_collision_count.view(offset_ee, 1),
-         broadphase_list   = collision_data->broad_phase_list_ee.view(),
-         narrowphase_count = collision_data->narrow_phase_collision_count.view(),
-         narrowphase_list  = collision_data->narrow_phase_list.view(),
-         contact_energy_type](BufferVar<float3> sa_x_a,
+        [contact_energy_type](Var<CDBG>         collision_data,
+                              BufferVar<float3> sa_x_a,
                               BufferVar<float3> sa_x_b,
                               BufferVar<float3> sa_rest_x_a,
                               BufferVar<float3> sa_rest_x_b,
@@ -643,6 +676,10 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                               BufferVar<float>  sa_per_vert_offset,
                               Float             kappa)
         {
+            auto& broadphase_list   = collision_data->broad_phase_list_ee;
+            auto& narrowphase_count = collision_data->narrow_phase_collision_count;
+            auto& narrowphase_list  = collision_data->narrow_phase_list;
+
             const Uint  pair_idx   = dispatch_x();
             const Uint  left       = broadphase_list->read(2 * pair_idx + 0);
             const Uint  right      = broadphase_list->read(2 * pair_idx + 1);
@@ -763,7 +800,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream&               stream,
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     if (num_vf_broadphase != 0)
     {
-        stream << fn_narrow_phase_vf_dcd_query(sa_x_left,
+        stream << fn_narrow_phase_vf_dcd_query(get_collision_data(),
+                                               sa_x_left,
                                                sa_x_right,
                                                sa_rest_x_left,
                                                sa_rest_x_right,
@@ -798,7 +836,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 
     if (num_ee_broadphase != 0)
     {
-        stream << fn_narrow_phase_ee_dcd_query(sa_x_left,
+        stream << fn_narrow_phase_ee_dcd_query(get_collision_data(),
+                                               sa_x_left,
                                                sa_x_right,
                                                sa_rest_x_left,
                                                sa_rest_x_right,
@@ -827,37 +866,40 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
 {
     using namespace luisa::compute;
 
-    compiler.compile<1>(fn_calc_pervert_collion_count,
-                        [narrowphase_list       = collision_data->narrow_phase_list.view(),
-                         per_vert_num_adj_pairs = collision_data->per_vert_num_adj_pairs.view()](
-                            BufferVar<uint> sa_vert_affine_bodies_id, const Uint prefix_abd)
-                        {
-                            const Uint  pair_idx = dispatch_x();
-                            const auto& pair     = narrowphase_list->read(pair_idx);
-                            Uint4       indices  = pair->get_indices();
+    compiler.compile<1>(
+        fn_calc_pervert_collion_count,
+        [](Var<CDBG> collision_data, BufferVar<uint> sa_vert_affine_bodies_id, const Uint prefix_abd)
+        {
+            auto& narrowphase_list       = collision_data->narrow_phase_list;
+            auto& per_vert_num_adj_pairs = collision_data->per_vert_num_adj_pairs;
 
-                            Uint2 body_indices = make_uint2(sa_vert_affine_bodies_id.read(indices[0]),
-                                                            sa_vert_affine_bodies_id.read(indices[2]));
-                            ArrayVar<uint, 8> active_indices;
-                            Uint              left_active_count;
-                            Uint              right_active_count;
-                            pair->get_active_indices(
-                                active_indices, left_active_count, right_active_count, body_indices, prefix_abd);
-                            const Uint active_count = left_active_count + right_active_count;
+            const Uint  pair_idx = dispatch_x();
+            const auto& pair     = narrowphase_list->read(pair_idx);
+            Uint4       indices  = pair->get_indices();
 
-                            $for(ii, active_count)
-                            {
-                                const Uint index = active_indices[ii] & mask_get_active_vid;
-                                per_vert_num_adj_pairs->atomic(index).fetch_add(active_count - 1);
-                            };
-                        });
+            Uint2             body_indices = make_uint2(sa_vert_affine_bodies_id.read(indices[0]),
+                                            sa_vert_affine_bodies_id.read(indices[2]));
+            ArrayVar<uint, 8> active_indices;
+            Uint              left_active_count;
+            Uint              right_active_count;
+            pair->get_active_indices(active_indices, left_active_count, right_active_count, body_indices, prefix_abd);
+            const Uint active_count = left_active_count + right_active_count;
+
+            $for(ii, active_count)
+            {
+                const Uint index = active_indices[ii] & mask_get_active_vid;
+                per_vert_num_adj_pairs->atomic(index).fetch_add(active_count - 1);
+            };
+        });
 
     compiler.compile<1>(
         fn_calc_pervert_prefix_adj_pairs,
-        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
-         per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs.view(),
-         per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs.view()]()
+        [](Var<CDBG> collision_data)
         {
+            auto& narrow_phase_count        = collision_data->narrow_phase_collision_count;
+            auto& per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs;
+            auto& per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs;
+
             const Uint vid           = dispatch_x();
             const Uint num_adj_pairs = per_vert_num_adj_pairs->read(vid);
 
@@ -877,13 +919,14 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
 
     compiler.compile<1>(
         fn_fill_in_pairs_in_vert_adjacent,
-        [narrowphase_list          = collision_data->narrow_phase_list.view(),
-         per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs.view(),
-         per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs.view(),
-         vert_adj_pairs_csr        = collision_data->vert_adj_pairs_csr.view(),
-         sa_cgA_contact_offdiag_triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices.view()](
-            BufferVar<uint> sa_vert_affine_bodies_id, const Uint prefix_abd)
+        [](Var<CDBG> collision_data, BufferVar<uint> sa_vert_affine_bodies_id, const Uint prefix_abd)
         {
+            auto& narrowphase_list          = collision_data->narrow_phase_list;
+            auto& per_vert_num_adj_pairs    = collision_data->per_vert_num_adj_pairs;
+            auto& per_vert_prefix_adj_pairs = collision_data->per_vert_prefix_adj_pairs;
+            auto& vert_adj_pairs_csr        = collision_data->vert_adj_pairs_csr;
+            auto& sa_cgA_contact_offdiag_triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+
             const Uint  pair_idx = dispatch_x();
             const auto& pair     = narrowphase_list->read(pair_idx);
             Uint4       indices  = pair->get_indices();
@@ -932,15 +975,19 @@ void NarrowPhasesDetector::construct_pervert_adj_list(Stream& stream, Buffer<uin
 
     if (num_pairs != 0)
     {
-        stream << fn_calc_pervert_collion_count(sa_vert_affine_bodies_id, prefix_abd).dispatch(num_pairs);
-        stream << fn_calc_pervert_prefix_adj_pairs().dispatch(host_collision_data->per_vert_num_adj_pairs.size());
+        stream
+            << fn_calc_pervert_collion_count(get_collision_data(), sa_vert_affine_bodies_id, prefix_abd).dispatch(num_pairs);
+        stream << fn_calc_pervert_prefix_adj_pairs(get_collision_data())
+                      .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
         stream << fn_reset_uint(collision_data->per_vert_num_adj_pairs)
                       .dispatch(collision_data->per_vert_num_adj_pairs.size());
-        stream << fn_fill_in_pairs_in_vert_adjacent(sa_vert_affine_bodies_id, prefix_abd).dispatch(num_pairs);
+        stream << fn_fill_in_pairs_in_vert_adjacent(get_collision_data(), sa_vert_affine_bodies_id, prefix_abd)
+                      .dispatch(num_pairs);
     }
     else
     {
-        stream << fn_calc_pervert_prefix_adj_pairs().dispatch(host_collision_data->per_vert_num_adj_pairs.size());
+        stream << fn_calc_pervert_prefix_adj_pairs(get_collision_data())
+                      .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
     }
 }
 
@@ -955,7 +1002,7 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
     using namespace luisa::compute;
 
     compiler.compile<1>(fn_reset_triplet,
-                        [](BufferVar<MatrixTriplet3x3> sa_cgA_contact_offdiag_triplet)
+                        [](Var<CDBG> collision_data, BufferVar<MatrixTriplet3x3> sa_cgA_contact_offdiag_triplet)
                         {
                             const Uint triplet_idx = dispatch_x();
                             sa_cgA_contact_offdiag_triplet->write(
@@ -965,9 +1012,10 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_block_level_sort_contact_triplet,
-        [per_vert_num_adj_verts = collision_data->per_vert_num_adj_verts.view()](
-            BufferVar<uint2> input_triplet_indices, BufferVar<uint> output_triplet_offset, const Uint num_triplets)
+        [](Var<CDBG> collision_data, BufferVar<uint2> input_triplet_indices, BufferVar<uint> output_triplet_offset, const Uint num_triplets)
         {
+            auto& per_vert_num_adj_verts = collision_data->per_vert_num_adj_verts;
+
             // const Uint num_triplets = narrow_phase_collision_count->read(0) * 12;  // Each pair has 12 triplets
             const Uint triplet_idx = dispatch_x();
             const Uint blockIdx    = triplet_idx / 256;
@@ -1050,10 +1098,12 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_calc_pervert_prefix_adj_verts,
-        [narrow_phase_count        = collision_data->narrow_phase_collision_count.view(),
-         per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
-         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view()]()
+        [](Var<CDBG> collision_data)
         {
+            auto& narrow_phase_count        = collision_data->narrow_phase_collision_count;
+            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+
             const Uint vid           = dispatch_x();
             const Uint num_adj_verts = per_vert_num_adj_verts->read(vid);
 
@@ -1074,12 +1124,14 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
     // After first-pass sort
 
     compiler.compile<1>(fn_block_level_second_sort_contact_triplet_fill_in,
-                        [per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
-                         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view(),
-                         triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices.view(),
-                         triplet_indices2 = collision_data->sa_cgA_contact_offdiag_triplet_indices2.view(),
-                         triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property.view()]()
+                        [](Var<CDBG> collision_data)
                         {
+                            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+                            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+                            auto& triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+                            auto& triplet_indices2 = collision_data->sa_cgA_contact_offdiag_triplet_indices2;
+                            auto& triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property;
+
                             const Uint  triplet_idx  = dispatch_x();
                             const Uint2 triplet_info = triplet_indices->read(triplet_idx);
                             const Uint  vid          = triplet_info[0] & mask_get_active_vid;
@@ -1102,14 +1154,16 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
     //      Prefix Sum
 
     compiler.compile<1>(fn_specify_target_slot_2_level,
-                        [per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
-                         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view(),
-                         triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices.view(),
-                         triplet_indices2 = collision_data->sa_cgA_contact_offdiag_triplet_indices2.view(),
-                         triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property.view(),
-                         triplet_property2 = collision_data->sa_cgA_contact_offdiag_triplet_property2.view(),
-                         sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()]()
+                        [](Var<CDBG> collision_data)
                         {
+                            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+                            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+                            auto& triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+                            auto& triplet_indices2 = collision_data->sa_cgA_contact_offdiag_triplet_indices2;
+                            auto& triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property;
+                            auto& triplet_property2 = collision_data->sa_cgA_contact_offdiag_triplet_property2;
+                            auto& sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet;
+
                             const Uint triplet_idx            = dispatch_x();
                             const Uint first_sort_triplet_idx = triplet_property->read(triplet_idx);
 
@@ -1142,46 +1196,49 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
                             };
                         });
 
-    compiler.compile<1>(
-        fn_specify_target_slot,
-        [per_vert_num_adj_verts         = collision_data->per_vert_num_adj_verts.view(),
-         per_vert_prefix_adj_verts      = collision_data->per_vert_prefix_adj_verts.view(),
-         triplet_indices                = collision_data->sa_cgA_contact_offdiag_triplet_indices.view(),
-         triplet_property               = collision_data->sa_cgA_contact_offdiag_triplet_property.view(),
-         sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()]()
-        {
-            const Uint triplet_idx     = dispatch_x();
-            const Uint offset_property = triplet_property->read(triplet_idx);
-            const Uint offset          = offset_property & 0xFFFF;
+    compiler.compile<1>(fn_specify_target_slot,
+                        [](Var<CDBG> collision_data)
+                        {
+                            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+                            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+                            auto& triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+                            auto& triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property;
+                            auto& sa_cgA_contact_offdiag_triplet = collision_data->sa_cgA_contact_offdiag_triplet;
 
-            const Uint2 triplet_info = triplet_indices->read(triplet_idx);
-            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
-            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
-            const Uint  curr_prefix  = per_vert_prefix_adj_verts->read(vid);
+                            const Uint triplet_idx     = dispatch_x();
+                            const Uint offset_property = triplet_property->read(triplet_idx);
+                            const Uint offset          = offset_property & 0xFFFF;
 
-            const Uint target_triplet_idx = curr_prefix + offset;
-            triplet_property->write(triplet_idx, target_triplet_idx);
+                            const Uint2 triplet_info = triplet_indices->read(triplet_idx);
+                            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
+                            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
+                            const Uint  curr_prefix  = per_vert_prefix_adj_verts->read(vid);
 
-            $if((offset_property & (1 << 31)) != 0)
-            {
-                const Uint curr_count = per_vert_num_adj_verts->read(vid);
-                const Uint property   = MatrixTriplet::make_triplet_property_in_block(
-                    target_triplet_idx, curr_prefix, curr_prefix + curr_count - 1);
-                sa_cgA_contact_offdiag_triplet->write(
-                    target_triplet_idx, make_matrix_triplet(vid, adj_vid, property, make_float3x3(0.0f)));
-            };
-        });
+                            const Uint target_triplet_idx = curr_prefix + offset;
+                            triplet_property->write(triplet_idx, target_triplet_idx);
+
+                            $if((offset_property & (1 << 31)) != 0)
+                            {
+                                const Uint curr_count = per_vert_num_adj_verts->read(vid);
+                                const Uint property   = MatrixTriplet::make_triplet_property_in_block(
+                                    target_triplet_idx, curr_prefix, curr_prefix + curr_count - 1);
+                                sa_cgA_contact_offdiag_triplet->write(
+                                    target_triplet_idx,
+                                    make_matrix_triplet(vid, adj_vid, property, make_float3x3(0.0f)));
+                            };
+                        });
 
     compiler.compile<1>(fn_assemble_triplet_sorted,
-                        [narrow_phase_list         = collision_data->narrow_phase_list.view(),
-                         vert_adj_pairs_csr        = collision_data->vert_adj_pairs_csr.view(),
-                         per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts.view(),
-                         per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts.view(),
-                         triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices.view(),
-                         triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property.view(),
-                         triplet = collision_data->sa_cgA_contact_offdiag_triplet.view()](
-                            BufferVar<float3> sa_scaled_model_x, const Uint prefix_abd)
+                        [](Var<CDBG> collision_data, BufferVar<float3> sa_scaled_model_x, const Uint prefix_abd)
                         {
+                            auto& narrow_phase_list         = collision_data->narrow_phase_list;
+                            auto& vert_adj_pairs_csr        = collision_data->vert_adj_pairs_csr;
+                            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+                            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+                            auto& triplet_indices = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+                            auto& triplet_property = collision_data->sa_cgA_contact_offdiag_triplet_property;
+                            auto& triplet = collision_data->sa_cgA_contact_offdiag_triplet;
+
                             const Uint triplet_idx      = dispatch_x();
                             const Uint pair_info        = vert_adj_pairs_csr->read(triplet_idx);
                             const Uint pair_idx         = pair_info & 0x3FFFFFFF;
@@ -1306,11 +1363,13 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         // stream << fn_reset_triplet(collision_data->sa_cgA_contact_offdiag_triplet.view(0, alinged_num_triplet))
         //               .dispatch(alinged_num_triplet);
 
-        stream << fn_block_level_sort_contact_triplet(collision_data->sa_cgA_contact_offdiag_triplet_indices,
+        stream << fn_block_level_sort_contact_triplet(get_collision_data(),
+                                                      collision_data->sa_cgA_contact_offdiag_triplet_indices,
                                                       collision_data->sa_cgA_contact_offdiag_triplet_property,
                                                       num_triplet)
                       .dispatch(alinged_num_triplet);
-        stream << fn_calc_pervert_prefix_adj_verts().dispatch(host_collision_data->per_vert_num_adj_verts.size());
+        stream << fn_calc_pervert_prefix_adj_verts(get_collision_data())
+                      .dispatch(host_collision_data->per_vert_num_adj_verts.size());
 
         constexpr uint offset = CollisionPair::CollisionCount::total_adj_verts_offset();
         download_narrowphase_collision_count(stream);
@@ -1322,17 +1381,18 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
             const uint num_triplet_assembled = host_count[offset];
             const uint alinged_num_triplet_assembled =
                 (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
-            stream << fn_block_level_second_sort_contact_triplet_fill_in().dispatch(num_triplet);
+            stream << fn_block_level_second_sort_contact_triplet_fill_in(get_collision_data()).dispatch(num_triplet);
 
             stream << fn_reset_uint(collision_data->per_vert_num_adj_verts).dispatch(num_dof);
-            stream << fn_block_level_sort_contact_triplet(collision_data->sa_cgA_contact_offdiag_triplet_indices2,
+            stream << fn_block_level_sort_contact_triplet(get_collision_data(),
+                                                          collision_data->sa_cgA_contact_offdiag_triplet_indices2,
                                                           collision_data->sa_cgA_contact_offdiag_triplet_property2,
                                                           num_triplet_assembled)
                           .dispatch(alinged_num_triplet_assembled);
             stream << fn_reset_uint(collision_data->narrow_phase_collision_count.view(offset, 1)).dispatch(1);
-            stream << fn_calc_pervert_prefix_adj_verts().dispatch(num_dof);
+            stream << fn_calc_pervert_prefix_adj_verts(get_collision_data()).dispatch(num_dof);
 
-            stream << fn_specify_target_slot_2_level().dispatch(num_triplet);
+            stream << fn_specify_target_slot_2_level(get_collision_data()).dispatch(num_triplet);
             download_narrowphase_collision_count(stream);
             // LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
             //            num_pairs * 12,
@@ -1360,9 +1420,10 @@ void NarrowPhasesDetector::device_assemble_contact_triplet(luisa::compute::Strea
 
         // If use two-phase sort
         // LUISA_INFO("Reset aligned triplet from {} + {} to {}", num_triplet_assembled, alinged_count, alinged_num_triplet_assembled);
-        stream << fn_reset_triplet(collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
+        stream << fn_reset_triplet(get_collision_data(),
+                                   collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
                       .dispatch(alinged_count);  // For alignment
-        stream << fn_assemble_triplet_sorted(sa_scaled_model_x, prefix_abd).dispatch(num_triplet);
+        stream << fn_assemble_triplet_sorted(get_collision_data(), sa_scaled_model_x, prefix_abd).dispatch(num_triplet);
     }
 }
 void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& stream)
@@ -1502,7 +1563,7 @@ void NarrowPhasesDetector::host_sort_contact_triplet(luisa::compute::Stream& str
     const uint num_triplet_assembled = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
     const uint alinged_num_triplet_assembled = get_dispatch_threads(num_triplet_assembled, 256);
     const uint alinged_count                 = alinged_num_triplet_assembled - num_triplet_assembled;
-    stream << fn_specify_target_slot().dispatch(num_triplet);
+    stream << fn_specify_target_slot(get_collision_data()).dispatch(num_triplet);
     // stream << fn_reset_triplet(collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
     //               .dispatch(alinged_count);
     // stream << fn_assemble_triplet_sorted(sa_scaled_model_x, prefix_abd).dispatch(num_triplet);
@@ -1552,17 +1613,19 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
     // Spring-form contact energy
     compiler.compile<1>(
         fn_perPair_assemble_gradient_hessian,
-        [narrowphase_list = collision_data->narrow_phase_list.view(), atomic_add_float3, atomic_add_float3x3](
-            Var<Buffer<float3>>   sa_x_left,
-            Var<Buffer<float3>>   sa_x_right,
-            Float                 d_hat,
-            Float                 thickness,
-            BufferVar<uint>       sa_vert_affine_bodies_id,
-            BufferVar<float3>     sa_scaled_model_x,
-            const Uint            prefix_abd,
-            Var<Buffer<float3>>   sa_cgB,
-            Var<Buffer<float3x3>> sa_cgA_diag)
+        [atomic_add_float3, atomic_add_float3x3](Var<CDBG>             collision_data,
+                                                 Var<Buffer<float3>>   sa_x_left,
+                                                 Var<Buffer<float3>>   sa_x_right,
+                                                 Float                 d_hat,
+                                                 Float                 thickness,
+                                                 BufferVar<uint>       sa_vert_affine_bodies_id,
+                                                 BufferVar<float3>     sa_scaled_model_x,
+                                                 const Uint            prefix_abd,
+                                                 Var<Buffer<float3>>   sa_cgB,
+                                                 Var<Buffer<float3x3>> sa_cgA_diag)
         {
+            auto& narrowphase_list = collision_data->narrow_phase_list;
+
             const Uint  pair_idx = dispatch_x();
             const auto& pair     = narrowphase_list->read(pair_idx);
 
@@ -1674,12 +1737,13 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
     using namespace luisa::compute;
 
     compiler.compile<1>(fn_perVert_assemble_gradient_hessian,
-                        [narrowphase_list             = collision_data->narrow_phase_list.view(),
-                         per_vert_num_narrow_phase    = collision_data->per_vert_num_adj_pairs.view(),
-                         per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs.view(),
-                         vert_adj_pairs_csr           = collision_data->vert_adj_pairs_csr.view()](
-                            Var<Buffer<float3>> sa_cgB, Var<Buffer<float3x3>> sa_cgA_diag)
+                        [](Var<CDBG> collision_data, Var<Buffer<float3>> sa_cgB, Var<Buffer<float3x3>> sa_cgA_diag)
                         {
+                            auto& narrowphase_list          = collision_data->narrow_phase_list;
+                            auto& per_vert_num_narrow_phase = collision_data->per_vert_num_adj_pairs;
+                            auto& per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs;
+                            auto& vert_adj_pairs_csr = collision_data->vert_adj_pairs_csr;
+
                             const Uint vid           = dispatch_x();
                             const Uint num_adj_pairs = per_vert_num_narrow_phase->read(vid);
                             const Uint prefix        = per_vert_prefix_narrow_phase->read(vid);
@@ -1719,58 +1783,61 @@ void NarrowPhasesDetector::compile_SpMV(AsyncCompiler& compiler)
         sa_cgB.atomic(idx)[2].fetch_add(vec[2]);
     };
 
-    compiler.compile<1>(fn_perPair_spmv,
-                        [narrowphase_list = collision_data->narrow_phase_list.view(),
-                         atomic_add_float3](Var<Buffer<float3>> input_array, Var<Buffer<float3>> output_array)
-                        {
-                            const Uint  pair_idx = dispatch_x();
-                            const auto& pair     = narrowphase_list->read(pair_idx);
+    compiler.compile<1>(
+        fn_perPair_spmv,
+        [atomic_add_float3](Var<CDBG> collision_data, Var<Buffer<float3>> input_array, Var<Buffer<float3>> output_array)
+        {
+            auto& narrowphase_list = collision_data->narrow_phase_list;
 
-                            const Uint4  indices = pair->get_indices();
-                            const Float4 weight  = pair->get_weight();
-                            const Float3 normal  = pair->get_normal();
-                            const Float  stiff   = pair->get_k2();  // ddBddD
+            const Uint  pair_idx = dispatch_x();
+            const auto& pair     = narrowphase_list->read(pair_idx);
 
-                            Float3 input_vec[4] = {
-                                input_array.read(indices[0]),
-                                input_array.read(indices[1]),
-                                input_array.read(indices[2]),
-                                input_array.read(indices[3]),
-                            };
-                            Float3 output_vec[4] = {
-                                make_float3(0.0f),
-                                make_float3(0.0f),
-                                make_float3(0.0f),
-                                make_float3(0.0f),
-                            };
+            const Uint4  indices = pair->get_indices();
+            const Float4 weight  = pair->get_weight();
+            const Float3 normal  = pair->get_normal();
+            const Float  stiff   = pair->get_k2();  // ddBddD
 
-                            const Float3x3 xxT = stiff * outer_product(normal, normal);
+            Float3 input_vec[4] = {
+                input_array.read(indices[0]),
+                input_array.read(indices[1]),
+                input_array.read(indices[2]),
+                input_array.read(indices[3]),
+            };
+            Float3 output_vec[4] = {
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+            };
 
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                for (uint jj = 0; jj < 4; jj++)
-                                {
-                                    if (j != jj)
-                                    {
-                                        Float3x3 hessian = weight[j] * weight[jj] * xxT;
-                                        output_vec[j] += hessian * input_vec[jj];
-                                    }
-                                }
-                            }
+            const Float3x3 xxT = stiff * outer_product(normal, normal);
 
-                            atomic_add_float3(output_array, indices[0], output_vec[0]);
-                            atomic_add_float3(output_array, indices[1], output_vec[1]);
-                            atomic_add_float3(output_array, indices[2], output_vec[2]);
-                            atomic_add_float3(output_array, indices[3], output_vec[3]);
-                        });
+            for (uint j = 0; j < 4; j++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (j != jj)
+                    {
+                        Float3x3 hessian = weight[j] * weight[jj] * xxT;
+                        output_vec[j] += hessian * input_vec[jj];
+                    }
+                }
+            }
+
+            atomic_add_float3(output_array, indices[0], output_vec[0]);
+            atomic_add_float3(output_array, indices[1], output_vec[1]);
+            atomic_add_float3(output_array, indices[2], output_vec[2]);
+            atomic_add_float3(output_array, indices[3], output_vec[3]);
+        });
 
     compiler.compile<1>(fn_perVert_spmv,
-                        [per_vert_num_narrow_phase    = collision_data->per_vert_num_adj_pairs.view(),
-                         per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs.view(),
-                         vert_adj_pairs_csr           = collision_data->vert_adj_pairs_csr.view(),
-                         narrowphase_list             = collision_data->narrow_phase_list.view()](
-                            Var<Buffer<float3>> sa_vec_in, Var<Buffer<float3>> sa_vec_out)
+                        [](Var<CDBG> collision_data, Var<Buffer<float3>> sa_vec_in, Var<Buffer<float3>> sa_vec_out)
                         {
+                            auto& per_vert_num_narrow_phase = collision_data->per_vert_num_adj_pairs;
+                            auto& per_vert_prefix_narrow_phase = collision_data->per_vert_prefix_adj_pairs;
+                            auto& vert_adj_pairs_csr = collision_data->vert_adj_pairs_csr;
+                            auto& narrowphase_list   = collision_data->narrow_phase_list;
+
                             const Uint vid           = dispatch_x();
                             const Uint num_adj_pairs = per_vert_num_narrow_phase->read(vid);
                             const Uint curr_prefix   = per_vert_prefix_narrow_phase->read(vid);
@@ -1818,8 +1885,16 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
     const uint  num_pairs  = host_count.front();
 
     if (num_pairs != 0)
-        stream << fn_perPair_assemble_gradient_hessian(
-                      sa_x_left, sa_x_right, d_hat, thickness, sa_vert_affine_bodies_id, sa_scaled_model_x, prefix_abd, sa_cgB, sa_cgA_diag)
+        stream << fn_perPair_assemble_gradient_hessian(get_collision_data(),
+                                                       sa_x_left,
+                                                       sa_x_right,
+                                                       d_hat,
+                                                       thickness,
+                                                       sa_vert_affine_bodies_id,
+                                                       sa_scaled_model_x,
+                                                       prefix_abd,
+                                                       sa_cgB,
+                                                       sa_cgA_diag)
                       .dispatch(num_pairs);
 }
 void NarrowPhasesDetector::device_perVert_evaluate_gradient_hessian(luisa::compute::Stream& stream,
@@ -1835,7 +1910,7 @@ void NarrowPhasesDetector::device_perVert_evaluate_gradient_hessian(luisa::compu
 
     if (num_pairs != 0)
     {
-        stream << fn_perVert_assemble_gradient_hessian(sa_cgB, sa_cgA_diag)
+        stream << fn_perVert_assemble_gradient_hessian(get_collision_data(), sa_cgB, sa_cgA_diag)
                       .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
     }
 }
@@ -1940,7 +2015,7 @@ void NarrowPhasesDetector::device_perPair_spmv(Stream& stream, const Buffer<floa
     const uint num_pairs  = host_count.front();
 
     if (num_pairs != 0)
-        stream << fn_perPair_spmv(input_array, output_array).dispatch(num_pairs);
+        stream << fn_perPair_spmv(get_collision_data(), input_array, output_array).dispatch(num_pairs);
 }
 void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array)
 {
@@ -1949,7 +2024,7 @@ void NarrowPhasesDetector::device_perVert_spmv(Stream& stream, const Buffer<floa
 
     if (num_pairs != 0)
     {
-        stream << fn_perVert_spmv(input_array, output_array).dispatch(input_array.size());
+        stream << fn_perVert_spmv(get_collision_data(), input_array, output_array).dispatch(input_array.size());
     }
 }
 
@@ -1965,11 +2040,16 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
     compiler.compile<1>(
         fn_compute_repulsion_energy,
-        [contact_energy   = collision_data->contact_energy.view(),
-         narrowphase_list = collision_data->narrow_phase_list.view(),
-         contact_energy_type](
-            Var<BufferView<float3>> sa_x_left, Var<BufferView<float3>> sa_x_right, Float d_hat, Float thickness, Float kappa)
+        [contact_energy_type](Var<CDBG>               collision_data,
+                              Var<BufferView<float3>> sa_x_left,
+                              Var<BufferView<float3>> sa_x_right,
+                              Float                   d_hat,
+                              Float                   thickness,
+                              Float                   kappa)
         {
+            auto& contact_energy   = collision_data->contact_energy;
+            auto& narrowphase_list = collision_data->narrow_phase_list;
+
             const Uint pair_idx = dispatch_x();
             const auto pair     = narrowphase_list->read(pair_idx);
             const auto indices  = pair->get_indices();
@@ -2051,7 +2131,8 @@ void NarrowPhasesDetector::compute_contact_energy_from_iter_start_list(Stream&  
 
     if (num_pairs != 0)
     {
-        stream << fn_compute_repulsion_energy(sa_x_left, sa_x_right, d_hat, thickness, kappa).dispatch(num_pairs)
+        stream << fn_compute_repulsion_energy(get_collision_data(), sa_x_left, sa_x_right, d_hat, thickness, kappa)
+                      .dispatch(num_pairs)
             // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
             ;
     }

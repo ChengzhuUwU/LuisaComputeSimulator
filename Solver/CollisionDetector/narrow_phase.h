@@ -184,7 +184,11 @@ class NarrowPhasesDetector
     CollisionData<std::vector>*            host_collision_data;
 
   private:
+    CollisionData<luisa::compute::Buffer>& get_collision_data() { return *collision_data; }
+    using CDBG = lcs::CollisionData<luisa::compute::Buffer>;  // CollisionData Binding Group
+
     luisa::compute::Shader<1,
+                           CDBG,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
@@ -195,6 +199,7 @@ class NarrowPhasesDetector
         fn_narrow_phase_vf_ccd_query;
 
     luisa::compute::Shader<1,
+                           CDBG,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
@@ -212,6 +217,7 @@ class NarrowPhasesDetector
 
 
     luisa::compute::Shader<1,
+                           CDBG,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
@@ -227,6 +233,7 @@ class NarrowPhasesDetector
         fn_narrow_phase_vf_dcd_query;
 
     luisa::compute::Shader<1,
+                           CDBG,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
@@ -242,29 +249,29 @@ class NarrowPhasesDetector
                            float>
         fn_narrow_phase_ee_dcd_query;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
+    luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
 
     // Scan
-    luisa::compute::Shader<1>                                    fn_preprocess_for_affine_bodies;
-    luisa::compute::Shader<1, Buffer<uint>, uint>                fn_calc_pervert_collion_count;
-    luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_pairs;
-    luisa::compute::Shader<1>                                    fn_calc_pervert_prefix_adj_verts;
-    luisa::compute::Shader<1, Buffer<uint>, uint>                fn_fill_in_pairs_in_vert_adjacent;
-    luisa::compute::Shader<1, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
-    luisa::compute::Shader<1>                                    fn_specify_target_slot;
-    luisa::compute::Shader<1>                       fn_block_level_second_sort_contact_triplet_fill_in;
-    luisa::compute::Shader<1>                       fn_specify_target_slot_2_level;
-    luisa::compute::Shader<1, Buffer<float3>, uint> fn_assemble_triplet_sorted;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
-    luisa::compute::Shader<1, Buffer<MatrixTriplet3x3>>           fn_reset_triplet;
+    luisa::compute::Shader<1, CDBG>                     fn_preprocess_for_affine_bodies;
+    luisa::compute::Shader<1, CDBG, Buffer<uint>, uint> fn_calc_pervert_collion_count;
+    luisa::compute::Shader<1, CDBG>                     fn_calc_pervert_prefix_adj_pairs;
+    luisa::compute::Shader<1, CDBG>                     fn_calc_pervert_prefix_adj_verts;
+    luisa::compute::Shader<1, CDBG, Buffer<uint>, uint> fn_fill_in_pairs_in_vert_adjacent;
+    luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
+    luisa::compute::Shader<1, CDBG> fn_specify_target_slot;
+    luisa::compute::Shader<1, CDBG> fn_block_level_second_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1, CDBG> fn_specify_target_slot_2_level;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, uint> fn_assemble_triplet_sorted;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
+    luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
 
     // Assemble
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>, float, float, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, float, float, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
 
     // SpMV
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
-    luisa::compute::Shader<1, Buffer<float3>, Buffer<float3>> fn_perVert_spmv;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>> fn_perVert_spmv;
 };
 
 
