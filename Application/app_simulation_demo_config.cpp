@@ -125,7 +125,7 @@ void pinned_cloth(std::vector<ShellInfo>& shell_list)
 }
 void load_default_scene(std::vector<ShellInfo>& shell_list)
 {
-    lcs::get_scene_params().scene_id = 1;
+    lcs::get_scene_params().scene_id = 3;
     const uint case_number           = lcs::get_scene_params().scene_id;
 
     switch (case_number)
@@ -240,6 +240,8 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
     get_bool("use_ccd_linesearch", lcs::get_scene_params().use_ccd_linesearch);
 
     get_real("implicit_dt", lcs::get_scene_params().implicit_dt);
+    get_real("stiffness_collision", lcs::get_scene_params().stiffness_collision);
+    get_real("stiffness_dirichlet", lcs::get_scene_params().stiffness_dirichlet);
 
     get_int("nonlinear_iter_count", reinterpret_cast<int&>(lcs::get_scene_params().nonlinear_iter_count));
     get_int("pcg_iter_count", reinterpret_cast<int&>(lcs::get_scene_params().pcg_iter_count));
@@ -514,6 +516,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "density");
                         if (v && yyjson_is_num(v))
                             mat.density = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "d_hat");
+                        if (v && yyjson_is_num(v))
+                            mat.d_hat = static_cast<float>(yyjson_get_num(v));
 
                         // stretch_model may be string or integer
                         v = yyjson_obj_get(mat_obj, "stretch_model");
@@ -585,6 +590,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "density");
                         if (v && yyjson_is_num(v))
                             mat.density = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "d_hat");
+                        if (v && yyjson_is_num(v))
+                            mat.d_hat = static_cast<float>(yyjson_get_num(v));
 
                         info.physics_material = mat;
                         if (stype == nullptr)
@@ -613,6 +621,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "density");
                         if (v && yyjson_is_num(v))
                             mat.density = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "d_hat");
+                        if (v && yyjson_is_num(v))
+                            mat.d_hat = static_cast<float>(yyjson_get_num(v));
 
                         info.physics_material = mat;
                         if (stype == nullptr)
@@ -644,6 +655,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "density");
                         if (v && yyjson_is_num(v))
                             mat.density = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "d_hat");
+                        if (v && yyjson_is_num(v))
+                            mat.d_hat = static_cast<float>(yyjson_get_num(v));
 
                         info.physics_material = mat;
                         if (stype == nullptr)
@@ -663,6 +677,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         yyjson_val*                     v = yyjson_obj_get(mat_obj, "thickness");
                         if (v && yyjson_is_num(v))
                             mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "d_hat");
+                        if (v && yyjson_is_num(v))
+                            mat.d_hat = static_cast<float>(yyjson_get_num(v));
                         info.physics_material = mat;
                         if (stype == nullptr)
                             info.shell_type = lcs::Initializer::ShellTypeCloth;

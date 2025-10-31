@@ -3,6 +3,7 @@
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"
 #include "Energy/stretch_energy.h"
+#include "Initializer/init_collision_data.h"
 #include "Initializer/init_sim_data.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -55,6 +56,11 @@ void SolverInterface::init_data(luisa::compute::Device&                   device
         lcs::Initializer::init_sim_data(shell_list, host_mesh_data, host_sim_data);
         lcs::Initializer::upload_sim_buffers(device, stream, host_sim_data, sim_data);
         lcs::Initializer::resize_pcg_data(device, stream, host_mesh_data, host_sim_data, sim_data);
+    }
+
+    {
+        lcs::Initializer::init_collision_data(shell_list, host_mesh_data, host_sim_data, host_collision_data);
+        lcs::Initializer::upload_collision_buffers(device, stream, host_sim_data, sim_data, host_collision_data, collision_data);
     }
 
     {

@@ -9,6 +9,10 @@
         {
             "model_name": "square2.obj",
             "scale": 1.0,
+            "material": {
+                "d_hat": 0.001,
+                "thickness": 0.1
+            },
             "fixed_points": [
                 {
                     "method": "LeftBack"
@@ -22,6 +26,10 @@
                 -0.3,
                 0.0
             ],
+            "material": {
+                "d_hat": 0.001,
+                "thickness": 0.1
+            },
             "fixed_points": [
                 {
                     "method": "Left"

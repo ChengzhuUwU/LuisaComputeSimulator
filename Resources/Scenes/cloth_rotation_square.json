@@ -12,6 +12,7 @@
     "shells": [
         {
             "model_name": "square2K.obj",
+            "scale": 0.5,
             "fixed_points": [
                 {
                     "method": "Left",

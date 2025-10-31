@@ -146,10 +146,10 @@ namespace Initializer
 
     struct MaterialBase
     {
-        float mass    = 0.0f;
-        float density = 1e3f;
-        // float thickness = 1e-3f;
-        bool is_shell = true;
+        float mass     = 0.0f;
+        float density  = 1e3f;
+        float d_hat    = 1e-3f;
+        bool  is_shell = true;
     };
 
     struct ClothMaterial : MaterialBase
@@ -232,6 +232,10 @@ namespace Initializer
         float get_density() const
         {
             return std::visit([](auto const& m) noexcept { return m.density; }, physics_material);
+        }
+        float get_d_hat() const
+        {
+            return std::visit([](auto const& m) noexcept { return m.d_hat; }, physics_material);
         }
         float get_thickness() const
         {
