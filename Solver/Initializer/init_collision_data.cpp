@@ -136,6 +136,8 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         }
         mesh_scaled_offset[mesh_idx] = scaled_offset;
         mesh_scaled_d_hat[mesh_idx]  = scaled_d_hat;
+        // mesh_scaled_offset[mesh_idx] = 0.000f;
+        // mesh_scaled_d_hat[mesh_idx]  = 0.003f;
     }
 
     sim_data->sa_contact_active_verts_d_hat.resize(mesh_data->num_verts);

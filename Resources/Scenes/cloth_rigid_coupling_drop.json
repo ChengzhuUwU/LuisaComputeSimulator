@@ -3,13 +3,13 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2K.obj",
+            "model_name": "square8K.obj",
             "translation": [
                 0.0,
-                0.22,
+                0.32,
                 0.0
             ],
-            "scale": 0.4,
+            "scale": 0.75,
             "fixed_points": [
                 {
                     "method": "LeftBack"
@@ -29,7 +29,7 @@
             "model_name": "cube.obj",
             "translation": [
                 0.0,
-                0.24,
+                0.34,
                 0.0
             ],
             "rotation": [

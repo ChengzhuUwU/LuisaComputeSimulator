@@ -331,10 +331,16 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
                 toi = accd::point_triangle_ccd(t0_p, t1_p, t0_f0, t0_f1, t0_f2, t1_f0, t1_f1, t1_f2, thickness);
 
-                // $if(toi != accd::line_search_max_t)
-                // {
-                //     device_log("VF Pair {} : toi = {}, vid {} & fid {} (face {})", pair_idx, toi, vid, fid, face);
-                // };
+                $if(toi<0.0f | toi> accd::line_search_max_t)
+                {
+                    device_log("VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+                               vid,
+                               fid,
+                               toi,
+                               sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
+                               sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
+                               thickness);
+                };
             };
 
             toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
@@ -389,6 +395,18 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
                 toi = accd::edge_edge_ccd(
                     ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1, thickness);
+
+                $if(toi<0.0f | toi> accd::line_search_max_t)
+                {
+                    device_log(
+                        "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+                        left,
+                        right,
+                        toi,
+                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
+                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)),
+                        thickness);
+                };
 
                 // device_log("EE CCD : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, ea_t0_p0 = {}, ea_t0_p1 = {}, eb_t0_p0 = {}, eb_t0_p1 = {}, ea_t1_p0 = {}, ea_t1_p1 = {}, eb_t1_p0 = {}, eb_t1_p1 = {}",
                 //     left, left_edge, right, right_edge, toi,
@@ -516,6 +534,7 @@ namespace lcs  // DCD
 // constexpr float stiffness_repulsion = 1e9;
 constexpr bool  use_area_weighting         = true;
 constexpr float rest_distance_culling_rate = 1.0f;
+constexpr float min_distance_threshold     = 5e-6f;
 
 template <typename T>
 inline auto vert_is_rigid_body(const T& mask)
@@ -588,6 +607,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 Float offset2   = sa_per_vert_offset.read(face[0]);
                 Float d_hat     = (d_hat1 + d_hat2) * 0.5f;
                 Float thickness = offset1 + offset2;
+                // Float d_hat     = 1e-3f;
+                // Float thickness = 0.0f;
 
                 $if(d2 < square_scalar(thickness))
                 {
@@ -616,6 +637,23 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         Float k1;
                         Float k2;
                         Float avg_area = 1.0f;
+
+                        $if(d < min_distance_threshold)
+                        {
+                            Float3 rest_p  = sa_rest_x_a->read(vid);
+                            Float3 rest_t0 = sa_rest_x_b->read(face[0]);
+                            Float3 rest_t1 = sa_rest_x_b->read(face[1]);
+                            Float3 rest_t2 = sa_rest_x_b->read(face[2]);
+                            Float  rest_d2 = distance::point_triangle_distance_squared_unclassified(
+                                rest_p, rest_t0, rest_t1, rest_t2);
+                            device_log("Small distance in DCD VF pair {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
+                                       vid,
+                                       face,
+                                       d,
+                                       thickness,
+                                       d_hat,
+                                       sqrt_scalar(rest_d2));
+                        };
 
                         if constexpr (use_area_weighting)
                         {
@@ -715,6 +753,9 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 Float d_hat     = (d_hat1 + d_hat2) * 0.5f;
                 Float thickness = offset1 + offset2;
 
+                // Float d_hat     = 1e-3f;
+                // Float thickness = 0.0f;
+
                 $if(d2 < square_scalar(thickness + d_hat)
                     //  & d2 > 1e-8f
                 )
@@ -731,6 +772,23 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         Float C = thickness + d_hat - d;
                         // Float3 normal = normalize_vec(x);
                         Float3 normal = x / d;
+
+                        $if(d < min_distance_threshold)
+                        {
+                            Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
+                            Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
+                            Float3 rest_eb_p0 = (sa_rest_x_b->read(right_edge[0]));
+                            Float3 rest_eb_p1 = (sa_rest_x_b->read(right_edge[1]));
+                            Float  rest_d2    = distance::edge_edge_distance_squared_unclassified(
+                                rest_ea_p0, rest_ea_p1, rest_eb_p0, rest_eb_p1);
+                            device_log("Small distance in DCD EE pair {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
+                                       left_edge,
+                                       right_edge,
+                                       d,
+                                       thickness,
+                                       d_hat,
+                                       sqrt_scalar(rest_d2));
+                        };
 
                         Float k1;
                         Float k2;

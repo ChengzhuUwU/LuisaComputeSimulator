@@ -1,52 +1,42 @@
 {
-    "scene_id": 6,
-    "pcg_iter_count": 50,
-    "nonlinear_iter_count": 1,
-    "gravity": [
-        0.0,
-        0.0,
-        0.0
-    ],
+    "scene_id": 0,
     "use_floor": false,
+    "use_gpu": false,
+    "implicit_dt": 0.2,
+    "use_energy_linesearch": true,
+    "stiffness_DAB_bending": 200.0,
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2K.obj",
-            "scale": 0.5,
+            "model_name": "square2.obj",
+            "scale": 1.0,
+            "material": {
+                "d_hat": 0.003,
+                "thickness": 0.003
+            },
             "fixed_points": [
                 {
-                    "method": "Left",
-                    "fixed_info": {
-                        "use_rotate": true,
-                        "rotCenter": [
-                            0.005,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAxis": [
-                            1.0,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAngVelDeg": -72.0
-                    }
+                    "method": "LeftBack"
+                }
+            ]
+        },
+        {
+            "model_name": "square2.obj",
+            "translation": [
+                0.1,
+                -0.3,
+                0.0
+            ],
+            "material": {
+                "d_hat": 0.003,
+                "thickness": 0.003
+            },
+            "fixed_points": [
+                {
+                    "method": "Left"
                 },
                 {
-                    "method": "Right",
-                    "fixed_info": {
-                        "use_rotate": true,
-                        "rotCenter": [
-                            -0.005,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAxis": [
-                            1.0,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAngVelDeg": 72.0
-                    }
+                    "method": "Right"
                 }
             ]
         }

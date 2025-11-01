@@ -1,7 +1,8 @@
 #include <iostream>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
-#include "CollisionDetector/libuipc/codim_ipc_simplex_normal_contact_function.h"
+#include "CollisionDetector/cipc_kernel.hpp"
+#include "CollisionDetector/distance.hpp"
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Energy/bending_energy.h"
@@ -1935,7 +1936,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Soft stretch spring
-    if constexpr (false)
+    // if constexpr (false)
     {
         std::vector<EigenTripletBlock<2>> hessian_blocks(host_sim_data->sa_stretch_springs.size());
         CpuParallel::single_thread_for(
@@ -2043,8 +2044,51 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
+    // Soft ground collision
+    // if constexpr (false)
+    if (get_scene_params().use_floor)
+    {
+        std::vector<EigenTripletBlock<1>> hessian_blocks(host_sim_data->num_verts_soft);
+        CpuParallel::parallel_for(
+            0,
+            host_sim_data->num_verts_soft,
+            [sa_x                           = host_sim_data->sa_x.data(),
+             sa_contact_active_verts_offset = host_sim_data->sa_contact_active_verts_offset.data(),
+             sa_contact_active_verts_d_hat  = host_sim_data->sa_contact_active_verts_d_hat.data(),
+             sa_is_fixed                    = host_mesh_data->sa_is_fixed.data(),
+             sa_rest_vert_area              = host_mesh_data->sa_rest_vert_area.data(),
+             &cgB,
+             &hessian_blocks](const uint vid)
+            {
+                float3 x_k  = sa_x[vid];
+                float  diff = x_k.y - get_scene_params().floor.y;
+
+                const float d_hat     = sa_contact_active_verts_d_hat[vid];
+                const float thickness = sa_contact_active_verts_offset[vid];
+
+                float3   gradient = luisa::make_float3(0.0f);
+                float3x3 hessian  = luisa::make_float3x3(0.0f);
+
+                if (diff < d_hat + thickness)
+                {
+                    float  C      = diff - (d_hat + thickness);
+                    float3 normal = luisa::make_float3(0, 1, 0);
+                    float  area   = sa_rest_vert_area[vid];
+                    float  stiff  = get_scene_params().stiffness_collision * area;
+                    float  k1     = stiff * C;
+                    gradient      = stiff * C * normal;
+                    hessian       = stiff * outer_product(normal, normal);
+                }
+
+                cgB.block<3, 1>(vid * 3, 0) -= float3_to_eigen3(gradient);
+                hessian_blocks[vid] = {.indices = {vid}, .matrix = float3x3_to_eigen3x3(hessian)};
+            });
+
+        convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
+    }
+
     // ABD Ground Collision
-    if constexpr (false)
+    // if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
         for (uint body_idx = 0; body_idx < host_sim_data->sa_affine_bodies.size(); body_idx++)
@@ -2109,7 +2153,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // ABD Inertia
-    if constexpr (false)
+    // if constexpr (false)
     {
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
@@ -2158,7 +2202,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Orthogonality
-    if constexpr (false)
+    // if constexpr (false)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
@@ -2233,9 +2277,187 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     }
 
     // Contact
-    if constexpr (false)
+    // if constexpr (false)
     {
         narrow_phase_detector->download_narrowphase_list(stream);
+
+        get_scene_params().stiffness_collision = 1e7f;
+
+        // Host collision detection
+        {
+            uint num_pairs = 0;
+            for (uint vid = 0; vid < host_sim_data->sa_x.size(); vid++)
+            {
+                const float3 p = host_sim_data->sa_x[vid];
+                for (uint fid = 0; fid < host_mesh_data->sa_faces.size(); fid++)
+                {
+                    uint3 face = host_mesh_data->sa_faces[fid];
+                    if (vid == face[0] || vid == face[1] || vid == face[2])
+                        continue;
+
+                    float3 t0   = host_sim_data->sa_x[face[0]];
+                    float3 t1   = host_sim_data->sa_x[face[1]];
+                    float3 t2   = host_sim_data->sa_x[face[2]];
+                    auto   bary = host_distance::point_triangle_distance_coeff_unclassified(
+                        float3_to_eigen3(p), float3_to_eigen3(t0), float3_to_eigen3(t1), float3_to_eigen3(t2));
+
+                    float3 x         = bary[0] * (p - t0) + bary[1] * (p - t1) + bary[2] * (p - t2);
+                    float  d2        = length_squared_vec(x);
+                    float  d_hat1    = host_sim_data->sa_contact_active_verts_d_hat[vid];
+                    float  d_hat2    = host_sim_data->sa_contact_active_verts_d_hat[face[0]];
+                    float  offset1   = host_sim_data->sa_contact_active_verts_offset[vid];
+                    float  offset2   = host_sim_data->sa_contact_active_verts_offset[face[0]];
+                    float  d_hat     = (d_hat1 + d_hat2) * 0.5f;
+                    float  thickness = offset1 + offset2;
+
+                    if (d2 < (d_hat + thickness) * (d_hat + thickness))
+                    {
+                        float  d      = sqrt_scalar(d2);
+                        float3 normal = x / d;
+
+                        float k1;
+                        float k2;
+                        float avg_area = 1.0f;
+
+                        {
+                            float area_a = host_mesh_data->sa_rest_vert_area[vid];
+                            float area_b = host_mesh_data->sa_rest_face_area[fid];
+                            avg_area     = 0.5f * (area_a + area_b);
+                        }
+
+                        const auto contact_energy_type = ContactEnergyType(get_scene_params().contact_energy_type);
+                        const float kappa = get_scene_params().stiffness_collision;
+                        if (contact_energy_type == ContactEnergyType::Quadratic)
+                        {
+                            float C     = thickness + d_hat - d;
+                            float stiff = kappa * avg_area;
+                            k1          = stiff * C;
+                            k2          = stiff;
+                        }
+                        else if (contact_energy_type == ContactEnergyType::Barrier)
+                        {
+                            float dBdD;
+                            float ddBddD;
+                            cipc::dKappaBarrierdD(
+                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, float(0.0f));
+                            cipc::ddKappaBarrierddD(
+                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, float(0.0f));
+                            k1 = -dBdD;
+                            k2 = ddBddD;
+                        }
+                        {
+                            uint                                 idx = num_pairs;
+                            CollisionPair::CollisionPairTemplate vf_pair;
+                            vf_pair.make_vf_pair(luisa::make_uint4(vid, face[0], face[1], face[2]),
+                                                 normal,
+                                                 k1,
+                                                 k2,
+                                                 avg_area * kappa,
+                                                 eigen3_to_float3(bary));
+                            host_collision_data->narrow_phase_list[idx] = vf_pair;
+                            num_pairs += 1;
+                            LUISA_INFO("VF Pair {}: dist = {}, force = {}, idx = {}",
+                                       idx,
+                                       d,
+                                       k1 * normal,
+                                       vf_pair.get_indices());
+                        }
+                    }
+                }
+            }
+            for (uint eid1 = 0; eid1 < host_mesh_data->sa_edges.size(); eid1++)
+            {
+                uint2  left_edge = host_mesh_data->sa_edges[eid1];
+                float3 ea_p0     = host_sim_data->sa_x[left_edge[0]];
+                float3 ea_p1     = host_sim_data->sa_x[left_edge[1]];
+
+                for (uint eid2 = 0; eid2 < host_mesh_data->sa_edges.size(); eid2++)
+                {
+                    uint2 right_edge = host_mesh_data->sa_edges[eid2];
+                    if (left_edge[0] == right_edge[0] || left_edge[0] == right_edge[1]
+                        || left_edge[1] == right_edge[0] || left_edge[1] == right_edge[1])
+                        continue;
+
+                    float3 eb_p0 = host_sim_data->sa_x[right_edge[0]];
+                    float3 eb_p1 = host_sim_data->sa_x[right_edge[1]];
+                    auto   bary =
+                        host_distance::edge_edge_distance_coeff_unclassified(float3_to_eigen3(ea_p0),
+                                                                             float3_to_eigen3(ea_p1),
+                                                                             float3_to_eigen3(eb_p0),
+                                                                             float3_to_eigen3(eb_p1));
+
+                    float3 x0 = bary[0] * ea_p0 + bary[1] * ea_p1;
+                    float3 x1 = bary[2] * eb_p0 + bary[3] * eb_p1;
+                    float3 x  = x0 - x1;
+                    float  d2 = length_squared_vec(x);
+
+                    float d_hat1    = host_sim_data->sa_contact_active_verts_d_hat[left_edge[0]];
+                    float d_hat2    = host_sim_data->sa_contact_active_verts_d_hat[right_edge[0]];
+                    float offset1   = host_sim_data->sa_contact_active_verts_offset[left_edge[0]];
+                    float offset2   = host_sim_data->sa_contact_active_verts_offset[right_edge[0]];
+                    float d_hat     = (d_hat1 + d_hat2) * 0.5f;
+                    float thickness = offset1 + offset2;
+
+                    if (d2 < (d_hat + thickness) * (d_hat + thickness))
+                    {
+                        float  d      = sqrt_scalar(d2);
+                        float3 normal = x / d;
+
+                        float k1;
+                        float k2;
+                        float avg_area = 1.0f;
+
+                        {
+                            float area_a = host_mesh_data->sa_rest_edge_area[eid1];
+                            float area_b = host_mesh_data->sa_rest_edge_area[eid2];
+                            avg_area     = 0.5f * (area_a + area_b);
+                        }
+
+                        const auto contact_energy_type = ContactEnergyType(get_scene_params().contact_energy_type);
+                        const float kappa = get_scene_params().stiffness_collision;
+                        if (contact_energy_type == ContactEnergyType::Quadratic)
+                        {
+                            float C     = thickness + d_hat - d;
+                            float stiff = kappa * avg_area;
+                            k1          = stiff * C;
+                            k2          = stiff;
+                        }
+                        else if (contact_energy_type == ContactEnergyType::Barrier)
+                        {
+                            float dBdD;
+                            float ddBddD;
+                            cipc::dKappaBarrierdD(
+                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, float(0.0f));
+                            cipc::ddKappaBarrierddD(
+                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, float(0.0f));
+                            k1 = -dBdD;
+                            k2 = ddBddD;
+                        }
+                        {
+                            uint                                 idx = num_pairs;
+                            CollisionPair::CollisionPairTemplate ee_pair;
+                            auto                                 tmp_bary = eigen4_to_float4(bary);
+                            ee_pair.make_ee_pair(
+                                luisa::make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]),
+                                normal,
+                                k1,
+                                k2,
+                                avg_area * kappa,
+                                tmp_bary.xy(),
+                                tmp_bary.zw());
+                            host_collision_data->narrow_phase_list[idx] = ee_pair;
+                            num_pairs += 1;
+                            LUISA_INFO("EE Pair {}: dist = {}, force = {}, idx = {}",
+                                       idx,
+                                       d,
+                                       k1 * normal,
+                                       ee_pair.get_indices());
+                        }
+                    }
+                }
+            }
+            host_collision_data->narrow_phase_collision_count.front() = num_pairs;
+        }
 
         const auto& host_count = host_collision_data->narrow_phase_collision_count;
         const uint  num_pairs  = host_count.front();
@@ -2267,6 +2489,23 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 indices[3] >= prefix,
             };
 
+            D = luisa::length(weight[0] * positions[0] + weight[1] * positions[1]
+                              + weight[2] * positions[2] + weight[3] * positions[3]);
+
+            float d_hat = 0.5f
+                          * (host_sim_data->sa_contact_active_verts_d_hat[indices[0]]
+                             + host_sim_data->sa_contact_active_verts_d_hat[indices[2]]);
+            float thickness = (host_sim_data->sa_contact_active_verts_offset[indices[0]]
+                               + host_sim_data->sa_contact_active_verts_offset[indices[2]]);
+
+            LUISA_INFO("Contact pair {}: D = {:.6f}, gap = {:.6f} (d_hat = {}, thickness = {}), force = {}",
+                       pair_idx,
+                       D,
+                       d_hat - (D - thickness),
+                       d_hat,
+                       thickness,
+                       k1 * normal);
+
             if constexpr (false)
             {
                 for (uint ii = 0; ii < 4; ii++)
@@ -2290,7 +2529,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                     std::vector<uint> left_indices;
                     std::vector<uint> right_indices;
 
-                    EigenFloat3     grad = float3_to_eigen3(k1 * weight[ii] * normal);
+                    EigenFloat3     force = float3_to_eigen3(k1 * weight[ii] * normal);
                     Eigen::MatrixXf J1;  // = Eigen::Matrix<float, 3, 12>::Zero();
                     if (is_rigid[ii])
                     {
@@ -2298,7 +2537,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                         J1                = AffineBodyDynamics::get_jacobian_dxdq(Xi);
                         const uint body_i = host_sim_data->sa_vert_affine_bodies_id[indices[ii]];
 
-                        cgB.block<12, 1>(3 * prefix + body_i * 12, 0) += J1.transpose() * grad;
+                        cgB.block<12, 1>(3 * prefix + body_i * 12, 0) += J1.transpose() * force;
                         left_indices = {
                             prefix + 4 * body_i + 0,
                             prefix + 4 * body_i + 1,
@@ -2309,8 +2548,10 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                     else
                     {
                         J1 = EigenFloat3x3::Identity();
-                        cgB.block<3, 1>(indices[ii] * 3, 0) += grad;
+                        cgB.block<3, 1>(indices[ii] * 3, 0) += force;
                         left_indices = {indices[ii]};
+
+                        LUISA_INFO("Apply contact grad to soft vertex {}, force = {}", indices[ii], force);
                     }
 
                     for (uint jj = 0; jj < 4; jj++)
@@ -2346,6 +2587,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         // convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
     }
 
+    // Validate contact gradient and hessian
     if constexpr (false)
     {
         stream << fn_reset_vector(sim_data->sa_cgB).dispatch(num_dof)
@@ -3344,7 +3586,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             {
                 prev_state_energy = compute_energy_interface();
             }
-            if constexpr (true)
+            if constexpr (false)
             {
                 host_evaluate_inertia();
 
@@ -3380,6 +3622,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 ccd_toi = ccd_get_toi();
                 alpha   = ccd_toi;
                 host_apply_dx(alpha);
+                if (ccd_toi < 1.0f)
+                {
+                    LUISA_INFO("  In non-linear iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
+                }
             }
 
             // Non-linear iteration break condition
