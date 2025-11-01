@@ -41,7 +41,7 @@ int main(int argc, char** argv)
         auto large_mat = lcs::outer_product_largevec(vec1, vec2);
         lcs::print_largemat(large_mat);
     }
-    // if (false)
+    if (false)
     {
         lcs::VECTOR12 vec1;
         lcs::set_largevec(vec1, 1.0f);
@@ -99,6 +99,38 @@ int main(int argc, char** argv)
         // lcs::print_largemat(mat2);
         lcs::print_largemat(result1);
         lcs::print_largevec(result2);
+    }
+
+    {
+        using T = float;
+        Eigen::Matrix<T, 2, 2> A1;
+        A1 << -2.769177e+08, -1.1071656e+08, -1.1071656e+08, -4.4266424e+07;
+        Eigen::Matrix<T, 2, 1> b1;
+        b1 << -0.10051622, 0.2514052;
+        std::cout << "float : \n" << (A1 * b1).transpose() << std::endl;
+        // std::cout << "float : A1 = \n" << A1 << ", b1 = \n" << b1 << ", Ab = \n" << A1 * b1 << std::endl;
+    }
+    {
+        using T = double;
+        Eigen::Matrix<T, 2, 2> A1;
+        A1 << -2.769177e+08, -1.1071656e+08, -1.1071656e+08, -4.4266424e+07;
+        Eigen::Matrix<T, 2, 1> b1;
+        b1 << -0.10051622, 0.2514052;
+        std::cout << "double \n" << (A1 * b1).transpose() << std::endl;
+        // std::cout << "double : A1 = \n"
+        //           << A1 << ", b1 = \n"
+        //           << b1 << ", Ab = \n"
+        //           << A1 * b1 << std::endl;
+    }
+    {
+        using T = float;
+        Eigen::Matrix<T, 2, 2> A1;
+        A1 << -2.769177e+08, -1.1071656e+08, -1.1071656e+08, -4.4266424e+07;
+        Eigen::Matrix<T, 2, 1> b1;
+        b1 << -0.10051622, 0.2514052;
+        float v1 = A1(0, 0) * b1(0);  // + A1(0, 1) * b1(1);
+        float v2 = A1(1, 0) * b1(0);  // + A1(1, 1) * b1(1);
+        std::cout << "manual float : \n" << v1 << ", " << v2 << std::endl;
     }
 
     // lcs::set_colomn_largemat(mat, 0, vec);

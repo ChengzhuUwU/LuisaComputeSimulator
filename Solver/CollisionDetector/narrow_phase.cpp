@@ -335,11 +335,22 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 {
                     device_log("VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
                                vid,
-                               fid,
+                               face,
                                toi,
                                sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
                                sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
                                thickness);
+                    // device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
+                    //            vid,
+                    //            face,
+                    //            t0_p,
+                    //            t1_p,
+                    //            t0_f0,
+                    //            t0_f1,
+                    //            t0_f2,
+                    //            t1_f0,
+                    //            t1_f1,
+                    //            t1_f2);
                 };
             };
 
@@ -400,12 +411,23 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 {
                     device_log(
                         "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
-                        left,
-                        right,
+                        left_edge,
+                        right_edge,
                         toi,
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)),
                         thickness);
+                    device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
+                               left_edge,
+                               right_edge,
+                               ea_t0_p0,
+                               ea_t0_p1,
+                               eb_t0_p0,
+                               eb_t0_p1,
+                               ea_t1_p0,
+                               ea_t1_p1,
+                               eb_t1_p0,
+                               eb_t1_p1);
                 };
 
                 // device_log("EE CCD : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, ea_t0_p0 = {}, ea_t0_p1 = {}, eb_t0_p0 = {}, eb_t0_p1 = {}, ea_t1_p0 = {}, ea_t1_p1 = {}, eb_t1_p0 = {}, eb_t1_p1 = {}",
@@ -672,16 +694,15 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         }
                         else if (contact_energy_type == ContactEnergyType::Barrier)
                         {
-                            Float dBdD;
-                            Float ddBddD;
-                            // dBdD = kappa * ipc::barrier_first_derivative(d2 - square_scalar(thickness), square_scalar(d_hat));
-                            // ddBddD = kappa * ipc::barrier_second_derivative(d2 - square_scalar(thickness), square_scalar(d_hat));
-                            cipc::dKappaBarrierdD(
-                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
-                            cipc::ddKappaBarrierddD(
-                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
-                            k1 = dBdD;
-                            k2 = ddBddD;
+                            // Float dBdD;
+                            // Float ddBddD;
+                            // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, d2, d_hat, thickness);
+                            // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
+                            // k1     = -dBdD;
+                            // k2     = ddBddD;
+                            // normal = x;
+                            k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
+                            k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
                         {
@@ -809,14 +830,15 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         }
                         else if (contact_energy_type == ContactEnergyType::Barrier)
                         {
-                            Float dBdD;
-                            Float ddBddD;
-                            cipc::dKappaBarrierdD(
-                                dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
-                            cipc::ddKappaBarrierddD(
-                                ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, Float(0.0f));
-                            k1 = dBdD;
-                            k2 = ddBddD;
+                            // Float dBdD;
+                            // Float ddBddD;
+                            // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, d2, d_hat, thickness);
+                            // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
+                            // k1     = -dBdD;
+                            // k2     = ddBddD;
+                            // normal = x;
+                            k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
+                            k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
                         {
@@ -1723,7 +1745,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             {
                 for (uint ii = start; ii <= end; ii++)
                 {
-                    // device_log("Pari {} add to soft diag {} = {}", pair_idx, indices[ii], k1 * weight[ii] * normal);
+                    // device_log("Pari {} apply to soft vert {} = {}", pair_idx, indices[ii], k1 * weight[ii] * normal);
                     atomic_add_float3(sa_cgB, indices[ii], k1 * weight[ii] * normal);
                     atomic_add_float3x3(sa_cgA_diag, indices[ii], k2 * weight[ii] * weight[ii] * nnT);
                 }
@@ -1733,6 +1755,12 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 Float4 aligned_weight = make_float4(0.0f);
                 for (uint ii = start; ii <= end; ii++)
                 {
+                    // device_log("Pair {} apply force to rigid vert {} = {}, k1/k2 = {}/{}",
+                    //            pair_idx,
+                    //            indices[ii],
+                    //            k1 * weight[ii] * normal,
+                    //            k1,
+                    //            k2);
                     aligned_weight += weight[ii] * make_float4(1.0f, sa_scaled_model_x.read(indices[ii]));
                 }
                 for (uint ii = 0; ii < 4; ii++)
@@ -2216,15 +2244,15 @@ void NarrowPhasesDetector::host_vf_ccd_query(Stream&                    stream,
     auto& host_count = host_collision_data->broad_phase_collision_count;
     auto& host_list  = host_collision_data->broad_phase_list_vf;
 
-    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
-    stream << collision_data->broad_phase_list_vf.view(0, num_vf_broadphase * 2).copy_to(host_list.data())
-           << luisa::compute::synchronize();
+    // const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    // const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    // stream << collision_data->broad_phase_list_vf.view(0, num_vf_broadphase * 2).copy_to(host_list.data())
+    //        << luisa::compute::synchronize();
 
     // LUISA_INFO("num_vf_broadphase = {}", num_vf_broadphase);
     // LUISA_INFO("num_ee_broadphase = {}", num_ee_broadphase);
 
-    uint2* pair_view = (lcs::uint2*)host_list.data();
+    // uint2* pair_view = (lcs::uint2*)host_list.data();
     // CpuParallel::parallel_sort(pair_view, pair_view + num_vf_broadphase, [](const uint2& left, const uint2& right)
     // {
     //     if (left[0] == right[0]) { return left[1] < right[1]; }
@@ -2234,12 +2262,15 @@ void NarrowPhasesDetector::host_vf_ccd_query(Stream&                    stream,
     float min_toi = host_accd::line_search_max_t;
     min_toi       = CpuParallel::parallel_for_and_reduce(
         0,
-        num_vf_broadphase,
+        sa_x_begin_left.size() * sa_faces_right.size(),
         [&](const uint pair_idx)
         {
-            const auto  pair       = pair_view[pair_idx];
-            const uint  left       = pair[0];
-            const uint  right      = pair[1];
+            // const auto  pair       = pair_view[pair_idx];
+            // const uint  left       = pair[0];
+            // const uint  right      = pair[1];
+
+            const uint  left       = pair_idx / sa_faces_right.size();
+            const uint  right      = pair_idx % sa_faces_right.size();
             const uint3 right_face = sa_faces_right[right];
 
             if (left == right_face[0] || left == right_face[1] || left == right_face[2])
@@ -2259,17 +2290,24 @@ void NarrowPhasesDetector::host_vf_ccd_query(Stream&                    stream,
 
             if (toi != host_accd::line_search_max_t)
             {
+                LUISA_INFO(
+                    "VF pair {}/{}: toi = {}, init dist = {}, end dist = {}",
+                    left,
+                    right_face,
+                    toi,
+                    luisa::sqrt(host_distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
+                    luisa::sqrt(host_distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)));
                 // LUISA_INFO("BroadPhase Pair {} : toi = {}, vid {} & fid {} (face {})",
                 //     pair_idx, toi, left, right, right_face,
                 // );
-                LUISA_INFO("VF Pair {} : toi = {}, vid {} & fid {} (face {}), dist = {} -> {}",
-                           pair_idx,
-                           toi,
-                           left,
-                           right,
-                           right_face,
-                           host_distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2),
-                           host_distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2));
+                // LUISA_INFO("VF Pair {} : toi = {}, vid {} & fid {} (face {}), dist = {} -> {}",
+                //            pair_idx,
+                //            toi,
+                //            left,
+                //            right,
+                //            right_face,
+                //            host_distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2),
+                //            host_distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2));
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_begin_left[left]);
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_end_left[left]);
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_begin_right[right_face[0]]);
@@ -2309,11 +2347,11 @@ void NarrowPhasesDetector::host_ee_ccd_query(Stream&                    stream,
     auto& host_count = host_collision_data->broad_phase_collision_count;
     auto& host_list  = host_collision_data->broad_phase_list_ee;
 
-    const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
-    const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    // const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    // const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 
-    stream << collision_data->broad_phase_list_ee.view(0, num_ee_broadphase * 2).copy_to(host_list.data())
-           << luisa::compute::synchronize();
+    // stream << collision_data->broad_phase_list_ee.view(0, num_ee_broadphase * 2).copy_to(host_list.data())
+    //        << luisa::compute::synchronize();
 
     // LUISA_INFO("num_ee_broadphase = {}", num_ee_broadphase);
 
@@ -2327,12 +2365,15 @@ void NarrowPhasesDetector::host_ee_ccd_query(Stream&                    stream,
     float min_toi = 1.25f;
     min_toi       = CpuParallel::parallel_for_and_reduce(
         0,
-        num_ee_broadphase,
+        sa_edges_left.size() * sa_edges_right.size(),
         [&](const uint pair_idx)
         {
-            const auto  pair       = pair_view[pair_idx];
-            const uint  left       = pair[0];
-            const uint  right      = pair[1];
+            // const auto  pair       = pair_view[pair_idx];
+            // const uint  left       = pair[0];
+            // const uint  right      = pair[1];
+            const uint left  = pair_idx / sa_edges_right.size();
+            const uint right = pair_idx % sa_edges_right.size();
+
             const uint2 left_edge  = sa_edges_left[left];
             const uint2 right_edge = sa_edges_right[right];
 
@@ -2354,7 +2395,13 @@ void NarrowPhasesDetector::host_ee_ccd_query(Stream&                    stream,
 
             if (toi != host_accd::line_search_max_t)
             {
-                LUISA_INFO("EE Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
+                LUISA_INFO("EE pair {}/{}: toi = {}, init dist = {}, end dist = {}",
+                           left_edge,
+                           right_edge,
+                           toi,
+                           host_distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1),
+                           host_distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
+                // LUISA_INFO("EE Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[0]]);
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_begin_a[left_edge[1]]);
                 // LUISA_INFO("             {} : positions : {}", pair_idx, sa_x_begin_b[right_edge[0]]);
@@ -2455,15 +2502,24 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
         const uint2 left_edge  = uint2(2, 3);
         const uint2 right_edge = uint2(4, 6);
 
-        float3      case_ea_t0_p0 = luisa::make_float3(-0.402716, -0.290011, 0.452109);
-        float3      case_ea_t0_p1 = luisa::make_float3(0.50008, 0.138455, 0.490343);
-        float3      case_eb_t0_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
-        float3      case_eb_t0_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
-        float3      case_ea_t1_p0 = luisa::make_float3(-0.40609047, -0.30418798, 0.4480959);
-        float3      case_ea_t1_p1 = luisa::make_float3(0.500001, 0.11660194, 0.4934225);
-        float3      case_eb_t1_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
-        float3      case_eb_t1_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
-        const float thickenss     = 0;
+        float3 case_ea_t0_p0 = 100.0f * luisa::make_float3(-2.2901228e-05, 0.5042468, 0.0002512519);
+        float3 case_ea_t0_p1 = 100.0f * luisa::make_float3(-1.5774242e-05, 0.7039756, 0.000245592);
+        float3 case_eb_t0_p0 = 100.0f * luisa::make_float3(-4.84282e-05, 0.0009833364, 5.761323e-06);
+        float3 case_eb_t0_p1 = 100.0f * luisa::make_float3(-5.4006137e-05, 0.5005333, 9.2662185e-07);
+        float3 case_ea_t1_p0 = 100.0f * luisa::make_float3(-2.4478873e-05, 0.50423235, 0.00025857423);
+        float3 case_ea_t1_p1 = 100.0f * luisa::make_float3(-1.6817423e-05, 0.7039467, 0.0002524547);
+        float3 case_eb_t1_p0 = 100.0f * luisa::make_float3(-4.8304522e-05, 0.0009826836, 5.727912e-06);
+        float3 case_eb_t1_p1 = 100.0f * luisa::make_float3(-5.4172204e-05, 0.5005191, 3.2774278e-07);
+
+        // float3  case_ea_t0_p0 = luisa::make_float3(-0.402716, -0.290011, 0.452109);
+        // float3      case_ea_t0_p1 = luisa::make_float3(0.50008, 0.138455, 0.490343);
+        // float3      case_eb_t0_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
+        // float3      case_eb_t0_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
+        // float3      case_ea_t1_p0 = luisa::make_float3(-0.40609047, -0.30418798, 0.4480959);
+        // float3      case_ea_t1_p1 = luisa::make_float3(0.500001, 0.11660194, 0.4934225);
+        // float3      case_eb_t1_p0 = luisa::make_float3(-0.4, -0.300001, -0.5);
+        // float3      case_eb_t1_p1 = luisa::make_float3(-0.399998, -0.300016, 0.5);
+        const float thickenss = 0;
 
         // float3 case_ea_t0_p0 = luisa::make_float3(-0.499492, -0.279657, 0.460444);
         // float3 case_ea_t0_p1 = luisa::make_float3(0.499997, -0.248673, 0.468853);
@@ -2485,11 +2541,13 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
             const auto eb10 = float3_to_eigen3(case_eb_t1_p0);
             const auto eb11 = float3_to_eigen3(case_eb_t1_p1);
 
-            auto d2 = host_distance::edge_edge_distance_squared_unclassified(ea00, ea01, eb00, eb01);
-            LUISA_INFO("Start distance = {}", d2);
+            LUISA_INFO("Start distance = {}",
+                       host_distance::edge_edge_distance_squared_unclassified(ea00, ea01, eb00, eb01));
+            // LUISA_INFO("End.  distance = {}",
+            //            host_distance::edge_edge_distance_squared_unclassified(ea10, ea11, eb10, eb11));
 
-            float toi = host_accd::edge_edge_ccd(ea00, ea01, eb00, eb01, ea10, ea11, eb10, eb11, 0);
-            LUISA_INFO("BroadPhase Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", 0, toi, left, left_edge, right, right_edge);
+            // float toi = host_accd::edge_edge_ccd(ea00, ea01, eb00, eb01, ea10, ea11, eb10, eb11, 0);
+            // LUISA_INFO("BroadPhase Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", 0, toi, left, left_edge, right, right_edge);
         }
 
         std::vector<float3> input_positions = {
@@ -2521,11 +2579,13 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
                     Float3 eb_t1_p0 = buffer->read(6);
                     Float3 eb_t1_p1 = buffer->read(7);
 
-                    auto d2 = distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1);
-                    device_log("Start distance = {}", d2);
+                    device_log("Start distance = {}",
+                               distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
+                    // device_log("End   distance = {}",
+                    //            distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
 
-                    toi = accd::edge_edge_ccd(
-                        ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1, thickness);
+                    // toi = accd::edge_edge_ccd(
+                    //     ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1, thickness);
                 };
 
                 // $if (toi != host_accd::line_search_max_t)
@@ -2537,6 +2597,26 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
             });
 
         stream << fn_test_ccd_ee(0).dispatch(1) << synchronize();
+    }
+
+    // Barrier energy
+    {
+        float dBdD;
+        float ddBddD;
+        float avg_area  = 1.0f;
+        float kappa     = 1.0f;
+        float thickness = 0.00f;
+        float d_hat     = 1.00f;
+        float d         = 0.5f;
+
+        ipc::barrier_first_derivative(d, d_hat);
+        ipc::barrier_second_derivative(d, d_hat);
+        // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, thickness);
+        // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, thickness);
+        // LUISA_INFO("Squared   dBdD = {}, ddBddD = {}", dBdD, ddBddD);
+        // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, (d - thickness), d_hat, thickness);
+        // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, (d - thickness), d_hat, thickness);
+        // LUISA_INFO("UnSquared dBdD = {}, ddBddD = {}", dBdD, ddBddD);
     }
 }
 

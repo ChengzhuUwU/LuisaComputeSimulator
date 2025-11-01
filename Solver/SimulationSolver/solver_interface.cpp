@@ -99,7 +99,8 @@ void SolverInterface::compile(AsyncCompiler& compiler)
     {
         narrow_phase_detector->set_collision_data(host_collision_data, collision_data);
         narrow_phase_detector->compile(compiler);
-        // narrow_phase_detector.unit_test(device, stream);
+        auto tmp_stream = compiler.device().create_stream();
+        narrow_phase_detector->unit_test(compiler.device(), tmp_stream);
     }
 
     LUISA_INFO("JIT Compiling Solver...");
