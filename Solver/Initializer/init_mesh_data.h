@@ -172,7 +172,7 @@ namespace Initializer
     {
         ConstitutiveModelRigid model = ConstitutiveModelRigid::Orthogonality;
         // bool                   is_solid        = false;
-        float thickness = 3e-3f;
+        float thickness = 2e-3f;
         float stiffness = 1e6f;
         // float                  youngs_modulus  = 1e9f;
         // float                  poisson_ratio   = 0.35f;

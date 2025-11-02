@@ -1,7 +1,5 @@
 {
     "scene_id": 1,
-    "use_floor": true,
-    "use_gpu": false,
     "implicit_dt": 0.01,
     "nonlinear_iter_count": 3,
     "pcg_iter_count": 100,

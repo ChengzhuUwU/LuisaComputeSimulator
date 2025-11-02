@@ -8,23 +8,18 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2.obj",
+            "model_name": "triangle1.obj",
             "scale": 1.0,
             "material": {
                 "d_hat": 0.001,
                 "thickness": 0.1,
                 "density": 1e5
-            },
-            "fixed_points": [
-                {
-                    "method": "LeftBack"
-                }
-            ]
+            }
         },
         {
-            "model_name": "square2.obj",
+            "model_name": "triangle1.obj",
             "translation": [
-                0.1,
+                0.0,
                 -0.3,
                 0.0
             ],

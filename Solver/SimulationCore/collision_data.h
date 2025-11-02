@@ -435,9 +435,9 @@ struct CollisionData : SimulationType
                                            const bool              allocate_contact_list,
                                            const bool              allocate_triplet)
     {
-        const uint per_element_count_BP        = 64;
+        const uint per_element_count_BP        = 48;
         const uint per_element_count_NP        = 24;
-        const uint per_element_count_NP_culled = 16;
+        const uint per_element_count_NP_culled = 12;
 
         if (allocate_contact_list)
         {
@@ -461,7 +461,8 @@ struct CollisionData : SimulationType
         if (allocate_triplet)
         {
             const uint max_culled_triplet = per_element_count_NP_culled * (num_verts + num_edges);
-            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet, max_culled_triplet);
+            lcs::Initializer::resize_buffer(
+                device, this->sa_cgA_contact_offdiag_triplet, max_scalar(max_culled_triplet, 256));
         }
 
         const size_t collision_pair_bytes =

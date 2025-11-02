@@ -1,7 +1,6 @@
 {
-    "scene_id": 6,
-    "pcg_iter_count": 50,
-    "nonlinear_iter_count": 1,
+    "scene_id": 5,
+    "nonlinear_iter_count": 3,
     "gravity": [
         0.0,
         0.0,
@@ -11,8 +10,7 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2K.obj",
-            "scale": 0.5,
+            "model_name": "Cylinder/cylinder88K.obj",
             "fixed_points": [
                 {
                     "method": "Left",
@@ -29,10 +27,6 @@
                             0.0
                         ],
                         "rotAngVelDeg": -72.0
-                    },
-                    "material": {
-                        "d_hat": 0.002,
-                        "thickness": 0.002
                     }
                 },
                 {
@@ -50,10 +44,6 @@
                             0.0
                         ],
                         "rotAngVelDeg": 72.0
-                    },
-                    "material": {
-                        "d_hat": 0.002,
-                        "thickness": 0.002
                     }
                 }
             ]

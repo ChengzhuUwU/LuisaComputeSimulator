@@ -501,8 +501,6 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
             Float3     new_x;
 
             new_x = sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid);
-            sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_cgX->read(vid));
-
             sa_x->write(vid, new_x);
         },
         default_option);
@@ -2682,7 +2680,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                    });
 
     const float error = (cgB - cgA * cgX).norm();
-    LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
+    LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
                get_scene_params().current_nonlinear_iter,
                error,
                fast_infinity_norm(host_sim_data->sa_cgX));
@@ -3428,7 +3426,7 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::functio
     {
         LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
     }
-    LUISA_INFO("  In non-linear iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
+    LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
                get_scene_params().current_nonlinear_iter,
                (cgB - cgA * cgX).norm(),
                infinity_norm);
@@ -3697,7 +3695,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 host_apply_dx(alpha);
                 if (ccd_toi < 1.0f)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
+                    LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
                 }
             }
 
@@ -3707,7 +3705,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
                 if (curr_max_step < max_move * substep_dt)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}",
+                    LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
                                iter,
                                curr_max_step,
                                max_move * substep_dt);
@@ -3734,7 +3732,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 direchlet_point_converged = direchlet_max_delta < 1e-3;
                 if (!direchlet_point_converged)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
+                    LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
                 }
             }
 
@@ -4111,7 +4109,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 stream << luisa::compute::synchronize();
                 if (ccd_toi < 1.0f)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
+                    LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
                 }
             }
             ADD_HOST_TIME_STAMP("End CCD");
@@ -4122,7 +4120,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
                 if (curr_max_step < max_move * substep_dt)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: Iteration break for small searching direction {} < {}",
+                    LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
                                iter,
                                curr_max_step,
                                max_move * substep_dt);
@@ -4207,7 +4205,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 direchlet_point_converged = direchlet_max_delta < 1e-3;
                 if (!direchlet_point_converged)
                 {
-                    LUISA_INFO("  In non-linear iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
+                    LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
                 }
             }
 
