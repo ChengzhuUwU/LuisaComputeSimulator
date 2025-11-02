@@ -362,9 +362,9 @@ int main(int argc, char** argv)
                             host_collision_data.narrow_phase_collision_count.front(),
                             host_collision_data.narrow_phase_collision_count[offset_verts]);
                 ImGui::Text("MaxCount = %zu / %zu ,  Narrow %zu , Triplet = %zu)",
-                            host_collision_data.broad_phase_list_vf.size() / 2,
-                            host_collision_data.broad_phase_list_ee.size() / 2,
-                            host_collision_data.narrow_phase_list.size(),
+                            device_collision_data.broad_phase_list_vf.size() / 2,
+                            device_collision_data.broad_phase_list_ee.size() / 2,
+                            device_collision_data.narrow_phase_list.size(),
                             device_collision_data.sa_cgA_contact_offdiag_triplet.size());
             }
 

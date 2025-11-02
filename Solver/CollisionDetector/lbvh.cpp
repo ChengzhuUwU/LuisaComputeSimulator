@@ -538,11 +538,6 @@ void LBVH::compile(AsyncCompiler& compiler)
             sa_node_aabb->write(num_inner_nodes + lid, aabb);
         });
 
-    LUISA_INFO("data1 {}, data2 {}, data3 {}",
-               lbvh_data->sa_node_aabb.size_bytes(),
-               lbvh_data->sa_sorted_get_original.size_bytes(),
-               lbvh_data->sa_num_leaves.size_bytes());
-
     compiler.compile(fn_update_vert_tree_leave_aabb_v2,
                      [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
                                          Var<Buffer<aabbData>> sa_node_aabb,
@@ -732,12 +727,14 @@ void LBVH::compile(AsyncCompiler& compiler)
             }
         };
     };
+
     auto query_template2 = [](BufferVar<aabbData>& sa_node_aabb,
                               BufferVar<uint2>&    sa_children,
                               BufferVar<uint>&     sa_object_idx,
                               const Float2x3&      input_aabb,
                               BufferVar<uint>&     broadphase_count,
                               BufferVar<uint>&     broad_phase_list,
+                              UInt                 max_count,
                               auto                 is_valid_function)
     {
         const Uint                            vid        = dispatch_id().x;
@@ -751,15 +748,10 @@ void LBVH::compile(AsyncCompiler& compiler)
         Uint loop      = 0;
         $while(stack_ptr > 0)
         {
-            loop += 1;
-            $if(loop > 10000)
-            {
-                $break;
-            };
-
             stack_ptr -= 1;
             Uint  node  = stack[stack_ptr];
             Uint2 child = sa_children->read(node);
+            Uint  safe  = 1;
             for (uint ii = 0; ii < 2; ii++)
             {
                 const Uint curr_select = child[ii];
@@ -772,8 +764,14 @@ void LBVH::compile(AsyncCompiler& compiler)
                         $if(is_valid_function(adj_vid))
                         {
                             Uint idx = broadphase_count->atomic(0).fetch_add(1u);
-                            broad_phase_list->write(idx * 2 + 0, vid);
-                            broad_phase_list->write(idx * 2 + 1, adj_vid);
+
+                            // !!! Why add this will result in jit failure?
+                            // safe = Uint(idx < max_count);
+                            // Uint safe_idx = min(max_count, idx);
+                            Uint safe_idx = idx;
+
+                            broad_phase_list->write(safe_idx * 2 + 0, vid);
+                            broad_phase_list->write(safe_idx * 2 + 1, adj_vid);
                             num_found += 1u;
                         };
                     }
@@ -791,6 +789,12 @@ void LBVH::compile(AsyncCompiler& compiler)
                     };
                 };
             }
+
+            loop += 1;
+            $if(safe == 0 | loop > 10000)
+            {
+                $break;
+            };
         };
     };
 #endif
@@ -850,7 +854,8 @@ void LBVH::compile(AsyncCompiler& compiler)
                                           BufferVar<uint>     broadphase_count,
                                           BufferVar<uint>     broad_phase_list,
                                           BufferVar<float>    d_hat,
-                                          BufferVar<float>    thickness)
+                                          BufferVar<float>    thickness,
+                                          Uint                max_count)
                         {
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
@@ -863,6 +868,7 @@ void LBVH::compile(AsyncCompiler& compiler)
                                             vert_aabb,
                                             broadphase_count,
                                             broad_phase_list,
+                                            max_count,
                                             [&](const Uint adj_fid) { return Var<bool>(true); });
                         });
 
@@ -876,7 +882,8 @@ void LBVH::compile(AsyncCompiler& compiler)
                                           BufferVar<uint>     broadphase_count,
                                           BufferVar<uint>     broad_phase_list,
                                           BufferVar<float>    d_hat,
-                                          BufferVar<float>    thickness)
+                                          BufferVar<float>    thickness,
+                                          Uint                max_count)
                         {
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);
@@ -892,6 +899,7 @@ void LBVH::compile(AsyncCompiler& compiler)
                                             vert_aabb,
                                             broadphase_count,
                                             broad_phase_list,
+                                            max_count,
                                             [&](const Uint adj_eid) { return Var<bool>(eid < adj_eid); });
                         });
 
@@ -1253,7 +1261,8 @@ void LBVH::broad_phase_query_from_verts(Stream&                 stream,
                                      broadphase_count,
                                      broad_phase_list,
                                      d_hat,
-                                     thickness)
+                                     thickness,
+                                     broad_phase_list.size() / 2)
                   .dispatch(sa_x_begin.size());
 }
 void LBVH::broad_phase_query_from_edges(Stream&                 stream,
@@ -1277,7 +1286,8 @@ void LBVH::broad_phase_query_from_edges(Stream&                 stream,
                                      broadphase_count,
                                      broad_phase_list,
                                      d_hat,
-                                     thickness)
+                                     thickness,
+                                     broad_phase_list.size() / 2)
                   .dispatch(sa_edges.size());
 }
 

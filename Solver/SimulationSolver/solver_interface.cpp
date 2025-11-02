@@ -72,16 +72,33 @@ void SolverInterface::init_data(luisa::compute::Device&                   device
     }
 
     {
-        host_collision_data->resize_collision_data(device,
+        host_collision_data->allocate_basic_buffers(device,
+                                                    host_mesh_data->num_verts,
+                                                    host_mesh_data->num_faces,
+                                                    host_mesh_data->num_edges,
+                                                    host_sim_data->num_dof);
+
+        collision_data->allocate_basic_buffers(device,
+                                               host_mesh_data->num_verts,
+                                               host_mesh_data->num_faces,
+                                               host_mesh_data->num_edges,
+                                               host_sim_data->num_dof);
+
+        host_collision_data->resize_collision_data_list(device,
+                                                        host_mesh_data->num_verts,
+                                                        host_mesh_data->num_faces,
+                                                        host_mesh_data->num_edges,
+                                                        host_sim_data->num_dof,
+                                                        false,
+                                                        true);
+
+        collision_data->resize_collision_data_list(device,
                                                    host_mesh_data->num_verts,
                                                    host_mesh_data->num_faces,
                                                    host_mesh_data->num_edges,
-                                                   host_sim_data->num_dof);
-        collision_data->resize_collision_data(device,
-                                              host_mesh_data->num_verts,
-                                              host_mesh_data->num_faces,
-                                              host_mesh_data->num_edges,
-                                              host_sim_data->num_dof);
+                                                   host_sim_data->num_dof,
+                                                   true,
+                                                   true);
     }
 }
 void SolverInterface::compile(AsyncCompiler& compiler)

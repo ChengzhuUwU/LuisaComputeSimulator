@@ -3157,8 +3157,6 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
         device_narrowphase_dcd(stream);
 
     narrow_phase_detector->download_narrowphase_collision_count(stream);
-    narrow_phase_detector->construct_pervert_adj_list(
-        stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
 {
@@ -3490,7 +3488,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     // Input
     lcs::SolverInterface::physics_step_prev_operation();
 
-
     constexpr bool use_eigen          = ConjugateGradientSolver::use_eigen;
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
 
@@ -3504,6 +3501,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         device_update_contact_list(stream);
         // narrow_phase_detector->download_narrowphase_list(stream);
         // narrow_phase_detector->download_pervert_adjacent_list(stream);
+        narrow_phase_detector->construct_pervert_adj_list(
+            stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
@@ -3788,6 +3787,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 prev_state_energy = curr_energy;  // E_prev = E
             }
 
+            narrow_phase_detector->post_resize_buffers(device, stream);
+
             // CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);  // x_prev = x
             // CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
             //                            host_sim_data->sa_affine_bodies_q_iter_start);  // q_prev = q
@@ -3857,6 +3858,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto        update_contact_set = [&]()
     {
         device_update_contact_list(stream);
+        narrow_phase_detector->construct_pervert_adj_list(
+            stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
     };
     auto evaluate_contact = [&]()
@@ -4208,14 +4211,16 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 }
             }
 
-            post_intersection_check();
+            narrow_phase_detector->post_resize_buffers(device, stream);
+
+            // post_intersection_check();
 
             // stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start);
             // if (sim_data->num_affine_bodies != 0)
             // {
             //     stream << sim_data->sa_affine_bodies_q.copy_to(sim_data->sa_affine_bodies_q_iter_start);
             // }
-            stream << luisa::compute::synchronize();
+            // stream << luisa::compute::synchronize();
         }
 
         if (host_sim_data->num_verts_soft != 0)

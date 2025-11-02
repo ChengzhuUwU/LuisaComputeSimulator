@@ -317,7 +317,8 @@ class LBVH
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>>
+                           luisa::compute::Buffer<float>,
+                           uint>
         fn_query_from_verts_v2;
     luisa::compute::Shader<1,
                            luisa::compute::Buffer<aabbData>,
@@ -329,7 +330,8 @@ class LBVH
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>>
+                           luisa::compute::Buffer<float>,
+                           uint>
         fn_query_from_edges_v2;
 };
 
