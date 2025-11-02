@@ -331,6 +331,14 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
                 toi = accd::point_triangle_ccd(t0_p, t1_p, t0_f0, t0_f1, t0_f2, t1_f0, t1_f1, t1_f2, thickness);
 
+                // Float end_dist_sq =
+                //     distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2);
+                // Float end_dist = sqrt(end_dist_sq);
+                // $if(end_dist < thickness)
+                // {
+                //     sa_toi->atomic(1).fetch_min(end_dist);
+                // };
+
                 $if(toi<0.0f | toi> accd::line_search_max_t)
                 {
                     device_log("VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
@@ -406,6 +414,14 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
                 toi = accd::edge_edge_ccd(
                     ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1, ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1, thickness);
+
+                // Float end_dist_sq =
+                //     distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1);
+                // Float end_dist = sqrt(end_dist_sq);
+                // $if(end_dist < thickness)
+                // {
+                //     sa_toi->atomic(1).fetch_min(end_dist);
+                // };
 
                 $if(toi<0.0f | toi> accd::line_search_max_t)
                 {
@@ -497,7 +513,7 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
                                                thickness)
                       .dispatch(num_vf_broadphase);
     }
-    stream << sa_toi.view(0, 1).copy_to(host_toi.data());
+    stream << sa_toi.view(0, 2).copy_to(host_toi.data());
 }
 
 void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
@@ -544,7 +560,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
                       get_collision_data(), sa_x_begin_a, sa_x_begin_b, sa_x_end_a, sa_x_end_b, sa_edges_left, sa_edges_left, d_hat, thickness)
                       .dispatch(num_ee_broadphase);
     }
-    stream << sa_toi.view(0, 1).copy_to(host_toi.data());
+    stream << sa_toi.view(0, 2).copy_to(host_toi.data());
 }
 
 }  // namespace lcs
@@ -572,6 +588,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
     const uint offset_ve = collision_data->get_ve_count_offset();
     const uint offset_vf = collision_data->get_vf_count_offset();
     const uint offset_ee = collision_data->get_ee_count_offset();
+
+    const bool enable_fast_math = false;
 
     // TODO: PreScan, preventing buffer out of range
     compiler.compile<1>(
@@ -660,23 +678,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         Float k2;
                         Float avg_area = 1.0f;
 
-                        $if(d < min_distance_threshold)
-                        {
-                            Float3 rest_p  = sa_rest_x_a->read(vid);
-                            Float3 rest_t0 = sa_rest_x_b->read(face[0]);
-                            Float3 rest_t1 = sa_rest_x_b->read(face[1]);
-                            Float3 rest_t2 = sa_rest_x_b->read(face[2]);
-                            Float  rest_d2 = distance::point_triangle_distance_squared_unclassified(
-                                rest_p, rest_t0, rest_t1, rest_t2);
-                            device_log("Small distance in DCD VF pair {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
-                                       vid,
-                                       face,
-                                       d,
-                                       thickness,
-                                       d_hat,
-                                       sqrt_scalar(rest_d2));
-                        };
-
                         if constexpr (use_area_weighting)
                         {
                             Float area_a = sa_rest_area_a->read(vid);
@@ -700,10 +701,39 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
                             // k1     = -dBdD;
                             // k2     = ddBddD;
-                            // normal = x;
+                            // normal = 2.0f * x;  // Scaled by d(d2)/d(d) = 2d
                             k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
+
+                        $if(isnan(k1) | isnan(k2) | isinf(k1) | isinf(k2))
+                        {
+                            device_log("NaN/INF stiffness in DCD VF pair {}-{} : d = {} (d2 = {}), thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
+                                       vid,
+                                       face,
+                                       d,
+                                       d2,
+                                       thickness,
+                                       d_hat,
+                                       k1,
+                                       k2);
+
+                            Float3 rest_p  = sa_rest_x_a->read(vid);
+                            Float3 rest_t0 = sa_rest_x_b->read(face[0]);
+                            Float3 rest_t1 = sa_rest_x_b->read(face[1]);
+                            Float3 rest_t2 = sa_rest_x_b->read(face[2]);
+                            Float  rest_d2 = distance::point_triangle_distance_squared_unclassified(
+                                rest_p, rest_t0, rest_t1, rest_t2);
+                            device_log("Small distance in DCD VF pair {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
+                                       vid,
+                                       face,
+                                       d,
+                                       thickness,
+                                       d_hat,
+                                       sqrt_scalar(rest_d2));
+
+                            collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                        };
 
                         {
                             Uint idx = narrowphase_count->atomic(0).fetch_add(1u);
@@ -716,7 +746,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                     };
                 };
             };
-        });
+        },
+        {.enable_fast_math = enable_fast_math});
 
     compiler.compile<1>(
         fn_narrow_phase_ee_dcd_query,
@@ -794,23 +825,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         // Float3 normal = normalize_vec(x);
                         Float3 normal = x / d;
 
-                        $if(d < min_distance_threshold)
-                        {
-                            Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
-                            Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
-                            Float3 rest_eb_p0 = (sa_rest_x_b->read(right_edge[0]));
-                            Float3 rest_eb_p1 = (sa_rest_x_b->read(right_edge[1]));
-                            Float  rest_d2    = distance::edge_edge_distance_squared_unclassified(
-                                rest_ea_p0, rest_ea_p1, rest_eb_p0, rest_eb_p1);
-                            device_log("Small distance in DCD EE pair {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
-                                       left_edge,
-                                       right_edge,
-                                       d,
-                                       thickness,
-                                       d_hat,
-                                       sqrt_scalar(rest_d2));
-                        };
-
                         Float k1;
                         Float k2;
                         Float avg_area = 1.0f;
@@ -836,11 +850,40 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, d2, d_hat, thickness);
                             // k1     = -dBdD;
                             // k2     = ddBddD;
-                            // normal = x;
+                            // normal = 2.0f * x;
                             k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
+                        $if(isnan(k1) | isnan(k2) | isinf(k1) | isinf(k2))
+                        {
+                            device_log("NaN/INF stiffness in DCD EE pair {}-{} : d = {} (d2 = {}) thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
+                                       left_edge,
+                                       right_edge,
+                                       d,
+                                       d2,
+                                       thickness,
+                                       d_hat,
+                                       k1,
+                                       k2);
+                            Float3 rest_ea_p0 = (sa_rest_x_a->read(left_edge[0]));
+                            Float3 rest_ea_p1 = (sa_rest_x_a->read(left_edge[1]));
+                            Float3 rest_eb_p0 = (sa_rest_x_b->read(right_edge[0]));
+                            Float3 rest_eb_p1 = (sa_rest_x_b->read(right_edge[1]));
+                            Float  rest_d2    = distance::edge_edge_distance_squared_unclassified(
+                                rest_ea_p0, rest_ea_p1, rest_eb_p0, rest_eb_p1);
+
+                            device_log("NaN/INF stiffness in DCD EE pair {}: {}-{} : d = {}, thickness = {}, d_hat = {}, rest_d = {}",
+                                       pair_idx,
+                                       left_edge,
+                                       right_edge,
+                                       d,
+                                       thickness,
+                                       d_hat,
+                                       sqrt_scalar(rest_d2));
+
+                            collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                        };
                         {
                             Uint idx = narrowphase_count->atomic(0).fetch_add(1u);
                             Var<CollisionPair::CollisionPairTemplate> ee_pair;
@@ -858,7 +901,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 };
                 // Corner case (VV, VE) will only be considered in VF detection
             };
-        });
+        },
+        {.enable_fast_math = enable_fast_math});
 }
 
 // Device DCD
@@ -1731,14 +1775,14 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 Float3 delta =
                     weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
                     + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
-                device_log("Assemble NaN/INF force in contact pair {}: dist {}, gap = {}, index {}, weight {}, normal {}, k1 {}",
-                           pair_idx,
-                           length(delta),
-                           length(delta) - thickness - d_hat,
-                           indices,
-                           weight,
-                           normal,
-                           k1);
+                // device_log("Assemble NaN/INF force in contact pair {}: dist {}, gap = {}, index {}, weight {}, normal {}, k1 {}",
+                //            pair_idx,
+                //            length(delta),
+                //            length(delta) - thickness - d_hat,
+                //            indices,
+                //            weight,
+                //            normal,
+                //            k1);
             };
 
             auto add_to_soft_body = [&](const uint start, const uint end)
@@ -2492,7 +2536,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     }
 
     // EE CCD Test
-    // if constexpr (false)
+    if constexpr (false)
     {
         // float desire_toi = 0.91535777;
         // LUISA_INFO("EE Test, desire for toi {}", desire_toi);
@@ -2600,23 +2644,53 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     }
 
     // Barrier energy
+    // if constexpr (false)
     {
         float dBdD;
         float ddBddD;
         float avg_area  = 1.0f;
         float kappa     = 1.0f;
         float thickness = 0.00f;
-        float d_hat     = 1.00f;
-        float d         = 0.5f;
+        float d_hat     = 0.00003f;
 
-        ipc::barrier_first_derivative(d, d_hat);
-        ipc::barrier_second_derivative(d, d_hat);
-        // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, square_scalar(d - thickness), d_hat, thickness);
-        // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, square_scalar(d - thickness), d_hat, thickness);
-        // LUISA_INFO("Squared   dBdD = {}, ddBddD = {}", dBdD, ddBddD);
-        // cipc::dKappaBarrierdD(dBdD, avg_area * kappa, (d - thickness), d_hat, thickness);
-        // cipc::ddKappaBarrierddD(ddBddD, avg_area * kappa, (d - thickness), d_hat, thickness);
-        // LUISA_INFO("UnSquared dBdD = {}, ddBddD = {}", dBdD, ddBddD);
+        float3 t  = float3(0.0f, 0.00019f, 0.0f);
+        float  d2 = length_squared_vec(t);
+        float  d  = sqrt_scalar(d2);
+
+        // luisa::compute::rsqrt()
+
+        auto orig_e  = ipc::barrier(d, d_hat);
+        auto orig_k1 = ipc::barrier_first_derivative(d, d_hat);
+        auto orig_k2 = ipc::barrier_second_derivative(d, d_hat);
+        LUISA_INFO("Original  Energy = {}, k1 = {}, k2 = {}", orig_e, orig_k1, orig_k2);
+
+        auto new_e  = ipc::barrier(double(d), double(d_hat));
+        auto new_k1 = ipc::barrier_first_derivative(double(d), double(d_hat));
+        auto new_k2 = ipc::barrier_second_derivative(double(d), double(d_hat));
+        LUISA_INFO("Original  Energy = {}, k1 = {}, k2 = {}", orig_e, orig_k1, orig_k2);
+
+
+        // float3   normal      = t / d;
+        // float3   orig_dbdx   = orig_k1 * normal;
+        // float3x3 orig_d2bdx2 = orig_k2 * outer_product(normal, normal);
+
+        // float new_e;
+        // float new_k1;
+        // float new_k2;
+        // cipc::KappaBarrier(new_e, avg_area * kappa, d2, d_hat, thickness);
+        // cipc::dKappaBarrierdD(new_k1, avg_area * kappa, d2, d_hat, thickness);
+        // cipc::ddKappaBarrierddD(new_k2, avg_area * kappa, d2, d_hat, thickness);
+
+        // float3   new_dbdx   = new_k1 * 2.0f * t;
+        // float3x3 new_d2bdx2 = new_k2 * outer_product(2.0f * t, 2.0f * t);
+        // // LUISA_INFO("Squared   dBdD = {}, ddBddD = {}", dBdD, ddBddD);
+        // LUISA_INFO("Original  Energy = {}, k1 = {}, k2 = {}, grad = {}, hess = {}", orig_e, orig_k1, orig_k2, orig_dbdx, orig_d2bdx2);
+        // LUISA_INFO("New       Energy = {}, k1 = {}, k2 = {}, grad = {}, hess = {}",
+        //            new_e,
+        //            2.0f * d * new_k1,
+        //            4.0f * d * d * new_k2,
+        //            new_dbdx,
+        //            new_d2bdx2);
     }
 }
 

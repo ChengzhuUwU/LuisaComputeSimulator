@@ -148,7 +148,7 @@ namespace Initializer
     {
         float mass     = 0.0f;
         float density  = 1e3f;
-        float d_hat    = 1e-3f;
+        float d_hat    = 2e-3f;
         bool  is_shell = true;
     };
 
@@ -156,7 +156,7 @@ namespace Initializer
     {
         ConstitutiveStretchModelCloth stretch_model  = ConstitutiveStretchModelCloth::FEM_BW98;
         ConstitutiveBendingModelCloth bending_model  = ConstitutiveBendingModelCloth::DihedralAngle;
-        float                         thickness      = 1e-3f;
+        float                         thickness      = 2e-3f;
         float                         youngs_modulus = 1e5f;
         float                         poisson_ratio  = 0.25f;
         float                         area_bending_stiffness = 5e-3f;
@@ -180,7 +180,7 @@ namespace Initializer
     struct RodMaterial : MaterialBase
     {
         ConstitutiveModelRod model              = ConstitutiveModelRod::Spring;
-        float                radius             = 1e-3f;
+        float                radius             = 2e-3f;
         float                bending_stiffness  = 1e4f;
         float                twisting_stiffness = 1e4f;
     };

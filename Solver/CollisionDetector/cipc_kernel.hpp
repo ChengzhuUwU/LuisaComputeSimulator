@@ -39,33 +39,33 @@ namespace ipc
 
 namespace squared_ipc
 {
-    template <typename T>
-    inline T barrier(const T& d2, const T& dHat)
-    {
-        auto x1 = square_scalar(dHat);
-        return -square_scalar(d2 - x1) * log_scalar((d2) / x1);
-    }
-    template <typename T>
-    inline T barrier_first_derivative(const T& d2, const T& dHat)
-    {
-        auto x1 = d2;
-        auto x2 = square_scalar(dHat);
-        auto x4 = x2;
-        /* Simplified Expr */
-        return -(static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x2) * log_scalar(x1 / x4)
-               - square_scalar(d2 - x4) / x1;
-    }
-    template <typename T>
-    inline T barrier_second_derivative(const T& d2, const T& dHat)
-    {
-        auto x1 = d2;
-        auto x2 = square_scalar(dHat);
-        auto x4 = x2;
-        auto x5 = static_cast<T>(2.0f);
-        /* Simplified Expr */
-        return square_scalar(d2 - x4) / square_scalar(x1) - x5 * log_scalar(x1 / x4)
-               - x5 * (static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x2) / x1;
-    }
+    // template <typename T>
+    // inline T barrier(const T& d2, const T& dHat)
+    // {
+    //     auto x1 = square_scalar(dHat);
+    //     return -square_scalar(d2 - x1) * log_scalar((d2) / x1);
+    // }
+    // template <typename T>
+    // inline T barrier_first_derivative(const T& d2, const T& dHat)
+    // {
+    //     auto x1 = d2;
+    //     auto x2 = square_scalar(dHat);
+    //     auto x4 = x2;
+    //     /* Simplified Expr */
+    //     return -(static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x2) * log_scalar(x1 / x4)
+    //            - square_scalar(d2 - x4) / x1;
+    // }
+    // template <typename T>
+    // inline T barrier_second_derivative(const T& d2, const T& dHat)
+    // {
+    //     auto x1 = d2;
+    //     auto x2 = square_scalar(dHat);
+    //     auto x4 = x2;
+    //     auto x5 = static_cast<T>(2.0f);
+    //     /* Simplified Expr */
+    //     return square_scalar(d2 - x4) / square_scalar(x1) - x5 * log_scalar(x1 / x4)
+    //            - x5 * (static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x2) / x1;
+    // }
 
 }  // namespace squared_ipc
 

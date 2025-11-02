@@ -1,165 +1,60 @@
 {
-    "scene_id": 9,
-    "use_floor": true,
-    "use_gpu": false,
+    "scene_id": 6,
+    "pcg_iter_count": 50,
+    "nonlinear_iter_count": 1,
+    "gravity": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "use_floor": false,
     "contact_energy_type": 1,
-    "stiffness_collision": 1e6,
     "shells": [
         {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.15,
-                0.0
-            ],
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.3,
-                0.0
-            ],
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.45,
-                0.0
-            ],
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.6,
-                0.0
-            ],
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.75,
-                0.0
-            ],
-            "rotation": [
-                0.2,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                0.7,
-                0.0
-            ],
-            "scale": 0.2,
-            "shell_type": "Rigid",
-            "material": [
-                {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                0.1,
-                0.0
-            ],
+            "model_name": "square2K.obj",
             "scale": 0.5,
-            "shell_type": "Rigid",
-            "material": [
+            "fixed_points": [
                 {
-                    "thickness": 0.002,
-                    "d_hat": 0.002
+                    "method": "Left",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": -72.0
+                    },
+                    "material": {
+                        "d_hat": 0.002,
+                        "thickness": 0.002
+                    }
+                },
+                {
+                    "method": "Right",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            -0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": 72.0
+                    },
+                    "material": {
+                        "d_hat": 0.002,
+                        "thickness": 0.002
+                    }
                 }
             ]
         }

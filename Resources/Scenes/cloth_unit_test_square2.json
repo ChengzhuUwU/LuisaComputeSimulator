@@ -5,13 +5,15 @@
     "implicit_dt": 0.2,
     "use_energy_linesearch": true,
     "stiffness_DAB_bending": 200.0,
+    "contact_energy_type": 0,
     "shells": [
         {
             "model_name": "square2.obj",
             "scale": 1.0,
             "material": {
                 "d_hat": 0.001,
-                "thickness": 0.1
+                "thickness": 0.1,
+                "density": 1e5
             },
             "fixed_points": [
                 {
@@ -28,7 +30,8 @@
             ],
             "material": {
                 "d_hat": 0.001,
-                "thickness": 0.1
+                "thickness": 0.1,
+                "density": 1e5
             },
             "fixed_points": [
                 {

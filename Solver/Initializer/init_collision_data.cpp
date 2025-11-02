@@ -136,6 +136,11 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         }
         mesh_scaled_offset[mesh_idx] = scaled_offset;
         mesh_scaled_d_hat[mesh_idx]  = scaled_d_hat;
+        LUISA_INFO("Mesh {}: min_dist = {}, scaled_offset = {}, scaled_d_hat = {}",
+                   mesh_idx,
+                   min_dist,
+                   mesh_scaled_offset[mesh_idx],
+                   mesh_scaled_d_hat[mesh_idx]);
         // mesh_scaled_offset[mesh_idx] = 0.000f;
         // mesh_scaled_d_hat[mesh_idx]  = 0.003f;
     }

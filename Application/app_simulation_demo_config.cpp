@@ -519,6 +519,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "d_hat");
                         if (v && yyjson_is_num(v))
                             mat.d_hat = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "thickness");
+                        if (v && yyjson_is_num(v))
+                            mat.thickness = static_cast<float>(yyjson_get_num(v));
 
                         // stretch_model may be string or integer
                         v = yyjson_obj_get(mat_obj, "stretch_model");
@@ -624,6 +627,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "d_hat");
                         if (v && yyjson_is_num(v))
                             mat.d_hat = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "thickness");
+                        if (v && yyjson_is_num(v))
+                            mat.thickness = static_cast<float>(yyjson_get_num(v));
 
                         info.physics_material = mat;
                         if (stype == nullptr)
@@ -658,6 +664,9 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "d_hat");
                         if (v && yyjson_is_num(v))
                             mat.d_hat = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "radius");
+                        if (v && yyjson_is_num(v))
+                            mat.radius = static_cast<float>(yyjson_get_num(v));
 
                         info.physics_material = mat;
                         if (stype == nullptr)

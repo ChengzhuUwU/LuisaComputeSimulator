@@ -81,6 +81,7 @@ class NewtonSolver : public lcs::SolverInterface
     void device_narrowphase_ccd(luisa::compute::Stream& stream);
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
     void device_update_contact_list(luisa::compute::Stream& stream);
+    void device_post_dist_check(luisa::compute::Stream& stream);
     void device_ccd_line_search(luisa::compute::Stream& stream);
     void device_SpMV(luisa::compute::Stream&               stream,
                      const luisa::compute::Buffer<float3>& input_array,
