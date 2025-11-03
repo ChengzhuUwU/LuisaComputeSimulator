@@ -6,11 +6,60 @@
 namespace lcs
 {
 
-// void LBVH::init(luisa::compute::Device& device, luisa::compute::Stream& stream,
-//         const uint input_num, const LBVHTreeType tree_type, const LBVHUpdateType update_type)
-// {
-//     lbvh_data->allocate(device, input_num, tree_type, update_type);
-// }
+
+inline CompressedAABBVar make_default_compressed_aabb()
+{
+    CompressedAABBVar c;
+    c[0] = {1e8f, 1e8f, 1e8f, 0.0f};
+    c[1] = {-1e8f, -1e8f, -1e8f, 0.0f};
+    // c.flag1     = 0u;
+    // c.flag2     = 0u;
+    return c;
+}
+inline CompressedAABBVar make_compressed_aabb(const luisa::compute::Var<aabbData>& aabb,
+                                              const luisa::compute::Float&         flag1,
+                                              const luisa::compute::Float&         flag2)
+{
+    CompressedAABBVar c;
+    c[0][0] = aabb.cols[0].x;
+    c[0][1] = aabb.cols[0].y;
+    c[0][2] = aabb.cols[0].z;
+    c[1][0] = aabb.cols[1].x;
+    c[1][1] = aabb.cols[1].y;
+    c[1][2] = aabb.cols[1].z;
+    c[0][3] = flag1;
+    c[1][3] = flag2;
+    return c;
+}
+inline Var<float2x3> extract_aabb(const CompressedAABBVar& input)
+{
+    Var<float2x3> output;
+    output.cols[0] = luisa::compute::make_float3(input[0][0], input[0][1], input[0][2]);
+    output.cols[1] = luisa::compute::make_float3(input[1][0], input[1][1], input[1][2]);
+    return output;
+}
+
+static inline void wait_for_write(const luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
+                                  const luisa::compute::BufferView<uint>&          sa_is_healthy,
+                                  const luisa::compute::Uint&                      child_idx)
+{
+    luisa::compute::UInt iter = 0;
+    $while(true)
+    {
+        auto flag = sa_node_aabb->atomic(child_idx)[1][3].compare_exchange(1.0f, 2.0f);
+        $if(flag == 1.0f)
+        {
+            $break;
+        };
+        $if(iter > 1000)
+        {
+            sa_is_healthy->write(0, 0u);
+            device_log("Thread {} read last flag {}", luisa::compute::dispatch_id().x, flag);
+            $break;
+        };
+        iter += 1;
+    };
+};
 
 template <typename UintType>
 static inline UintType expand_bits(UintType bits)
@@ -221,13 +270,13 @@ Var<int> findSplit(const Var<int2>& ranges, const luisa::compute::BufferView<mor
     return split;
 }
 
-void query_template2(luisa::compute::BufferVar<aabbData>& sa_node_aabb,
-                     luisa::compute::BufferVar<uint2>&    sa_children,
-                     luisa::compute::BufferVar<uint>&     sa_object_idx,
-                     const luisa::compute::Var<float2x3>& input_aabb,
-                     luisa::compute::BufferVar<uint>&     broadphase_count,
-                     luisa::compute::BufferVar<uint>&     broad_phase_list,
-                     luisa::compute::Var<uint>            max_count,
+void query_template2(luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
+                     luisa::compute::BufferVar<uint2>&          sa_children,
+                     luisa::compute::BufferVar<uint>&           sa_object_idx,
+                     const luisa::compute::Var<float2x3>&       input_aabb,
+                     luisa::compute::BufferVar<uint>&           broadphase_count,
+                     luisa::compute::BufferVar<uint>&           broad_phase_list,
+                     luisa::compute::Var<uint>                  max_count,
                      std::function<luisa::compute::Var<bool>(const luisa::compute::Var<uint>)> is_valid_function)
 {
     using namespace luisa::compute;
@@ -249,7 +298,7 @@ void query_template2(luisa::compute::BufferVar<aabbData>& sa_node_aabb,
         for (uint ii = 0; ii < 2; ii++)
         {
             const Uint curr_select = child[ii];
-            Float2x3   left_aabb   = sa_node_aabb->read(curr_select);
+            auto       left_aabb   = extract_aabb(sa_node_aabb->read(curr_select));
             $if(AABB::is_overlap_aabb(left_aabb, input_aabb))
             {
                 Uint adj_vid = sa_object_idx->read(curr_select);
@@ -542,6 +591,8 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
 
+    compiler.wait();
+
     // Refit
     compiler.compile(fn_update_vert_tree_leave_aabb,
                      [sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
@@ -606,29 +657,32 @@ void LBVH::compile(AsyncCompiler& compiler)
             sa_node_aabb->write(num_inner_nodes + lid, aabb);
         });
 
+
     compiler.compile(fn_update_vert_tree_leave_aabb_v2,
-                     [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
-                                         Var<Buffer<aabbData>> sa_node_aabb,
-                                         Var<Buffer<float3>>   sa_x_start,
-                                         Var<Buffer<float3>>   sa_x_end,
-                                         Var<Buffer<float>>    thickness)
+                     [fn_get_num_leaves](Var<Buffer<uint>>           sa_sorted_get_original,
+                                         Var<Buffer<CompressedAABB>> sa_node_aabb,
+                                         Var<Buffer<float3>>         sa_x_start,
+                                         Var<Buffer<float3>>         sa_x_end,
+                                         Var<Buffer<float>>          thickness)
                      {
                          const Uint lid  = dispatch_id().x;
                          Uint       vid  = sa_sorted_get_original->read(lid);
                          Float2x3   aabb = AABB::make_aabb(sa_x_start->read(vid), sa_x_end->read(vid));
                          aabb            = AABB::add_thickness(aabb, thickness->read(vid));
                          const Uint num_inner_nodes = fn_get_num_leaves() - 1;
-                         sa_node_aabb->write(num_inner_nodes + lid, aabb);
+
+                         CompressedAABBVar compressed_aabb = make_compressed_aabb(aabb, 0.0f, 1.0f);
+                         sa_node_aabb->write(num_inner_nodes + lid, compressed_aabb);
                      });
 
     compiler.compile<1>(
         fn_update_edge_tree_leave_aabb_v2,
-        [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
-                            Var<Buffer<aabbData>> sa_node_aabb,
-                            Var<Buffer<float3>>   sa_x_start,
-                            Var<Buffer<float3>>   sa_x_end,
-                            Var<Buffer<uint2>>    input_edge,
-                            Var<Buffer<float>>    thickness)
+        [fn_get_num_leaves](Var<Buffer<uint>>           sa_sorted_get_original,
+                            Var<Buffer<CompressedAABB>> sa_node_aabb,
+                            Var<Buffer<float3>>         sa_x_start,
+                            Var<Buffer<float3>>         sa_x_end,
+                            Var<Buffer<uint2>>          input_edge,
+                            Var<Buffer<float>>          thickness)
         {
             const Uint lid                = dispatch_id().x;
             Uint       eid                = sa_sorted_get_original->read(lid);
@@ -639,91 +693,115 @@ void LBVH::compile(AsyncCompiler& compiler)
                 AABB::make_aabb(start_positions[0], start_positions[1], end_positions[0], end_positions[1]);
             aabb                       = AABB::add_thickness(aabb, thickness->read(edge[0]));
             const Uint num_inner_nodes = fn_get_num_leaves() - 1;
-            sa_node_aabb->write(num_inner_nodes + lid, aabb);
+
+            CompressedAABBVar compressed_aabb = make_compressed_aabb(aabb, 0.0f, 1.0f);
+            sa_node_aabb->write(num_inner_nodes + lid, compressed_aabb);
         });
 
     compiler.compile<1>(
         fn_update_face_tree_leave_aabb_v2,
-        [fn_get_num_leaves](Var<Buffer<uint>>     sa_sorted_get_original,
-                            Var<Buffer<aabbData>> sa_node_aabb,
-                            Var<Buffer<float3>>   sa_x_start,
-                            Var<Buffer<float3>>   sa_x_end,
-                            Var<Buffer<uint3>>    input_face,
-                            Var<Buffer<float>>    thickness)
+        [fn_get_num_leaves](Var<Buffer<uint>>           sa_sorted_get_original,
+                            Var<Buffer<CompressedAABB>> sa_node_aabb,
+                            Var<Buffer<float3>>         sa_x_start,
+                            Var<Buffer<float3>>         sa_x_end,
+                            Var<Buffer<uint3>>          input_face,
+                            Var<Buffer<float>>          thickness)
         {
             const Uint lid                = dispatch_id().x;
             Uint       fid                = sa_sorted_get_original->read(lid);
             UInt3      face               = input_face->read(fid);
             Float3     start_positions[3] = {
                 sa_x_start->read(face[0]), sa_x_start->read(face[1]), sa_x_start->read(face[2])};
-            device_assert(!is_nan_vec(start_positions[0]) | !is_nan_vec(start_positions[1])
-                              | !is_nan_vec(start_positions[2]) | !is_inf_vec(start_positions[0])
-                              | !is_inf_vec(start_positions[1]) | !is_inf_vec(start_positions[2]),
-                          "Position exist NAN/INF");
             Float3 end_positions[3] = {sa_x_end->read(face[0]), sa_x_end->read(face[1]), sa_x_end->read(face[2])};
             Float2x3 start_aabb = AABB::make_aabb(start_positions[0], start_positions[1], start_positions[2]);
             Float2x3 end_aabb = AABB::make_aabb(end_positions[0], end_positions[1], end_positions[2]);
             Float2x3 aabb     = AABB::add_aabb(start_aabb, end_aabb);
-            aabb              = AABB::add_thickness(aabb, thickness->read(face[0]));
+            Float    offset   = thickness->read(face[0]);
+            // aabb.cols[0] -= make_float3(offset);
+            // aabb.cols[1] += make_float3(offset);
+            aabb                       = AABB::add_thickness(aabb, thickness->read(face[0]));
             const Uint num_inner_nodes = fn_get_num_leaves() - 1;
-            sa_node_aabb->write(num_inner_nodes + lid, aabb);
+
+            CompressedAABBVar compressed_aabb = make_compressed_aabb(aabb, 0.0f, 1.0f);
+            sa_node_aabb->write(num_inner_nodes + lid, compressed_aabb);
         });
+
+    // Lambda is not supported ???
+
+    // if (false)
+    {
+        compiler.compile<1>(fn_init_tree_aabb_and_flag,
+                            [](Var<Buffer<CompressedAABB>> sa_node_aabb)
+                            {
+                                const Uint nid = dispatch_id().x;
+
+                                Float2x3 aabb;
+                                aabb.cols[0]        = make_float3(Float(1e10f));
+                                aabb.cols[1]        = make_float3(Float(-1e10f));
+                                CompressedAABBVar c = make_default_compressed_aabb();
+                                sa_node_aabb->write(nid, c);
+                            });
+
+
+        compiler.compile<1>(
+            fn_refit_tree_aabb,
+            [sa_parrent    = lbvh_data->sa_parrent.view(),
+             sa_children   = lbvh_data->sa_children.view(),
+             sa_is_healthy = lbvh_data->sa_is_healthy.view(),
+             fn_get_num_leaves](Var<Buffer<CompressedAABB>> sa_node_aabb)
+            {
+                const Uint lid             = dispatch_id().x;
+                const Uint num_inner_nodes = fn_get_num_leaves() - 1;
+                Uint       current         = lid + num_inner_nodes;
+                Uint       parrent         = sa_parrent->read(current);
+                Uint       loop            = 0;
+                $while(parrent != -1)
+                {
+                    loop += 1;
+                    $if(loop > 10000)
+                    {
+                        sa_is_healthy->write(0, 0u);
+                        $break;
+                    };
+                    auto orig_flag = sa_node_aabb->atomic(parrent)[0][3].compare_exchange(0.0f, 1.0f);
+                    // sa_node_aabb->atomic(parrent).min_bound[3].fetch_add(1.0f);
+                    $if(orig_flag == 0)
+                    {
+                        $break;
+                    }
+                    $elif(orig_flag == 1)
+                    {
+                        sa_node_aabb->atomic(parrent)[0][3].compare_exchange(1.0f, 2.0f);
+                        // sa_node_aabb->atomic(parrent).min_bound[3].fetch_add(1.0f);
+                        Uint2 child_of_parrent = sa_children->read(parrent);
+
+                        wait_for_write(sa_node_aabb, sa_is_healthy, child_of_parrent[0]);
+                        wait_for_write(sa_node_aabb, sa_is_healthy, child_of_parrent[1]);
+
+                        auto aabb_left       = extract_aabb(sa_node_aabb->read(child_of_parrent[0]));
+                        auto aabb_right      = extract_aabb(sa_node_aabb->read(child_of_parrent[1]));
+                        auto parrent_aabb    = AABB::add_aabb(aabb_left, aabb_right);
+                        auto parrent_aabb_v2 = make_compressed_aabb(parrent_aabb, 0.0f, 0.0f);
+                        sa_node_aabb->write(parrent, parrent_aabb_v2);
+                        sa_node_aabb->atomic(parrent)[1][3].exchange(1.0f);
+
+                        current = parrent;
+                        parrent = sa_parrent->read(current);
+                    }
+                    $else
+                    {
+                        sa_is_healthy->write(0, 0u);
+                        $break;
+                    };
+                };
+            });
+    }
 
     compiler.compile<1>(fn_clear_apply_flag,
                         [sa_apply_flag = lbvh_data->sa_apply_flag.view()]()
                         {
                             const Uint nid = dispatch_id().x;
                             sa_apply_flag->write(nid, 0u);
-                        });
-
-    compiler.compile<1>(fn_refit_tree_aabb,
-                        [sa_apply_flag = lbvh_data->sa_apply_flag.view(),
-                         sa_parrent    = lbvh_data->sa_parrent.view(),
-                         sa_children   = lbvh_data->sa_children.view(),
-                         sa_node_aabb  = lbvh_data->sa_node_aabb.view(),
-                         sa_is_healthy = lbvh_data->sa_is_healthy.view(),
-                         fn_get_num_leaves]()
-                        {
-                            const Uint lid             = dispatch_id().x;
-                            const Uint num_inner_nodes = fn_get_num_leaves() - 1;
-                            Uint       current         = lid + num_inner_nodes;
-                            Uint       parrent         = sa_parrent->read(current);
-                            Uint       loop            = 0;
-
-                            $while(parrent != -1)
-                            {
-                                luisa::compute::sync_block();
-                                std::atomic_thread_fence(std::memory_order_seq_cst);
-
-                                loop += 1;
-                                $if(loop > 10000)
-                                {
-                                    sa_is_healthy->write(0, 0u);
-                                    $break;
-                                };
-                                Uint orig_flag = sa_apply_flag->atomic(parrent).fetch_add(1u);
-                                $if(orig_flag == 0)
-                                {
-                                    $break;
-                                }
-                                $elif(orig_flag == 1)
-                                {
-                                    sa_apply_flag->atomic(parrent).fetch_add(1u);
-                                    Uint2    child_of_parrent = sa_children->read(parrent);
-                                    Float2x3 aabb_left        = sa_node_aabb->read(child_of_parrent[0]);
-                                    Float2x3 aabb_right       = sa_node_aabb->read(child_of_parrent[1]);
-                                    sa_node_aabb->write(parrent, AABB::add_aabb(aabb_left, aabb_right));
-                                    current = parrent;
-                                    parrent = sa_parrent->read(current);
-                                }
-                                $else
-                                {
-                                    sa_is_healthy->write(0, 0u);
-                                    $break;
-                                };
-                                luisa::compute::sync_block();
-                                std::atomic_thread_fence(std::memory_order_seq_cst);
-                            };
                         });
 
     // Query
@@ -846,16 +924,16 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_verts_v2,
-                        [](BufferVar<aabbData> sa_node_aabb,
-                           BufferVar<uint2>    sa_children,
-                           BufferVar<uint>     sa_object_idx,
-                           BufferVar<float3>   sa_x_begin,
-                           BufferVar<float3>   sa_x_end,
-                           BufferVar<uint>     broadphase_count,
-                           BufferVar<uint>     broad_phase_list,
-                           BufferVar<float>    d_hat,
-                           BufferVar<float>    thickness,
-                           Uint                max_count)
+                        [](BufferVar<CompressedAABB> sa_node_aabb,
+                           BufferVar<uint2>          sa_children,
+                           BufferVar<uint>           sa_object_idx,
+                           BufferVar<float3>         sa_x_begin,
+                           BufferVar<float3>         sa_x_end,
+                           BufferVar<uint>           broadphase_count,
+                           BufferVar<uint>           broad_phase_list,
+                           BufferVar<float>          d_hat,
+                           BufferVar<float>          thickness,
+                           Uint                      max_count)
                         {
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
@@ -873,17 +951,17 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_edges_v2,
-                        [](BufferVar<aabbData> sa_node_aabb,
-                           BufferVar<uint2>    sa_children,
-                           BufferVar<uint>     sa_object_idx,
-                           BufferVar<float3>   sa_x_begin,
-                           BufferVar<float3>   sa_x_end,
-                           BufferVar<uint2>    sa_edges,
-                           BufferVar<uint>     broadphase_count,
-                           BufferVar<uint>     broad_phase_list,
-                           BufferVar<float>    d_hat,
-                           BufferVar<float>    thickness,
-                           Uint                max_count)
+                        [](BufferVar<CompressedAABB> sa_node_aabb,
+                           BufferVar<uint2>          sa_children,
+                           BufferVar<uint>           sa_object_idx,
+                           BufferVar<float3>         sa_x_begin,
+                           BufferVar<float3>         sa_x_end,
+                           BufferVar<uint2>          sa_edges,
+                           BufferVar<uint>           broadphase_count,
+                           BufferVar<uint>           broad_phase_list,
+                           BufferVar<float>          d_hat,
+                           BufferVar<float>          thickness,
+                           Uint                      max_count)
                         {
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);
@@ -1091,7 +1169,7 @@ void LBVH::update_vert_tree_leave_aabb(Stream&               stream,
     //     sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
     //   sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
     stream << fn_update_vert_tree_leave_aabb_v2(
-                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, thickness)
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, thickness)
                   .dispatch(start_position.size());
 }
 void LBVH::update_edge_tree_leave_aabb(Stream&               stream,
@@ -1101,7 +1179,7 @@ void LBVH::update_edge_tree_leave_aabb(Stream&               stream,
                                        const Buffer<uint2>&  input_edges)
 {
     stream << fn_update_edge_tree_leave_aabb_v2(
-                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, input_edges, thickness)
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_edges, thickness)
                   .dispatch(input_edges.size());
 }
 void LBVH::update_face_tree_leave_aabb(Stream&               stream,
@@ -1111,13 +1189,19 @@ void LBVH::update_face_tree_leave_aabb(Stream&               stream,
                                        const Buffer<uint3>&  input_faces)
 {
     stream << fn_update_face_tree_leave_aabb_v2(
-                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb, start_position, end_position, input_faces, thickness)
+                  lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_faces, thickness)
                   .dispatch(input_faces.size());
 }
 
 
 void LBVH::refit(Stream& stream)
 {
+
+    stream << fn_init_tree_aabb_and_flag(lbvh_data->sa_node_aabb_v2).dispatch(lbvh_data->num_inner_nodes)
+           << fn_refit_tree_aabb(lbvh_data->sa_node_aabb_v2).dispatch(lbvh_data->num_leaves)
+           << lbvh_data->sa_is_healthy.copy_to(lbvh_data->host_is_healthy.data());
+
+    return;
 
 
     stream << fn_clear_apply_flag().dispatch(lbvh_data->sa_apply_flag.size())
@@ -1253,7 +1337,7 @@ void LBVH::broad_phase_query_from_verts(Stream&                 stream,
                                         const Buffer<float>&    d_hat,
                                         const Buffer<float>&    thickness)
 {
-    stream << fn_query_from_verts_v2(lbvh_data->sa_node_aabb,
+    stream << fn_query_from_verts_v2(lbvh_data->sa_node_aabb_v2,
                                      lbvh_data->sa_children,
                                      lbvh_data->sa_object_idx,
                                      sa_x_begin,
@@ -1277,7 +1361,7 @@ void LBVH::broad_phase_query_from_edges(Stream&                 stream,
     // sa_node_aabb,
     //                                         sa_children,
     //                                         sa_object_idx,
-    stream << fn_query_from_edges_v2(lbvh_data->sa_node_aabb,
+    stream << fn_query_from_edges_v2(lbvh_data->sa_node_aabb_v2,
                                      lbvh_data->sa_children,
                                      lbvh_data->sa_object_idx,
                                      sa_x_begin,
