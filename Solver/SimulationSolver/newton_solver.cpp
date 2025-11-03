@@ -962,6 +962,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
          sa_is_fixed = mesh_data->sa_is_fixed.view()](Float floor_y, Bool use_ground_collision)
         {
             const UInt vid = dispatch_id().x;
+
+            Float toi = 1.0f;
             $if(use_ground_collision)
             {
                 $if(!sa_is_fixed->read(vid))
@@ -970,11 +972,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                     Float curr_y = sa_x->read(vid).y;
                     $if(curr_y - offset < floor_y)
                     {
-                        Float init_y   = sa_x_iter_start->read(vid).y;
-                        Float curr_dy  = curr_y - init_y;  // abs
-                        Float alpha    = 0.9f * (init_y - offset - floor_y) / (init_y - curr_y);
-                        Float target_y = init_y + alpha * curr_dy;
-                        $if(alpha < 0.0f | alpha > 1.0f | target_y - offset < floor_y){};
+                        Float init_y  = sa_x_iter_start->read(vid).y;
+                        Float curr_dy = curr_y - init_y;  // abs
+                        toi = (init_y - offset - floor_y) / (init_y - curr_y) / accd::line_search_max_t;
+                        // Float target_y = init_y + toi * curr_dy;
+                        // $if(alpha < 0.0f | alpha > 1.0f | target_y - offset < floor_y){};
                         // $if(vid == 22)
                         // {
                         //     device_log("Vert {} penetrate in toi {} (From {} to {}, thickness = {} (After apply = {})",
@@ -986,9 +988,16 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                         //                init_y + alpha * curr_dy);
                         // };
                         // device_log("Vert {}'s toi = {} (After apply = {})", vid, alpha, init_y + alpha * curr_dy);
-                        toi_per_vert->atomic(0).fetch_min(alpha);
+                        // toi_per_vert->atomic(0).fetch_min(alpha);
                     };
                 };
+            };
+
+            toi = ParallelIntrinsic::block_intrinsic_reduce(vid, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+
+            $if(vid % 256 == 0 & toi != 1.0f)
+            {
+                toi_per_vert->atomic(0).fetch_min(toi);
             };
         },
         default_option);
@@ -3490,7 +3499,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                               reduced_triplet);
     }
 }
-void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy)
+void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream)
 {
 
     const uint                 num_dof = host_sim_data->num_dof;
@@ -3556,9 +3565,6 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream, std::functio
                (cgB - cgA * cgX).norm(),
                infinity_norm);
 }
-void NewtonSolver::host_line_search(luisa::compute::Stream& stream)
-{
-}
 
 
 void NewtonSolver::host_apply_dx(const float alpha)
@@ -3617,7 +3623,220 @@ void NewtonSolver::host_apply_dx(const float alpha)
             }
         });
 }
+void NewtonSolver::device_apply_dx(luisa::compute::Stream& stream, const float alpha)
+{
+    if (alpha < 0.0f || alpha > 1.0f)
+    {
+        LUISA_ERROR("Alpha is not safe : {}", alpha);
+    }
 
+    if (sim_data->num_verts_soft != 0)
+    {
+        stream << fn_apply_dx(alpha).dispatch(host_sim_data->num_verts_soft);
+    }
+    if (sim_data->num_affine_bodies != 0)
+    {
+        stream << fn_apply_dq(alpha, sim_data->num_verts_soft).dispatch(sim_data->num_affine_bodies * 4);
+        stream << fn_apply_dx_affine_bodies(alpha, host_sim_data->num_verts_soft).dispatch(sim_data->num_verts_rigid);
+    }
+}
+
+// Required buffers:
+//      Both: sa_x/q_iter_start, sa_x/q_tilde, sa_cgX
+//      Host: sa_dx
+bool NewtonSolver::line_search(luisa::compute::Stream& stream)
+{
+    const uint iter = get_scene_params().current_nonlinear_iter;
+
+    auto ccd_get_toi = [&]() -> float
+    {
+        // stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
+        //        << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+
+        device_ccd_line_search(stream);
+
+        stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
+               << luisa::compute::synchronize();
+
+        float toi = host_collision_data->toi_per_vert.front();
+        // float toi = narrow_phase_detector->get_global_toi(stream);
+        return toi;  // 0.9f * toi
+        // return 1.0f;
+    };
+
+    auto compute_energy_interface = [&]()
+    {
+        // stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        // if (host_sim_data->num_verts_soft != 0)
+        // {
+        //     stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
+        // }
+        // if (host_sim_data->num_affine_bodies != 0)
+        // {
+        //     stream
+        //         << sim_data->sa_affine_bodies_q.copy_from(host_sim_data->sa_affine_bodies_q.data())
+        //         << sim_data->sa_affine_bodies_q_tilde.copy_from(host_sim_data->sa_affine_bodies_q_tilde.data());
+        // }
+        std::map<std::string, double> energy_list;
+        device_compute_elastic_energy(stream, energy_list);
+        device_compute_contact_energy(stream, energy_list);
+
+        auto total_energy = std::accumulate(energy_list.begin(),
+                                            energy_list.end(),
+                                            0.0,
+                                            [](double sum, const auto& pair) { return sum + pair.second; });
+        if (get_scene_params().print_system_energy)
+        {
+            for (const auto& pair : energy_list)
+            {
+                LUISA_INFO("Energy {} = {}", pair.first, pair.second);
+            }
+        }
+        for (const auto& pair : energy_list)
+        {
+            if (is_nan_scalar(pair.second) || is_inf_scalar(pair.second))
+            {
+                LUISA_ERROR("{} energy is not valid : {}", pair.first, pair.second);
+            }
+        }
+        return total_energy;
+    };
+
+    auto apply_final_dx = [&](const float alpha)
+    {
+        // stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start);
+        // if (sim_data->num_affine_bodies != 0)
+        // {
+        //     stream << sim_data->sa_affine_bodies_q.copy_to(sim_data->sa_affine_bodies_q_iter_start);
+        // }
+        // stream << luisa::compute::synchronize();
+        device_apply_dx(stream, alpha);
+        host_apply_dx(alpha);
+        stream << luisa::compute::synchronize();
+    };
+
+    float alpha   = 1.0f;
+    float ccd_toi = 1.0f;
+
+    if (get_scene_params().use_ccd_linesearch)
+    {
+        device_apply_dx(stream, alpha);
+
+        ccd_toi = ccd_get_toi();
+        alpha   = ccd_toi;
+
+        if (ccd_toi < 1.0f)
+        {
+            LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}",
+                       get_scene_params().current_nonlinear_iter,
+                       ccd_toi);
+        }
+    }
+
+    bool converged = false;
+
+    // Non-linear iteration break condition
+    {
+        float max_move      = 1e-2;
+        float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
+        if (curr_max_step < max_move * get_scene_params().implicit_dt)
+        {
+            LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
+                       iter,
+                       curr_max_step,
+                       max_move * get_scene_params().implicit_dt);
+
+            apply_final_dx(alpha);
+            return true;
+        }
+    }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
+
+    if (get_scene_params().use_energy_linesearch)
+    {
+        device_apply_dx(stream, 0.0f);
+        float prev_state_energy = compute_energy_interface();
+
+        device_apply_dx(stream, alpha);
+
+        // Energy after CCD or just solving Axb
+        auto curr_energy = compute_energy_interface();
+        if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
+        {
+            LUISA_ERROR("Energy is not valid : {}", curr_energy);
+        }
+
+        uint line_search_count = 0;
+        while (line_search_count < 20)  // Compare energy
+        {
+            if (curr_energy < prev_state_energy + Epsilon)
+            {
+                if (alpha != 1.0f)
+                {
+                    LUISA_INFO("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}",
+                               line_search_count,
+                               alpha,
+                               curr_energy,
+                               prev_state_energy,
+                               ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
+                }
+                break;
+            }
+            if (line_search_count == 0)
+            {
+                LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}",
+                           line_search_count,
+                           alpha,
+                           curr_energy,
+                           prev_state_energy,
+                           ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
+            }
+            alpha /= 2;
+
+            device_apply_dx(stream, alpha);
+
+            curr_energy = compute_energy_interface();
+            LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
+
+            if (alpha < 1e-4)
+            {
+                LUISA_ERROR("  Line search failed, energy = {}, prev state energy = {}", curr_energy, prev_state_energy);
+            }
+            line_search_count++;
+        }
+        prev_state_energy = curr_energy;  // E_prev = E
+    }
+
+    apply_final_dx(alpha);
+
+    // Check dirichlet point target
+    {
+        const float direchlet_max_delta = CpuParallel::parallel_for_and_reduce(
+            0,
+            host_sim_data->sa_x.size(),
+            [&](const uint vid)
+            {
+                if (host_mesh_data->sa_is_fixed[vid])
+                {
+                    float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
+                    return luisa::length(delta);
+                }
+                return 0.0f;  // Non-fixed point
+            },
+            [](const float left, const float right) { return max_scalar(left, right); },
+            -1e9f);
+
+        bool direchlet_point_converged = direchlet_max_delta < 1e-3;
+        if (!direchlet_point_converged)
+        {
+            LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
+}
 void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     // Input
@@ -3689,44 +3908,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         // return 1.0f;
     };
 
-    auto compute_energy_interface = [&]()
-    {
-        stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        if (host_sim_data->num_verts_soft != 0)
-        {
-            stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
-        }
-        if (host_sim_data->num_affine_bodies != 0)
-        {
-            stream
-                << sim_data->sa_affine_bodies_q.copy_from(host_sim_data->sa_affine_bodies_q.data())
-                << sim_data->sa_affine_bodies_q_tilde.copy_from(host_sim_data->sa_affine_bodies_q_tilde.data());
-        }
-
-        std::map<std::string, double> energy_list;
-        device_compute_elastic_energy(stream, energy_list);
-        device_compute_contact_energy(stream, energy_list);
-
-        auto total_energy = std::accumulate(energy_list.begin(),
-                                            energy_list.end(),
-                                            0.0,
-                                            [](double sum, const auto& pair) { return sum + pair.second; });
-        if (get_scene_params().print_system_energy)
-        {
-            for (const auto& pair : energy_list)
-            {
-                LUISA_INFO("Energy {} = {}", pair.first, pair.second);
-            }
-        }
-        for (const auto& pair : energy_list)
-        {
-            if (is_nan_scalar(pair.second) || is_inf_scalar(pair.second))
-            {
-                LUISA_ERROR("{} energy is not valid : {}", pair.first, pair.second);
-            }
-        }
-        return total_energy;
-    };
     auto pcg_spmv_interface = [&](const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr) -> void
     {
         //
@@ -3736,12 +3917,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         if constexpr (false)
         {
-            host_solve_eigen(stream, compute_energy_interface);
+            host_solve_eigen(stream);
         }
         else
         {
             // simple_solve();
-            pcg_solver->host_solve(stream, pcg_spmv_interface, compute_energy_interface);
+            pcg_solver->host_solve(stream, pcg_spmv_interface, []() { return 0.0; });
         }
     };
 
@@ -3764,17 +3945,25 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         host_predict_position();
 
-        // CpuParallel::parallel_copy(host_sim_data->sa_x_step_start, host_sim_data->sa_x_iter_start);  // For CCD line search
+        if (get_scene_params().use_energy_linesearch)
+        {
+            // Upload to GPU
+            if (host_sim_data->num_verts_soft != 0)
+                stream << sim_data->sa_x_tilde.copy_from(host_sim_data->sa_x_tilde.data());
+            if (host_sim_data->num_affine_bodies != 0)
+                stream << sim_data->sa_affine_bodies_q_tilde.copy_from(
+                    host_sim_data->sa_affine_bodies_q_tilde.data());
+        }
 
         // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
         double prev_state_energy = Float_max;
 
         // for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
-        uint iter                      = 0;
-        bool direchlet_point_converged = false;
+        uint iter      = 0;
+        bool converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count && direchlet_point_converged)
+            if (iter >= get_scene_params().nonlinear_iter_count && converged)
             {
                 break;
             }
@@ -3784,17 +3973,21 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
                                        host_sim_data->sa_affine_bodies_q_iter_start);  // q_prev = q
 
+            {
+                // Upload to GPU
+                if (host_sim_data->num_verts_soft != 0)
+                    stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data());
+                if (host_sim_data->num_affine_bodies != 0)
+                    stream << sim_data->sa_affine_bodies_q_iter_start.copy_from(
+                        host_sim_data->sa_affine_bodies_q_iter_start.data());
+            }
+
             host_reset_cgB_cgX_diagA();
 
             host_reset_off_diag();
 
             update_contact_set();
 
-            // if (iter == 0) // Always refresh for collision count is variant
-            if (use_energy_linesearch)
-            {
-                prev_state_energy = compute_energy_interface();
-            }
             if constexpr (true)
             {
                 host_evaluate_inertia();
@@ -3822,108 +4015,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 host_test_dynamics(stream);
             }
 
-            float alpha   = 1.0f;
-            float ccd_toi = 1.0f;
-            host_apply_dx(alpha);
-
-            if (use_ccd_linesearch)
-            {
-                ccd_toi = ccd_get_toi();
-                alpha   = ccd_toi;
-                host_apply_dx(alpha);
-                if (ccd_toi < 1.0f)
-                {
-                    LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
-                }
-            }
-
-            // Non-linear iteration break condition
-            {
-                float max_move      = 1e-2;
-                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
-                if (curr_max_step < max_move * substep_dt)
-                {
-                    LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
-                               iter,
-                               curr_max_step,
-                               max_move * substep_dt);
-                    break;
-                }
-            }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
-
-            // Check dirichlet point target
-            {
-                const float direchlet_max_delta = CpuParallel::parallel_for_and_reduce(
-                    0,
-                    host_sim_data->sa_x.size(),
-                    [&](const uint vid)
-                    {
-                        if (host_mesh_data->sa_is_fixed[vid])
-                        {
-                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
-                            return luisa::length(delta);
-                        }
-                        return 0.0f;  // Non-fixed point
-                    },
-                    [](const float left, const float right) { return max_scalar(left, right); },
-                    -1e9f);
-                direchlet_point_converged = direchlet_max_delta < 1e-3;
-                if (!direchlet_point_converged)
-                {
-                    LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
-                }
-            }
-
-            if (use_energy_linesearch)
-            {
-                // Energy after CCD or just solving Axb
-                auto curr_energy = compute_energy_interface();
-                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
-                {
-                    LUISA_ERROR("Energy is not valid : {}", curr_energy);
-                }
-
-                uint line_search_count = 0;
-                while (line_search_count < 20)  // Compare energy
-                {
-                    if (curr_energy < prev_state_energy + Epsilon)
-                    {
-                        if (alpha != 1.0f)
-                        {
-                            LUISA_INFO("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}",
-                                       line_search_count,
-                                       alpha,
-                                       curr_energy,
-                                       prev_state_energy,
-                                       ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
-                        }
-                        break;
-                    }
-                    if (line_search_count == 0)
-                    {
-                        LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}",
-                                   line_search_count,
-                                   alpha,
-                                   curr_energy,
-                                   prev_state_energy,
-                                   ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
-                    }
-                    alpha /= 2;
-                    host_apply_dx(alpha);
-
-                    curr_energy = compute_energy_interface();
-                    LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
-
-                    if (alpha < 1e-4)
-                    {
-                        LUISA_ERROR("  Line search failed, energy = {}, prev state energy = {}", curr_energy, prev_state_energy);
-                    }
-                    line_search_count++;
-                }
-                prev_state_energy = curr_energy;  // E_prev = E
-            }
+            stream << sim_data->sa_cgX.copy_from(host_sim_data->sa_cgX.data());
+            converged = line_search(stream);
 
             narrow_phase_detector->post_resize_buffers(device, stream);
+
+            if (converged)
+                break;
 
             // CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);  // x_prev = x
             // CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
@@ -3976,18 +4074,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     const uint  nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
     const float substep_dt           = lcs::get_scene_params().get_substep_dt();
 
-    auto device_apply_dx = [&](const float alpha)
-    {
-        if (sim_data->num_verts_soft != 0)
-        {
-            stream << fn_apply_dx(alpha).dispatch(host_sim_data->num_verts_soft);
-        }
-        if (sim_data->num_affine_bodies != 0)
-        {
-            stream << fn_apply_dq(alpha, sim_data->num_verts_soft).dispatch(sim_data->num_affine_bodies * 4);
-            stream << fn_apply_dx_affine_bodies(alpha, host_sim_data->num_verts_soft).dispatch(sim_data->num_verts_rigid);
-        }
-    };
 
     auto update_contact_set = [&]()
     {
@@ -4012,42 +4098,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->device_assemble_contact_triplet(
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
     };
-    auto ccd_get_toi = [&]() -> float
-    {
-        stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-               << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-        // stream << sim_data->sa_x_iter_start.copy_to(host_sim_data->sa_x_iter_start.data())
-        //        << sim_data->sa_x.copy_to(host_sim_data->sa_x.data()) << luisa::compute::synchronize();
 
-        // for (uint vid = 0; vid < host_sim_data->sa_x.size(); vid++)
-        // {
-        //     float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-        //     if (length(delta) > 1.0f)
-        //     {
-        //         LUISA_ERROR("Large delta detected at vert {} : delta = {}, start = {}, end = {}",
-        //                     vid,
-        //                     delta,
-        //                     host_sim_data->sa_x_iter_start[vid],
-        //                     host_sim_data->sa_x[vid]);
-        //     }
-        // }
-
-        device_ccd_line_search(stream);
-
-        stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
-               << luisa::compute::synchronize();
-        float toi = host_collision_data->toi_per_vert.front();
-        // LUISA_INFO("Get toi {} / {}", toi, host_collision_data->toi_per_vert.front());
-        if (toi == 1.0f)
-        {
-            return toi;
-        }
-        else
-        {
-            return toi / accd::line_search_max_t;
-        }
-        // return toi;  // 0.9f * toi
-    };
     auto       post_intersection_check = [&]() { device_post_dist_check(stream); };
     const uint num_verts               = host_mesh_data->num_verts;
 
@@ -4057,32 +4108,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         //
         device_SpMV(stream, input_ptr, output_ptr);
     };
-    auto compute_energy_interface = [&]()
-    {
-        std::map<std::string, double> energy_list;
-        device_compute_elastic_energy(stream, energy_list);
-        device_compute_contact_energy(stream, energy_list);
 
-        auto total_energy = std::accumulate(energy_list.begin(),
-                                            energy_list.end(),
-                                            0.0,
-                                            [](double sum, const auto& pair) { return sum + pair.second; });
-        if (get_scene_params().print_system_energy)
-        {
-            for (const auto& pair : energy_list)
-            {
-                LUISA_INFO("Energy {} = {}", pair.first, pair.second);
-            }
-        }
-        for (const auto& pair : energy_list)
-        {
-            if (is_nan_scalar(pair.second) || is_inf_scalar(pair.second))
-            {
-                LUISA_ERROR("Energy {} is not valid : {}", pair.first, pair.second);
-            }
-        }
-        return total_energy;
-    };
     auto linear_solver_interface = [&]()
     {
         if constexpr (false)
@@ -4092,38 +4118,17 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                    << sim_data->sa_cgA_fixtopo_offdiag_triplet.copy_to(
                           host_sim_data->sa_cgA_fixtopo_offdiag_triplet.data());
             narrow_phase_detector->download_contact_triplet(stream);
-            host_solve_eigen(stream, compute_energy_interface);
+            host_solve_eigen(stream);
             stream << sim_data->sa_cgX.copy_from(host_sim_data->sa_cgX.data());
         }
         else
         {
             // simple_solve();
-            pcg_solver->device_solve(stream, pcg_spmv_interface, compute_energy_interface);
+            pcg_solver->device_solve(stream, pcg_spmv_interface, []() { return 0.0; });
         }
         // pcg_solver->device_solve(stream, pcg_spmv_interface, compute_energy_interface);
     };
-    auto check_gound_safe = [&](const float alpha)
-    {
-        CpuParallel::parallel_for(0,
-                                  mesh_data->num_verts,
-                                  [&](const uint vid)
-                                  {
-                                      const auto curr_y = host_sim_data->sa_x[vid].y;
-                                      const float d_hat = host_sim_data->sa_contact_active_verts_d_hat[vid];
-                                      const float offset = host_sim_data->sa_contact_active_verts_offset[vid];
-                                      if (curr_y - offset < get_scene_params().floor.y)
-                                      {
-                                          LUISA_ERROR("Vertex {} below ground at y = {} (init = {}, alpha = {}, dx = {}), d_hat = {}, offset = {}",
-                                                      vid,
-                                                      curr_y,
-                                                      host_sim_data->sa_x_iter_start[vid].y,
-                                                      alpha,
-                                                      host_sim_data->sa_cgX[vid].y,
-                                                      d_hat,
-                                                      offset);
-                                      }
-                                  });
-    };
+
     // Init LBVH
     {
         ADD_HOST_TIME_STAMP("Init LBVH");
@@ -4155,11 +4160,11 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
         LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame);
 
-        uint iter                      = 0;
-        bool direchlet_point_converged = false;
+        uint iter      = 0;
+        bool converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count && direchlet_point_converged)
+            if (iter >= get_scene_params().nonlinear_iter_count && converged)
             {
                 break;
             }
@@ -4168,7 +4173,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             // TODO: If we use predict position, the start position may not in safe region
             stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start)
-                   << sim_data->sa_x.copy_to(host_sim_data->sa_x.data())
                    << sim_data->sa_x.copy_to(host_sim_data->sa_x_iter_start.data());  // For host apply dx
             stream << luisa::compute::synchronize();
 
@@ -4244,9 +4248,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                 evaluate_contact();
 
                 // stream << fn_evaluate_dirichlet(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
-
-                if (get_scene_params().use_energy_linesearch)
-                    prev_state_energy = compute_energy_interface();
             }
 
             stream << luisa::compute::synchronize();
@@ -4254,137 +4255,16 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             linear_solver_interface();
 
-            float alpha   = 1.0f;
-            float ccd_toi = 1.0f;
+            ADD_HOST_TIME_STAMP("LineSearch");
 
-            host_apply_dx(alpha);
-            // device_apply_dx(alpha);
-            // stream << luisa::compute::synchronize();
+            converged = line_search(stream);
 
-            ADD_HOST_TIME_STAMP("CCD");
-            if (get_scene_params().use_ccd_linesearch)
-            {
-                ccd_toi = ccd_get_toi();
-                alpha   = ccd_toi;
-                host_apply_dx(alpha);
-                // device_apply_dx(alpha);
-                // stream << luisa::compute::synchronize();
-                if (ccd_toi < 1.0f)
-                {
-                    LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
-                }
-            }
-            LUISA_INFO("Check Point 4");
-            ADD_HOST_TIME_STAMP("End CCD");
-            check_gound_safe(alpha);
-            LUISA_INFO("Check Point 5");
-            // Non-linear iteration break condition
-            {
-                float max_move      = 1e-2;
-                float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
-                if (curr_max_step < max_move * substep_dt)
-                {
-                    LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
-                               iter,
-                               curr_max_step,
-                               max_move * substep_dt);
-                    break;
-                }
-            }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
-            LUISA_INFO("Check Point 6");
-            // device_apply_dx(alpha);
-            // host_apply_dx(alpha);
-            // stream << luisa::compute::synchronize();
-            // host_apply_dx(alpha);
+            ADD_HOST_TIME_STAMP("End");
 
-            if (get_scene_params().use_energy_linesearch)
-            {
-                device_apply_dx(alpha);
-                // Energy after CCD or just solving Axb
-                auto curr_energy = compute_energy_interface();
-                if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
-                {
-                    LUISA_ERROR("Energy is not valid : {}", curr_energy);
-                }
-
-                uint line_search_count = 0;
-                while (line_search_count < 20)  // Compare energy
-                {
-                    if (curr_energy < prev_state_energy + Epsilon)
-                    {
-                        if (alpha != 1.0f)
-                        {
-                            LUISA_INFO("     Line search {} break : alpha = {:6.5f}, curr energy = {:12.10f} , prev energy {:12.10f} , {}",
-                                       line_search_count,
-                                       alpha,
-                                       curr_energy,
-                                       prev_state_energy,
-                                       ccd_toi != 1.0f ? "CCD toi = " + std::to_string(ccd_toi) : "");
-                        }
-                        break;
-                    }
-                    if (line_search_count == 0)
-                    {
-                        LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f} , prev state energy {:12.10f} {}",
-                                   line_search_count,
-                                   alpha,
-                                   curr_energy,
-                                   prev_state_energy,
-                                   ccd_toi != 1.0f ? ", CCD toi = " + std::to_string(ccd_toi) : "");
-                    }
-                    alpha /= 2;
-                    // host_apply_dx(alpha);
-                    device_apply_dx(alpha);
-
-                    curr_energy = compute_energy_interface();
-                    LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
-
-                    if (alpha < 1e-4)
-                    {
-                        LUISA_ERROR("  Line search failed, energy = {}, prev state energy = {}", curr_energy, prev_state_energy);
-                    }
-                    line_search_count++;
-                }
-                prev_state_energy = curr_energy;  // E_prev = E
-                host_apply_dx(alpha);
-                // device_apply_dx(alpha);
-                // stream << luisa::compute::synchronize();
-            }
-
-            // Check dirichlet point target
-            {
-                const float direchlet_max_delta = CpuParallel::parallel_for_and_reduce(
-                    0,
-                    host_sim_data->sa_x.size(),
-                    [&](const uint vid)
-                    {
-                        if (host_mesh_data->sa_is_fixed[vid])
-                        {
-                            float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
-                            return luisa::length(delta);
-                        }
-                        return 0.0f;  // Non-fixed point
-                    },
-                    [](const float left, const float right) { return max_scalar(left, right); },
-                    -1e9f);
-                direchlet_point_converged = direchlet_max_delta < 1e-3;
-                if (!direchlet_point_converged)
-                {
-                    LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
-                }
-            }
-            device_apply_dx(alpha);
-            stream << luisa::compute::synchronize();
             narrow_phase_detector->post_resize_buffers(device, stream);
 
-            // post_intersection_check();
-
-            // stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start);
-            // if (sim_data->num_affine_bodies != 0)
-            // {
-            //     stream << sim_data->sa_affine_bodies_q.copy_to(sim_data->sa_affine_bodies_q_iter_start);
-            // }
-            // stream << luisa::compute::synchronize();
+            if (converged)
+                break;
         }
 
         if (host_sim_data->num_verts_soft != 0)

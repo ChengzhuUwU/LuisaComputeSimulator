@@ -265,8 +265,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
     using namespace luisa::compute;
 
     compiler.compile<1>(fn_reset_toi,
-                        [](Var<BufferView<float>> sa_toi)
-                        { sa_toi->write(dispatch_x(), accd::line_search_max_t); });
+                        [](Var<BufferView<float>> sa_toi) { sa_toi->write(dispatch_x(), 1.0f); });
     compiler.compile<1>(fn_reset_uint,
                         [](Var<BufferView<uint>> sa_toi) { sa_toi->write(dispatch_x(), 0u); });
     compiler.compile<1>(fn_reset_float,
@@ -383,7 +382,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
             $if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
             {
                 // device_log("Block {} VF toi = {}", pair_idx / 256, toi);
-                sa_toi->atomic(0).fetch_min(toi);
+                sa_toi->atomic(0).fetch_min(toi / accd::line_search_max_t);
             };
         });
 
@@ -500,7 +499,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
             $if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
             {
                 // device_log("Block {} EE toi = {}", pair_idx / 256, toi);
-                sa_toi->atomic(0).fetch_min(toi);
+                sa_toi->atomic(0).fetch_min(toi / accd::line_search_max_t);
             };
         });
 }

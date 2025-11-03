@@ -59,6 +59,7 @@ class NewtonSolver : public lcs::SolverInterface
   private:
     // Host functions
     void host_apply_dx(const float alpha);
+    void device_apply_dx(luisa::compute::Stream& stream, const float alpha);
     void host_predict_position();
     void host_update_velocity();
     void host_evaluate_inertia();
@@ -71,9 +72,9 @@ class NewtonSolver : public lcs::SolverInterface
     void host_evaluete_stretch_face();
     void host_evaluete_bending();
     void host_material_energy_assembly();
-    void host_solve_eigen(luisa::compute::Stream& stream, std::function<double()> func_compute_energy);
+    void host_solve_eigen(luisa::compute::Stream& stream);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
-    void host_line_search(luisa::compute::Stream& stream);
+    bool line_search(luisa::compute::Stream& stream);
 
     // Device functions
     void device_broadphase_ccd(luisa::compute::Stream& stream);
