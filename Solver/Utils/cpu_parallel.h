@@ -754,7 +754,7 @@ struct spin_atomic
     }
     spin_atomic<T>(const T& f) { store(f); }
 
-    void store(const T& f, std::memory_order order = std::memory_order_seq_cst)
+    void store(const T& f)
     {
         MemoryView i;
         std::memcpy(&i, &f, sizeof(T));
@@ -769,14 +769,16 @@ struct spin_atomic
         return f;
     }
 
-    T fetch_add(const T& arg, std::memory_order order = std::memory_order_seq_cst)
+    template <typename Func>
+    T fetch_op_template(const T& arg, Func func_binary)
     {
-        MemoryView old_bits = bits.load(order);
+        std::memory_order order    = std::memory_order_seq_cst;
+        MemoryView        old_bits = bits.load(order);
         while (true)
         {
             T old_val;
             std::memcpy(&old_val, &old_bits, sizeof(T));
-            T new_val = old_val + arg;
+            T new_val = func_binary(old_val, arg);
 
             MemoryView new_bits;
             std::memcpy(&new_bits, &new_val, sizeof(T));
@@ -784,6 +786,30 @@ struct spin_atomic
             if (bits.compare_exchange_weak(old_bits, new_bits, order))
                 return old_val;
         }
+    }
+    static T fetch_add(T& orig_view, const T& arg)
+    {
+        spin_atomic<T>* atomic_view = reinterpret_cast<spin_atomic<T>*>(&orig_view);
+        return atomic_view->fetch_op_template(
+            arg, [](const T& left, const T& right) -> T { return left + right; });
+    }
+    static T fetch_sub(T& orig_view, const T& arg)
+    {
+        spin_atomic<T>* atomic_view = reinterpret_cast<spin_atomic<T>*>(&orig_view);
+        return atomic_view->fetch_op_template(
+            arg, [](const T& left, const T& right) -> T { return left - right; });
+    }
+    static T fetch_min(T& orig_view, const T& arg)
+    {
+        spin_atomic<T>* atomic_view = reinterpret_cast<spin_atomic<T>*>(&orig_view);
+        return atomic_view->fetch_op_template(
+            arg, [](const T& left, const T& right) -> T { return min_scalar(left, right); });
+    }
+    static T fetch_max(T& orig_view, const T& arg)
+    {
+        spin_atomic<T>* atomic_view = reinterpret_cast<spin_atomic<T>*>(&orig_view);
+        return atomic_view->fetch_op_template(
+            arg, [](const T& left, const T& right) -> T { return max_scalar(left, right); });
     }
 };
 

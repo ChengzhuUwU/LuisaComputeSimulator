@@ -57,7 +57,7 @@ namespace accd
         Var<uint>  iter_count = 0;
         $while(true)
         {
-            $if(iter_count > 1000)
+            $if(iter_count > 10000)
             {
                 luisa::compute::device_assert(false, "CCD iteration not converged in 1000 iteration!");
                 $break;
@@ -96,6 +96,12 @@ namespace accd
             {
                 luisa::compute::device_log("CCD iter for {}, toi = {}", iter_count, toi);
             };
+
+        // $if(toi != accd::line_search_max_t)
+        // {
+        //     luisa::compute::device_log(
+        //         "CCD detect toi at {}: init dist = {}, offset = {}", toi, sqrt_scalar(square_dist_func(x0)), offset);
+        // };
         luisa::compute::device_assert(toi > 0.0f);
         return toi;
     }
@@ -135,7 +141,7 @@ namespace accd
                 max_u    = max_scalar(max_u, length_squared_vec(du));
             }
         }
-        return sqrt(max_u);
+        return luisa::compute::sqrt(max_u);
     }
 
     inline Var<float> point_triangle_ccd(const Vec3f& p0,
@@ -246,7 +252,7 @@ namespace host_accd
         uint  iter_count = 0;
         while (true)
         {
-            if (iter_count > 1000)
+            if (iter_count > 10000)
             {
                 LUISA_ASSERT(false, "CCD iteration not converged in 1000 iteration!");
                 break;

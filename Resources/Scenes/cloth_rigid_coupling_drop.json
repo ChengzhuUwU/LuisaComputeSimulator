@@ -1,0 +1,45 @@
+{
+    "scene_id": 10,
+    "contact_energy_type": 1,
+    "use_floor": false,
+    "shells": [
+        {
+            "model_name": "square8K.obj",
+            "translation": [
+                0.0,
+                0.32,
+                0.0
+            ],
+            "scale": 0.75,
+            "fixed_points": [
+                {
+                    "method": "LeftBack"
+                },
+                {
+                    "method": "RightBack"
+                },
+                {
+                    "method": "LeftFront"
+                },
+                {
+                    "method": "RightFront"
+                }
+            ]
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.34,
+                0.0
+            ],
+            "rotation": [
+                0.5235988,
+                0.0,
+                0.5235988
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        }
+    ]
+}

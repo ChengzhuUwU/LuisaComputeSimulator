@@ -1,0 +1,41 @@
+{
+    "scene_id": 0,
+    "use_floor": false,
+    "use_gpu": false,
+    "implicit_dt": 0.2,
+    "use_energy_linesearch": true,
+    "stiffness_DAB_bending": 200.0,
+    "contact_energy_type": 1,
+    "shells": [
+        {
+            "model_name": "triangle1.obj",
+            "scale": 1.0,
+            "material": {
+                "d_hat": 0.001,
+                "thickness": 0.1,
+                "density": 1e5
+            }
+        },
+        {
+            "model_name": "triangle1.obj",
+            "translation": [
+                0.0,
+                -0.3,
+                0.0
+            ],
+            "material": {
+                "d_hat": 0.001,
+                "thickness": 0.1,
+                "density": 1e5
+            },
+            "fixed_points": [
+                {
+                    "method": "Left"
+                },
+                {
+                    "method": "Right"
+                }
+            ]
+        }
+    ]
+}

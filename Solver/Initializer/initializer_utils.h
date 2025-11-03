@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/xbasic_types.h"
+#include "Utils/cpu_parallel.h"
 #include "luisa/core/logging.h"
 #include "luisa/runtime/device.h"
 #include "Utils/buffer_allocator.h"
@@ -157,6 +158,28 @@ namespace Initializer
             prefix += clusterd_constraint[cluster].size();
         }
         prefix_buffer[num_cluster] = prefix;
+    };
+
+    inline std::vector<uint> fn_get_active_indices(const std::function<bool(uint)>& func, const uint num_threads)
+    {
+        std::vector<uint> output_indices;
+
+        const uint num_active = CpuParallel::parallel_for_and_reduce_sum<uint>(
+            0, num_threads, [&](const uint i) { return func(i) ? 1 : 0; });
+
+        output_indices.resize(num_active);
+
+        CpuParallel::parallel_for_and_scan(
+            0,
+            num_threads,
+            [&](const uint i) { return func(i) ? 1 : 0; },
+            [&](const uint i, const uint global_prefix, const uint parallel_result)
+            {
+                if (parallel_result == 1)
+                    output_indices[global_prefix - 1] = i;
+            },
+            0);
+        return output_indices;
     };
 
 

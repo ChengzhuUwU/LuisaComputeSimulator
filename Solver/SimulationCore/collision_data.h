@@ -374,10 +374,11 @@ struct CollisionData : SimulationType
 
     BufferType<uint>  broad_phase_list_vf;
     BufferType<uint>  broad_phase_list_ee;
-    BufferType<float> toi_per_vert;
+    BufferType<float> toi_per_vert;  // Actually is global min TOI
     BufferType<float> contact_energy;
 
     BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
+    BufferType<uint>                                 sa_triplet_info;
     BufferType<MatrixTriplet3x3>                     sa_cgA_contact_offdiag_triplet;
     BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices;
     BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices2;
@@ -391,13 +392,13 @@ struct CollisionData : SimulationType
     BufferType<uint> per_vert_num_broad_phase_vf;
     BufferType<uint> per_vert_num_broad_phase_ee;
 
-    BufferType<uint>                       per_vert_num_adj_pairs;
-    BufferType<uint>                       per_vert_num_adj_verts;
-    BufferType<uint>                       per_vert_prefix_adj_pairs;
-    BufferType<uint>                       per_vert_prefix_adj_verts;
-    BufferType<uint>                       vert_adj_pairs_csr;
-    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
-    luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
+    BufferType<uint> per_vert_num_adj_pairs;
+    BufferType<uint> per_vert_num_adj_verts;
+    BufferType<uint> per_vert_prefix_adj_pairs;
+    BufferType<uint> per_vert_prefix_adj_verts;
+
+    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
+    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
 
 
     const uint get_vv_count_offset() { return 0; }
@@ -406,39 +407,17 @@ struct CollisionData : SimulationType
     const uint get_ee_count_offset() { return 3; }
 
     // template<template<typename...> typename BufferType>
-    inline void resize_collision_data(luisa::compute::Device& device,
-                                      const uint              num_verts,
-                                      const uint              num_faces,
-                                      const uint              num_edges,
-                                      const uint              num_dofs)
+    inline void allocate_basic_buffers(luisa::compute::Device& device,
+                                       const uint              num_verts,
+                                       const uint              num_faces,
+                                       const uint              num_edges,
+                                       const uint              num_dofs)
     {
-        // const uint num_verts = mesh_data->num_verts;
-        // const uint num_edges = mesh_data->num_edges;
-
-        const uint per_element_count_BP        = 128;
-        const uint per_element_count_NP        = 32;
-        const uint per_element_count_NP_culled = 24;
-
-
         constexpr bool use_vv_ve = false;
         lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
         lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 8);
         lcs::Initializer::resize_buffer(device, this->contact_energy, 4);
         lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts);
-        lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts);
-        lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges);
-        // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
-        // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
-
-        const uint max_pairs   = per_element_count_NP * (num_verts + num_edges);
-        const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
-        lcs::Initializer::resize_buffer(device, this->vert_adj_pairs_csr, max_pairs * 4);
-        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet, max_triplet);
-        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices, max_triplet);
-        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
-        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property, max_triplet);
-        lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property2, max_triplet);
 
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_dofs);
         lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_dofs);
@@ -446,13 +425,50 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_dofs);
         lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_dofs + 1);
         lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
-        this->collision_indirect_cmd_buffer_broad_phase  = device.create_indirect_dispatch_buffer(2);
-        this->collision_indirect_cmd_buffer_narrow_phase = device.create_indirect_dispatch_buffer(4);
+    }
+
+    inline void resize_collision_data_list(luisa::compute::Device& device,
+                                           const uint              num_verts,
+                                           const uint              num_faces,
+                                           const uint              num_edges,
+                                           const uint              num_dofs,
+                                           const bool              allocate_contact_list,
+                                           const bool              allocate_triplet)
+    {
+        const uint per_element_count_BP        = 48;
+        const uint per_element_count_NP        = 24;
+        const uint per_element_count_NP_culled = 12;
+
+        if (allocate_contact_list)
+        {
+            lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts);
+            lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges);
+            // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
+            // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
+
+            const uint max_pairs   = per_element_count_NP * (num_verts + num_edges);
+            const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
+
+            lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
+            lcs::Initializer::resize_buffer(device, this->sa_triplet_info, max_pairs * 4);
+
+            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property2, max_triplet);
+        }
+
+        if (allocate_triplet)
+        {
+            const uint max_culled_triplet = per_element_count_NP_culled * (num_verts + num_edges);
+            lcs::Initializer::resize_buffer(
+                device, this->sa_cgA_contact_offdiag_triplet, max_scalar(max_culled_triplet, 256));
+        }
 
         const size_t collision_pair_bytes =
             sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
             + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
-            + sizeof(uint) * this->vert_adj_pairs_csr.size()
+            + sizeof(uint) * this->sa_triplet_info.size()
             + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
             + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
             + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()

@@ -184,8 +184,7 @@ class SolverInterface
                            float,                               // floor_y
                            bool,                                // use_ground_collision
                            float,                               // stiffness
-                           float,                               // d_hat
-                           float                                // thickness
+                           uint                                 // collision_type
                            >
         fn_calc_energy_ground_collision;
     // luisa::compute::Shader<1,

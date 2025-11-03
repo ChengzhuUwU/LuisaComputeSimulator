@@ -11,6 +11,7 @@
 #include "Core/scalar.h"
 #include "SimulationCore/simulation_type.h"
 #include "luisa/dsl/sugar.h"
+// #include <iostream>
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
@@ -45,10 +46,13 @@ namespace distance
         $if(det != 0.0f)
         {
             // a_inv << a(1, 1) / det, -a(0, 1) / det, -a(1, 0) / det, a(0, 0) / det;
-            Mat2x2f a_inv = makeFloat2x2(luisa::compute::make_float2(a[1][1] / det, -a[0][1] / det),
-                                         luisa::compute::make_float2(-a[1][0] / det, a[0][0] / det));
-            x             = a_inv * b;
-            is_safe       = (true);
+            Mat2x2f a_inv = makeFloat2x2(luisa::compute::make_float2(a[1][1] / det, -a[1][0] / det),
+                                         luisa::compute::make_float2(-a[0][1] / det, a[0][0] / det));
+            // x             = a_inv * b;
+            x[0] = a_inv[0][0] * b[0] + a_inv[1][0] * b[1];  // A is symmetric
+            x[1] = a_inv[0][1] * b[0] + a_inv[1][1] * b[1];
+            // luisa::compute::device_log("det = {}, a_inv = {}, b = {}, a_inv*b = {}", det, a_inv, b, x);
+            is_safe = (true);
         };
         return (is_safe);
     }
@@ -89,10 +93,16 @@ namespace distance
         Mat2x3f a_t = transpose_2x3(a);
         Vec2f   x;
         Vec4f   bary(0.5f, 0.5f, 0.5f, 0.5f);
+        // luisa::compute::device_log("Need to solve r0 = {}, r1 = {}, a = {}", r0, r1, a);
         $if(solve(mult(a_t, a), mult(a_t, (eb0 - ea0)), x))
         {
             // luisa::compute::device_log("r0 = {}, r1 = {}, x = {}", r0, r1, x);
             bary = Vec4f(1.0f - x[0], x[0], 1.0f - x[1], x[1]);
+            // luisa::compute::device_log("Solve result : at*a = {}, at*(eb-ea) = {}, x = {}, bary = {}",
+            //                            mult(a_t, a),
+            //                            mult(a_t, (eb0 - ea0)),
+            //                            x,
+            //                            bary);
         };
         return bary;
     }
@@ -173,75 +183,134 @@ namespace distance
         return squared_norm(x);
     }
 
+    // inline Vec4f edge_edge_distance_coeff_unclassified(const Vec3f& ea0, const Vec3f& ea1, const Vec3f& eb0, const Vec3f& eb1)
+    // {
+    //     Vec4f c = edge_edge_distance_coeff(ea0, ea1, eb0, eb1);
+    //     // luisa::compute::device_log("c = {}", c);
+    //     Vec4f result = c;
+    //     $if(all(c >= 0.0f) & all(c <= 1.0f))
+    //     {
+    //     }
+    //     $else
+    //     {
+    //         Vec2f c1 = point_edge_distance_coeff(ea0, eb0, eb1);
+    //         Vec2f c2 = point_edge_distance_coeff(ea1, eb0, eb1);
+    //         Vec2f c3 = point_edge_distance_coeff(eb0, ea0, ea1);
+    //         Vec2f c4 = point_edge_distance_coeff(eb1, ea0, ea1);
+    //         // luisa::compute::device_log("c1 = {}, c2 = {}, c3 = {}, c4 = {}", c1, c2, c3, c4);
+    //         $if(c1[0] < 0.0f)
+    //         {
+    //             c1 = Vec2f(0.0f, 1.0f);
+    //         }
+    //         $elif(c1[0] > 1.0f)
+    //         {
+    //             c1 = Vec2f(1.0f, 0.0f);
+    //         };
+    //         $if(c2[0] < 0.0f)
+    //         {
+    //             c2 = Vec2f(0.0f, 1.0f);
+    //         }
+    //         $elif(c2[0] > 1.0f)
+    //         {
+    //             c2 = Vec2f(1.0f, 0.0f);
+    //         };
+    //         $if(c3[0] < 0.0f)
+    //         {
+    //             c3 = Vec2f(0.0f, 1.0f);
+    //         }
+    //         $elif(c3[0] > 1.0f)
+    //         {
+    //             c3 = Vec2f(1.0f, 0.0f);
+    //         };
+    //         $if(c4[0] < 0.0f)
+    //         {
+    //             c4 = Vec2f(0.0f, 1.0f);
+    //         }
+    //         $elif(c4[0] > 1.0f)
+    //         {
+    //             c4 = Vec2f(1.0f, 0.0f);
+    //         };
+    //         luisa::compute::ArrayFloat4<4> types = {Vec4f(1.0f, 0.0f, c1[0], c1[1]),
+    //                                                 Vec4f(0.0f, 1.0f, c2[0], c2[1]),
+    //                                                 Vec4f(c3[0], c3[1], 1.0f, 0.0f),
+    //                                                 Vec4f(c4[0], c4[1], 0.0f, 1.0f)};
+    //         Var<uint>                      index = 0;
+    //         Var<float>                     di    = Float_max;
+    //         for (unsigned i = 0; i < 4; ++i)
+    //         {
+    //             const auto& c  = types[i];
+    //             Vec3f       x0 = c[0] * ea0 + c[1] * ea1;
+    //             Vec3f       x1 = c[2] * eb0 + c[3] * eb1;
+    //             Var<float>  d  = squared_norm(x0 - x1);
+    //             $if(d < di)
+    //             {
+    //                 index = i;
+    //                 di    = d;
+    //             };
+    //             // luisa::compute::device_log("type[{}]: d = {}", i, d);
+    //         }
+    //         result = types[index];
+    //     };
+    //     return result;
+    // }
+
     inline Vec4f edge_edge_distance_coeff_unclassified(const Vec3f& ea0, const Vec3f& ea1, const Vec3f& eb0, const Vec3f& eb1)
     {
+        Vec3f r0 = ea1 - ea0;
+        Vec3f r1 = eb1 - eb0;
 
-        Vec4f c = edge_edge_distance_coeff(ea0, ea1, eb0, eb1);
-        // luisa::compute::device_log("c = {}", c);
-        Vec4f result = c;
-        $if(all(c >= 0.0f) & all(c <= 1.0f))
-        {
-        }
-        $else
+        // Check parallel
+        auto len0             = squared_norm(r0);
+        auto len1             = squared_norm(r1);
+        auto cross_r          = cross(r0, r1);
+        auto parallel_measure = squared_norm(cross_r) / (len0 * len1 + 1e-20f);
+
+        // Compute EE dist
+        Vec4f c_main = edge_edge_distance_coeff(ea0, ea1, eb0, eb1);
+        Vec4f result = c_main;
+
+        Var<bool> valid = all_vec(c_main >= 0.0f) & all_vec(c_main <= 1.0f);
+
+        $if((parallel_measure < 1e-6f) | (!valid))
         {
             Vec2f c1 = point_edge_distance_coeff(ea0, eb0, eb1);
             Vec2f c2 = point_edge_distance_coeff(ea1, eb0, eb1);
             Vec2f c3 = point_edge_distance_coeff(eb0, ea0, ea1);
             Vec2f c4 = point_edge_distance_coeff(eb1, ea0, ea1);
-            $if(c1[0] < 0.0f)
-            {
-                c1 = Vec2f(0.0f, 1.0f);
-            }
-            $elif(c1[0] > 1.0f)
-            {
-                c1 = Vec2f(1.0f, 0.0f);
+
+            c1 = luisa::compute::clamp(c1, 0.0f, 1.0f);
+            c2 = luisa::compute::clamp(c2, 0.0f, 1.0f);
+            c3 = luisa::compute::clamp(c3, 0.0f, 1.0f);
+            c4 = luisa::compute::clamp(c4, 0.0f, 1.0f);
+
+            luisa::compute::ArrayFloat4<4> candidates = {
+                Vec4f(1.0f, 0.0f, c1[0], c1[1]),  // ea0 vs edgeB
+                Vec4f(0.0f, 1.0f, c2[0], c2[1]),  // ea1 vs edgeB
+                Vec4f(c3[0], c3[1], 1.0f, 0.0f),  // eb0 vs edgeA
+                Vec4f(c4[0], c4[1], 0.0f, 1.0f)   // eb1 vs edgeA
             };
-            $if(c2[0] < 0.0f)
+
+            Var<uint>  index = 0;
+            Var<float> min_d = Float_max;
+
+            for (uint i = 0u; i < 4u; ++i)
             {
-                c2 = Vec2f(0.0f, 1.0f);
-            }
-            $elif(c2[0] > 1.0f)
-            {
-                c2 = Vec2f(1.0f, 0.0f);
-            };
-            $if(c3[0] < 0.0f)
-            {
-                c3 = Vec2f(0.0f, 1.0f);
-            }
-            $elif(c3[0] > 1.0f)
-            {
-                c3 = Vec2f(1.0f, 0.0f);
-            };
-            $if(c4[0] < 0.0f)
-            {
-                c4 = Vec2f(0.0f, 1.0f);
-            }
-            $elif(c4[0] > 1.0f)
-            {
-                c4 = Vec2f(1.0f, 0.0f);
-            };
-            luisa::compute::ArrayFloat4<4> types = {Vec4f(1.0f, 0.0f, c1[0], c1[1]),
-                                                    Vec4f(0.0f, 1.0f, c2[0], c2[1]),
-                                                    Vec4f(c3[0], c3[1], 1.0f, 0.0f),
-                                                    Vec4f(c4[0], c4[1], 0.0f, 1.0f)};
-            Var<uint>                      index = 0;
-            Var<float>                     di    = Float_max;
-            for (unsigned i = 0; i < 4; ++i)
-            {
-                const auto& c  = types[i];
+                const auto& c  = candidates[i];
                 Vec3f       x0 = c[0] * ea0 + c[1] * ea1;
                 Vec3f       x1 = c[2] * eb0 + c[3] * eb1;
                 Var<float>  d  = squared_norm(x0 - x1);
-                $if(d < di)
+                $if(d < min_d)
                 {
+                    min_d = d;
                     index = i;
-                    di    = d;
                 };
             }
-            result = types[index];
+            result = candidates[index];
         };
+
         return result;
     }
+
 
     inline auto edge_edge_distance_squared_unclassified(const Vec3f& ea0, const Vec3f& ea1, const Vec3f& eb0, const Vec3f& eb1)
     {
@@ -462,7 +531,24 @@ namespace host_distance
         {
             Mat2x2f a_inv;
             a_inv << a(1, 1) / det, -a(0, 1) / det, -a(1, 0) / det, a(0, 0) / det;
-            x = a_inv * b;
+            x[0] = a_inv(0, 0) * b[0] + a_inv(0, 1) * b[1];
+            x[1] = a_inv(1, 0) * b[0] + a_inv(1, 1) * b[1];
+            // x = a_inv * b;
+            // std::cout << "det = " << det << ", a_inv = \n"
+            //           << a_inv << ", b = \n"
+            //           << b << ", a_inv*b = \n"
+            //           << x << std::endl;
+            // {
+            //     Eigen::Matrix<double, 2, 2> tmp_a_inv;
+            //     Eigen::Matrix<double, 2, 1> tmp_b;
+            //     tmp_a_inv << a(1, 1) / det, -a(0, 1) / det, -a(1, 0) / det, a(0, 0) / det;
+            //     tmp_b << b[0], b[1];
+            //     auto tmp_x = tmp_a_inv * tmp_b;
+            //     std::cout << "Double det = " << det << ", a_inv = \n"
+            //               << tmp_a_inv << ", b = \n"
+            //               << tmp_b << ", a_inv*b = \n"
+            //               << tmp_x << std::endl;
+            // }
             return true;
         }
         return false;
@@ -473,7 +559,7 @@ namespace host_distance
     {
         Vec3f r = (e1 - e0).template cast<float>();
         float d = r.squaredNorm();
-        if (d > Epsilon)
+        if (d > 1.0e-8f)
         {
             float x = r.dot((p - e0).template cast<float>()) / d;
             return Vec2f(1.0f - x, x);
@@ -515,9 +601,16 @@ namespace host_distance
         a << r0, -r1;
         Eigen::Transpose<Mat3x2f> a_t = a.transpose();
         Vec2f                     x;
+        // LUISA_INFO("Need to solve r0 = {}, r1 = {}, a = {}",
+        //            std::array<float, 3>{r0[0], r0[1], r0[2]},
+        //            std::array<float, 3>{r1[0], r1[1], r1[2]},
+        //            std::array<float, 2>{a(0, 0), a(0, 1)});
         if (solve(a.transpose() * a, a.transpose() * (eb0 - ea0).template cast<float>(), x))
         {
-            // LUISA_INFO("r0 = {}, r1 = {}, x = {}", r0, r1, x);
+            // std::cout << "Solve result : at*a = \n"
+            //           << a.transpose() * a << ", at*(eb-ea) = \n"
+            //           << a.transpose() * (eb0 - ea0) << ", x =\n " << x << ", bary = \n"
+            //           << Vec4f(1.0f - x[0], x[0], 1.0f - x[1], x[1]) << std::endl;
             return Vec4f(1.0f - x[0], x[0], 1.0f - x[1], x[1]);
         }
         else
@@ -610,14 +703,14 @@ namespace host_distance
     }
 
     template <class T>
-    inline Vec4f edge_edge_distance_coeff_unclassified(const SVec<T, 3>& ea0,
-                                                       const SVec<T, 3>& ea1,
-                                                       const SVec<T, 3>& eb0,
-                                                       const SVec<T, 3>& eb1)
+    Vec4f edge_edge_distance_coeff_unclassified(const SVec<T, 3>& ea0,
+                                                const SVec<T, 3>& ea1,
+                                                const SVec<T, 3>& eb0,
+                                                const SVec<T, 3>& eb1)
     {
 
         Vec4f c = edge_edge_distance_coeff(ea0, ea1, eb0, eb1);
-        // luisa::compute::log_info("c = {}", c);
+        // LUISA_INFO("c = {}, {}, {},{}", c[0], c[1], c[2], c[3]);
         if (c[0] >= 0.0f && c[0] <= 1.0f && c[1] >= 0.0f && c[1] <= 1.0f && c[2] >= 0.0f && c[2] <= 1.0f
             && c[3] >= 0.0f && c[3] <= 1.0f)
         {
@@ -629,6 +722,11 @@ namespace host_distance
             Vec2f c2 = point_edge_distance_coeff(ea1, eb0, eb1);
             Vec2f c3 = point_edge_distance_coeff(eb0, ea0, ea1);
             Vec2f c4 = point_edge_distance_coeff(eb1, ea0, ea1);
+            // LUISA_INFO("c1 to c4 = {}-{}-{}-{}",
+            //            std::array<float, 2>{c1[0], c1[1]},
+            //            std::array<float, 2>{c2[0], c2[1]},
+            //            std::array<float, 2>{c3[0], c3[1]},
+            //            std::array<float, 2>{c4[0], c4[1]});
             if (c1(0) < 0.0f)
             {
                 c1 = Vec2f(0.0f, 1.0f);
@@ -666,7 +764,7 @@ namespace host_distance
                                 Vec4f(c3(0), c3(1), 1.0f, 0.0f),
                                 Vec4f(c4(0), c4(1), 0.0f, 1.0f)};
             unsigned index   = 0;
-            float    di      = Float_max;
+            float    di      = 1.0e8f;
             for (unsigned i = 0; i < 4; ++i)
             {
                 const auto& c  = types[i];
@@ -678,6 +776,7 @@ namespace host_distance
                     index = i;
                     di    = d;
                 }
+                // LUISA_INFO("type[{}]: d = {}", i, d);
             }
             return types[index];
         }

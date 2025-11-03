@@ -50,7 +50,7 @@ int main(int argc, char** argv)
 #ifndef NDEBUG
     luisa::log_level_info();  // log_level_verbose
 #else
-    luisa::log_level_verbose();
+    luisa::log_level_info();
 #endif
 
     luisa::fiber::scheduler scheduler;  // Initialize the fiber scheduler, which is also need in HostParallel functions
@@ -78,10 +78,6 @@ int main(int argc, char** argv)
     {
         backend = argv[1];
     }
-    if (argc >= 3)
-    {
-        lcs::get_scene_params().scene_id = static_cast<uint>(std::stoul(argv[2]));
-    }
     luisa::compute::Device device = context.create_device(backend,
                                                           nullptr,
 #ifndef NDEBUG
@@ -95,8 +91,19 @@ int main(int argc, char** argv)
     lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
     // Read Mesh
+    std::string scene_json_path = std::string(LCSV_RESOURCE_PATH) + "/Scenes/default_scene.json";
+    if (argc >= 3)
+    {
+        LUISA_INFO("Load target scene {}", argv[2]);
+        scene_json_path = argv[2];
+    }
+    else
+    {
+        LUISA_INFO("Load default scene {}", scene_json_path);
+    }
     std::vector<lcs::Initializer::ShellInfo> shell_list;
-    Demo::Simulation::load_default_scene(shell_list);
+    // Demo::Simulation::load_default_scene(shell_list);
+    Demo::Simulation::load_scene_params_from_json(shell_list, scene_json_path);
 
     // Init Solver
     lcs::NewtonSolver solver;
@@ -107,9 +114,9 @@ int main(int argc, char** argv)
         // Animation for fixed points
         for (uint mesh_idx = 0; mesh_idx < shell_list.size(); mesh_idx++)
         {
+            const float                  curr_time  = curr_frame * lcs::get_scene_params().implicit_dt;
             lcs::Initializer::ShellInfo& shell_info = shell_list[mesh_idx];
-            shell_info.update_pinned_verts(curr_frame * lcs::get_scene_params().implicit_dt);
-            solver.update_pinned_verts_information(mesh_idx, shell_info.fixed_point_target_positions);
+            solver.update_pinned_verts_information(mesh_idx, shell_info.get_fixed_point_target_positions(curr_time));
         }
     };
 
@@ -272,7 +279,8 @@ int main(int argc, char** argv)
                 ImGui::SliderFloat("Implicit Timestep", &lcs::get_scene_params().implicit_dt, 0.0001f, 0.2f);
                 ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
                 ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
-                if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier))
+                if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
+                    && lcs::get_scene_params().use_self_collision)
                     lcs::get_scene_params().use_ccd_linesearch = true;
 
 
@@ -354,9 +362,9 @@ int main(int argc, char** argv)
                             host_collision_data.narrow_phase_collision_count.front(),
                             host_collision_data.narrow_phase_collision_count[offset_verts]);
                 ImGui::Text("MaxCount = %zu / %zu ,  Narrow %zu , Triplet = %zu)",
-                            host_collision_data.broad_phase_list_vf.size() / 2,
-                            host_collision_data.broad_phase_list_ee.size() / 2,
-                            host_collision_data.narrow_phase_list.size(),
+                            device_collision_data.broad_phase_list_vf.size() / 2,
+                            device_collision_data.broad_phase_list_ee.size() / 2,
+                            device_collision_data.narrow_phase_list.size(),
                             device_collision_data.sa_cgA_contact_offdiag_triplet.size());
             }
 

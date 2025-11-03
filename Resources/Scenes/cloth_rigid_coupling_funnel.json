@@ -1,0 +1,25 @@
+{
+    "scene_id": 10,
+    "contact_energy_type": 1,
+    "shells": [
+        {
+            "model_name": "square26K.obj",
+            "translation": [
+                0.0,
+                1.2,
+                0.0
+            ],
+            "scale": 0.5
+        },
+        {
+            "model_name": "Funnel/funnel.obj",
+            "translation": [
+                0.0,
+                0.3,
+                0.0
+            ],
+            "scale": 0.5,
+            "shell_type": "Rigid"
+        }
+    ]
+}

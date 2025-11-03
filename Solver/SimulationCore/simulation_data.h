@@ -147,6 +147,12 @@ struct SimulationData : SimulationType
     BufferType<float3x3>         sa_affine_bodies_hessians;
     BufferType<ushort>           sa_affine_bodies_offsets_in_adjlist;
 
+    BufferType<uint>  sa_contact_active_verts;
+    BufferType<uint>  sa_contact_active_edges;
+    BufferType<uint>  sa_contact_active_faces;
+    BufferType<float> sa_contact_active_verts_d_hat;
+    BufferType<float> sa_contact_active_verts_offset;
+
 
     BufferType<float3> sa_affine_bodies_q_outer;
     BufferType<float3> sa_affine_bodies_q_v_outer;

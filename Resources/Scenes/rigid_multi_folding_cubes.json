@@ -1,0 +1,118 @@
+{
+    "scene_id": 9,
+    "use_floor": true,
+    "use_gpu": false,
+    "contact_energy_type": 1,
+    "shells": [
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.15,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.3,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.45,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.6,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.75,
+                0.0
+            ],
+            "rotation": [
+                0.4,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.7,
+                0.0
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.1,
+                0.0
+            ],
+            "scale": 0.5,
+            "shell_type": "Rigid"
+        }
+    ]
+}

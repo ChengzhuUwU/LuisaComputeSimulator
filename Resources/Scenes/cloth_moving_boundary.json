@@ -1,0 +1,44 @@
+{
+    "scene_id": 2,
+    "use_floor": false,
+    "implicit_dt": 0.05,
+    "nonlinear_iter_count": 1,
+    "use_energy_linesearch": true,
+    "shells": [
+        {
+            "model_name": "square2.obj"
+        },
+        {
+            "model_name": "square2.obj",
+            "translation": [
+                0.1,
+                -0.3,
+                0.0
+            ],
+            "fixed_points": [
+                {
+                    "method": "Left",
+                    "fixed_info": {
+                        "use_translate": true,
+                        "translate": [
+                            0.0,
+                            1.0,
+                            0.0
+                        ]
+                    }
+                },
+                {
+                    "method": "Right",
+                    "fixed_info": {
+                        "use_translate": true,
+                        "translate": [
+                            0.0,
+                            1.0,
+                            0.0
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

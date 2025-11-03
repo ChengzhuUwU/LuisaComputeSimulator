@@ -1,8 +1,10 @@
 #include "SimulationSolver/solver_interface.h"
+#include "CollisionDetector/cipc_kernel.hpp"
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"
 #include "Energy/stretch_energy.h"
+#include "Initializer/init_collision_data.h"
 #include "Initializer/init_sim_data.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -58,6 +60,11 @@ void SolverInterface::init_data(luisa::compute::Device&                   device
     }
 
     {
+        lcs::Initializer::init_collision_data(shell_list, host_mesh_data, host_sim_data, host_collision_data);
+        lcs::Initializer::upload_collision_buffers(device, stream, host_sim_data, sim_data, host_collision_data, collision_data);
+    }
+
+    {
         lbvh_data_face->allocate(device, host_mesh_data->num_faces, lcs::LBVHTreeTypeFace);
         lbvh_data_edge->allocate(device, host_mesh_data->num_edges, lcs::LBVHTreeTypeEdge);
         lcs::Initializer::init_lbvh_data(device, stream, lbvh_data_face);
@@ -66,16 +73,33 @@ void SolverInterface::init_data(luisa::compute::Device&                   device
     }
 
     {
-        host_collision_data->resize_collision_data(device,
+        host_collision_data->allocate_basic_buffers(device,
+                                                    host_mesh_data->num_verts,
+                                                    host_mesh_data->num_faces,
+                                                    host_mesh_data->num_edges,
+                                                    host_sim_data->num_dof);
+
+        collision_data->allocate_basic_buffers(device,
+                                               host_mesh_data->num_verts,
+                                               host_mesh_data->num_faces,
+                                               host_mesh_data->num_edges,
+                                               host_sim_data->num_dof);
+
+        host_collision_data->resize_collision_data_list(device,
+                                                        host_mesh_data->num_verts,
+                                                        host_mesh_data->num_faces,
+                                                        host_mesh_data->num_edges,
+                                                        host_sim_data->num_dof,
+                                                        false,
+                                                        true);
+
+        collision_data->resize_collision_data_list(device,
                                                    host_mesh_data->num_verts,
                                                    host_mesh_data->num_faces,
                                                    host_mesh_data->num_edges,
-                                                   host_sim_data->num_dof);
-        collision_data->resize_collision_data(device,
-                                              host_mesh_data->num_verts,
-                                              host_mesh_data->num_faces,
-                                              host_mesh_data->num_edges,
-                                              host_sim_data->num_dof);
+                                                   host_sim_data->num_dof,
+                                                   true,
+                                                   true);
     }
 }
 void SolverInterface::compile(AsyncCompiler& compiler)
@@ -93,7 +117,8 @@ void SolverInterface::compile(AsyncCompiler& compiler)
     {
         narrow_phase_detector->set_collision_data(host_collision_data, collision_data);
         narrow_phase_detector->compile(compiler);
-        // narrow_phase_detector.unit_test(device, stream);
+        auto tmp_stream = compiler.device().create_stream();
+        narrow_phase_detector->unit_test(compiler.device(), tmp_stream);
     }
 
     LUISA_INFO("JIT Compiling Solver...");
@@ -499,26 +524,42 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_calc_energy_ground_collision,
-        [sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
-         sa_is_fixed       = mesh_data->sa_is_fixed.view(),
-         sa_system_energy  = sim_data->sa_system_energy.view()](
-            Var<BufferView<float3>> sa_x, Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness)
+        [sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
+         sa_is_fixed                    = mesh_data->sa_is_fixed.view(),
+         sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
+         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
+         sa_system_energy               = sim_data->sa_system_energy.view()](
+            Var<BufferView<float3>> sa_x, Float floor_y, Bool use_ground_collision, Float stiffness, Uint collision_type)
         {
             const Uint vid = dispatch_id().x;
 
             Float energy   = 0.0f;
             Bool  is_fixed = sa_is_fixed->read(vid) != 0;
+
             $if(use_ground_collision & !is_fixed)
             {
-                Float3 x_k  = sa_x->read(vid);
-                Float  diff = x_k.y - floor_y;
-                $if(diff < d_hat + thickness)
+                Float3 x_k       = sa_x->read(vid);
+                Float  dist      = x_k.y - floor_y;
+                Float  d_hat     = sa_contact_active_verts_d_hat->read(vid);
+                Float  thickness = sa_contact_active_verts_offset->read(vid);
+                $if(dist - thickness < d_hat)
                 {
-                    Float C    = d_hat + thickness - diff;
-                    Float area = sa_rest_vert_area->read(vid);
-                    // Float area  = 1.0f;
+                    Float area  = sa_rest_vert_area->read(vid);
                     Float stiff = stiffness * area;
-                    energy      = 0.5f * stiff * C * C;
+
+                    $if(collision_type == 0)
+                    {
+                        energy = 0.5f * stiff * square_scalar(dist - thickness - d_hat);
+                    }
+                    $else
+                    {
+                        energy = stiff * ipc::barrier(dist - thickness, d_hat);
+                    };
+
+                    // Float C    = d_hat + thickness - dist;
+                    // Float area = sa_rest_vert_area->read(vid);
+                    // Float stiff = stiffness * area;
+                    // energy      = 0.5f * stiff * C * C;
                     // device_log("For vert {}, pen = {}, E = {}", vid, C, energy);
                 };
             };
@@ -757,8 +798,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                                               get_scene_params().floor.y,
                                               get_scene_params().use_floor,
                                               get_scene_params().stiffness_collision,
-                                              get_scene_params().d_hat,
-                                              get_scene_params().thickness)
+                                              get_scene_params().contact_energy_type)
                   .dispatch(mesh_data->num_verts);
 
     if (host_sim_data->sa_stretch_springs.size() != 0)
