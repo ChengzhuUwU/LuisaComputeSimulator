@@ -1,6 +1,7 @@
 {
     "scene_id": 10,
     "contact_energy_type": 1,
+    "use_floor": false,
     "shells": [
         {
             "model_name": "square8K.obj",

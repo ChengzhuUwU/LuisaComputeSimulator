@@ -112,7 +112,14 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
 
         float       min_dist  = mesh_min_dist[mesh_idx];
         const float safe_dist = 0.9f * min_dist;
-        if (scaled_offset + d_hat < min_dist)
+        if (safe_dist < 1e-3)  // Soft-body exist penetration in rest state
+        {
+            //  && !shell_infos[mesh_idx].holds<RigidMaterial>()
+            LUISA_ERROR("Sub-milimeter soft-body simulation is not supported yet (Mesh {}, Min dist = {})",
+                        shell_infos[mesh_idx].get_model_name(),
+                        safe_dist);
+        }
+        if (scaled_offset + d_hat < safe_dist)
         {
         }
         else

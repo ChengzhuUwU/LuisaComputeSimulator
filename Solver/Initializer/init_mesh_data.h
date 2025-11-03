@@ -264,6 +264,10 @@ namespace Initializer
                 return 0.0f;
             }
         }
+        std::string get_model_name() const
+        {
+            return std::filesystem::path(model_name).filename().string();
+        }
         std::vector<float3> get_fixed_point_target_positions(const float time);
 
         std::vector<MakeFixedPointsInterface> fixed_point_range_info;

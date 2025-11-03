@@ -73,7 +73,7 @@ struct SceneParams
     // Iteration info
     uint num_iteration        = 96;
     uint num_substep          = 1;
-    uint nonlinear_iter_count = 8;
+    uint nonlinear_iter_count = 3;
     uint pcg_iter_count       = 100;
 
     uint current_frame          = 0;
@@ -86,7 +86,7 @@ struct SceneParams
     uint collision_detection_frequece = 1;
     uint animation_start_frame        = 9999;
 
-    uint contact_energy_type = 0;
+    uint contact_energy_type = 1;  // 0 for quadratic, 1 for log-barrier
 
     // uint max_vv_per_vert_broad_self_collision = 32;
     // uint max_vf_per_vert_broad_self_collision = 32;
