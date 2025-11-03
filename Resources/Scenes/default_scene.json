@@ -2,6 +2,8 @@
     "scene_id": 9,
     "use_floor": true,
     "use_gpu": false,
+    "implicit_dt": 0.2,
+    "nonlinear_iter_count": 1,
     "contact_energy_type": 1,
     "shells": [
         {

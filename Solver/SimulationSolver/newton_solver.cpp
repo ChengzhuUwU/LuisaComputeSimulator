@@ -1347,7 +1347,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
              abd_gradients                  = sim_data->sa_affine_bodies_gradients.view(),
              abd_hessians                   = sim_data->sa_affine_bodies_hessians.view(),
              sa_is_fixed                    = mesh_data->sa_is_fixed.view()](
-                Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness, Uint vid_start, Uint collision_type)
+                Float floor_y, Bool use_ground_collision, Float stiffness, Uint vid_start, Uint collision_type)
             {
                 const UInt vid = vid_start + dispatch_id().x;
 
@@ -2196,27 +2196,37 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
              &hessian_blocks](const uint vid)
             {
                 float3 x_k  = sa_x[vid];
-                float  diff = x_k.y - get_scene_params().floor.y;
+                float  dist = x_k.y - get_scene_params().floor.y;
 
-                const float d_hat     = sa_contact_active_verts_d_hat[vid];
-                const float thickness = sa_contact_active_verts_offset[vid];
+                const float d_hat            = sa_contact_active_verts_d_hat[vid];
+                const float thickness        = sa_contact_active_verts_offset[vid];
+                const float stiffness_ground = get_scene_params().stiffness_collision;
+                const uint  collision_type   = get_scene_params().contact_energy_type;
 
-                float3   gradient = luisa::make_float3(0.0f);
-                float3x3 hessian  = luisa::make_float3x3(0.0f);
-
-                if (diff < d_hat + thickness)
+                if (dist - thickness < d_hat)
                 {
-                    float  C      = diff - (d_hat + thickness);
                     float3 normal = luisa::make_float3(0, 1, 0);
                     float  area   = sa_rest_vert_area[vid];
-                    float  stiff  = get_scene_params().stiffness_collision * area;
-                    float  k1     = stiff * C;
-                    gradient      = stiff * C * normal;
-                    hessian       = stiff * outer_product(normal, normal);
-                }
+                    float  stiff  = stiffness_ground * area;
 
-                cgB.block<3, 1>(vid * 3, 0) -= float3_to_eigen3(gradient);
-                hessian_blocks[vid] = {.indices = {vid}, .matrix = float3x3_to_eigen3x3(hessian)};
+                    float k1;
+                    float k2;
+                    if (collision_type == 0)
+                    {
+                        k1 = stiff * (dist - thickness - d_hat);
+                        k2 = stiff;
+                    }
+                    else
+                    {
+                        k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                        k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                    }
+                    float3   grad    = k1 * normal;
+                    float3x3 hessian = k2 * outer_product(normal, normal);
+
+                    cgB.block<3, 1>(vid * 3, 0) -= float3_to_eigen3(grad);
+                    hessian_blocks[vid] = {.indices = {vid}, .matrix = float3x3_to_eigen3x3(hessian)};
+                }
             });
 
         convert_triplets_to_sparse_matrix(cgA, hessian_blocks);
@@ -2239,8 +2249,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                         .matrix = EigenFloat12x12::Zero()};
         }
 
-        const float d_hat     = get_scene_params().d_hat;
-        const float thickness = get_scene_params().thickness;
+        // const float d_hat     = get_scene_params().d_hat;
+        // const float thickness = get_scene_params().thickness;
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_affine_bodies.size(),
@@ -2254,29 +2264,39 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
 
                     for (uint vid = curr_prefix; vid < next_prefix; vid++)
                     {
-                        float3 x_k  = host_sim_data->sa_x[vid];
-                        float  diff = x_k.y - get_scene_params().floor.y;
+                        float3      x_k       = host_sim_data->sa_x[vid];
+                        float       dist      = x_k.y - get_scene_params().floor.y;
+                        const float d_hat     = host_sim_data->sa_contact_active_verts_d_hat[vid];
+                        const float thickness = host_sim_data->sa_contact_active_verts_offset[vid];
 
-                        if (diff < d_hat + thickness)
+                        if (dist - thickness < d_hat)
                         {
-                            float  C      = d_hat + thickness - diff;
-                            float3 normal = luisa::make_float3(0, 1, 0);
-                            float  area   = host_mesh_data->sa_rest_vert_area[vid];
-                            // float    area    = 1.0f;
-                            float    stiff   = get_scene_params().stiffness_collision * area;
-                            float    k1      = stiff * C;
-                            float3   model_x = host_mesh_data->sa_scaled_model_x[vid];
-                            float3   force   = stiff * C * normal;
-                            float3x3 hessian = stiff * outer_product(normal, normal);
+                            const float stiffness_ground = get_scene_params().stiffness_collision;
+                            const uint  collision_type   = get_scene_params().contact_energy_type;
 
-                            // Friction
+                            float3 normal  = luisa::make_float3(0, 1, 0);
+                            float  area    = host_mesh_data->sa_rest_vert_area[vid];
+                            float  stiff   = stiffness_ground * area;
+                            float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
+
+                            float k1;
+                            float k2;
+                            if (collision_type == 0)
+                            {
+                                k1 = stiff * (dist - thickness - d_hat);
+                                k2 = stiff;
+                            }
+                            else
+                            {
+                                k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                                k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                            }
+                            float3   gradient = k1 * normal;
+                            float3x3 hessian  = k2 * outer_product(normal, normal);
 
                             auto J = AffineBodyDynamics::get_jacobian_dxdq(model_x);
-                            cgB.block<12, 1>(body_idx * 12, 0) += J.transpose() * float3_to_eigen3(force);
+                            cgB.block<12, 1>(body_idx * 12, 0) -= J.transpose() * float3_to_eigen3(gradient);
                             hessian_blocks[body_idx].matrix += J.transpose() * float3x3_to_eigen3x3(hessian) * J;
-                            // cgA.block<12, 12>(body_idx * 12, body_idx * 12) +=
-                            //     J.transpose() * float3x3_to_eigen3x3(hessian) * J;
-
                             //  0   1   2   3
                             // t1   4   5   6
                             // t2  t5   7   8
@@ -2420,6 +2440,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         {
             uint               num_pairs   = 0;
             std::atomic<uint>* atomic_view = (std::atomic<uint>*)&num_pairs;
+
+            host_collision_data->narrow_phase_list.resize(collision_data->narrow_phase_list.size());
 
             CpuParallel::parallel_for(
                 0,
@@ -4194,8 +4216,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_evaluate_abd_ground_collision(get_scene_params().floor.y,
                                                                get_scene_params().use_floor,
                                                                get_scene_params().stiffness_collision,
-                                                               get_scene_params().d_hat,
-                                                               get_scene_params().thickness,
                                                                host_sim_data->num_verts_soft,
                                                                get_scene_params().contact_energy_type)
                                   .dispatch(host_sim_data->num_verts_rigid);
