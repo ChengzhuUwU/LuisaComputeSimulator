@@ -1,40 +1,52 @@
 {
-    "scene_id": 9,
-    "use_floor": true,
-    "use_gpu": false,
-    "implicit_dt": 0.2,
-    "nonlinear_iter_count": 1,
+    "scene_id": 5,
+    "nonlinear_iter_count": 3,
+    "gravity": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "use_floor": false,
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid"
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                0.7,
-                0.0
-            ],
-            "scale": 0.2,
-            "shell_type": "Rigid"
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                0.1,
-                0.0
-            ],
-            "scale": 0.5,
-            "shell_type": "Rigid"
+            "model_name": "Cylinder/cylinder88K.obj",
+            "fixed_points": [
+                {
+                    "method": "Left",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": -72.0
+                    }
+                },
+                {
+                    "method": "Right",
+                    "fixed_info": {
+                        "use_rotate": true,
+                        "rotCenter": [
+                            -0.005,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAxis": [
+                            1.0,
+                            0.0,
+                            0.0
+                        ],
+                        "rotAngVelDeg": 72.0
+                    }
+                }
+            ]
         }
     ]
 }

@@ -63,7 +63,7 @@ void resize_template(luisa::compute::Device& device, luisa::compute::Buffer<T>& 
 {
     if (curr_count > buffer.size() / 2)
     {
-        const uint desired_size = curr_count * 2;
+        const uint desired_size = max_scalar(curr_count, buffer.size()) * 2;
         LUISA_INFO("Resize buffer {} : from {} to {} (CurrMax = {})", name, buffer.size(), desired_size, curr_count);
         buffer = device.create_buffer<T>(desired_size);
     }

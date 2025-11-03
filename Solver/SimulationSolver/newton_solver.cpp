@@ -3665,7 +3665,10 @@ void NewtonSolver::device_apply_dx(luisa::compute::Stream& stream, const float a
 
 // Required data on BOTH devices:
 //      sa_x/q_iter_start, sa_x/q_tilde, sa_cgX
-bool NewtonSolver::line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void NewtonSolver::line_search(luisa::compute::Device& device,
+                               luisa::compute::Stream& stream,
+                               bool&                   dirichlet_converged,
+                               bool&                   global_converged)
 {
     const uint iter = get_scene_params().current_nonlinear_iter;
 
@@ -3765,8 +3768,11 @@ bool NewtonSolver::line_search(luisa::compute::Device& device, luisa::compute::S
                        max_move * get_scene_params().implicit_dt);
 
             apply_final_dx(alpha);
-            return true;
+            dirichlet_converged = true;
+            global_converged    = true;
+            return;
         }
+        global_converged = false;
     }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
 
     if (get_scene_params().use_energy_linesearch)
@@ -3843,13 +3849,13 @@ bool NewtonSolver::line_search(luisa::compute::Device& device, luisa::compute::S
             [](const float left, const float right) { return max_scalar(left, right); },
             -1e9f);
 
-        bool direchlet_point_converged = direchlet_max_delta < 1e-3;
-        if (!direchlet_point_converged)
+        dirichlet_converged = direchlet_max_delta < 1e-3;
+        if (!dirichlet_converged)
         {
             LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
         }
     }
-    return false;  // Since max_p is larger than epsilon
+    return;  // Since max_p is larger than epsilon
 }
 void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
@@ -3942,11 +3948,12 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
 
         // for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
-        uint iter      = 0;
-        bool converged = false;
+        uint iter                = 0;
+        bool global_converged    = false;
+        bool dirichlet_converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count || converged)
+            if (global_converged || (iter >= get_scene_params().nonlinear_iter_count && dirichlet_converged))
             {
                 break;
             }
@@ -3999,12 +4006,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             }
 
             stream << sim_data->sa_cgX.copy_from(host_sim_data->sa_cgX.data());
-            converged = line_search(device, stream);
+            line_search(device, stream, dirichlet_converged, global_converged);
 
             narrow_phase_detector->resize_buffers(device, stream);
-
-            if (converged)
-                break;
 
             // CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);  // x_prev = x
             // CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
@@ -4143,11 +4147,12 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
         LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame);
 
-        uint iter      = 0;
-        bool converged = false;
+        uint iter                = 0;
+        bool global_converged    = false;
+        bool dirichlet_converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count || converged)
+            if (global_converged || (iter >= get_scene_params().nonlinear_iter_count && dirichlet_converged))
             {
                 break;
             }
@@ -4238,14 +4243,11 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             ADD_HOST_TIME_STAMP("LineSearch");
 
-            converged = line_search(device, stream);
+            line_search(device, stream, dirichlet_converged, global_converged);
 
             ADD_HOST_TIME_STAMP("End");
 
             narrow_phase_detector->resize_buffers(device, stream);
-
-            if (converged)
-                break;
         }
 
         if (host_sim_data->num_verts_soft != 0)
