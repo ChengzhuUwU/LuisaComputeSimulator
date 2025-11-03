@@ -62,13 +62,13 @@ void resize_template(luisa::compute::Device& device, luisa::compute::Buffer<T>& 
 {
     if (curr_count > buffer.size() / 2)
     {
-        const uint desired_size = buffer.size() * 1.5;
+        const uint desired_size = curr_count * 2;
         LUISA_INFO("Resize buffer {} : from {} to {} (CurrMax = {})", name, buffer.size(), desired_size, curr_count);
         buffer = device.create_buffer<T>(desired_size);
     }
 };
 
-void NarrowPhasesDetector::post_resize_buffers(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void NarrowPhasesDetector::resize_buffers(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     // Resize broadphase count buffers
     const auto& broad_count  = host_collision_data->broad_phase_collision_count;
@@ -143,7 +143,7 @@ void NarrowPhasesDetector::host_reset_toi(Stream& stream)
     auto& sa_toi = host_collision_data->toi_per_vert;
     CpuParallel::parallel_set(sa_toi, 0.0f);
 }
-void NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
+bool NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
 {
     auto  device_count = collision_data->broad_phase_collision_count.view();
     auto& host_count   = host_collision_data->broad_phase_collision_count;
@@ -152,23 +152,25 @@ void NarrowPhasesDetector::download_broadphase_collision_count(Stream& stream)
 
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
-    if (num_vf_broadphase > collision_data->broad_phase_list_vf.size() / 2)
-    {
-        LUISA_ERROR("BroadPhase VF outof range : {} (Should <= {})",
-                    num_vf_broadphase,
-                    collision_data->broad_phase_list_vf.size() / 2);
-    }
-    if (num_ee_broadphase > collision_data->broad_phase_list_ee.size() / 2)
-    {
-        LUISA_ERROR("BroadPhase EE outof range : {} (Should <= {})",
-                    num_ee_broadphase,
-                    collision_data->broad_phase_list_ee.size() / 2);
-    }
+    return num_vf_broadphase <= collision_data->broad_phase_list_vf.size() / 2
+           && num_ee_broadphase <= collision_data->broad_phase_list_ee.size() / 2;
+    // if (num_vf_broadphase > collision_data->broad_phase_list_vf.size() / 2)
+    // {
+    //     LUISA_ERROR("BroadPhase VF outof range : {} (Should <= {})",
+    //                 num_vf_broadphase,
+    //                 collision_data->broad_phase_list_vf.size() / 2);
+    // }
+    // if (num_ee_broadphase > collision_data->broad_phase_list_ee.size() / 2)
+    // {
+    //     LUISA_ERROR("BroadPhase EE outof range : {} (Should <= {})",
+    //                 num_ee_broadphase,
+    //                 collision_data->broad_phase_list_ee.size() / 2);
+    // }
 
     // LUISA_INFO("num_vf_broadphase = {}", num_vf_broadphase); // TODO: Indirect Dispatch
     // LUISA_INFO("num_ee_broadphase = {}", num_ee_broadphase); // TODO: Indirect Dispatch
 }
-void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
+bool NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
 {
     auto& device_count = collision_data->narrow_phase_collision_count;
     auto& host_count   = host_collision_data->narrow_phase_collision_count;
@@ -178,18 +180,21 @@ void NarrowPhasesDetector::download_narrowphase_collision_count(Stream& stream)
     const uint num_pairs   = host_count.front();
     const uint num_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
 
-    if (num_pairs > collision_data->narrow_phase_list.size())
-    {
-        LUISA_ERROR("NarrowPhase outof range : {} (Should <= {})",
-                    num_pairs,
-                    collision_data->narrow_phase_list.size());
-    }
-    if (num_triplet > collision_data->sa_cgA_contact_offdiag_triplet.size())
-    {
-        LUISA_ERROR("NarrowPhase Adj Verts outof range : {} (Should <= {})",
-                    num_triplet,
-                    collision_data->sa_cgA_contact_offdiag_triplet.size());
-    }
+    return num_pairs <= collision_data->narrow_phase_list.size()
+           && num_triplet <= collision_data->sa_cgA_contact_offdiag_triplet.size();
+
+    // if (num_pairs > collision_data->narrow_phase_list.size())
+    // {
+    //     LUISA_ERROR("NarrowPhase outof range : {} (Should <= {})",
+    //                 num_pairs,
+    //                 collision_data->narrow_phase_list.size());
+    // }
+    // if (num_triplet > collision_data->sa_cgA_contact_offdiag_triplet.size())
+    // {
+    //     LUISA_ERROR("NarrowPhase Adj Verts outof range : {} (Should <= {})",
+    //                 num_triplet,
+    //                 collision_data->sa_cgA_contact_offdiag_triplet.size());
+    // }
 }
 void NarrowPhasesDetector::download_narrowphase_list(Stream& stream)
 {
@@ -260,6 +265,8 @@ float NarrowPhasesDetector::get_global_toi(Stream& stream)
 namespace lcs  // CCD
 {
 
+constexpr bool print_unsafe_toi = false;
+
 void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -328,29 +335,32 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 //     sa_toi->atomic(1).fetch_min(end_dist);
                 // };
 
-                $if(toi<0.0f | toi> accd::line_search_max_t)
-                {
-                    device_log("VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
-                               vid,
-                               face,
-                               toi,
-                               sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
-                               sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
-                               thickness);
-                    // toi = accd::line_search_max_t;
+                if constexpr (print_unsafe_toi)
+                    $if(toi<0.0f | toi> accd::line_search_max_t)
+                    {
+                        device_log(
+                            "VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+                            vid,
+                            face,
+                            toi,
+                            sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
+                            sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
+                            thickness);
 
-                    // device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
-                    //            vid,
-                    //            face,
-                    //            t0_p,
-                    //            t1_p,
-                    //            t0_f0,
-                    //            t0_f1,
-                    //            t0_f2,
-                    //            t1_f0,
-                    //            t1_f1,
-                    //            t1_f2);
-                };
+                        // toi = accd::line_search_max_t;
+
+                        device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
+                                   vid,
+                                   face,
+                                   t0_p,
+                                   t1_p,
+                                   t0_f0,
+                                   t0_f1,
+                                   t0_f2,
+                                   t1_f0,
+                                   t1_f1,
+                                   t1_f2);
+                    };
 
                 if constexpr (print_narrow_phase_detail)
                     device_log("VF CCD : left = {}, vid = {}, right = {}, face = {}, TOI = {}, InitDist = {}, EndDist = {}",
@@ -439,29 +449,30 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 //     sa_toi->atomic(1).fetch_min(end_dist);
                 // };
 
-                $if(toi<0.0f | toi> accd::line_search_max_t)
-                {
-                    device_log(
-                        "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
-                        left_edge,
-                        right_edge,
-                        toi,
-                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
-                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)),
-                        thickness);
-                    device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
-                               left_edge,
-                               right_edge,
-                               ea_t0_p0,
-                               ea_t0_p1,
-                               eb_t0_p0,
-                               eb_t0_p1,
-                               ea_t1_p0,
-                               ea_t1_p1,
-                               eb_t1_p0,
-                               eb_t1_p1);
-                    // toi = accd::line_search_max_t;
-                };
+                if constexpr (print_unsafe_toi)
+                    $if(toi<0.0f | toi> accd::line_search_max_t)
+                    {
+                        device_log(
+                            "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+                            left_edge,
+                            right_edge,
+                            toi,
+                            sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
+                            sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)),
+                            thickness);
+                        device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
+                                   left_edge,
+                                   right_edge,
+                                   ea_t0_p0,
+                                   ea_t0_p1,
+                                   eb_t0_p0,
+                                   eb_t0_p1,
+                                   ea_t1_p0,
+                                   ea_t1_p1,
+                                   eb_t1_p0,
+                                   eb_t1_p1);
+                        // toi = accd::line_search_max_t;
+                    };
 
                 if constexpr (print_narrow_phase_detail)
                     device_log(

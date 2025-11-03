@@ -3220,9 +3220,10 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 
     stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
                   .dispatch(sim_data->sa_x.size());
-    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
-    //        << luisa::compute::synchronize();
-    // LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
+
+    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+           << luisa::compute::synchronize();
+    LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
     narrow_phase_detector->vf_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
@@ -3233,6 +3234,10 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
 
+    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+           << luisa::compute::synchronize();
+    LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+
     narrow_phase_detector->ee_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
                                         sim_data->sa_x_iter_start,
@@ -3242,6 +3247,10 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         mesh_data->sa_edges,
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
+
+    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+           << luisa::compute::synchronize();
+    LUISA_INFO("  Min TOI after EE CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {
@@ -3276,7 +3285,7 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
                                                   sim_data->sa_contact_active_verts_offset,
                                                   kappa);
 }
-void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
+void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     narrow_phase_detector->reset_broadphase_count(stream);
     narrow_phase_detector->reset_narrowphase_count(stream);
@@ -3285,40 +3294,31 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Stream& stream)
     if (get_scene_params().use_self_collision)
         device_broadphase_dcd(stream);
 
-    narrow_phase_detector->download_broadphase_collision_count(stream);
+    bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
+    if (!succ)
+    {
+        LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
+        narrow_phase_detector->resize_buffers(device, stream);
+        narrow_phase_detector->reset_broadphase_count(stream);
+        device_broadphase_dcd(stream);
+    }
 
     if (get_scene_params().use_self_collision)
         device_narrowphase_dcd(stream);
 
     narrow_phase_detector->download_narrowphase_collision_count(stream);
 }
-void NewtonSolver::device_ccd_line_search(luisa::compute::Stream& stream)
+void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    // host_collision_data->toi_per_vert[0] = host_accd::line_search_max_t;
-
-    // narrow_phase_detector->host_vf_ccd_query(stream,
-    //                                          host_sim_data->sa_x_iter_start,
-    //                                          host_sim_data->sa_x_iter_start,
-    //                                          host_sim_data->sa_x,
-    //                                          host_sim_data->sa_x,
-    //                                          host_mesh_data->sa_faces,
-    //                                          host_sim_data->sa_contact_active_verts_d_hat[0],
-    //                                          host_sim_data->sa_contact_active_verts_offset[0]);
-    // narrow_phase_detector->host_ee_ccd_query(stream,
-    //                                          host_sim_data->sa_x_iter_start,
-    //                                          host_sim_data->sa_x_iter_start,
-    //                                          host_sim_data->sa_x,
-    //                                          host_sim_data->sa_x,
-    //                                          host_mesh_data->sa_edges,
-    //                                          host_mesh_data->sa_edges,
-    //                                          host_sim_data->sa_contact_active_verts_d_hat[0],
-    //                                          host_sim_data->sa_contact_active_verts_offset[0]);
-
-    // return;
-
     device_broadphase_ccd(stream);
 
-    narrow_phase_detector->download_broadphase_collision_count(stream);
+    bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
+    if (!succ)
+    {
+        LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
+        narrow_phase_detector->resize_buffers(device, stream);
+        device_broadphase_ccd(stream);
+    }
 
     device_narrowphase_ccd(stream);
 }
@@ -3641,27 +3641,21 @@ void NewtonSolver::device_apply_dx(luisa::compute::Stream& stream, const float a
     }
 }
 
-// Required buffers:
-//      Both: sa_x/q_iter_start, sa_x/q_tilde, sa_cgX
-//      Host: sa_dx
-bool NewtonSolver::line_search(luisa::compute::Stream& stream)
+// Required data on BOTH devices:
+//      sa_x/q_iter_start, sa_x/q_tilde, sa_cgX
+bool NewtonSolver::line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     const uint iter = get_scene_params().current_nonlinear_iter;
 
     auto ccd_get_toi = [&]() -> float
     {
-        // stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-        //        << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-
-        device_ccd_line_search(stream);
+        device_ccd_line_search(device, stream);
 
         stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
                << luisa::compute::synchronize();
 
         float toi = host_collision_data->toi_per_vert.front();
-        // float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
-        // return 1.0f;
     };
 
     auto compute_energy_interface = [&]()
@@ -3731,9 +3725,11 @@ bool NewtonSolver::line_search(luisa::compute::Stream& stream)
                        get_scene_params().current_nonlinear_iter,
                        ccd_toi);
         }
+        if (ccd_toi < 0.0f || ccd_toi > 1.0f)
+        {
+            LUISA_ERROR("Invalid Toi {}", ccd_toi);
+        }
     }
-
-    bool converged = false;
 
     // Non-linear iteration break condition
     {
@@ -3829,13 +3825,9 @@ bool NewtonSolver::line_search(luisa::compute::Stream& stream)
         if (!direchlet_point_converged)
         {
             LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
-            return false;
-        }
-        else
-        {
-            return true;
         }
     }
+    return false;  // Since max_p is larger than epsilon
 }
 void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
@@ -3849,7 +3841,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
-        device_update_contact_list(stream);
+        device_update_contact_list(device, stream);
         // narrow_phase_detector->download_narrowphase_list(stream);
         // narrow_phase_detector->download_pervert_adjacent_list(stream);
         narrow_phase_detector->construct_pervert_adj_list(
@@ -3879,35 +3871,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                << sim_data->sa_cgA_diag.copy_to(host_sim_data->sa_cgA_diag.data())
                << luisa::compute::synchronize();
     };
-    auto ccd_get_toi = [&]() -> float
-    {
-        // for (uint vid = 0; vid < host_sim_data->sa_x.size(); vid++)
-        // {
-        //     float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-        //     if (length(delta) > 1.0f)
-        //     {
-        //         LUISA_ERROR("Large delta detected at vert {} : delta = {}, start = {}, end = {}",
-        //                     vid,
-        //                     delta,
-        //                     host_sim_data->sa_x_iter_start[vid],
-        //                     host_sim_data->sa_x[vid]);
-        //     }
-        // }
-
-        stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-               << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
-
-        device_ccd_line_search(stream);
-
-        stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
-               << luisa::compute::synchronize();
-
-        float toi = host_collision_data->toi_per_vert.front();
-        // float toi = narrow_phase_detector->get_global_toi(stream);
-        return toi;  // 0.9f * toi
-        // return 1.0f;
-    };
-
     auto pcg_spmv_interface = [&](const std::vector<float3>& input_ptr, std::vector<float3>& output_ptr) -> void
     {
         //
@@ -3955,15 +3918,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                     host_sim_data->sa_affine_bodies_q_tilde.data());
         }
 
-        // double barrier_nergy = compute_barrier_energy_from_broadphase_list();
-        double prev_state_energy = Float_max;
 
         // for (uint iter = 0; iter < get_scene_params().nonlinear_iter_count; iter++)
         uint iter      = 0;
         bool converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count && converged)
+            if (iter >= get_scene_params().nonlinear_iter_count || converged)
             {
                 break;
             }
@@ -3975,11 +3936,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
             {
                 // Upload to GPU
-                if (host_sim_data->num_verts_soft != 0)
-                    stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data());
+                stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data());
                 if (host_sim_data->num_affine_bodies != 0)
                     stream << sim_data->sa_affine_bodies_q_iter_start.copy_from(
                         host_sim_data->sa_affine_bodies_q_iter_start.data());
+                stream << luisa::compute::synchronize();
             }
 
             host_reset_cgB_cgX_diagA();
@@ -4016,9 +3977,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             }
 
             stream << sim_data->sa_cgX.copy_from(host_sim_data->sa_cgX.data());
-            converged = line_search(stream);
+            converged = line_search(device, stream);
 
-            narrow_phase_detector->post_resize_buffers(device, stream);
+            narrow_phase_detector->resize_buffers(device, stream);
 
             if (converged)
                 break;
@@ -4077,7 +4038,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     auto update_contact_set = [&]()
     {
-        device_update_contact_list(stream);
+        device_update_contact_list(device, stream);
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
@@ -4164,7 +4125,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         bool converged = false;
         for (iter = 0; iter < 100; iter++)
         {
-            if (iter >= get_scene_params().nonlinear_iter_count && converged)
+            if (iter >= get_scene_params().nonlinear_iter_count || converged)
             {
                 break;
             }
@@ -4257,11 +4218,11 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             ADD_HOST_TIME_STAMP("LineSearch");
 
-            converged = line_search(stream);
+            converged = line_search(device, stream);
 
             ADD_HOST_TIME_STAMP("End");
 
-            narrow_phase_detector->post_resize_buffers(device, stream);
+            narrow_phase_detector->resize_buffers(device, stream);
 
             if (converged)
                 break;

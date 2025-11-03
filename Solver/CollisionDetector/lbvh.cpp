@@ -221,6 +221,74 @@ Var<int> findSplit(const Var<int2>& ranges, const luisa::compute::BufferView<mor
     return split;
 }
 
+void query_template2(luisa::compute::BufferVar<aabbData>& sa_node_aabb,
+                     luisa::compute::BufferVar<uint2>&    sa_children,
+                     luisa::compute::BufferVar<uint>&     sa_object_idx,
+                     const luisa::compute::Var<float2x3>& input_aabb,
+                     luisa::compute::BufferVar<uint>&     broadphase_count,
+                     luisa::compute::BufferVar<uint>&     broad_phase_list,
+                     luisa::compute::Var<uint>            max_count,
+                     std::function<luisa::compute::Var<bool>(const luisa::compute::Var<uint>)> is_valid_function)
+{
+    using namespace luisa::compute;
+    const Uint                            vid        = dispatch_id().x;
+    constexpr uint                        STACK_SIZE = 32;
+    luisa::compute::ArrayUInt<STACK_SIZE> stack;
+    Int                                   stack_ptr = 0;
+    stack[stack_ptr]                                = 0u;
+    stack_ptr += 1;  // root node
+
+    Uint num_found = 0u;
+    Uint loop      = 0;
+    $while(stack_ptr > 0)
+    {
+        stack_ptr -= 1;
+        Uint  node  = stack[stack_ptr];
+        Uint2 child = sa_children->read(node);
+        Uint  safe  = 1;
+        for (uint ii = 0; ii < 2; ii++)
+        {
+            const Uint curr_select = child[ii];
+            Float2x3   left_aabb   = sa_node_aabb->read(curr_select);
+            $if(AABB::is_overlap_aabb(left_aabb, input_aabb))
+            {
+                Uint adj_vid = sa_object_idx->read(curr_select);
+                $if(adj_vid != -1u)  // is_leaf
+                {
+                    $if(is_valid_function(adj_vid))
+                    {
+                        Uint idx = broadphase_count->atomic(0).fetch_add(1u);
+
+                        safe          = Uint(idx < max_count);
+                        Uint safe_idx = min(max_count, idx);
+
+                        broad_phase_list->write(safe_idx * 2 + 0, vid);
+                        broad_phase_list->write(safe_idx * 2 + 1, adj_vid);
+                        num_found += 1u;
+                    };
+                }
+                $else
+                {
+                    $if(stack_ptr < STACK_SIZE)
+                    {
+                        stack[stack_ptr] = curr_select;
+                        stack_ptr += 1;
+                    }
+                    $else
+                    {
+                        $break;
+                    };
+                };
+            };
+        }
+
+        loop += 1;
+        $if(safe == 0 | loop > 10000)
+        {
+            $break;
+        };
+    };
+};
 void LBVH::compile(AsyncCompiler& compiler)
 {
     using namespace luisa::compute;
@@ -728,75 +796,7 @@ void LBVH::compile(AsyncCompiler& compiler)
         };
     };
 
-    auto query_template2 = [](BufferVar<aabbData>& sa_node_aabb,
-                              BufferVar<uint2>&    sa_children,
-                              BufferVar<uint>&     sa_object_idx,
-                              const Float2x3&      input_aabb,
-                              BufferVar<uint>&     broadphase_count,
-                              BufferVar<uint>&     broad_phase_list,
-                              UInt                 max_count,
-                              auto                 is_valid_function)
-    {
-        const Uint                            vid        = dispatch_id().x;
-        constexpr uint                        STACK_SIZE = 32;
-        luisa::compute::ArrayUInt<STACK_SIZE> stack;
-        Int                                   stack_ptr = 0;
-        stack[stack_ptr]                                = 0u;
-        stack_ptr += 1;  // root node
 
-        Uint num_found = 0u;
-        Uint loop      = 0;
-        $while(stack_ptr > 0)
-        {
-            stack_ptr -= 1;
-            Uint  node  = stack[stack_ptr];
-            Uint2 child = sa_children->read(node);
-            Uint  safe  = 1;
-            for (uint ii = 0; ii < 2; ii++)
-            {
-                const Uint curr_select = child[ii];
-                Float2x3   left_aabb   = sa_node_aabb->read(curr_select);
-                $if(AABB::is_overlap_aabb(left_aabb, input_aabb))
-                {
-                    Uint adj_vid = sa_object_idx->read(curr_select);
-                    $if(adj_vid != -1u)  // is_leaf
-                    {
-                        $if(is_valid_function(adj_vid))
-                        {
-                            Uint idx = broadphase_count->atomic(0).fetch_add(1u);
-
-                            // !!! Why add this will result in jit failure?
-                            // safe = Uint(idx < max_count);
-                            // Uint safe_idx = min(max_count, idx);
-                            Uint safe_idx = idx;
-
-                            broad_phase_list->write(safe_idx * 2 + 0, vid);
-                            broad_phase_list->write(safe_idx * 2 + 1, adj_vid);
-                            num_found += 1u;
-                        };
-                    }
-                    $else
-                    {
-                        $if(stack_ptr < STACK_SIZE)
-                        {
-                            stack[stack_ptr] = curr_select;
-                            stack_ptr += 1;
-                        }
-                        $else
-                        {
-                            $break;
-                        };
-                    };
-                };
-            }
-
-            loop += 1;
-            $if(safe == 0 | loop > 10000)
-            {
-                $break;
-            };
-        };
-    };
 #endif
 
     compiler.compile<1>(fn_reset_collision_count,
@@ -846,16 +846,16 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_verts_v2,
-                        [query_template2](BufferVar<aabbData> sa_node_aabb,
-                                          BufferVar<uint2>    sa_children,
-                                          BufferVar<uint>     sa_object_idx,
-                                          BufferVar<float3>   sa_x_begin,
-                                          BufferVar<float3>   sa_x_end,
-                                          BufferVar<uint>     broadphase_count,
-                                          BufferVar<uint>     broad_phase_list,
-                                          BufferVar<float>    d_hat,
-                                          BufferVar<float>    thickness,
-                                          Uint                max_count)
+                        [](BufferVar<aabbData> sa_node_aabb,
+                           BufferVar<uint2>    sa_children,
+                           BufferVar<uint>     sa_object_idx,
+                           BufferVar<float3>   sa_x_begin,
+                           BufferVar<float3>   sa_x_end,
+                           BufferVar<uint>     broadphase_count,
+                           BufferVar<uint>     broad_phase_list,
+                           BufferVar<float>    d_hat,
+                           BufferVar<float>    thickness,
+                           Uint                max_count)
                         {
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
@@ -873,17 +873,17 @@ void LBVH::compile(AsyncCompiler& compiler)
                         });
 
     compiler.compile<1>(fn_query_from_edges_v2,
-                        [query_template2](BufferVar<aabbData> sa_node_aabb,
-                                          BufferVar<uint2>    sa_children,
-                                          BufferVar<uint>     sa_object_idx,
-                                          BufferVar<float3>   sa_x_begin,
-                                          BufferVar<float3>   sa_x_end,
-                                          BufferVar<uint2>    sa_edges,
-                                          BufferVar<uint>     broadphase_count,
-                                          BufferVar<uint>     broad_phase_list,
-                                          BufferVar<float>    d_hat,
-                                          BufferVar<float>    thickness,
-                                          Uint                max_count)
+                        [](BufferVar<aabbData> sa_node_aabb,
+                           BufferVar<uint2>    sa_children,
+                           BufferVar<uint>     sa_object_idx,
+                           BufferVar<float3>   sa_x_begin,
+                           BufferVar<float3>   sa_x_end,
+                           BufferVar<uint2>    sa_edges,
+                           BufferVar<uint>     broadphase_count,
+                           BufferVar<uint>     broad_phase_list,
+                           BufferVar<float>    d_hat,
+                           BufferVar<float>    thickness,
+                           Uint                max_count)
                         {
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);

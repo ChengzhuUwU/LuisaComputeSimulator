@@ -74,16 +74,16 @@ class NewtonSolver : public lcs::SolverInterface
     void host_material_energy_assembly();
     void host_solve_eigen(luisa::compute::Stream& stream);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
-    bool line_search(luisa::compute::Stream& stream);
+    bool line_search(luisa::compute::Device& device, luisa::compute::Stream& stream);
 
     // Device functions
     void device_broadphase_ccd(luisa::compute::Stream& stream);
     void device_broadphase_dcd(luisa::compute::Stream& stream);
     void device_narrowphase_ccd(luisa::compute::Stream& stream);
     void device_narrowphase_dcd(luisa::compute::Stream& stream);
-    void device_update_contact_list(luisa::compute::Stream& stream);
+    void device_update_contact_list(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void device_post_dist_check(luisa::compute::Stream& stream);
-    void device_ccd_line_search(luisa::compute::Stream& stream);
+    void device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void device_SpMV(luisa::compute::Stream&               stream,
                      const luisa::compute::Buffer<float3>& input_array,
                      luisa::compute::Buffer<float3>&       output_array);

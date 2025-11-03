@@ -60,12 +60,12 @@ class NarrowPhasesDetector
     void  reset_narrowphase_count(Stream& stream);
     void  reset_pervert_collision_count(Stream& stream);
     float get_global_toi(Stream& stream);
-    void  download_broadphase_collision_count(Stream& stream);
-    void  download_narrowphase_collision_count(Stream& stream);
+    bool  download_broadphase_collision_count(Stream& stream);
+    bool  download_narrowphase_collision_count(Stream& stream);
     void  download_narrowphase_list(Stream& stream);
     void  download_contact_triplet(Stream& stream);
     void  upload_spd_narrowphase_list(Stream& stream);
-    void  post_resize_buffers(Device& decice, Stream& stream);
+    void  resize_buffers(Device& decice, Stream& stream);
 
   public:
     // CCD
