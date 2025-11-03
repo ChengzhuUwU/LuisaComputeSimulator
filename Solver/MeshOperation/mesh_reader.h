@@ -6,6 +6,7 @@
 #include <fstream>
 #include <array>
 #include <algorithm>
+#include <math.h>
 
 #include "MeshOperation/tiny_obj_loader.h"
 #include "Utils/cpu_parallel.h"
@@ -186,7 +187,7 @@ inline void extract_surface_face_and_vert_from_tets(const std::vector<Float3>& i
         return Float3{left[0] - right[0], left[1] - right[1], left[2] - right[2]};
     };
     auto length_vec = [](const Float3& vec) -> float
-    { return sqrtf(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]); };
+    { return std::sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]); };
     auto normalize_vec = [length_vec](const Float3& vec) -> Float3
     {
         float len = length_vec(vec);

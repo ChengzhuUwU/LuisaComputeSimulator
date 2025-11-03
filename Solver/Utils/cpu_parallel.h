@@ -7,6 +7,8 @@
 
 #include <numeric>
 #include <vector>
+#include <atomic>
+#include <cstring>
 #include <luisa/core/stl/algorithm.h>
 #ifdef LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER
 #include <luisa/core/fiber.h>
