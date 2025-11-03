@@ -108,16 +108,17 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
     luisa::compute::Shader<1, float, float> fn_evaluate_inertia;  // Float substep_dt, Float stiffness_dirichlet
     luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet;  // Float substep_dt, stiffness_dirichlet
-    luisa::compute::Shader<1, float, bool, float, float, float> fn_evaluate_ground_collision;
-    luisa::compute::Shader<1, float> fn_evaluate_spring;  // Float stiffness_stretch
-    luisa::compute::Shader<1>        fn_evaluate_stretch_face;
-    luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
+    luisa::compute::Shader<1, float, bool, float, uint> fn_evaluate_ground_collision;
+    luisa::compute::Shader<1, float, bool>              fn_gound_collision_ccd;
+    luisa::compute::Shader<1, float>                    fn_evaluate_spring;  // Float stiffness_stretch
+    luisa::compute::Shader<1>                           fn_evaluate_stretch_face;
+    luisa::compute::Shader<1, float>                    fn_evaluate_bending;  // Float stiffness_bending
 
     luisa::compute::Shader<1, float, float3> fn_abd_predict_position;
     luisa::compute::Shader<1, float, bool, float> fn_abd_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
     luisa::compute::Shader<1, float, float> fn_evaluate_abd_inertia;  // Float substep_dt, Float stiffness_dirichlet
-    luisa::compute::Shader<1>                                         fn_evaluate_abd_orthogonality;
-    luisa::compute::Shader<1, float, bool, float, float, float, uint> fn_evaluate_abd_ground_collision;
+    luisa::compute::Shader<1> fn_evaluate_abd_orthogonality;
+    luisa::compute::Shader<1, float, bool, float, float, float, uint, uint> fn_evaluate_abd_ground_collision;
 
     luisa::compute::Shader<1>       fn_material_energy_assembly;
     luisa::compute::Shader<1>       fn_material_energy_assembly_stretch_spring;

@@ -885,35 +885,109 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
     compiler.compile<1>(
         fn_evaluate_ground_collision,
-        [sa_x              = sim_data->sa_x.view(),
-         sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
-         sa_cgB            = sim_data->sa_cgB.view(),
-         sa_cgA_diag       = sim_data->sa_cgA_diag.view(),
-         sa_is_fixed       = mesh_data->sa_is_fixed.view(),
-         sa_vert_mass      = mesh_data->sa_vert_mass.view()](
-            Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness)
+        [sa_x                           = sim_data->sa_x.view(),
+         sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
+         sa_cgB                         = sim_data->sa_cgB.view(),
+         sa_cgA_diag                    = sim_data->sa_cgA_diag.view(),
+         sa_is_fixed                    = mesh_data->sa_is_fixed.view(),
+         sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
+         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view()](
+            Float floor_y, Bool use_ground_collision, Float stiffness, Uint collision_type)
         {
             const UInt vid = dispatch_id().x;
             $if(use_ground_collision)
             {
                 $if(!sa_is_fixed->read(vid))
                 {
-                    Float3 x_k  = sa_x->read(vid);
-                    Float  diff = x_k.y - floor_y;
+                    Float3 x_k = sa_x->read(vid);
+
+                    Float d_hat     = sa_contact_active_verts_d_hat->read(vid);
+                    Float thickness = sa_contact_active_verts_offset->read(vid);
+                    Float dist      = x_k.y - floor_y;
 
                     Float3   force   = sa_cgB->read(vid);
                     Float3x3 hessian = sa_cgA_diag->read(vid);
-                    $if(diff < d_hat + thickness)
+                    $if(dist - thickness < d_hat)
                     {
-                        Float  C      = d_hat + thickness - diff;
+                        // Float  C      = d_hat + thickness - diff;
                         float3 normal = luisa::make_float3(0, 1, 0);
                         Float  area   = sa_rest_vert_area->read(vid);
                         Float  stiff  = stiffness * area;
-                        force += stiff * C * normal;
-                        hessian += stiff * outer_product(normal, normal);
+
+                        Float k1;
+                        Float k2;
+                        $if(collision_type == 0)
+                        {
+                            k1 = stiff * (dist - thickness - d_hat);
+                            k2 = stiff;
+                        }
+                        $else
+                        {
+                            k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                            k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                        };
+                        // device_log("Vert {} ground collision: dist = {}, force = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
+                        //            vid,
+                        //            dist,
+                        //            -k1 * normal,
+                        //            thickness,
+                        //            d_hat,
+                        //            k1,
+                        //            k2);
+                        // $if(isinf(k1) | isinf(k2) | isnan(k1) | isnan(k2))
+                        // {
+                        //     device_log("Ground collision inf/nan at vid {}, dist = {}, thickness = {}, d_hat = {}",
+                        //                vid,
+                        //                dist,
+                        //                thickness,
+                        //                d_hat);
+                        // };
+                        force -= k1 * normal;
+                        hessian += k2 * outer_product(normal, normal);
                     };
                     sa_cgB->write(vid, force);
                     sa_cgA_diag->write(vid, hessian);
+                };
+            };
+        },
+        default_option);
+
+    compiler.compile<1>(
+        fn_gound_collision_ccd,
+        [sa_x_iter_start                = sim_data->sa_x_iter_start.view(),
+         sa_x                           = sim_data->sa_x.view(),
+         sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
+         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
+         toi_per_vert                   = collision_data->toi_per_vert.view(),
+         sa_is_fixed = mesh_data->sa_is_fixed.view()](Float floor_y, Bool use_ground_collision)
+        {
+            const UInt vid = dispatch_id().x;
+            $if(use_ground_collision)
+            {
+                $if(!sa_is_fixed->read(vid))
+                {
+                    Float offset = sa_contact_active_verts_offset->read(vid);
+                    Float curr_y = sa_x->read(vid).y;
+                    $if(curr_y - offset < floor_y)
+                    {
+                        Float init_y   = sa_x_iter_start->read(vid).y;
+                        Float curr_dy  = curr_y - init_y;  // abs
+                        Float alpha    = 0.9f * (init_y - offset - floor_y) / (init_y - curr_y);
+                        Float target_y = init_y + alpha * curr_dy;
+                        $if(alpha < 0.0f | alpha > 1.0f | target_y - offset < floor_y){};
+                        // $if(vid == 22)
+                        // {
+                        //     device_log("Vert {} penetrate in toi {} (From {} to {}, thickness = {} (After apply = {})",
+                        //                vid,
+                        //                alpha,
+                        //                init_y,
+                        //                curr_y,
+                        //                offset,
+                        //                init_y + alpha * curr_dy);
+                        // };
+                        // device_log("Vert {}'s toi = {} (After apply = {})", vid, alpha, init_y + alpha * curr_dy);
+                        toi_per_vert->atomic(0).fetch_min(alpha);
+                    };
                 };
             };
         },
@@ -1254,15 +1328,17 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
         compiler.compile<1>(
             fn_evaluate_abd_ground_collision,
-            [sa_scaled_model_x   = mesh_data->sa_scaled_model_x.view(),
-             sa_x                = sim_data->sa_x.view(),
-             abd_q               = sim_data->sa_affine_bodies_q.view(),
-             abd_perVert_body_id = sim_data->sa_vert_affine_bodies_id.view(),
-             sa_rest_vert_area   = mesh_data->sa_rest_vert_area.view(),
-             abd_gradients       = sim_data->sa_affine_bodies_gradients.view(),
-             abd_hessians        = sim_data->sa_affine_bodies_hessians.view(),
-             sa_is_fixed         = mesh_data->sa_is_fixed.view()](
-                Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness, Uint vid_start)
+            [sa_scaled_model_x              = mesh_data->sa_scaled_model_x.view(),
+             sa_x                           = sim_data->sa_x.view(),
+             abd_q                          = sim_data->sa_affine_bodies_q.view(),
+             abd_perVert_body_id            = sim_data->sa_vert_affine_bodies_id.view(),
+             sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
+             sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
+             sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
+             abd_gradients                  = sim_data->sa_affine_bodies_gradients.view(),
+             abd_hessians                   = sim_data->sa_affine_bodies_hessians.view(),
+             sa_is_fixed                    = mesh_data->sa_is_fixed.view()](
+                Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness, Uint vid_start, Uint collision_type)
             {
                 const UInt vid = vid_start + dispatch_id().x;
 
@@ -1273,14 +1349,32 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                         Float3 x_k  = sa_x->read(vid);
                         Float  diff = x_k.y - floor_y;
 
-                        $if(diff < d_hat + thickness)
+                        Float d_hat     = sa_contact_active_verts_d_hat->read(vid);
+                        Float thickness = sa_contact_active_verts_offset->read(vid);
+                        Float dist      = x_k.y - floor_y;
+
+                        $if(dist - thickness < d_hat)
                         {
-                            Float    C        = diff - (d_hat + thickness);
-                            float3   normal   = luisa::make_float3(0, 1, 0);
-                            Float    area     = sa_rest_vert_area->read(vid);
-                            Float    stiff    = stiffness * area;
-                            Float3   gradient = stiff * C * normal;
-                            Float3x3 hessian  = stiff * outer_product(normal, normal);
+                            // Float  C      = d_hat + thickness - diff;
+                            float3 normal = luisa::make_float3(0, 1, 0);
+                            Float  area   = sa_rest_vert_area->read(vid);
+                            Float  stiff  = stiffness * area;
+
+                            Float k1;
+                            Float k2;
+                            $if(collision_type == 0)
+                            {
+                                k1 = stiff * (dist - thickness - d_hat);
+                                k2 = stiff;
+                            }
+                            $else
+                            {
+                                k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                                k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                            };
+
+                            Float3   gradient = k1 * normal;
+                            Float3x3 hessian  = k2 * outer_product(normal, normal);
 
                             const Uint   body_idx = abd_perVert_body_id->read(vid);
                             const Float4 weight   = make_float4(1.0f, sa_scaled_model_x->read(vid));
@@ -1695,53 +1789,73 @@ void NewtonSolver::host_evaluate_ground_collision()
 
     const uint  num_verts        = host_sim_data->num_verts_soft;
     const float floor_y          = get_scene_params().floor.y;
-    float       d_hat            = get_scene_params().d_hat;
-    float       thickness        = get_scene_params().thickness;
     float       stiffness_ground = get_scene_params().stiffness_collision;
 
-    CpuParallel::parallel_for(0,
-                              host_sim_data->num_verts_soft,
-                              [sa_cgB            = host_sim_data->sa_cgB.data(),
-                               sa_cgA_diag       = host_sim_data->sa_cgA_diag.data(),
-                               sa_x              = host_sim_data->sa_x.data(),
-                               sa_is_fixed       = host_mesh_data->sa_is_fixed.data(),
-                               sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data(),
-                               sa_vert_mass      = host_mesh_data->sa_vert_mass.data(),
-                               substep_dt        = get_scene_params().get_substep_dt(),
-                               d_hat             = d_hat,
-                               floor_y           = floor_y,
-                               thickness         = thickness,
-                               stiffness_ground  = stiffness_ground](const uint vid)
-                              {
-                                  if (sa_is_fixed[vid])
-                                      return;
-                                  if (get_scene_params().use_floor)
-                                  {
-                                      float3 x_k  = sa_x[vid];
-                                      float  diff = x_k.y - get_scene_params().floor.y;
+    CpuParallel::parallel_for(
+        0,
+        host_sim_data->num_verts_soft,
+        [sa_cgB                         = host_sim_data->sa_cgB.data(),
+         sa_cgA_diag                    = host_sim_data->sa_cgA_diag.data(),
+         sa_x                           = host_sim_data->sa_x.data(),
+         sa_contact_active_verts_offset = host_sim_data->sa_contact_active_verts_offset.data(),
+         sa_contact_active_verts_d_hat  = host_sim_data->sa_contact_active_verts_d_hat.data(),
+         sa_is_fixed                    = host_mesh_data->sa_is_fixed.data(),
+         sa_rest_vert_area              = host_mesh_data->sa_rest_vert_area.data(),
+         stiffness_ground               = stiffness_ground,
+         collision_type                 = get_scene_params().contact_energy_type,
+         floor_y                        = get_scene_params().floor.y](const uint vid)
+        {
+            if (sa_is_fixed[vid])
+                return;
+            if (get_scene_params().use_floor)
+            {
+                float3 x_k = sa_x[vid];
 
-                                      float3   force   = luisa::make_float3(0.0f);
-                                      float3x3 hessian = makeFloat3x3(0.0f);
-                                      if (diff < d_hat + thickness)
-                                      {
-                                          float  C      = d_hat + thickness - diff;
-                                          float3 normal = luisa::make_float3(0, 1, 0);
-                                          float  area   = sa_rest_vert_area[vid];
-                                          float  stiff  = stiffness_ground * area;
-                                          force         = stiff * C * normal;
-                                          hessian       = stiff * outer_product(normal, normal);
-                                      }
-                                      {
-                                          // sa_cgX[vid] = dx_0;
-                                          sa_cgB[vid]      = sa_cgB[vid] + force;
-                                          sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
-                                      }
-                                  }
-                              });
+                float thickness = sa_contact_active_verts_offset[vid];
+                float d_hat     = sa_contact_active_verts_d_hat[vid];
+                float dist      = x_k.y - floor_y;
 
-    float3*    abd_gradients = host_sim_data->sa_affine_bodies_gradients.data();
-    float3x3*  abd_hessians  = host_sim_data->sa_affine_bodies_hessians.data();
-    const uint num_bodies    = host_sim_data->sa_affine_bodies.size();
+                if (dist - thickness < d_hat)
+                {
+                    float3 normal = luisa::make_float3(0, 1, 0);
+                    float  area   = sa_rest_vert_area[vid];
+                    float  stiff  = stiffness_ground * area;
+
+                    float k1;
+                    float k2;
+                    if (collision_type == 0)
+                    {
+                        k1 = stiff * (dist - thickness - d_hat);
+                        k2 = stiff;
+                    }
+                    else
+                    {
+                        k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                        k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                    }
+                    if (std::isnan(k1) || std::isnan(k2))
+                    {
+                        LUISA_ERROR("NaN detected in ground collision computation: dist = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
+                                    dist,
+                                    thickness,
+                                    d_hat,
+                                    k1,
+                                    k2);
+                    }
+                    float3   grad    = k1 * normal;
+                    float3x3 hessian = k2 * outer_product(normal, normal);
+
+                    sa_cgB[vid]      = sa_cgB[vid] - grad;
+                    sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+                }
+            }
+        });
+
+    float3*    abd_gradients  = host_sim_data->sa_affine_bodies_gradients.data();
+    float3x3*  abd_hessians   = host_sim_data->sa_affine_bodies_hessians.data();
+    const uint num_bodies     = host_sim_data->sa_affine_bodies.size();
+    const uint collision_type = get_scene_params().contact_energy_type;
+
     CpuParallel::single_thread_for(
         0,
         host_sim_data->sa_affine_bodies.size(),
@@ -1756,23 +1870,37 @@ void NewtonSolver::host_evaluate_ground_collision()
                 for (uint vid = curr_prefix; vid < next_prefix; vid++)
                 {
                     float3 x_k  = host_sim_data->sa_x[vid];
-                    float  diff = x_k.y - get_scene_params().floor.y;
+                    float  dist = x_k.y - get_scene_params().floor.y;
 
-                    if (diff < d_hat + thickness)
+                    float thickness = host_sim_data->sa_contact_active_verts_offset[vid];
+                    float d_hat     = host_sim_data->sa_contact_active_verts_d_hat[vid];
+
+                    if (dist - thickness < d_hat)
                     {
-                        float    C        = diff - (d_hat + thickness);
-                        float3   normal   = luisa::make_float3(0, 1, 0);
-                        float    area     = host_mesh_data->sa_rest_vert_area[vid];
-                        float    stiff    = stiffness_ground * area;
-                        float    k1       = stiff * C;
-                        float3   model_x  = host_mesh_data->sa_scaled_model_x[vid];
-                        float3   gradient = stiff * C * normal;
-                        float3x3 hessian  = stiff * outer_product(normal, normal);
+                        // float  C      = d - (d_hat + thickness);
+                        float3 normal = luisa::make_float3(0, 1, 0);
+                        float  area   = host_mesh_data->sa_rest_vert_area[vid];
+                        float  stiff  = stiffness_ground * area;
 
-                        // Friction
+                        float k1;
+                        float k2;
+                        if (collision_type == 0)
+                        {
+                            k1 = stiff * (dist - thickness - d_hat);
+                            k2 = stiff;
+                        }
+                        else
+                        {
+                            k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                            k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                        }
 
-                        uint   idx    = 4;
-                        float4 weight = luisa::make_float4(1.0f, model_x.x, model_x.y, model_x.z);
+                        float3   gradient = k1 * normal;
+                        float3x3 hessian  = k2 * outer_product(normal, normal);
+
+                        uint   idx     = 4;
+                        float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
+                        float4 weight  = luisa::make_float4(1.0f, model_x.x, model_x.y, model_x.z);
                         for (uint ii = 0; ii < 4; ii++)
                         {
                             float  wi          = weight[ii];
@@ -2205,8 +2333,6 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     {
         std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
 
-        const float d_hat     = get_scene_params().d_hat;
-        const float thickness = get_scene_params().thickness;
         CpuParallel::single_thread_for(
             0,
             host_sim_data->sa_affine_bodies.size(),
@@ -2629,8 +2755,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
                                                                         sim_data->sa_x,
-                                                                        get_scene_params().d_hat,
-                                                                        get_scene_params().thickness,
+                                                                        sim_data->sa_contact_active_verts_d_hat,
+                                                                        sim_data->sa_contact_active_verts_offset,
                                                                         sim_data->sa_vert_affine_bodies_id,
                                                                         mesh_data->sa_scaled_model_x,
                                                                         host_sim_data->num_verts_soft,
@@ -3081,10 +3207,13 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
 }
 void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 {
-    const float thickness = get_scene_params().thickness;
-    const float d_hat     = get_scene_params().d_hat;
-    // narrow_phase_detector->reset_narrowphase_count(stream);
     narrow_phase_detector->reset_toi(stream);
+
+    stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
+                  .dispatch(sim_data->sa_x.size());
+    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+    //        << luisa::compute::synchronize();
+    // LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
     narrow_phase_detector->vf_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
@@ -3107,9 +3236,7 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {
-    const float thickness = get_scene_params().thickness;
-    const float d_hat     = get_scene_params().d_hat;
-    const float kappa     = get_scene_params().stiffness_collision;
+    const float kappa = get_scene_params().stiffness_collision;
 
     narrow_phase_detector->vf_dcd_query_repulsion(stream,
                                                   sim_data->sa_x,
@@ -3201,9 +3328,7 @@ void NewtonSolver::device_post_dist_check(luisa::compute::Stream& stream)
 void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list)
 {
     // stream << sim_data->sa_x.copy_from(sa_x.data());
-    const float thickness = get_scene_params().thickness;
-    const float d_hat     = get_scene_params().d_hat;
-    const float kappa     = get_scene_params().stiffness_collision;
+    const float kappa = get_scene_params().stiffness_collision;
 
     narrow_phase_detector->reset_energy(stream);
     narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
@@ -3214,8 +3339,8 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
                                                                        mesh_data->sa_rest_vert_area,
                                                                        mesh_data->sa_rest_face_area,
                                                                        mesh_data->sa_faces,
-                                                                       d_hat,
-                                                                       thickness,
+                                                                       sim_data->sa_contact_active_verts_d_hat,
+                                                                       sim_data->sa_contact_active_verts_offset,
                                                                        kappa);
 
     auto contact_energy = narrow_phase_detector->download_energy(stream);
@@ -3477,6 +3602,18 @@ void NewtonSolver::host_apply_dx(const float alpha)
             {
                 host_sim_data->sa_x[vid] =
                     host_sim_data->sa_x_iter_start[vid] + alpha * host_sim_data->sa_cgX[vid];
+                // if (host_sim_data->sa_x[vid].y - host_sim_data->sa_contact_active_verts_offset[vid]
+                //     < get_scene_params().floor.y)
+                // {
+                //     LUISA_ERROR("Error in vert {}: From {} + alpha {} * dx {} to {}, x_k - offset = {}, floor = {}",
+                //                 vid,
+                //                 host_sim_data->sa_x_iter_start[vid].y,
+                //                 alpha,
+                //                 host_sim_data->sa_cgX[vid].y,
+                //                 host_sim_data->sa_x[vid].y,
+                //                 (host_sim_data->sa_x[vid].y - host_sim_data->sa_contact_active_verts_offset[vid]),
+                //                 get_scene_params().floor.y);
+                // }
             }
         });
 }
@@ -3488,9 +3625,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     constexpr bool use_eigen          = ConjugateGradientSolver::use_eigen;
     constexpr bool use_upper_triangle = ConjugateGradientSolver::use_upper_triangle;
-
-    const float thickness = get_scene_params().thickness;
-    const float d_hat     = get_scene_params().d_hat;
 
     auto update_contact_set = [&]()
     {
@@ -3511,8 +3645,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
                                                                         sim_data->sa_x,
-                                                                        d_hat,
-                                                                        thickness,
+                                                                        sim_data->sa_contact_active_verts_d_hat,
+                                                                        sim_data->sa_contact_active_verts_offset,
                                                                         sim_data->sa_vert_affine_bodies_id,
                                                                         mesh_data->sa_scaled_model_x,
                                                                         host_sim_data->num_verts_soft,
@@ -3546,7 +3680,11 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         device_ccd_line_search(stream);
 
-        float toi = narrow_phase_detector->get_global_toi(stream);
+        stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
+               << luisa::compute::synchronize();
+
+        float toi = host_collision_data->toi_per_vert.front();
+        // float toi = narrow_phase_detector->get_global_toi(stream);
         return toi;  // 0.9f * toi
         // return 1.0f;
     };
@@ -3851,9 +3989,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         }
     };
 
-    const float thickness          = get_scene_params().thickness;
-    const float d_hat              = get_scene_params().d_hat;
-    auto        update_contact_set = [&]()
+    auto update_contact_set = [&]()
     {
         device_update_contact_list(stream);
         narrow_phase_detector->construct_pervert_adj_list(
@@ -3865,8 +4001,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
                                                                         sim_data->sa_x,
-                                                                        d_hat,
-                                                                        thickness,
+                                                                        sim_data->sa_contact_active_verts_d_hat,
+                                                                        sim_data->sa_contact_active_verts_offset,
                                                                         sim_data->sa_vert_affine_bodies_id,
                                                                         mesh_data->sa_scaled_model_x,
                                                                         host_sim_data->num_verts_soft,
@@ -3878,8 +4014,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     auto ccd_get_toi = [&]() -> float
     {
-        // stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
-        //        << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
+        stream << sim_data->sa_x_iter_start.copy_from(host_sim_data->sa_x_iter_start.data())
+               << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
         // stream << sim_data->sa_x_iter_start.copy_to(host_sim_data->sa_x_iter_start.data())
         //        << sim_data->sa_x.copy_to(host_sim_data->sa_x.data()) << luisa::compute::synchronize();
 
@@ -3897,7 +4033,11 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         // }
 
         device_ccd_line_search(stream);
-        float toi = narrow_phase_detector->get_global_toi(stream);
+
+        stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
+               << luisa::compute::synchronize();
+        float toi = host_collision_data->toi_per_vert.front();
+        // LUISA_INFO("Get toi {} / {}", toi, host_collision_data->toi_per_vert.front());
         if (toi == 1.0f)
         {
             return toi;
@@ -3962,7 +4102,28 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         }
         // pcg_solver->device_solve(stream, pcg_spmv_interface, compute_energy_interface);
     };
-
+    auto check_gound_safe = [&](const float alpha)
+    {
+        CpuParallel::parallel_for(0,
+                                  mesh_data->num_verts,
+                                  [&](const uint vid)
+                                  {
+                                      const auto curr_y = host_sim_data->sa_x[vid].y;
+                                      const float d_hat = host_sim_data->sa_contact_active_verts_d_hat[vid];
+                                      const float offset = host_sim_data->sa_contact_active_verts_offset[vid];
+                                      if (curr_y - offset < get_scene_params().floor.y)
+                                      {
+                                          LUISA_ERROR("Vertex {} below ground at y = {} (init = {}, alpha = {}, dx = {}), d_hat = {}, offset = {}",
+                                                      vid,
+                                                      curr_y,
+                                                      host_sim_data->sa_x_iter_start[vid].y,
+                                                      alpha,
+                                                      host_sim_data->sa_cgX[vid].y,
+                                                      d_hat,
+                                                      offset);
+                                      }
+                                  });
+    };
     // Init LBVH
     {
         ADD_HOST_TIME_STAMP("Init LBVH");
@@ -4009,6 +4170,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             stream << sim_data->sa_x.copy_to(sim_data->sa_x_iter_start)
                    << sim_data->sa_x.copy_to(host_sim_data->sa_x.data())
                    << sim_data->sa_x.copy_to(host_sim_data->sa_x_iter_start.data());  // For host apply dx
+            stream << luisa::compute::synchronize();
 
             if (host_sim_data->num_affine_bodies != 0)
             {
@@ -4033,8 +4195,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_evaluate_ground_collision(get_scene_params().floor.y,
                                                            get_scene_params().use_floor,
                                                            get_scene_params().stiffness_collision,
-                                                           get_scene_params().d_hat,
-                                                           get_scene_params().thickness)
+                                                           get_scene_params().contact_energy_type)
                                   .dispatch(host_sim_data->num_verts_soft);
                 }
 
@@ -4070,7 +4231,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                                                                get_scene_params().stiffness_collision,
                                                                get_scene_params().d_hat,
                                                                get_scene_params().thickness,
-                                                               host_sim_data->num_verts_soft)
+                                                               host_sim_data->num_verts_soft,
+                                                               get_scene_params().contact_energy_type)
                                   .dispatch(host_sim_data->num_verts_rigid);
 
                     stream << fn_material_energy_assembly_affine_body(host_sim_data->num_verts_soft)
@@ -4095,25 +4257,27 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             float alpha   = 1.0f;
             float ccd_toi = 1.0f;
 
-            device_apply_dx(alpha);
             host_apply_dx(alpha);
-            stream << luisa::compute::synchronize();
+            // device_apply_dx(alpha);
+            // stream << luisa::compute::synchronize();
 
             ADD_HOST_TIME_STAMP("CCD");
             if (get_scene_params().use_ccd_linesearch)
             {
                 ccd_toi = ccd_get_toi();
                 alpha   = ccd_toi;
-                device_apply_dx(alpha);
                 host_apply_dx(alpha);
-                stream << luisa::compute::synchronize();
+                // device_apply_dx(alpha);
+                // stream << luisa::compute::synchronize();
                 if (ccd_toi < 1.0f)
                 {
                     LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}", iter, ccd_toi);
                 }
             }
+            LUISA_INFO("Check Point 4");
             ADD_HOST_TIME_STAMP("End CCD");
-
+            check_gound_safe(alpha);
+            LUISA_INFO("Check Point 5");
             // Non-linear iteration break condition
             {
                 float max_move      = 1e-2;
@@ -4127,13 +4291,15 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     break;
                 }
             }  // That means: If the step is too small, then we dont need energy line-search (energy may not be descent in small step)
-
-            device_apply_dx(alpha);
-            host_apply_dx(alpha);
-            stream << luisa::compute::synchronize();
+            LUISA_INFO("Check Point 6");
+            // device_apply_dx(alpha);
+            // host_apply_dx(alpha);
+            // stream << luisa::compute::synchronize();
+            // host_apply_dx(alpha);
 
             if (get_scene_params().use_energy_linesearch)
             {
+                device_apply_dx(alpha);
                 // Energy after CCD or just solving Axb
                 auto curr_energy = compute_energy_interface();
                 if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
@@ -4180,10 +4346,9 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     line_search_count++;
                 }
                 prev_state_energy = curr_energy;  // E_prev = E
-
-                device_apply_dx(alpha);
                 host_apply_dx(alpha);
-                stream << luisa::compute::synchronize();
+                // device_apply_dx(alpha);
+                // stream << luisa::compute::synchronize();
             }
 
             // Check dirichlet point target
@@ -4208,7 +4373,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     LUISA_INFO("  In newton iter {:2}: Dirichlet point not converged, max delta = {}", iter, direchlet_max_delta);
                 }
             }
-
+            device_apply_dx(alpha);
+            stream << luisa::compute::synchronize();
             narrow_phase_detector->post_resize_buffers(device, stream);
 
             // post_intersection_check();

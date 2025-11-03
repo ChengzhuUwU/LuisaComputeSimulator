@@ -374,7 +374,7 @@ struct CollisionData : SimulationType
 
     BufferType<uint>  broad_phase_list_vf;
     BufferType<uint>  broad_phase_list_ee;
-    BufferType<float> toi_per_vert;
+    BufferType<float> toi_per_vert;  // Actually is global min TOI
     BufferType<float> contact_energy;
 
     BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0

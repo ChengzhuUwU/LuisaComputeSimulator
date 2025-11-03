@@ -141,20 +141,14 @@ class NarrowPhasesDetector
     void device_perPair_evaluate_gradient_hessian(Stream&               stream,
                                                   const Buffer<float3>& sa_x_left,
                                                   const Buffer<float3>& sa_x_right,
-                                                  const float           d_hat,
-                                                  const float           thickness,
+                                                  const Buffer<float>&  d_hat,
+                                                  const Buffer<float>&  thickness,
                                                   const Buffer<uint>&   sa_vert_affine_bodies_id,
                                                   const Buffer<float3>& sa_scaled_model_x,
                                                   const uint            prefix_abd,
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
-    void device_perVert_evaluate_gradient_hessian(Stream&               stream,
-                                                  const Buffer<float3>& sa_x_left,
-                                                  const Buffer<float3>& sa_x_right,
-                                                  const float           d_hat,
-                                                  const float           thickness,
-                                                  Buffer<float3>&       sa_cgB,
-                                                  Buffer<float3x3>&     sa_cgA_diag);
+
     void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
@@ -174,8 +168,8 @@ class NarrowPhasesDetector
                                                      const Buffer<float>&  sa_rest_area_left,
                                                      const Buffer<float>&  sa_rest_area_right,
                                                      const Buffer<uint3>&  sa_faces_right,
-                                                     const float           d_hat,
-                                                     const float           thickness,
+                                                     const Buffer<float>&  d_hat,
+                                                     const Buffer<float>&  thickness,
                                                      const float           kappa);
 
   public:
@@ -249,7 +243,7 @@ class NarrowPhasesDetector
                            float>
         fn_narrow_phase_ee_dcd_query;
 
-    luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float, float, float> fn_compute_repulsion_energy;
+    luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float> fn_compute_repulsion_energy;
 
     // Scan
     luisa::compute::Shader<1, CDBG>                     fn_preprocess_for_affine_bodies;
@@ -266,7 +260,7 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
 
     // Assemble
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, float, float, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
     luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3x3>> fn_perVert_assemble_gradient_hessian;
 
     // SpMV

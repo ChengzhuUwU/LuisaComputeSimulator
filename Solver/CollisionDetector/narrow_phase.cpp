@@ -63,8 +63,8 @@ void resize_template(luisa::compute::Device& device, luisa::compute::Buffer<T>& 
     if (curr_count > buffer.size() / 2)
     {
         const uint desired_size = buffer.size() * 1.5;
-        buffer                  = device.create_buffer<T>(desired_size);
-        LUISA_INFO("Resize buffer {} : from {} to {} ", name, curr_count, buffer.size(), desired_size);
+        LUISA_INFO("Resize buffer {} : from {} to {} (CurrMax = {})", name, buffer.size(), desired_size, curr_count);
+        buffer = device.create_buffer<T>(desired_size);
     }
 };
 
@@ -380,8 +380,9 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
             toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 
-            $if(pair_idx % 256 == 0)
+            $if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
             {
+                // device_log("Block {} VF toi = {}", pair_idx / 256, toi);
                 sa_toi->atomic(0).fetch_min(toi);
             };
         });
@@ -496,8 +497,9 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
             toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 
-            $if(pair_idx % 256 == 0)
+            $if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
             {
+                // device_log("Block {} EE toi = {}", pair_idx / 256, toi);
                 sa_toi->atomic(0).fetch_min(toi);
             };
         });
@@ -550,7 +552,8 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
                                                thickness)
                       .dispatch(num_vf_broadphase);
     }
-    stream << sa_toi.view(0, 2).copy_to(host_toi.data());
+    // stream << sa_toi.view(0, 2).copy_to(host_toi.data()) << luisa::compute::synchronize();
+    // LUISA_INFO("VF toi = {} from CCD", host_toi[0]);
 }
 
 void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
@@ -597,7 +600,8 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
                       get_collision_data(), sa_x_begin_a, sa_x_begin_b, sa_x_end_a, sa_x_end_b, sa_edges_left, sa_edges_left, d_hat, thickness)
                       .dispatch(num_ee_broadphase);
     }
-    stream << sa_toi.view(0, 2).copy_to(host_toi.data());
+    // stream << sa_toi.view(0, 2).copy_to(host_toi.data()) << luisa::compute::synchronize();
+    // LUISA_INFO("EE toi = {} from CCD", host_toi[0]);
 }
 
 }  // namespace lcs
@@ -1767,8 +1771,8 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
         [atomic_add_float3, atomic_add_float3x3](Var<CDBG>             collision_data,
                                                  Var<Buffer<float3>>   sa_x_left,
                                                  Var<Buffer<float3>>   sa_x_right,
-                                                 Float                 d_hat,
-                                                 Float                 thickness,
+                                                 Var<Buffer<float>>    d_hat,
+                                                 Var<Buffer<float>>    thickness,
                                                  BufferVar<uint>       sa_vert_affine_bodies_id,
                                                  BufferVar<float3>     sa_scaled_model_x,
                                                  const Uint            prefix_abd,
@@ -2030,8 +2034,8 @@ void NarrowPhasesDetector::compile_SpMV(AsyncCompiler& compiler)
 void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compute::Stream& stream,
                                                                     const Buffer<float3>&   sa_x_left,
                                                                     const Buffer<float3>&   sa_x_right,
-                                                                    const float             d_hat,
-                                                                    const float             thickness,
+                                                                    const Buffer<float>&    d_hat,
+                                                                    const Buffer<float>&    thickness,
                                                                     const Buffer<uint>& sa_vert_affine_bodies_id,
                                                                     const Buffer<float3>& sa_scaled_model_x,
                                                                     const uint        prefix_abd,
@@ -2053,23 +2057,6 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
                                                        sa_cgB,
                                                        sa_cgA_diag)
                       .dispatch(num_pairs);
-}
-void NarrowPhasesDetector::device_perVert_evaluate_gradient_hessian(luisa::compute::Stream& stream,
-                                                                    const Buffer<float3>&   sa_x_left,
-                                                                    const Buffer<float3>&   sa_x_right,
-                                                                    const float             d_hat,
-                                                                    const float             thickness,
-                                                                    Buffer<float3>&         sa_cgB,
-                                                                    Buffer<float3x3>&       sa_cgA_diag)
-{
-    auto&      host_count = host_collision_data->narrow_phase_collision_count;
-    const uint num_pairs  = host_count.front();
-
-    if (num_pairs != 0)
-    {
-        stream << fn_perVert_assemble_gradient_hessian(get_collision_data(), sa_cgB, sa_cgA_diag)
-                      .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
-    }
 }
 
 void NarrowPhasesDetector::host_perPair_spmv(Stream&                    stream,
@@ -2200,8 +2187,8 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
         [contact_energy_type](Var<CDBG>               collision_data,
                               Var<BufferView<float3>> sa_x_left,
                               Var<BufferView<float3>> sa_x_right,
-                              Float                   d_hat,
-                              Float                   thickness,
+                              Var<BufferView<float>>  per_vert_d_hat,
+                              Var<BufferView<float>>  per_vert_offset,
                               Float                   kappa)
         {
             auto& contact_energy   = collision_data->contact_energy;
@@ -2243,6 +2230,9 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             Float energy = 0.0f;
 
+            Float d_hat     = 0.5f * (per_vert_d_hat.read(indices[0]) + per_vert_d_hat.read(indices[2]));
+            Float thickness = (per_vert_offset.read(indices[0]) + per_vert_offset.read(indices[2]));
+
             $if(d < thickness + d_hat)
             {
                 const Float stiff = pair->get_stiffness();
@@ -2253,7 +2243,8 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
                 }
                 else if (contact_energy_type == ContactEnergyType::Barrier)
                 {
-                    cipc::KappaBarrier(energy, stiff, d2, d_hat, thickness);
+                    energy = stiff * ipc::barrier(d - thickness, d_hat);
+                    // cipc::KappaBarrier(energy, stiff, d2, d_hat, thickness);
                 }
             };
 
@@ -2278,9 +2269,9 @@ void NarrowPhasesDetector::compute_contact_energy_from_iter_start_list(Stream&  
                                                                        const Buffer<float>& sa_rest_area_left,
                                                                        const Buffer<float>& sa_rest_area_right,
                                                                        const Buffer<uint3>& sa_faces_right,
-                                                                       const float d_hat,
-                                                                       const float thickness,
-                                                                       const float kappa)
+                                                                       const Buffer<float>& d_hat,
+                                                                       const Buffer<float>& thickness,
+                                                                       const float          kappa)
 {
     auto&      contact_energy = collision_data->contact_energy;
     auto&      host_count     = host_collision_data->narrow_phase_collision_count;

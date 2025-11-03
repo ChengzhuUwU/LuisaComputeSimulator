@@ -1,4 +1,5 @@
 #include "SimulationSolver/solver_interface.h"
+#include "CollisionDetector/cipc_kernel.hpp"
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"
@@ -523,26 +524,42 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_calc_energy_ground_collision,
-        [sa_rest_vert_area = mesh_data->sa_rest_vert_area.view(),
-         sa_is_fixed       = mesh_data->sa_is_fixed.view(),
-         sa_system_energy  = sim_data->sa_system_energy.view()](
-            Var<BufferView<float3>> sa_x, Float floor_y, Bool use_ground_collision, Float stiffness, Float d_hat, Float thickness)
+        [sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
+         sa_is_fixed                    = mesh_data->sa_is_fixed.view(),
+         sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
+         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
+         sa_system_energy               = sim_data->sa_system_energy.view()](
+            Var<BufferView<float3>> sa_x, Float floor_y, Bool use_ground_collision, Float stiffness, Uint collision_type)
         {
             const Uint vid = dispatch_id().x;
 
             Float energy   = 0.0f;
             Bool  is_fixed = sa_is_fixed->read(vid) != 0;
+
             $if(use_ground_collision & !is_fixed)
             {
-                Float3 x_k  = sa_x->read(vid);
-                Float  diff = x_k.y - floor_y;
-                $if(diff < d_hat + thickness)
+                Float3 x_k       = sa_x->read(vid);
+                Float  dist      = x_k.y - floor_y;
+                Float  d_hat     = sa_contact_active_verts_d_hat->read(vid);
+                Float  thickness = sa_contact_active_verts_offset->read(vid);
+                $if(dist - thickness < d_hat)
                 {
-                    Float C    = d_hat + thickness - diff;
-                    Float area = sa_rest_vert_area->read(vid);
-                    // Float area  = 1.0f;
+                    Float area  = sa_rest_vert_area->read(vid);
                     Float stiff = stiffness * area;
-                    energy      = 0.5f * stiff * C * C;
+
+                    $if(collision_type == 0)
+                    {
+                        energy = 0.5f * stiff * square_scalar(dist - thickness - d_hat);
+                    }
+                    $else
+                    {
+                        energy = stiff * ipc::barrier(dist - thickness, d_hat);
+                    };
+
+                    // Float C    = d_hat + thickness - dist;
+                    // Float area = sa_rest_vert_area->read(vid);
+                    // Float stiff = stiffness * area;
+                    // energy      = 0.5f * stiff * C * C;
                     // device_log("For vert {}, pen = {}, E = {}", vid, C, energy);
                 };
             };
@@ -781,8 +798,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                                               get_scene_params().floor.y,
                                               get_scene_params().use_floor,
                                               get_scene_params().stiffness_collision,
-                                              get_scene_params().d_hat,
-                                              get_scene_params().thickness)
+                                              get_scene_params().contact_energy_type)
                   .dispatch(mesh_data->num_verts);
 
     if (host_sim_data->sa_stretch_springs.size() != 0)
