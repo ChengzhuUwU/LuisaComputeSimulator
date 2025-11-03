@@ -3243,9 +3243,9 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
     stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
                   .dispatch(sim_data->sa_x.size());
 
-    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
-           << luisa::compute::synchronize();
-    LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
+    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+    //        << luisa::compute::synchronize();
+    // LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
     narrow_phase_detector->vf_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
@@ -3256,9 +3256,9 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
 
-    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
-           << luisa::compute::synchronize();
-    LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+    //        << luisa::compute::synchronize();
+    // LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
     narrow_phase_detector->ee_ccd_query(stream,
                                         sim_data->sa_x_iter_start,
@@ -3270,9 +3270,9 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
 
-    stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
-           << luisa::compute::synchronize();
-    LUISA_INFO("  Min TOI after EE CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+    //        << luisa::compute::synchronize();
+    // LUISA_INFO("  Min TOI after EE CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
 }
 void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 {

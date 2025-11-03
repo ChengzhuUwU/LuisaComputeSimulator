@@ -57,7 +57,7 @@ namespace accd
         Var<uint>  iter_count = 0;
         $while(true)
         {
-            $if(iter_count > 1000)
+            $if(iter_count > 10000)
             {
                 luisa::compute::device_assert(false, "CCD iteration not converged in 1000 iteration!");
                 $break;
@@ -141,7 +141,7 @@ namespace accd
                 max_u    = max_scalar(max_u, length_squared_vec(du));
             }
         }
-        return sqrt(max_u);
+        return luisa::compute::sqrt(max_u);
     }
 
     inline Var<float> point_triangle_ccd(const Vec3f& p0,
@@ -252,7 +252,7 @@ namespace host_accd
         uint  iter_count = 0;
         while (true)
         {
-            if (iter_count > 1000)
+            if (iter_count > 10000)
             {
                 LUISA_ASSERT(false, "CCD iteration not converged in 1000 iteration!");
                 break;
