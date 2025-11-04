@@ -60,20 +60,18 @@ The simulator provides support for simulating cloth and rigid body and for **Int
   - Build   : ```xmake build```
 
 - **Run the application:**  
-    `build/bin/app-simulation` (Linux/macOS)  
-    `build/bin/app-simulation.exe` (Windows)
+    `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
+    `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
+    In lanching arguments, you can specify your favorate backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rotation_cylinder_88K.json`, we provode several example scenarios in `Resources/Scenes` directory).
 
-- **You can select other scenarios**:
-    Edit `Application/app_simulation_demo_config.cpp` in the `load_scene()` function and modify the `case_number` value.
 
 ### Other Configuration
 
 1. The default backend is `cuda` on Windows and Linux, and `metal` on macOS.  
-    To use other backends such as `dx`, `vulkan`, or `fallback (TBB)`, update the compile options in the main CMake file and set the desired backend in `Application/app_simulation.cpp` (`main() > backend`).  
-    *(Dynamic backend selection may be supported in the future.)*
+    To use other backends such as `dx`, `vulkan`, or `fallback (TBB)`, update the compile options in the main CMake file and specify the target backend by passing `<backend-name>` in the launching arguments.
 
-2. The GUI is disabled by default for broader platform compatibility.  
-    To enable the GUI (using [polyscope](https://github.com/nmwsharp/polyscope)), set the `LUISA_COMPUTE_SOLVER_USE_GUI` option in CMake.
+2. GUI is disabled by default for broader platform compatibility.  
+    To enable the GUI (based on [polyscope](https://github.com/nmwsharp/polyscope)), set the option `LCS_ENABLE_GUI` to `ON` in CMake/Xmake.
 
 3. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
 
