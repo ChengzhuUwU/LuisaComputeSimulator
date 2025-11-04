@@ -91,7 +91,7 @@ int main(int argc, char** argv)
     lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
     // Read Mesh
-    std::string scene_json_path = std::string(LCSV_RESOURCE_PATH) + "/Scenes/default_scene.json";
+    std::string scene_json_path = "default_scene.json";
     if (argc >= 3)
     {
         LUISA_INFO("Load target scene {}", argv[2]);

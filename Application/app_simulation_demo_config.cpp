@@ -162,12 +162,67 @@ void load_default_scene(std::vector<ShellInfo>& shell_list)
 
 void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::string& json_path)
 {
-    std::ifstream ifs(json_path);
-    if (!ifs.is_open())
+    // Determine which path to open:
+    // 1) If user provided an absolute path and it exists, use it.
+    // 2) Otherwise, try "LCSV_RESOURCE_PATH/Scenes/" + json_path and then + basename(json_path).
+    // 3) If none exists, log a warning and return (use default scene params).
+
+    auto file_exists_safe = [](const std::string& p)
     {
-        LUISA_WARNING("Cannot open json file: {}, using default scene params", json_path);
+        try
+        {
+            return std::filesystem::exists(p);
+        }
+        catch (...)
+        {
+            return false;
+        }
+    };
+
+    std::string           path_to_open;
+    std::filesystem::path user_path(json_path);
+    const std::string     resource_scenes = std::string(LCSV_RESOURCE_PATH) + "/Scenes/";
+
+    // Prefer user absolute path only when it's absolute and exists
+    if (user_path.is_absolute() && file_exists_safe(user_path.string()))
+    {
+        path_to_open = user_path.string();
+    }
+    else
+    {
+        // Try resource_scenes + json_path (keep any subdirs user provided)
+        std::string candidate = resource_scenes + json_path;
+        if (file_exists_safe(candidate))
+        {
+            path_to_open = candidate;
+        }
+        else
+        {
+            // Try basename only
+            std::string base = user_path.filename().string();
+            candidate        = resource_scenes + base;
+            if (file_exists_safe(candidate))
+            {
+                path_to_open = candidate;
+            }
+        }
+    }
+
+    if (path_to_open.empty())
+    {
+        LUISA_WARNING("Cannot find json file at provided path '{}' nor in '{}', using default scene params",
+                      json_path,
+                      resource_scenes);
         return;
     }
+
+    std::ifstream ifs(path_to_open);
+    if (!ifs.is_open())
+    {
+        LUISA_WARNING("Found json candidate '{}' but failed to open it, using default scene params", path_to_open);
+        return;
+    }
+
     std::stringstream buffer;
     buffer << ifs.rdbuf();
     std::string content = buffer.str();
