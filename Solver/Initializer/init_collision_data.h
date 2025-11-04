@@ -9,7 +9,7 @@
 
 namespace lcs::Initializer
 {
-void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+void init_collision_data(std::vector<lcs::Initializer::WorldData>& shell_infos,
                          lcs::MeshData<std::vector>*               mesh_data,
                          lcs::SimulationData<std::vector>*         sim_data,
                          lcs::CollisionData<std::vector>*          collision_data);

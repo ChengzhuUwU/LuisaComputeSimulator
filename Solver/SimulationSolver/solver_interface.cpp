@@ -43,24 +43,24 @@ void SolverInterface::set_data_pointer(SolverData& solver_data, SolverHelper& so
 }
 void SolverInterface::init_data(luisa::compute::Device&                   device,
                                 luisa::compute::Stream&                   stream,
-                                std::vector<lcs::Initializer::ShellInfo>& shell_list)
+                                std::vector<lcs::Initializer::WorldData>& world_data)
 {
     set_data_pointer(solver_data, solver_helper);
 
     // Init data
     {
-        lcs::Initializer::init_mesh_data(shell_list, host_mesh_data);
+        lcs::Initializer::init_mesh_data(world_data, host_mesh_data);
         lcs::Initializer::upload_mesh_buffers(device, stream, host_mesh_data, mesh_data);
     }
 
     {
-        lcs::Initializer::init_sim_data(shell_list, host_mesh_data, host_sim_data);
+        lcs::Initializer::init_sim_data(world_data, host_mesh_data, host_sim_data);
         lcs::Initializer::upload_sim_buffers(device, stream, host_sim_data, sim_data);
         lcs::Initializer::resize_pcg_data(device, stream, host_mesh_data, host_sim_data, sim_data);
     }
 
     {
-        lcs::Initializer::init_collision_data(shell_list, host_mesh_data, host_sim_data, host_collision_data);
+        lcs::Initializer::init_collision_data(world_data, host_mesh_data, host_sim_data, host_collision_data);
         lcs::Initializer::upload_collision_buffers(device, stream, host_sim_data, sim_data, host_collision_data, collision_data);
     }
 

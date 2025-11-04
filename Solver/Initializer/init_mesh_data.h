@@ -2,6 +2,7 @@
 
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationCore/base_mesh.h"
+#include "SimulationCore/physical_material.h"
 
 namespace lcs
 {
@@ -9,6 +10,31 @@ namespace lcs
 namespace Initializer
 {
 
+    enum struct FixedPointsType
+    {
+        None,
+        FromIndices,
+        FromFunction,
+        Left,
+        Right,
+        Front,
+        Back,
+        Up,
+        Down,
+        LeftUp,
+        LeftDown,
+        LeftFront,
+        LeftBack,
+        RightUp,
+        RightDown,
+        RightFront,
+        RightBack,
+        FrontUp,
+        FrontDown,
+        BackUp,
+        BackDown,
+        All,
+    };
 
     struct FixedPointAnimationInfo
     {
@@ -66,33 +92,6 @@ namespace Initializer
         };
     };
 
-
-    enum struct FixedPointsType
-    {
-        None,
-        FromIndices,
-        FromFunction,
-        Left,
-        Right,
-        Front,
-        Back,
-        Up,
-        Down,
-        LeftUp,
-        LeftDown,
-        LeftFront,
-        LeftBack,
-        RightUp,
-        RightDown,
-        RightFront,
-        RightBack,
-        FrontUp,
-        FrontDown,
-        BackUp,
-        BackDown,
-        All,
-    };
-
     struct MakeFixedPointsInterface
     {
         FixedPointsType         method = FixedPointsType::All;
@@ -110,84 +109,7 @@ namespace Initializer
         ShellTypeRod,
     };
 
-    enum class ConstitutiveStretchModelCloth
-    {
-        // None     = 0,
-        Spring   = 0,  // Impl
-        FEM_BW98 = 1,  // Impl
-    };
-    enum class ConstitutiveBendingModelCloth
-    {
-        None             = 0,
-        QuadraticBending = 1,  // Impl
-        DihedralAngle    = 2,  // Impl
-    };
-    enum class ConstitutiveModelTet
-    {
-        // None             = 0,
-        Spring           = 0,  // Impl
-        StVK             = 1,
-        StableNeoHookean = 2,
-        Corotated        = 3,
-        ARAP             = 4,
-    };
-    enum class ConstitutiveModelRigid
-    {
-        // None          = 0,
-        Spring           = 0,
-        Orthogonality    = 1,  // Impl
-        ARAP             = 2,
-        StableNeoHookean = 3,  // Full space simulation
-    };
-    enum class ConstitutiveModelRod
-    {
-        Spring = 0,
-    };
-
-    struct MaterialBase
-    {
-        float mass     = 0.0f;
-        float density  = 1e3f;
-        float d_hat    = 2e-3f;
-        bool  is_shell = true;
-    };
-
-    struct ClothMaterial : MaterialBase
-    {
-        ConstitutiveStretchModelCloth stretch_model  = ConstitutiveStretchModelCloth::FEM_BW98;
-        ConstitutiveBendingModelCloth bending_model  = ConstitutiveBendingModelCloth::DihedralAngle;
-        float                         thickness      = 2e-3f;
-        float                         youngs_modulus = 1e5f;
-        float                         poisson_ratio  = 0.25f;
-        float                         area_bending_stiffness = 5e-3f;
-        // float                         area_youngs_modulus = 1e3f;
-    };
-    struct TetMaterial : MaterialBase
-    {
-        ConstitutiveModelTet model          = ConstitutiveModelTet::Spring;
-        float                youngs_modulus = 1e6f;
-        float                poisson_ratio  = 0.35f;
-    };
-    struct RigidMaterial : MaterialBase
-    {
-        ConstitutiveModelRigid model = ConstitutiveModelRigid::Orthogonality;
-        // bool                   is_solid        = false;
-        float thickness = 2e-3f;
-        float stiffness = 1e6f;
-        // float                  youngs_modulus  = 1e9f;
-        // float                  poisson_ratio   = 0.35f;
-    };
-    struct RodMaterial : MaterialBase
-    {
-        ConstitutiveModelRod model              = ConstitutiveModelRod::Spring;
-        float                radius             = 2e-3f;
-        float                bending_stiffness  = 1e4f;
-        float                twisting_stiffness = 1e4f;
-    };
-
-    using MaterialVariant = std::variant<ClothMaterial, TetMaterial, RigidMaterial, RodMaterial>;
-
-    struct ShellInfo
+    struct WorldData
     {
         std::string model_name  = "square8K.obj";
         float3      translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
@@ -276,7 +198,7 @@ namespace Initializer
         ShellType                 shell_type = ShellTypeCloth;
         SimMesh::TriangleMeshData input_mesh;
 
-        ShellInfo& load_fixed_points();
+        WorldData& load_fixed_points();
 
         void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
                                                  const FixedPointAnimationInfo& info = FixedPointAnimationInfo());
@@ -290,7 +212,7 @@ namespace Initializer
         // template <typename T>
         void get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
 
-        ShellInfo& load_mesh_data()
+        WorldData& load_mesh_data()
         {
             if (input_mesh.model_positions.empty())
             {
@@ -298,7 +220,7 @@ namespace Initializer
             }
             return *this;
         }
-        ShellInfo& set_fixed_points()
+        WorldData& set_fixed_points()
         {
             if (input_mesh.model_positions.empty())
             {
@@ -328,7 +250,7 @@ namespace Initializer
         }
     };
 
-    void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_list, lcs::MeshData<std::vector>* mesh_data);
+    void init_mesh_data(std::vector<lcs::Initializer::WorldData>& shell_list, lcs::MeshData<std::vector>* mesh_data);
     void upload_mesh_buffers(luisa::compute::Device&                device,
                              luisa::compute::Stream&                stream,
                              lcs::MeshData<std::vector>*            input_data,

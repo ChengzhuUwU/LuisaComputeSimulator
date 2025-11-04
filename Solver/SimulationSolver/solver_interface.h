@@ -63,7 +63,7 @@ class SolverInterface
   protected:
     void init_data(luisa::compute::Device&                   device,
                    luisa::compute::Stream&                   stream,
-                   std::vector<lcs::Initializer::ShellInfo>& shell_list);
+                   std::vector<lcs::Initializer::WorldData>& shell_list);
     void compile(AsyncCompiler& compiler);
     void set_data_pointer(SolverData& solver_data, SolverHelper& solver_helper);
 

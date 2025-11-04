@@ -101,22 +101,22 @@ int main(int argc, char** argv)
     {
         LUISA_INFO("Load default scene {}", scene_json_path);
     }
-    std::vector<lcs::Initializer::ShellInfo> shell_list;
+    std::vector<lcs::Initializer::WorldData> world_data;
     // Demo::Simulation::load_default_scene(shell_list);
-    Demo::Simulation::load_scene_params_from_json(shell_list, scene_json_path);
+    Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
 
     // Init Solver
     lcs::NewtonSolver solver;
-    solver.init_solver(device, stream, shell_list);
+    solver.init_solver(device, stream, world_data);
 
     auto fn_update_pinned_verts = [&](const uint curr_frame)
     {
         // Animation for fixed points
-        for (uint mesh_idx = 0; mesh_idx < shell_list.size(); mesh_idx++)
+        for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
         {
-            const float                  curr_time  = curr_frame * lcs::get_scene_params().implicit_dt;
-            lcs::Initializer::ShellInfo& shell_info = shell_list[mesh_idx];
-            solver.update_pinned_verts_information(mesh_idx, shell_info.get_fixed_point_target_positions(curr_time));
+            const float curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
+            solver.update_pinned_verts_information(
+                mesh_idx, world_data[mesh_idx].get_fixed_point_target_positions(curr_time));
         }
     };
 
@@ -139,14 +139,14 @@ int main(int argc, char** argv)
     constexpr bool use_ui            = true;
 
     // Init rendering data
-    std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(shell_list.size() + 0 + 0);
-    std::vector<std::vector<std::array<uint, 3>>>  sa_rendering_faces(shell_list.size() + 0 + 0);
-    std::vector<std::vector<std::array<float, 3>>> face_color(shell_list.size());
+    std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(world_data.size() + 0 + 0);
+    std::vector<std::vector<std::array<uint, 3>>>  sa_rendering_faces(world_data.size() + 0 + 0);
+    std::vector<std::vector<std::array<float, 3>>> face_color(world_data.size());
     {
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
+        for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
         {
-            shell_list[meshIdx].get_rest_positions(sa_rendering_vertices[meshIdx]);
-            sa_rendering_faces[meshIdx] = shell_list[meshIdx].input_mesh.faces;
+            world_data[meshIdx].get_rest_positions(sa_rendering_vertices[meshIdx]);
+            sa_rendering_faces[meshIdx] = world_data[meshIdx].input_mesh.faces;
             face_color[meshIdx].resize(sa_rendering_faces[meshIdx].size(), {0.7, 0.2, 0.3});
         }
     }
@@ -194,9 +194,9 @@ int main(int argc, char** argv)
         polyscope::init("openGL3_glfw");
         std::vector<polyscope::SurfaceMesh*> surface_meshes;
 
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
+        for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
         {
-            const std::string& curr_mesh_name = shell_list[meshIdx].model_name + std::to_string(meshIdx);
+            const std::string& curr_mesh_name = world_data[meshIdx].model_name + std::to_string(meshIdx);
             polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
                 curr_mesh_name, sa_rendering_vertices[meshIdx], sa_rendering_faces[meshIdx]);
             curr_mesh_ptr->setEnabled(true);
@@ -206,7 +206,7 @@ int main(int argc, char** argv)
 
         auto fn_update_GUI_vertices = [&]()
         {
-            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+            for (uint clothIdx = 0; clothIdx < world_data.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
             }

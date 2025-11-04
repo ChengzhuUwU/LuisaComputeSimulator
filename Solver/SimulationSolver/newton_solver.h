@@ -30,7 +30,7 @@ class NewtonSolver : public lcs::SolverInterface
     void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
     void init_solver(luisa::compute::Device&                   device,
                      luisa::compute::Stream&                   stream,
-                     std::vector<lcs::Initializer::ShellInfo>& shell_list)
+                     std::vector<lcs::Initializer::WorldData>& shell_list)
     {
         LUISA_INFO("Init mesh data...");
         SolverInterface::init_data(device, stream, shell_list);

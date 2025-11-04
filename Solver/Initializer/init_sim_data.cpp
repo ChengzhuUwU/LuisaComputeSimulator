@@ -185,7 +185,7 @@ static void compute_trimesh_dyadic_mass(const std::vector<float3>& pos_view,
 }
 
 
-void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                    lcs::MeshData<std::vector>*               mesh_data,
                    lcs::SimulationData<std::vector>*         sim_data)
 {
@@ -208,24 +208,24 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint eid)
         {
             const uint  mesh_idx   = mesh_data->sa_edge_mesh_id[eid];
-            const auto& shell_info = shell_infos[mesh_idx];
+            const auto& mesh_info  = world_data[mesh_idx];
             bool        use_spring = false;
-            if (shell_info.holds<ClothMaterial>())
+            if (mesh_info.holds<ClothMaterial>())
             {
-                use_spring = shell_info.get_material<ClothMaterial>().stretch_model
+                use_spring = mesh_info.get_material<ClothMaterial>().stretch_model
                              == ConstitutiveStretchModelCloth::Spring;
             }
-            else if (shell_info.holds<TetMaterial>())
+            else if (mesh_info.holds<TetMaterial>())
             {
-                use_spring = shell_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
+                use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
             }
             // else if (shell_info.holds<RigidMaterial>())
             // {
             //     use_spring = shell_info.get<RigidMaterial>().model == ConstitutiveModelRigid::Spring;
             // }
-            else if (shell_info.holds<RodMaterial>())
+            else if (mesh_info.holds<RodMaterial>())
             {
-                use_spring = shell_info.get_material<RodMaterial>().model == ConstitutiveModelRod::Spring;
+                use_spring = mesh_info.get_material<RodMaterial>().model == ConstitutiveModelRod::Spring;
             }
             // bool  is_cloth   = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
             uint2 edge       = mesh_data->sa_edges[eid];
@@ -241,9 +241,9 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint fid)
         {
             const uint  mesh_idx         = mesh_data->sa_face_mesh_id[fid];
-            const auto& shell_info       = shell_infos[mesh_idx];
-            bool        use_stretch_face = shell_info.holds<ClothMaterial>()
-                                    && shell_info.get_material<ClothMaterial>().stretch_model
+            const auto& mesh_info        = world_data[mesh_idx];
+            bool        use_stretch_face = mesh_info.holds<ClothMaterial>()
+                                    && mesh_info.get_material<ClothMaterial>().stretch_model
                                            == ConstitutiveStretchModelCloth::FEM_BW98;
             uint3 face       = mesh_data->sa_faces[fid];
             bool  is_dynamic = cull_unused_constraints ?
@@ -259,9 +259,9 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint eid)
         {
             const uint  mesh_idx    = mesh_data->sa_dihedral_edge_mesh_id[eid];
-            const auto& shell_info  = shell_infos[mesh_idx];
-            bool        use_bending = shell_info.holds<ClothMaterial>()
-                               && shell_info.get_material<ClothMaterial>().bending_model
+            const auto& mesh_info   = world_data[mesh_idx];
+            bool        use_bending = mesh_info.holds<ClothMaterial>()
+                               && mesh_info.get_material<ClothMaterial>().bending_model
                                       != ConstitutiveBendingModelCloth::None;
             uint4 edge       = mesh_data->sa_dihedral_edges[eid];
             bool  is_dynamic = cull_unused_constraints ?
@@ -283,8 +283,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 != (mesh_data->prefix_num_dihedral_edges[meshIdx + 1] - mesh_data->prefix_num_dihedral_edges[meshIdx]);
             // bool has_dynamic_vert = mesh_data->sa_is_fixed[first_vid];
             // bool is_rigid = (mesh_data->sa_vert_mesh_type[first_vid] == uint(ShellTypeRigid));  // ;&& !has_boundary_edge;
-            bool is_rigid = shell_infos[meshIdx].holds<RigidMaterial>();
-            LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
+            bool is_rigid = world_data[meshIdx].holds<RigidMaterial>();
+            // LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
             return (is_rigid) ? 1 : 0;  // has_dynamic_vert
         },
         mesh_data->num_meshes);
@@ -335,8 +335,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       sim_data->sa_stretch_spring_rest_state_length[eid] =
                                           lcs::length_vec(x1 - x2);
 
-                                      const auto& shell_info = shell_infos[mesh_data->sa_edge_mesh_id[orig_eid]];
-                                      const auto& material = shell_info.get_material<ClothMaterial>();
+                                      const auto& mesh_info = world_data[mesh_data->sa_edge_mesh_id[orig_eid]];
+                                      const auto& material = mesh_info.get_material<ClothMaterial>();
 
                                       const float E     = material.youngs_modulus;
                                       const float nu    = material.poisson_ratio;
@@ -368,8 +368,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       const float2x2 inv_duv = StretchEnergy::get_Dm_inv(x_0, x_1, x_2);
                                       const float    area    = compute_face_area(x_0, x_1, x_2);
 
-                                      const auto& shell_info = shell_infos[mesh_data->sa_face_mesh_id[orig_fid]];
-                                      const auto& material = shell_info.get_material<ClothMaterial>();
+                                      const auto& mesh_info = world_data[mesh_data->sa_face_mesh_id[orig_fid]];
+                                      const auto& material = mesh_info.get_material<ClothMaterial>();
 
                                       const float E  = material.youngs_modulus;
                                       const float nu = material.poisson_ratio;
@@ -426,7 +426,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                     sim_data->sa_bending_edges[eid]            = edge;
                     sim_data->sa_bending_edges_rest_angle[eid] = angle;
                     sim_data->sa_bending_edges_stiffness[eid] =
-                        shell_infos[mesh_data->sa_dihedral_edge_mesh_id[orig_eid]]
+                        world_data[mesh_data->sa_dihedral_edge_mesh_id[orig_eid]]
                             .get_material<ClothMaterial>()
                             .area_bending_stiffness;
                 }
@@ -497,8 +497,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             num_affine_bodies,
             [&](const uint body_idx)
             {
-                const uint  meshIdx    = affine_body_indices[body_idx];
-                const auto& shell_info = shell_infos[meshIdx];
+                const uint  meshIdx   = affine_body_indices[body_idx];
+                const auto& mesh_info = world_data[meshIdx];
 
                 sim_data->sa_affine_bodies_mesh_id[body_idx] = meshIdx;
                 sim_data->sa_affine_bodies[body_idx] = luisa::make_uint4(num_verts_soft + 4 * body_idx + 0,
@@ -538,7 +538,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
                 float4x4        compressed_mass_matrix;
 
-                if (shell_info.get_is_shell()
+                if (mesh_info.get_is_shell()
                     || (mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
                 {
                     // Shell or Tet mesh: integrate from vertices
@@ -555,7 +555,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 }
                 else  // Solid body: integrate from surface triangles
                 {
-                    float    rho = shell_info.get_material<RigidMaterial>().density;
+                    float    rho = mesh_info.get_material<RigidMaterial>().density;
                     float    m;
                     float3   m_x_bar;
                     float3x3 m_x_bar_x_bar;
@@ -608,7 +608,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                          0.0f);
 
                 sim_data->sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
-                sim_data->sa_affine_bodies_kappa[body_idx] = shell_info.get_material<RigidMaterial>().stiffness;
+                sim_data->sa_affine_bodies_kappa[body_idx] = mesh_info.get_material<RigidMaterial>().stiffness;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
                 CpuParallel::single_thread_for(curr_prefix,

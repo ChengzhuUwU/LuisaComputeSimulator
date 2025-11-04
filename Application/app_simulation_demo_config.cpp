@@ -20,10 +20,10 @@ const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/
 
 using namespace lcs::Initializer;
 
-void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
+void ccd_vf_unit_case(std::vector<WorldData>& shell_list)
 {
     auto& up = shell_list
-                   .emplace_back(ShellInfo{.model_name = obj_mesh_path + "square2.obj",
+                   .emplace_back(WorldData{.model_name = obj_mesh_path + "square2.obj",
                                            .physics_material =
                                                ClothMaterial{
                                                    .thickness = 0.1f,
@@ -35,7 +35,7 @@ void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
 
     auto& down =
         shell_list
-            .emplace_back(ShellInfo{
+            .emplace_back(WorldData{
                 .model_name  = obj_mesh_path + "square2.obj",
                 .translation = luisa::make_float3(0.1, -0.3, 0),
                 .fixed_point_range_info = {MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Left},
@@ -49,21 +49,21 @@ void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().stiffness_DAB_bending = 200.0f;
     lcs::get_scene_params().use_gpu               = false;
 }
-void rigid_body_folding_cube_case(std::vector<ShellInfo>& shell_list)
+void rigid_body_folding_cube_case(std::vector<WorldData>& shell_list)
 {
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
+    shell_list.emplace_back(WorldData{.model_name  = obj_mesh_path + "cube.obj",
                                       .translation = luisa::make_float3(0, 1.0, 0),
                                       .scale       = luisa::make_float3(0.1),
                                       .shell_type  = ShellTypeRigid}
                                 .load_mesh_data());
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
+    shell_list.emplace_back(WorldData{.model_name  = obj_mesh_path + "cube.obj",
                                       .translation = luisa::make_float3(0, 0.7, 0),
                                       //   .translation = luisa::make_float3(0.1, 0.511, 0.2),
                                       //   .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
                                       .scale      = luisa::make_float3(0.2),
                                       .shell_type = ShellTypeRigid}
                                 .load_mesh_data());
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
+    shell_list.emplace_back(WorldData{.model_name  = obj_mesh_path + "cube.obj",
                                       .translation = luisa::make_float3(0, 0.1, 0),
                                       .scale       = luisa::make_float3(0.5),
                                       .shell_type  = ShellTypeRigid}
@@ -73,7 +73,7 @@ void rigid_body_folding_cube_case(std::vector<ShellInfo>& shell_list)
     // lcs::get_scene_params().implicit_dt          = 0.003;
     // lcs::get_scene_params().nonlinear_iter_count = 1;
 }
-void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
+void ccd_rotation_cylinder_7K(std::vector<WorldData>& shell_list)
 {
     auto left_rot_func = FixedPointAnimationInfo{
         .use_rotate   = true,
@@ -89,7 +89,7 @@ void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
     };
 
     shell_list
-        .emplace_back(ShellInfo{
+        .emplace_back(WorldData{
             .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
             .fixed_point_range_info = {MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Left,
                                                                 .fixed_info = left_rot_func},
@@ -105,10 +105,10 @@ void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().use_floor            = false;
     lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
 }
-void pinned_cloth(std::vector<ShellInfo>& shell_list)
+void pinned_cloth(std::vector<WorldData>& shell_list)
 {
     auto& shell = shell_list
-                      .emplace_back(ShellInfo{.model_name             = obj_mesh_path + "square2K.obj",
+                      .emplace_back(WorldData{.model_name             = obj_mesh_path + "square2K.obj",
                                               .translation            = luisa::make_float3(0, 0.2, 0),
                                               .scale                  = luisa::make_float3(0.2f),
                                               .fixed_point_range_info = {MakeFixedPointsInterface{
@@ -123,7 +123,7 @@ void pinned_cloth(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().use_ccd_linesearch   = false;
     lcs::get_scene_params().pcg_iter_count       = 50;
 }
-void load_default_scene(std::vector<ShellInfo>& shell_list)
+void load_default_scene(std::vector<WorldData>& shell_list)
 {
     lcs::get_scene_params().scene_id = 3;
     const uint case_number           = lcs::get_scene_params().scene_id;
@@ -160,7 +160,7 @@ void load_default_scene(std::vector<ShellInfo>& shell_list)
     }
 }
 
-void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::string& json_path)
+void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::string& json_path)
 {
     // Determine which path to open:
     // 1) If user provided an absolute path and it exists, use it.
@@ -355,7 +355,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
         {
             if (!yyjson_is_obj(shell_val))
                 continue;
-            lcs::Initializer::ShellInfo info;
+            lcs::Initializer::WorldData info;
 
             // model_name
             yyjson_val* m = yyjson_obj_get(shell_val, "model_name");

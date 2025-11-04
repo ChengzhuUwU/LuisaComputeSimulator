@@ -35,7 +35,7 @@ namespace Initializer
         {
         }
     };
-    void ShellInfo::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
+    void WorldData::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
                                                     const FixedPointAnimationInfo&   fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -57,7 +57,7 @@ namespace Initializer
             }
         }
     }
-    void ShellInfo::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
+    void WorldData::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
                                                         const FixedPointAnimationInfo& fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -95,7 +95,7 @@ namespace Initializer
             }
         }
     }
-    void ShellInfo::set_pinned_verts_from_indices(const std::vector<uint>&       indices,
+    void WorldData::set_pinned_verts_from_indices(const std::vector<uint>&       indices,
                                                   const FixedPointAnimationInfo& fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -114,7 +114,7 @@ namespace Initializer
             fixed_point_animations.push_back(fixed_info);
         }
     }
-    ShellInfo& ShellInfo::load_fixed_points()
+    WorldData& WorldData::load_fixed_points()
     {
         if (input_mesh.model_positions.size() == 0)
         {
@@ -265,7 +265,7 @@ namespace Initializer
         // return curr_fixed_point_verts;
     }
 
-    std::vector<float3> ShellInfo::get_fixed_point_target_positions(const float time)
+    std::vector<float3> WorldData::get_fixed_point_target_positions(const float time)
     {
         CpuParallel::parallel_for(
             0,
@@ -292,12 +292,12 @@ namespace Initializer
             });
         return fixed_point_target_positions;
     }
-    void ShellInfo::update_pinned_verts(const std::vector<float3>& new_positions)
+    void WorldData::update_pinned_verts(const std::vector<float3>& new_positions)
     {
         CpuParallel::parallel_copy(new_positions, fixed_point_target_positions);
     }
     // template <typename T>
-    void ShellInfo::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
+    void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
     {
         rest_positions.resize(input_mesh.model_positions.size());
         auto transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
@@ -319,13 +319,13 @@ namespace Initializer
     }
 
     // template<template<typename> typename BasicBuffer>
-    void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos, lcs::MeshData<std::vector>* mesh_data)
+    void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
     {
-        std::sort(shell_infos.begin(),
-                  shell_infos.end(),
-                  [](const Initializer::ShellInfo& left, const Initializer::ShellInfo& right)
+        std::sort(world_data.begin(),
+                  world_data.end(),
+                  [](const Initializer::WorldData& left, const Initializer::WorldData& right)
                   { return int(left.shell_type) < int(right.shell_type); });
-        const uint num_meshes = shell_infos.size();
+        const uint num_meshes = world_data.size();
         // std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
         mesh_data->num_meshes = num_meshes;
@@ -351,7 +351,7 @@ namespace Initializer
         // Pre-process materials
         for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            auto& shell_info = shell_infos[meshIdx];
+            auto& shell_info = world_data[meshIdx];
             auto& input_mesh = shell_info.input_mesh;
             if (input_mesh.model_positions.empty())
             {
@@ -405,7 +405,7 @@ namespace Initializer
         // Constant scalar and init MeshData
         for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            auto& shell_info = shell_infos[meshIdx];
+            auto& shell_info = world_data[meshIdx];
             auto& input_mesh = shell_info.input_mesh;
 
             mesh_data->prefix_num_verts[meshIdx]          = mesh_data->num_verts;
@@ -474,7 +474,7 @@ namespace Initializer
 
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
-                auto&       curr_shell_info = shell_infos[meshIdx];
+                auto&       curr_shell_info = world_data[meshIdx];
                 const auto& curr_input_mesh = curr_shell_info.input_mesh;
 
                 // Model info
@@ -772,8 +772,7 @@ namespace Initializer
                                           mesh_data->sa_rest_face_area[fid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
-                                          mesh_data->sa_face_thickness[fid] =
-                                              shell_infos[mesh_idx].get_thickness();
+                                          mesh_data->sa_face_thickness[fid] = world_data[mesh_idx].get_thickness();
                                       });
             CpuParallel::parallel_for(0,
                                       num_tets,
@@ -798,7 +797,7 @@ namespace Initializer
                                           mesh_data->sa_rest_vert_area[vid] = area;
 
                                           const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
-                                          const auto& shell_info = shell_infos[mesh_idx];
+                                          const auto& shell_info = world_data[mesh_idx];
                                           mesh_data->sa_vert_thickness[vid] = shell_info.get_thickness();
 
                                           const auto& adj_tets = mesh_data->vert_adj_tets[vid];
@@ -832,8 +831,7 @@ namespace Initializer
                                           mesh_data->sa_rest_edge_area[eid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
-                                          mesh_data->sa_edge_thickness[eid] =
-                                              shell_infos[mesh_idx].get_thickness();
+                                          mesh_data->sa_edge_thickness[eid] = world_data[mesh_idx].get_thickness();
                                       });
 
             // float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
@@ -853,7 +851,7 @@ namespace Initializer
             mesh_data->sa_rest_body_area.resize(num_meshes, 0.0f);
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
-                const auto& shell_info = shell_infos[meshIdx];
+                const auto& shell_info = world_data[meshIdx];
 
                 float sum_volume = 0.0f;
                 if (shell_info.get_is_shell())  // Shell volume = area * thickness
