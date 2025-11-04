@@ -28,6 +28,6 @@ ext/*
 !ext/CMakeLists.txt
 !ext/polyscope_pch.h
 !ext/glad_ogl33
-!ext/yyjson
+!ext/embed_yyjson
 !.vscode/settings.json.for_xmake
 .obsidian
