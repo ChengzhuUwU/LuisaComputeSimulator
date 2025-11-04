@@ -47,6 +47,10 @@ target_link_libraries(app-simulation PRIVATE
     luisa-compute-solver-lib
     luisa-compute-solver-ext-yyjson
     )
+if (UNIX AND NOT APPLE)
+    target_link_libraries(app-simulation PRIVATE atomic)
+endif()
+
 if (LCS_ENABLE_GUI)
     target_link_libraries(app-simulation PRIVATE polyscope)
     target_compile_definitions(app-simulation PRIVATE SIMULATION_APP_USE_GUI=1)
