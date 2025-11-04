@@ -3316,11 +3316,11 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
     if (get_scene_params().use_self_collision)
         device_broadphase_dcd(stream);
 
-    bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
-    if (!succ)
+    bool succ_broad = narrow_phase_detector->download_broadphase_collision_count(stream);
+    if (!succ_broad)
     {
         LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
-        narrow_phase_detector->resize_buffers(device, stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
         narrow_phase_detector->reset_broadphase_count(stream);
         device_broadphase_dcd(stream);
     }
@@ -3328,7 +3328,14 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
     if (get_scene_params().use_self_collision)
         device_narrowphase_dcd(stream);
 
-    narrow_phase_detector->download_narrowphase_collision_count(stream);
+    bool succ_narrow = narrow_phase_detector->download_narrowphase_collision_count(stream);
+    if (!succ_narrow)
+    {
+        LUISA_INFO("Narrowphase collision count out of range, reallocate buffers and retry.");
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize narrowphase buffers
+        narrow_phase_detector->reset_narrowphase_count(stream);
+        device_narrowphase_dcd(stream);
+    }
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
@@ -3338,7 +3345,7 @@ void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa:
     if (!succ)
     {
         LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
-        narrow_phase_detector->resize_buffers(device, stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
         device_broadphase_ccd(stream);
     }
 
@@ -3870,11 +3877,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_update_contact_list(device, stream);
-        // narrow_phase_detector->download_narrowphase_list(stream);
-        // narrow_phase_detector->download_pervert_adjacent_list(stream);
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize triplet buffers
     };
     auto evaluate_contact = [&]()
     {
@@ -4008,7 +4014,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             stream << sim_data->sa_cgX.copy_from(host_sim_data->sa_cgX.data());
             line_search(device, stream, dirichlet_converged, global_converged);
 
-            narrow_phase_detector->resize_buffers(device, stream);
+            narrow_phase_detector->resize_buffers(device, stream);  // Pre-allocatation
 
             // CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);  // x_prev = x
             // CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
@@ -4068,6 +4074,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize triplet buffer
     };
     auto evaluate_contact = [&]()
     {
@@ -4247,7 +4254,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
             ADD_HOST_TIME_STAMP("End");
 
-            narrow_phase_detector->resize_buffers(device, stream);
+            narrow_phase_detector->resize_buffers(device, stream);  // Pre-allocatation
         }
 
         if (host_sim_data->num_verts_soft != 0)

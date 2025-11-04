@@ -65,7 +65,29 @@ class NarrowPhasesDetector
     void  download_narrowphase_list(Stream& stream);
     void  download_contact_triplet(Stream& stream);
     void  upload_spd_narrowphase_list(Stream& stream);
-    void  resize_buffers(Device& decice, Stream& stream);
+
+    template <typename T>
+    void resize_template(luisa::compute::Device&    device,
+                         luisa::compute::Buffer<T>& buffer,
+                         const uint                 curr_count,
+                         const std::string          name)
+    {
+        if (curr_count > buffer.size() / 2)
+        {
+            const uint desired_size = max_scalar(curr_count, buffer.size()) * 2;
+
+            LUISA_INFO("Resize buffer {} : from {} (< 2*CurrMax = {}) to {} ({} MB) , Total collision buffer size = {} MB",
+                       name,
+                       buffer.size(),
+                       curr_count * 2,
+                       desired_size,
+                       uint(desired_size * sizeof(T) / 1024 / 1024) * sizeof(T),
+                       collision_data->get_momery_bytes() / (1024 * 1024));
+            buffer.release();
+            buffer = device.create_buffer<T>(desired_size);
+        }
+    }
+    void resize_buffers(Device& decice, Stream& stream);
 
   public:
     // CCD
@@ -223,7 +245,8 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
-                           float>
+                           float,
+                           uint>
         fn_narrow_phase_vf_dcd_query;
 
     luisa::compute::Shader<1,
@@ -240,7 +263,8 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
-                           float>
+                           float,
+                           uint>
         fn_narrow_phase_ee_dcd_query;
 
     luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float> fn_compute_repulsion_energy;

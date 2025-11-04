@@ -58,17 +58,6 @@ void NarrowPhasesDetector::compile(AsyncCompiler& compiler)
     compile_SpMV(compiler);
 }
 
-template <typename T>
-void resize_template(luisa::compute::Device& device, luisa::compute::Buffer<T>& buffer, const uint curr_count, const std::string name)
-{
-    if (curr_count > buffer.size() / 2)
-    {
-        const uint desired_size = max_scalar(curr_count, buffer.size()) * 2;
-        LUISA_INFO("Resize buffer {} : from {} to {} (CurrMax = {})", name, buffer.size(), desired_size, curr_count);
-        buffer = device.create_buffer<T>(desired_size);
-    }
-};
-
 void NarrowPhasesDetector::resize_buffers(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     // Resize broadphase count buffers
@@ -669,7 +658,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                               BufferVar<uint>   sa_vert_affine_bodies_id_right,
                               BufferVar<float>  sa_per_vert_d_hat,
                               BufferVar<float>  sa_per_vert_offset,
-                              Float             kappa)
+                              Float             kappa,
+                              Uint              max_count)
         {
             auto& broadphase_list   = collision_data->broad_phase_list_vf;
             auto& narrowphase_count = collision_data->narrow_phase_collision_count;
@@ -783,21 +773,24 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                         {
                             Uint idx = narrowphase_count->atomic(0).fetch_add(1u);
-                            Var<CollisionPair::CollisionPairTemplate> vf_pair;
-                            vf_pair->make_vf_pair(
-                                make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area * kappa, bary);
-                            narrowphase_list->write(idx, vf_pair);
-                            // device_log("Make VF Pair {} : {}, indices = {}", idx, vf_pair, vf_pair->get_indices());
-                            if constexpr (print_dcd_detail)
-                                device_log("Make VF pair {}: indices = {}, dist = {}, normal = {}, k1 = {}, k2 = {}, d_hat = {}, thickness = {}",
-                                           idx,
-                                           vf_pair->get_indices(),
-                                           d,
-                                           normal,
-                                           k1,
-                                           k2,
-                                           d_hat,
-                                           thickness);
+                            $if(idx < max_count)
+                            {
+                                Var<CollisionPair::CollisionPairTemplate> vf_pair;
+                                vf_pair->make_vf_pair(
+                                    make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area * kappa, bary);
+                                narrowphase_list->write(idx, vf_pair);
+                                // device_log("Make VF Pair {} : {}, indices = {}", idx, vf_pair, vf_pair->get_indices());
+                                if constexpr (print_dcd_detail)
+                                    device_log("Make VF pair {}: indices = {}, dist = {}, normal = {}, k1 = {}, k2 = {}, d_hat = {}, thickness = {}",
+                                               idx,
+                                               vf_pair->get_indices(),
+                                               d,
+                                               normal,
+                                               k1,
+                                               k2,
+                                               d_hat,
+                                               thickness);
+                            };
                         }
                     };
                 };
@@ -820,7 +813,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                               BufferVar<uint>   sa_vert_affine_bodies_id_right,
                               BufferVar<float>  sa_per_vert_d_hat,
                               BufferVar<float>  sa_per_vert_offset,
-                              Float             kappa)
+                              Float             kappa,
+                              Uint              max_count)
         {
             auto& broadphase_list   = collision_data->broad_phase_list_ee;
             auto& narrowphase_count = collision_data->narrow_phase_collision_count;
@@ -928,27 +922,31 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                         };
                         {
                             Uint idx = narrowphase_count->atomic(0).fetch_add(1u);
-                            Var<CollisionPair::CollisionPairTemplate> ee_pair;
-                            ee_pair->make_ee_pair(make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]),
-                                                  normal,
-                                                  k1,
-                                                  k2,
-                                                  avg_area * kappa,
-                                                  bary.xy(),
-                                                  bary.zw());
-                            narrowphase_list->write(idx, ee_pair);
+                            $if(idx < max_count)
+                            {
+                                Var<CollisionPair::CollisionPairTemplate> ee_pair;
+                                ee_pair->make_ee_pair(
+                                    make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]),
+                                    normal,
+                                    k1,
+                                    k2,
+                                    avg_area * kappa,
+                                    bary.xy(),
+                                    bary.zw());
+                                narrowphase_list->write(idx, ee_pair);
 
-                            if constexpr (print_dcd_detail)
-                                device_log("Make EE pair {}: indices = {}, dist = {}, normal = {}, k1 = {}, k2 = {}, d_hat = {}, thickness = {}",
-                                           idx,
-                                           ee_pair->get_indices(),
-                                           d,
-                                           normal,
-                                           k1,
-                                           k2,
-                                           d_hat,
-                                           thickness);
-                            // device_log("Make EE Pair {} : {}, indices = {}", idx, ee_pair, ee_pair->get_indices());
+                                if constexpr (print_dcd_detail)
+                                    device_log("Make EE pair {}: indices = {}, dist = {}, normal = {}, k1 = {}, k2 = {}, d_hat = {}, thickness = {}",
+                                               idx,
+                                               ee_pair->get_indices(),
+                                               d,
+                                               normal,
+                                               k1,
+                                               k2,
+                                               d_hat,
+                                               thickness);
+                                // device_log("Make EE Pair {} : {}, indices = {}", idx, ee_pair, ee_pair->get_indices());
+                            };
                         }
                     };
                 };
@@ -975,6 +973,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream&               stream,
 {
     auto&      host_count        = host_collision_data->broad_phase_collision_count;
     const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
+    const uint max_pairs         = collision_data->narrow_phase_list.size();
+
     if (num_vf_broadphase != 0)
     {
         stream << fn_narrow_phase_vf_dcd_query(get_collision_data(),
@@ -989,7 +989,8 @@ void NarrowPhasesDetector::vf_dcd_query_repulsion(Stream&               stream,
                                                sa_vert_affine_bodies_id_right,
                                                d_hat,
                                                thickness,
-                                               kappa)
+                                               kappa,
+                                               max_pairs)
                       .dispatch(num_vf_broadphase);
     }
 }
@@ -1010,6 +1011,7 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 {
     auto&      host_count        = host_collision_data->broad_phase_collision_count;
     const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
+    const uint max_pairs         = collision_data->narrow_phase_list.size();
 
     if (num_ee_broadphase != 0)
     {
@@ -1026,7 +1028,8 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
                                                sa_vert_affine_bodies_id_right,
                                                d_hat,
                                                thickness,
-                                               kappa)
+                                               kappa,
+                                               max_pairs)
                       .dispatch(num_ee_broadphase);
     }
 }
@@ -2576,7 +2579,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     }
 
     // EE CCD Test
-    // if constexpr (false)
+    if constexpr (false)
     {
         // float desire_toi = 0.91535777;
         // LUISA_INFO("EE Test, desire for toi {}", desire_toi);
@@ -2694,7 +2697,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     }
 
     // Barrier energy
-    // if constexpr (false)
+    if constexpr (false)
     {
         float dBdD;
         float ddBddD;
