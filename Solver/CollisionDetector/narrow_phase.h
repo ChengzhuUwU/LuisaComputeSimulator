@@ -171,6 +171,7 @@ class NarrowPhasesDetector
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
 
+    void prescan_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);

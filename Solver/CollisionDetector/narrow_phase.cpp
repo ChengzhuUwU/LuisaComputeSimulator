@@ -1148,7 +1148,7 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
             };
         });
 }
-void NarrowPhasesDetector::construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd)
+void NarrowPhasesDetector::prescan_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd)
 {
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint  num_pairs  = host_count[0];
@@ -1159,15 +1159,24 @@ void NarrowPhasesDetector::construct_pervert_adj_list(Stream& stream, Buffer<uin
             << fn_calc_pervert_collion_count(get_collision_data(), sa_vert_affine_bodies_id, prefix_abd).dispatch(num_pairs);
         stream << fn_calc_pervert_prefix_adj_pairs(get_collision_data())
                       .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
-        stream << fn_reset_uint(collision_data->per_vert_num_adj_pairs)
-                      .dispatch(collision_data->per_vert_num_adj_pairs.size());
-        stream << fn_fill_in_pairs_in_vert_adjacent(get_collision_data(), sa_vert_affine_bodies_id, prefix_abd)
-                      .dispatch(num_pairs);
     }
     else
     {
         stream << fn_calc_pervert_prefix_adj_pairs(get_collision_data())
                       .dispatch(host_collision_data->per_vert_num_adj_pairs.size());
+    }
+}
+void NarrowPhasesDetector::construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd)
+{
+    const auto& host_count = host_collision_data->narrow_phase_collision_count;
+    const uint  num_pairs  = host_count[0];
+
+    if (num_pairs != 0)
+    {
+        stream << fn_reset_uint(collision_data->per_vert_num_adj_pairs)
+                      .dispatch(collision_data->per_vert_num_adj_pairs.size());
+        stream << fn_fill_in_pairs_in_vert_adjacent(get_collision_data(), sa_vert_affine_bodies_id, prefix_abd)
+                      .dispatch(num_pairs);
     }
 }
 
@@ -1527,7 +1536,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
     auto&      host_count = host_collision_data->narrow_phase_collision_count;
     const uint num_pairs  = host_count.front();
 
-    download_narrowphase_collision_count(stream);
+    // download_narrowphase_collision_count(stream);
 
     // const uint num_triplet = num_pairs * 12;
     const uint num_triplet = host_count[CollisionPair::CollisionCount::total_adj_pairs_offset()];
@@ -1543,11 +1552,17 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         // stream << fn_reset_triplet(collision_data->sa_cgA_contact_offdiag_triplet.view(0, alinged_num_triplet))
         //               .dispatch(alinged_num_triplet);
 
+        LUISA_INFO("Befor sort assembled from num_triplet {} (triplet size = {})",
+                   host_count[CollisionPair::CollisionCount::total_adj_pairs_offset()],
+                   collision_data->sa_cgA_contact_offdiag_triplet_indices.size());
+
         stream << fn_block_level_sort_contact_triplet(get_collision_data(),
                                                       collision_data->sa_cgA_contact_offdiag_triplet_indices,
                                                       collision_data->sa_cgA_contact_offdiag_triplet_property,
                                                       num_triplet)
                       .dispatch(alinged_num_triplet);
+        stream << luisa::compute::synchronize();
+        
         stream << fn_calc_pervert_prefix_adj_verts(get_collision_data())
                       .dispatch(host_collision_data->per_vert_num_adj_verts.size());
 
@@ -1572,8 +1587,8 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
             stream << fn_reset_uint(collision_data->narrow_phase_collision_count.view(offset, 1)).dispatch(1);
             stream << fn_calc_pervert_prefix_adj_verts(get_collision_data()).dispatch(num_dof);
 
-            stream << fn_specify_target_slot_2_level(get_collision_data()).dispatch(num_triplet);
             download_narrowphase_collision_count(stream);
+
             // LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
             //            num_pairs * 12,
             //            num_triplet_assembled,
@@ -1600,6 +1615,7 @@ void NarrowPhasesDetector::device_assemble_contact_triplet(luisa::compute::Strea
 
         // If use two-phase sort
         // LUISA_INFO("Reset aligned triplet from {} + {} to {}", num_triplet_assembled, alinged_count, alinged_num_triplet_assembled);
+        stream << fn_specify_target_slot_2_level(get_collision_data()).dispatch(num_triplet);
         stream << fn_reset_triplet(get_collision_data(),
                                    collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
                       .dispatch(alinged_count);  // For alignment

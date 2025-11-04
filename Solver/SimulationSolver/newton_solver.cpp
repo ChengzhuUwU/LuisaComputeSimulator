@@ -3319,10 +3319,10 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
     bool succ_broad = narrow_phase_detector->download_broadphase_collision_count(stream);
     if (!succ_broad)
     {
-        LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
         narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
         narrow_phase_detector->reset_broadphase_count(stream);
         device_broadphase_dcd(stream);
+        narrow_phase_detector->download_broadphase_collision_count(stream);
     }
 
     if (get_scene_params().use_self_collision)
@@ -3331,10 +3331,10 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
     bool succ_narrow = narrow_phase_detector->download_narrowphase_collision_count(stream);
     if (!succ_narrow)
     {
-        LUISA_INFO("Narrowphase collision count out of range, reallocate buffers and retry.");
         narrow_phase_detector->resize_buffers(device, stream);  // Resize narrowphase buffers
         narrow_phase_detector->reset_narrowphase_count(stream);
         device_narrowphase_dcd(stream);
+        narrow_phase_detector->download_narrowphase_collision_count(stream);
     }
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
@@ -3347,6 +3347,7 @@ void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa:
         LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
         narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
         device_broadphase_ccd(stream);
+        narrow_phase_detector->download_broadphase_collision_count(stream);
     }
 
     device_narrowphase_ccd(stream);
@@ -3877,10 +3878,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_update_contact_list(device, stream);
+        narrow_phase_detector->prescan_pervert_adj_list(
+            stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
+        narrow_phase_detector->download_narrowphase_collision_count(stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize adj pairs buffers
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
-        narrow_phase_detector->resize_buffers(device, stream);  // Resize triplet buffers
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize adj verts buffers (Assembled triplet buffers)
     };
     auto evaluate_contact = [&]()
     {
@@ -4071,10 +4076,14 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     auto update_contact_set = [&]()
     {
         device_update_contact_list(device, stream);
+        narrow_phase_detector->prescan_pervert_adj_list(
+            stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
+        narrow_phase_detector->download_narrowphase_collision_count(stream);
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize adj pairs buffers
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->device_sort_contact_triplet(stream);
-        narrow_phase_detector->resize_buffers(device, stream);  // Resize triplet buffer
+        narrow_phase_detector->resize_buffers(device, stream);  // Resize adj verts buffers (Assembled triplet buffers)
     };
     auto evaluate_contact = [&]()
     {
