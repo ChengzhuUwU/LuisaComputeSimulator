@@ -459,9 +459,9 @@ struct CollisionData : SimulationType
                                            const bool              allocate_contact_list,
                                            const bool              allocate_triplet)
     {
-        const uint per_element_count_BP        = 32;
-        const uint per_element_count_NP        = 12;
-        const uint per_element_count_NP_culled = 6;
+        const uint per_element_count_BP        = 4;
+        const uint per_element_count_NP        = 2;
+        const uint per_element_count_NP_culled = 2;
 
         if (allocate_contact_list)
         {

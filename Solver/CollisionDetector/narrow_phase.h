@@ -81,7 +81,7 @@ class NarrowPhasesDetector
                        buffer.size(),
                        curr_count * 2,
                        desired_size,
-                       uint(desired_size * sizeof(T) / 1024 / 1024) * sizeof(T),
+                       uint(desired_size * sizeof(T) / 1024 / 1024),
                        collision_data->get_momery_bytes() / (1024 * 1024));
             buffer.release();
             buffer = device.create_buffer<T>(desired_size);

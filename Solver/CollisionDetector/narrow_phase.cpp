@@ -1552,17 +1552,13 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         // stream << fn_reset_triplet(collision_data->sa_cgA_contact_offdiag_triplet.view(0, alinged_num_triplet))
         //               .dispatch(alinged_num_triplet);
 
-        LUISA_INFO("Befor sort assembled from num_triplet {} (triplet size = {})",
-                   host_count[CollisionPair::CollisionCount::total_adj_pairs_offset()],
-                   collision_data->sa_cgA_contact_offdiag_triplet_indices.size());
-
         stream << fn_block_level_sort_contact_triplet(get_collision_data(),
                                                       collision_data->sa_cgA_contact_offdiag_triplet_indices,
                                                       collision_data->sa_cgA_contact_offdiag_triplet_property,
                                                       num_triplet)
                       .dispatch(alinged_num_triplet);
         stream << luisa::compute::synchronize();
-        
+
         stream << fn_calc_pervert_prefix_adj_verts(get_collision_data())
                       .dispatch(host_collision_data->per_vert_num_adj_verts.size());
 
