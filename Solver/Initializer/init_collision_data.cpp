@@ -19,7 +19,7 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
         {
             const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
             const auto& shell_info = world_data[mesh_idx];
-            if (shell_info.shell_type == ShellTypeTetrahedral)
+            if (shell_info.simulation_type == SimulationTypeTetrahedral)
             {
                 const auto& adj_faces = mesh_data->vert_adj_faces[vid];
                 if (!adj_faces.empty())

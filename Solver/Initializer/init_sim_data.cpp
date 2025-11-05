@@ -292,7 +292,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
     std::vector<uint> soft_vert_indices =
         fn_get_active_indices([&](const uint vid)
-                              { return mesh_data->sa_vert_mesh_type[vid] == ShellTypeRigid ? 0 : 1; },
+                              { return mesh_data->sa_vert_mesh_type[vid] == SimulationTypeRigid ? 0 : 1; },
                               mesh_data->num_verts);
     const uint num_verts_soft = static_cast<uint>(soft_vert_indices.size());
 

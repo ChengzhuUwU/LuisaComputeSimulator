@@ -121,6 +121,10 @@ namespace Initializer
             load_mesh_data();
         }
 
+        auto from_norm_position = [&](const std::function<bool(const float3&)>& func,
+                                      const FixedPointAnimationInfo& info = FixedPointAnimationInfo())
+        { set_pinned_verts_from_norm_position(func, info); };
+
         for (const auto& fixed_point_func : fixed_point_range_info)
         {
             const auto& range = fixed_point_func.range;
@@ -317,6 +321,19 @@ namespace Initializer
                                       rest_positions[vid] = output;
                                   });
     }
+    WorldData& WorldData::load_mesh_data()
+    {
+        if (input_mesh.model_positions.empty())
+        {
+            bool second_read = SimMesh::read_mesh_file(model_name, input_mesh);
+        }
+        return *this;
+    }
+    WorldData& WorldData::load_mesh_from_path(const std::string& path)
+    {
+        bool succ = SimMesh::read_mesh_file(path, input_mesh);
+        return *this;
+    }
 
     // template<template<typename> typename BasicBuffer>
     void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
@@ -324,7 +341,7 @@ namespace Initializer
         std::sort(world_data.begin(),
                   world_data.end(),
                   [](const Initializer::WorldData& left, const Initializer::WorldData& right)
-                  { return int(left.shell_type) < int(right.shell_type); });
+                  { return int(left.simulation_type) < int(right.simulation_type); });
         const uint num_meshes = world_data.size();
         // std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
@@ -358,7 +375,7 @@ namespace Initializer
                 shell_info.load_mesh_data();
             }
 
-            if (shell_info.shell_type == ShellTypeCloth)
+            if (shell_info.simulation_type == SimulationTypeCloth)
             {
                 if (!shell_info.holds<ClothMaterial>())
                 {
@@ -367,7 +384,7 @@ namespace Initializer
                 auto& mat    = shell_info.get_material<ClothMaterial>();
                 mat.is_shell = true;  // Cloth material must be shell
             }
-            else if (shell_info.shell_type == ShellTypeTetrahedral)
+            else if (shell_info.simulation_type == SimulationTypeTetrahedral)
             {
                 if (!shell_info.holds<TetMaterial>())
                 {
@@ -376,7 +393,7 @@ namespace Initializer
                 auto& mat    = shell_info.get_material<TetMaterial>();
                 mat.is_shell = false;
             }
-            else if (shell_info.shell_type == ShellTypeRigid)
+            else if (shell_info.simulation_type == SimulationTypeRigid)
             {
                 if (!shell_info.holds<RigidMaterial>())
                 {
@@ -391,7 +408,7 @@ namespace Initializer
                     mat.thickness = 0.0f;
                 }
             }
-            else if (shell_info.shell_type == ShellTypeRod)
+            else if (shell_info.simulation_type == SimulationTypeRod)
             {
                 if (!shell_info.holds<RodMaterial>())
                 {
@@ -506,7 +523,7 @@ namespace Initializer
                         mesh_data->sa_rest_x[prefix_num_verts + vid]       = world_position;
                         mesh_data->sa_rest_v[prefix_num_verts + vid]       = luisa::make_float3(0.0f);
                         mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
-                        mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.shell_type);
+                        mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.simulation_type);
                     });
                 // Read triangle face
                 CpuParallel::parallel_for(0,
@@ -870,7 +887,7 @@ namespace Initializer
                 {
                     if (shell_info.input_mesh.tetrahedrons.empty())
                     {
-                        if (shell_info.shell_type == ShellTypeTetrahedral)
+                        if (shell_info.simulation_type == SimulationTypeTetrahedral)
                         {
                             LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
                         }

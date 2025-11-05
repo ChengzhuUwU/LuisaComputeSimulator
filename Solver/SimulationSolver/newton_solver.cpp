@@ -3621,7 +3621,7 @@ void NewtonSolver::host_apply_dx(const float alpha)
         host_mesh_data->num_verts,
         [&](const uint vid)
         {
-            const bool is_rigid_body = host_mesh_data->sa_vert_mesh_type[vid] == Initializer::ShellTypeRigid;
+            const bool is_rigid_body = host_mesh_data->sa_vert_mesh_type[vid] == Initializer::SimulationTypeRigid;
             if (is_rigid_body)
             {
                 const uint body_idx = host_sim_data->sa_vert_affine_bodies_id[vid];
