@@ -339,24 +339,48 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             {
                 if (index < host_mesh_data->num_verts)
                     sa_x_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded position vertices exceeds the number of verts in the mesh data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Velocity)
             {
                 if (index < host_mesh_data->num_verts)
                     sa_v_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded velocity vertices exceeds the number of verts in the mesh data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Q)
             {
                 if (index < host_sim_data->num_affine_bodies * 4)
                     sa_q_frame_saved[index] = {x, y, z};
+                else 
+                {
+                    LUISA_INFO("Count of loaded q vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Qv)
             {
                 if (index < host_sim_data->num_affine_bodies * 4)
                     sa_qv_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded qv vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
         }

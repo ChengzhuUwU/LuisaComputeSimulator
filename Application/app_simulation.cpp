@@ -167,24 +167,58 @@ int main(int argc, char** argv)
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
-        solver.lcs::SolverInterface::load_saved_state_from_host(2201, "");
-        lcs::get_scene_params().current_frame = 2201;
+        solver.lcs::SolverInterface::load_saved_state_from_host(2399, "");
+        lcs::get_scene_params().current_frame = 2399 + 1;
         fn_update_rendering_vertices();
         
+        constexpr bool use_merge_writing = true;
+        std::map<uint, std::vector<std::vector<std::array<float, 3>>>> per_frame_rendering_vertices;
+        auto fn_save_frame_to_obj_merge = [&](
+            const std::pair<uint, std::vector<std::vector<std::array<float, 3>>>>& curr_frame_result, 
+            const std::string& additional_info = "")
+        {
+            SimMesh::saveToOBJ_combined(curr_frame_result.second,
+                                        sa_rendering_faces,
+                                        luisa::format("0{}", lcs::get_scene_params().scene_id),
+                                        additional_info,
+                                        curr_frame_result.first);
+        };
+
         auto fn_single_step_without_ui = [&]()
         {
             fn_physics_step();
         };
 
-        // solver.lcs::SolverInterface::restart_system();
+        const uint frame_start = lcs::get_scene_params().current_frame;
+        const uint frame_end = frame_start + 4000;
 
         fn_save_frame_to_obj("_init");
-        for (uint frame = 0; frame < 60; frame++)
+        for (uint frame = frame_start; frame < frame_end; frame++)
         {
             fn_single_step_without_ui();
 
             fn_update_rendering_vertices();
-            fn_save_frame_to_obj();
+
+            const uint curr_frame = lcs::get_scene_params().current_frame - 1;
+            if (use_merge_writing)
+            {
+                per_frame_rendering_vertices[curr_frame] = sa_rendering_vertices;
+                if (curr_frame % 100 == 99 || frame == frame_end - 1)
+                {
+                    CpuParallel::parallel_for_each_core(0, per_frame_rendering_vertices.size(), [&](uint idx)
+                    {
+                        auto iter = per_frame_rendering_vertices.begin();
+                        std::advance(iter, idx);
+                        fn_save_frame_to_obj_merge(*iter);
+                    });
+                    per_frame_rendering_vertices.clear();
+                    solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
+                }
+            }
+            else
+            {
+                fn_save_frame_to_obj();
+            }
         }
         // SimMesh::saveToOBJ_combined(
         //     sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);

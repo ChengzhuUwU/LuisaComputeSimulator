@@ -366,9 +366,6 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
                 const Float3x3 mat   = read_triplet_matrix(triplet);
                 const Float3   input = sa_input_vec.read(adj_vid);
                 contrib              = mat * input;
-                // sa_output_vec.atomic(vid).x.fetch_add(contrib.x);
-                // sa_output_vec.atomic(vid).y.fetch_add(contrib.y);
-                // sa_output_vec.atomic(vid).z.fetch_add(contrib.z);
             };
 
             luisa::compute::set_block_size(256u);
@@ -3407,14 +3404,14 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
     //               .dispatch(aligned_diaptch_count);
 
-    const auto& host_count      = host_collision_data->narrow_phase_collision_count;
-    const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-    const uint  aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
-    stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
-                  .dispatch(aligned_diaptch_count);
+    // const auto& host_count      = host_collision_data->narrow_phase_collision_count;
+    // const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    // const uint  aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
+    // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+    //               .dispatch(aligned_diaptch_count);
 
     // narrow_phase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
-    // narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
+    narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
@@ -3762,6 +3759,13 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
         {
             LUISA_ERROR("Invalid Toi {}", ccd_toi);
         }
+        LUISA_INFO("  In newton iter {:2}: CCD line search result, toi = {:6.5f}, Braod VF/EE = {} / {}, numPairs = {}, numTriplet = {}",
+                   iter,
+                   ccd_toi,
+                   host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
+                   host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
+                   host_collision_data->narrow_phase_collision_count.front(), 
+                   host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
     }
 
     // Non-linear iteration break condition
@@ -3881,6 +3885,17 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->prescan_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->download_narrowphase_collision_count(stream);
+        if (sim_data->num_affine_bodies == 0)
+        {
+            const uint num_pairs = host_collision_data->narrow_phase_collision_count.front();
+            const uint num_adj_pairs = host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_pairs_offset()];
+            if (num_adj_pairs != num_pairs * 12)
+            {
+                LUISA_INFO("Adj pairs count {} not equal to 12 * pairs count {} when no rigid body involved!",
+                            num_adj_pairs,
+                            num_pairs);
+            }
+        }
         narrow_phase_detector->resize_buffers(device, stream);  // Resize adj pairs buffers
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
