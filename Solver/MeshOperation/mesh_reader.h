@@ -6,6 +6,7 @@
 #include <fstream>
 #include <array>
 #include <algorithm>
+#include <math.h>
 
 #include "MeshOperation/tiny_obj_loader.h"
 #include "Utils/cpu_parallel.h"

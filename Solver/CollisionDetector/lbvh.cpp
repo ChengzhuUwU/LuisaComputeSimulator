@@ -294,7 +294,7 @@ void query_template2(luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
         stack_ptr -= 1;
         Uint  node  = stack[stack_ptr];
         Uint2 child = sa_children->read(node);
-        Uint  safe  = 1;
+
         for (uint ii = 0; ii < 2; ii++)
         {
             const Uint curr_select = child[ii];
@@ -308,7 +308,6 @@ void query_template2(luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
                     {
                         Uint idx = broadphase_count->atomic(0).fetch_add(1u);
 
-                        safe          = Uint(idx < max_count);
                         Uint safe_idx = min(max_count, idx);
 
                         broad_phase_list->write(safe_idx * 2 + 0, vid);
@@ -332,7 +331,7 @@ void query_template2(luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
         }
 
         loop += 1;
-        $if(safe == 0 | loop > 10000)
+        $if(loop > 10000)
         {
             $break;
         };

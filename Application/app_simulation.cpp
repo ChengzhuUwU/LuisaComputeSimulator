@@ -167,17 +167,19 @@ int main(int argc, char** argv)
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
+        solver.lcs::SolverInterface::load_saved_state_from_host(2201, "");
+        lcs::get_scene_params().current_frame = 2201;
+        fn_update_rendering_vertices();
+        
         auto fn_single_step_without_ui = [&]()
         {
-            LUISA_INFO("     Newton solver frame {}", lcs::get_scene_params().current_frame);
-
             fn_physics_step();
         };
 
         // solver.lcs::SolverInterface::restart_system();
 
         fn_save_frame_to_obj("_init");
-        for (uint frame = 0; frame < 20; frame++)
+        for (uint frame = 0; frame < 60; frame++)
         {
             fn_single_step_without_ui();
 
