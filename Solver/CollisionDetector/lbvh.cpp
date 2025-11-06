@@ -331,8 +331,9 @@ void query_template2(luisa::compute::BufferVar<CompressedAABB>& sa_node_aabb,
         }
 
         loop += 1;
-        $if(loop > 10000)
+        $if(loop > 100000)
         {
+            luisa::compute::device_assert(false, "LBVH query exceed max iteration");
             $break;
         };
     };
@@ -757,9 +758,10 @@ void LBVH::compile(AsyncCompiler& compiler)
                 $while(parrent != -1)
                 {
                     loop += 1;
-                    $if(loop > 10000)
+                    $if(loop > 100000)
                     {
                         sa_is_healthy->write(0, 0u);
+                        luisa::compute::device_assert(false, "LBVH refit exceed max iteration");
                         $break;
                     };
                     auto orig_flag = sa_node_aabb->atomic(parrent)[0][3].compare_exchange(0.0f, 1.0f);
@@ -930,10 +932,17 @@ void LBVH::compile(AsyncCompiler& compiler)
                            BufferVar<float3>         sa_x_end,
                            BufferVar<uint>           broadphase_count,
                            BufferVar<uint>           broad_phase_list,
+                           BufferVar<uint>           sa_is_healthy,
                            BufferVar<float>          d_hat,
                            BufferVar<float>          thickness,
                            Uint                      max_count)
                         {
+                            $if(sa_is_healthy->read(0) == 0u)
+                            {
+                                device_assert(false, "LBVH is unhealthy during query");
+                                $return();
+                            };
+
                             const Uint vid = dispatch_id().x;
                             // Float3 pos = sa_x_begin->read(vid);
                             // Float2x3 vert_aabb = AABB::make_aabb(pos - make_float3(thickness), pos + make_float3(thickness));
@@ -958,10 +967,17 @@ void LBVH::compile(AsyncCompiler& compiler)
                            BufferVar<uint2>          sa_edges,
                            BufferVar<uint>           broadphase_count,
                            BufferVar<uint>           broad_phase_list,
+                            BufferVar<uint>           sa_is_healthy,
                            BufferVar<float>          d_hat,
                            BufferVar<float>          thickness,
                            Uint                      max_count)
                         {
+                            $if(sa_is_healthy->read(0) == 0u)
+                            {
+                                device_assert(false, "LBVH is unhealthy during query");
+                                $return();
+                            };
+
                             const Uint  eid       = dispatch_id().x;
                             const Uint2 edge      = sa_edges->read(eid);
                             Float2x3    vert_aabb = AABB::make_aabb(sa_x_begin.read(edge[0]),
@@ -1192,6 +1208,10 @@ void LBVH::update_face_tree_leave_aabb(Stream&               stream,
                   .dispatch(input_faces.size());
 }
 
+void LBVH::check_health(Stream& stream)
+{
+    LUISA_ASSERT(lbvh_data->host_is_healthy.front() == 1, "LBVH is unhealthy");
+}
 
 void LBVH::refit(Stream& stream)
 {
@@ -1343,6 +1363,7 @@ void LBVH::broad_phase_query_from_verts(Stream&                 stream,
                                      sa_x_end,
                                      broadphase_count,
                                      broad_phase_list,
+                                     lbvh_data->sa_is_healthy,
                                      d_hat,
                                      thickness,
                                      broad_phase_list.size() / 2)
@@ -1368,6 +1389,7 @@ void LBVH::broad_phase_query_from_edges(Stream&                 stream,
                                      sa_edges,
                                      broadphase_count,
                                      broad_phase_list,
+                                     lbvh_data->sa_is_healthy,
                                      d_hat,
                                      thickness,
                                      broad_phase_list.size() / 2)

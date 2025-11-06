@@ -202,7 +202,9 @@ int main(int argc, char** argv)
             const uint curr_frame = lcs::get_scene_params().current_frame - 1;
             if (use_merge_writing)
             {
-                per_frame_rendering_vertices[curr_frame] = sa_rendering_vertices;
+                if (curr_frame % 2 == 1)
+                    per_frame_rendering_vertices[curr_frame] = sa_rendering_vertices;
+
                 if (curr_frame % 100 == 99 || frame == frame_end - 1)
                 {
                     CpuParallel::parallel_for_each_core(0, per_frame_rendering_vertices.size(), [&](uint idx)

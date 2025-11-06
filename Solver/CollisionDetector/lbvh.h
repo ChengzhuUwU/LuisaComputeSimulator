@@ -188,6 +188,7 @@ class LBVH
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
     void host_refit(Stream& stream);
+    void check_health(Stream& stream);
 
   public:
     // From global thickness
@@ -319,6 +320,7 @@ class LBVH
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
                            uint>
@@ -330,6 +332,7 @@ class LBVH
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,

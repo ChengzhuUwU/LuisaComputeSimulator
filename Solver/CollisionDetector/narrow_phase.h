@@ -74,9 +74,9 @@ class NarrowPhasesDetector
                          const uint                 curr_count,
                          const std::string          name)
     {
-        if (curr_count > buffer.size() / 2)
+        if (curr_count > buffer.size())
         {
-            const uint desired_size = max_scalar(curr_count, buffer.size()) * 2;
+            const uint desired_size = curr_count * 2;
 
             LUISA_INFO("Resize buffer {} : from {} (< 2*CurrMax = {}) to {} ({} MB) , Total collision buffer size = {} MB",
                        name,
@@ -283,7 +283,7 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, CDBG, Buffer<uint>, uint> fn_fill_in_pairs_in_vert_adjacent;
     luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint, uint> fn_block_level_sort_contact_triplet;
     luisa::compute::Shader<1, CDBG> fn_specify_target_slot;
-    luisa::compute::Shader<1, CDBG, uint, uint> fn_block_level_second_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1, CDBG, uint, uint, uint> fn_block_level_second_sort_contact_triplet_fill_in;
     luisa::compute::Shader<2, CDBG> fn_specify_target_slot_2_level;
     luisa::compute::Shader<2, CDBG, Buffer<float3>, uint> fn_assemble_triplet_sorted;
     luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;

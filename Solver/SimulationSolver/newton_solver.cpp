@@ -3333,6 +3333,9 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
         device_narrowphase_dcd(stream);
         narrow_phase_detector->download_narrowphase_collision_count(stream);
     }
+
+    lbvh_face->check_health(stream);
+    lbvh_edge->check_health(stream);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
@@ -3346,6 +3349,9 @@ void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa:
         device_broadphase_ccd(stream);
         narrow_phase_detector->download_broadphase_collision_count(stream);
     }
+
+    lbvh_face->check_health(stream);
+    lbvh_edge->check_health(stream);
 
     device_narrowphase_ccd(stream);
 }
