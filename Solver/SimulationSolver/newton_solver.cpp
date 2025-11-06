@@ -3755,17 +3755,17 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
         ccd_toi = ccd_get_toi();
         alpha   = ccd_toi;
 
-        if (ccd_toi < 1.0f)
-        {
-            LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}",
-                       get_scene_params().current_nonlinear_iter,
-                       ccd_toi);
-        }
+        // if (ccd_toi < 1.0f)
+        // {
+        //     LUISA_INFO("  In newton iter {:2}: CCD line search applied, toi = {:6.5f}",
+        //                get_scene_params().current_nonlinear_iter,
+        //                ccd_toi);
+        // }
         if (ccd_toi < 0.0f || ccd_toi > 1.0f)
         {
             LUISA_ERROR("Invalid Toi {}", ccd_toi);
         }
-        LUISA_INFO("  In newton iter {:2}: CCD line search result, toi = {:6.5f}, Braod VF/EE = {} / {}, numPairs = {}, numTriplet = {}",
+        LUISA_INFO("  In newton iter {:2}: CCD toi = {:6.5f}, Braod VF/EE = {} / {}, numPairs = {}, assembledTriplet = {}",
                    iter,
                    ccd_toi,
                    host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],

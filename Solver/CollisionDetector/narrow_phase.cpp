@@ -1288,22 +1288,22 @@ void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCom
                         //            active_indices[ii] & mask_get_active_index,
                         //            active_indices[jj] & mask_get_active_index,
                         //            upper_lower_flag);
-                        const Uint max_count = narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
-                        $if(triplet_idx >= max_count)
-                        {
-                            Uint log_idx = narrow_phase_count->atomic(6).fetch_add(1u);
-                            $if(log_idx < 100u)
-                            {
-                                device_log("Fill in near the limit: triplet_idx = {}, max count = {}, (vid, adj_vid) = ({}, {}) ({}, {}, active count = {}), prefix = {}, offset = {}", 
-                                    triplet_idx, max_count, 
-                                    active_indices[ii] & mask_get_active_vid, 
-                                    active_indices[jj] & mask_get_active_vid, 
-                                    indices[ii], 
-                                    indices[jj], 
-                                    left_active_count + right_active_count,
-                                    prefix, offset);
-                            };
-                        };
+                        // const Uint max_count = narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
+                        // $if(triplet_idx >= max_count)
+                        // {
+                        //     Uint log_idx = narrow_phase_count->atomic(6).fetch_add(1u);
+                        //     $if(log_idx < 100u)
+                        //     {
+                        //         device_log("Fill in near the limit: triplet_idx = {}, max count = {}, (vid, adj_vid) = ({}, {}) ({}, {}, active count = {}), prefix = {}, offset = {}", 
+                        //             triplet_idx, max_count, 
+                        //             active_indices[ii] & mask_get_active_vid, 
+                        //             active_indices[jj] & mask_get_active_vid, 
+                        //             indices[ii], 
+                        //             indices[jj], 
+                        //             left_active_count + right_active_count,
+                        //             prefix, offset);
+                        //     };
+                        // };
                         sa_cgA_contact_offdiag_triplet_indices->write(
                             triplet_idx, make_uint2(active_indices[ii], active_indices[jj]));
                         sa_triplet_info->write(triplet_idx, pair_idx | (upper_lower_flag << 30));
@@ -1339,7 +1339,7 @@ void NarrowPhasesDetector::construct_pervert_adj_list(Stream& stream, Buffer<uin
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint  num_pairs  = host_count[0];
 
-    LUISA_INFO("Construct per-vertex adjacent collision list with {} narrow phase pairs.", num_pairs);
+    // LUISA_INFO("Construct per-vertex adjacent collision list with {} narrow phase pairs.", num_pairs);
     if (num_pairs != 0)
     {
         constexpr uint offset = CollisionPair::CollisionCount::total_adj_pairs_offset();
@@ -1404,16 +1404,16 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
 
                 // device_assert(vid != adj_vid, "Self-loop triplet detected");
 
-                const Uint max_count = narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
-                $if(vid == adj_vid)
-                {
-                    Uint log_idx = narrow_phase_count->atomic(6).fetch_add(1u);
-                    $if(log_idx < 30)
-                    {
-                        device_log("Self-loop triplet detected at index {} : vid = {}, adj_vid = {}, prefix = {}, dispatch_x = {}",
-                                   triplet_idx, vid, adj_vid, pass_prefix, dispatch_x());
-                    };
-                };
+                // const Uint max_count = narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
+                // $if(vid == adj_vid)
+                // {
+                //     Uint log_idx = narrow_phase_count->atomic(6).fetch_add(1u);
+                //     $if(log_idx < 30)
+                //     {
+                //         device_log("Self-loop triplet detected at index {} : vid = {}, adj_vid = {}, prefix = {}, dispatch_x = {}",
+                //                    triplet_idx, vid, adj_vid, pass_prefix, dispatch_x());
+                //     };
+                // };
                 // $if(block_x() == (dispatch_size_x() / 256 - 1) & warpIdx == 0)
                 // {
                 //     device_log("Before sort - Index {} ( = {} + {}) , vid = {}, adj = {} (block_x = {}, dispatch_size_x = {})",
@@ -1807,7 +1807,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
     // host_sort_contact_triplet(stream);
     // return;
 
-    LUISA_INFO("  Device input {} contact triplets", num_triplet);
+    // LUISA_INFO("  Device input {} contact triplets", num_triplet);
 
     if (num_triplet != 0)
     {
@@ -1816,6 +1816,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         //               .dispatch(alinged_num_triplet);
 
         // Check dinput
+        if constexpr (false)
         {
             std::vector<uint2> debug_triplet_indices(num_triplet);
             stream << collision_data->sa_cgA_contact_offdiag_triplet_indices.view(0, num_triplet)
@@ -1841,27 +1842,25 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
             });
         }
 
-
         stream << fn_reset_uint(collision_data->per_vert_num_adj_verts).dispatch(collision_data->per_vert_num_adj_verts.size());
         
-        constexpr uint max_threads = 256 * 65536;
+        constexpr uint max_threads = 256 * 65535;
         for (uint loop = 0; loop < get_dispatch_block(num_triplet, max_threads); loop++)
         {
             const uint pass_prefix = loop * max_threads;
             const uint curr_dispatch = min_scalar(max_threads, get_dispatch_threads(num_triplet - pass_prefix, 256));
-            LUISA_INFO("  First sort num_triplet {}: dispatch {} threads from prefix {}",
-                      num_triplet,
-                      curr_dispatch,
-                      pass_prefix);
+            // LUISA_INFO("  First sort num_triplet {}: dispatch {} threads from prefix {}",
+            //           num_triplet,
+            //           curr_dispatch,
+            //           pass_prefix);
             stream << fn_block_level_sort_contact_triplet(get_collision_data(),
                                                           collision_data->sa_cgA_contact_offdiag_triplet_indices,
                                                           collision_data->sa_cgA_contact_offdiag_triplet_property,
                                                           num_triplet, pass_prefix)
                           .dispatch(curr_dispatch);
-            stream << luisa::compute::synchronize();
+            // stream << luisa::compute::synchronize();
 
         }
-        LUISA_INFO("  Completed first sort pass");
 
         stream << fn_calc_pervert_prefix_adj_verts(get_collision_data())
                       .dispatch(host_collision_data->per_vert_num_adj_verts.size());
@@ -1870,6 +1869,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         download_narrowphase_collision_count(stream);
 
         // Check device sort count 
+        if constexpr (false)
         {
             std::vector<uint2> debug_triplet_indices(num_triplet);
             std::vector<uint> debug_vert_adj_verts_count(host_collision_data->per_vert_num_adj_verts.size());
@@ -1953,6 +1953,7 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
         }
 
         // Check first sort prefix + offset is full
+        if constexpr (false)
         {
             const uint num_dof               = host_collision_data->per_vert_prefix_adj_verts.size();
             const uint num_triplet_assembled = host_count[offset];
@@ -2037,19 +2038,23 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
             const uint alinged_num_triplet_assembled =
                 (num_triplet_assembled + segment_size - 1) / segment_size * segment_size;
 
-            // for (uint loop = 0; loop < get_dispatch_block(num_triplet, max_threads); loop++)
-            // {
-            //     const uint pass_prefix = loop * max_threads;
-            //     const uint curr_dispatch = min_scalar(max_threads, get_dispatch_threads(num_triplet_assembled - pass_prefix, 256));
-            //     LUISA_INFO("  Dispatch Second sort fillin num_triplet {}: dispatch {} threads from prefix {}",
-            //           num_triplet,
-            //           curr_dispatch,
-            //           pass_prefix);
-            //     stream << fn_block_level_second_sort_contact_triplet_fill_in(get_collision_data(), num_triplet, num_triplet_assembled, pass_prefix)
-            //                  .dispatch(curr_dispatch);
-            //     stream << luisa::compute::synchronize();
-            // }
-            // Host Implementation of fill-in
+            // if constexpr (false) // Device Implementation of fill-in
+            {
+                for (uint loop = 0; loop < get_dispatch_block(num_triplet, max_threads); loop++)
+                {
+                    const uint pass_prefix = loop * max_threads;
+                    const uint curr_dispatch = min_scalar(max_threads, num_triplet - pass_prefix);
+                    // LUISA_INFO("  Dispatch Second sort fillin num_triplet {}: dispatch {} threads from prefix {}",
+                    //       num_triplet,
+                    //       curr_dispatch,
+                    //       pass_prefix);
+                    stream << fn_block_level_second_sort_contact_triplet_fill_in(get_collision_data(), num_triplet, num_triplet_assembled, pass_prefix)
+                                 .dispatch(curr_dispatch);
+                    // stream << luisa::compute::synchronize();
+                }
+            }
+            
+            if constexpr (false) // Host Implementation of fill-in
             {
                 const uint num_dof               = host_collision_data->per_vert_prefix_adj_verts.size();
                 const uint num_triplet_assembled = host_count[offset];
@@ -2087,6 +2092,11 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
                 });
                 CpuParallel::parallel_for(0, num_triplet_assembled, [&](const uint triplet_idx)
                 {
+                    if (accessed[triplet_idx] == 0)
+                    {
+                        LUISA_INFO("  Fill-in triplet at index {}", triplet_idx);
+                        LUISA_ASSERT("Fill-in triplet detected after second sort");
+                    }
                     const auto triplet = assembled_triplet[triplet_idx];
                     const uint vid = triplet[0] & mask_get_active_vid;
                     const uint adj_vid = triplet[1] & mask_get_active_vid;
@@ -2102,13 +2112,10 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
                         << collision_data->sa_cgA_contact_offdiag_triplet_indices2.view(0, num_triplet_assembled)
                             .copy_from(assembled_triplet.data())
                        << luisa::compute::synchronize();
-                
             }
 
-            LUISA_INFO(" triplet indices size = {}", collision_data->sa_cgA_contact_offdiag_triplet_indices2.size());
 
-            stream << fn_reset_uint(collision_data->per_vert_num_adj_verts).dispatch(num_dof);
-
+            if constexpr (false) // Check fill-in sort result
             {
                 std::vector<uint2> debug_triplet_indices(num_triplet_assembled);
                 stream << collision_data->sa_cgA_contact_offdiag_triplet_indices2.view(0, num_triplet_assembled)
@@ -2131,20 +2138,22 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
                                                 });
             }
 
+            stream << fn_reset_uint(collision_data->per_vert_num_adj_verts).dispatch(num_dof);
+
             for (uint loop = 0; loop < get_dispatch_block(num_triplet_assembled, max_threads); loop++)
             {
                 const uint pass_prefix = loop * max_threads;
                 const uint curr_dispatch = min_scalar(max_threads, get_dispatch_threads(num_triplet_assembled - pass_prefix, 256));
-                LUISA_INFO("  Dispatch Second sort num_triplet {}: dispatch {} threads from prefix {}",
-                      num_triplet_assembled,
-                      curr_dispatch,
-                      pass_prefix);
+                // LUISA_INFO("  Dispatch Second sort num_triplet {}: dispatch {} threads from prefix {}",
+                //       num_triplet_assembled,
+                //       curr_dispatch,
+                //       pass_prefix);
                 stream << fn_block_level_sort_contact_triplet(get_collision_data(),
                                                           collision_data->sa_cgA_contact_offdiag_triplet_indices2,
                                                           collision_data->sa_cgA_contact_offdiag_triplet_property2,
                                                           num_triplet_assembled, pass_prefix)
                           .dispatch(curr_dispatch);
-                stream << luisa::compute::synchronize();
+                // stream << luisa::compute::synchronize();
             }
             
             stream << fn_reset_uint(collision_data->narrow_phase_collision_count.view(offset, 1)).dispatch(1);
@@ -2152,6 +2161,12 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
 
             download_narrowphase_collision_count(stream);
 
+            // LUISA_INFO("  Triplet {} : after first sort assembled = {}, after secon sort = {}",
+            //         num_triplet,
+            //           num_triplet_assembled,
+            //           host_count[offset]);
+
+            if constexpr (false) // Check second sort result
             {
                 std::vector<uint2> debug_triplet_indices(num_triplet_assembled);
                 std::vector<uint> debug_vert_adj_verts_count(host_collision_data->per_vert_num_adj_verts.size());
@@ -2168,57 +2183,13 @@ void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& s
                                                     auto triplet_info = debug_triplet_indices[triplet_idx];
                                                     const uint  vid     = triplet_info[0] & mask_get_active_vid;
                                                     const uint  adj_vid = triplet_info[1] & mask_get_active_vid;
-                                                    LUISA_ASSERT(vid != adj_vid, "Self-loop triplet detected after first sort");
+                                                    if (vid == adj_vid)
+                                                    {
+                                                        LUISA_INFO("  Self-loop triplet detected at index {} : vid = {}, adj_vid = {}",
+                                                                   triplet_idx, vid, adj_vid);
+                                                        LUISA_ASSERT(vid != adj_vid, "Self-loop triplet detected after second sort");
+                                                    }
                                                 });
-
-                const uint gridDim = get_dispatch_block(num_triplet_assembled, 256);
-                std::atomic<uint> debug_num_reduced_triplet = 0;
-                CpuParallel::parallel_for_each_core(0,
-                                gridDim,
-                                [&](const uint blockIdx)
-                                {
-                                    std::vector<uint2> debug_triplet_indices_block;
-                                    const uint start_idx = blockIdx * 256;
-                                    const uint end_idx = std::min(start_idx + 256, num_triplet_assembled);
-                                    for (uint idx = start_idx; idx < end_idx; idx++)
-                                    {
-                                        const uint triplet_idx = idx;
-                                        auto triplet_info = debug_triplet_indices[triplet_idx];
-                                        const uint  vid     = triplet_info[0] & mask_get_active_vid;
-                                        const uint  adj_vid = triplet_info[1] & mask_get_active_vid;
-                                        LUISA_ASSERT(vid != adj_vid, "Self-loop triplet detected after first sort");
-                                        debug_triplet_indices_block.push_back(luisa::make_uint2(vid, adj_vid));
-                                    }
-                                    std::sort(debug_triplet_indices_block.begin(),
-                                            debug_triplet_indices_block.end(),
-                                            [](const uint2& a, const uint2& b)
-                                            {
-                                                if (a.x != b.x)
-                                                    return a.x < b.x;
-                                                else
-                                                    return a.y < b.y;
-                                            });
-                                    uint reduced_count = 1;
-                                    for (size_t i = 1; i < debug_triplet_indices_block.size(); i++)
-                                    {
-                                        if (debug_triplet_indices_block[i].x != debug_triplet_indices_block[i - 1].x ||
-                                            debug_triplet_indices_block[i].y != debug_triplet_indices_block[i - 1].y)
-                                        {
-                                            reduced_count++;
-                                        }
-                                    }
-                                    debug_num_reduced_triplet.fetch_add(reduced_count);
-                                });
-                const uint sum_verts = CpuParallel::parallel_for_and_reduce_sum<uint>(
-                    0,
-                    debug_vert_adj_verts_count.size(),
-                    [&](const uint vid) {
-                        return debug_vert_adj_verts_count[vid];
-                    });
-                    
-                LUISA_INFO("  Second sort num_triplet {}: device prefix sum = {}, host sum = {} / {}",
-                            num_triplet,
-                            host_count[offset], debug_num_reduced_triplet.load(), sum_verts);
             }
 
             // LUISA_INFO("  Assembled numPairs*12 {}: First assemble = {}, second assemble = {}",
