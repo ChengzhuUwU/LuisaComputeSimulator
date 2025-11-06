@@ -3765,13 +3765,14 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
         {
             LUISA_ERROR("Invalid Toi {}", ccd_toi);
         }
-        LUISA_INFO("  In newton iter {:2}: CCD toi = {:6.5f}, Braod VF/EE = {} / {}, numPairs = {}, assembledTriplet = {}",
-                   iter,
-                   ccd_toi,
-                   host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
-                   host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
-                   host_collision_data->narrow_phase_collision_count.front(), 
-                   host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
+        LUISA_INFO(
+            "  In newton iter {:2}: CCD toi = {:6.5f}, BroadPhase VF/EE = {} / {}, NarrowPhase = {}, assembledTriplet = {}",
+            iter,
+            ccd_toi,
+            host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
+            host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
+            host_collision_data->narrow_phase_collision_count.front(),
+            host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
     }
 
     // Non-linear iteration break condition
@@ -3894,12 +3895,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         if (sim_data->num_affine_bodies == 0)
         {
             const uint num_pairs = host_collision_data->narrow_phase_collision_count.front();
-            const uint num_adj_pairs = host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_pairs_offset()];
+            const uint num_adj_pairs =
+                host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_pairs_offset()];
             if (num_adj_pairs != num_pairs * 12)
             {
                 LUISA_INFO("Adj pairs count {} not equal to 12 * pairs count {} when no rigid body involved!",
-                            num_adj_pairs,
-                            num_pairs);
+                           num_adj_pairs,
+                           num_pairs);
             }
         }
         narrow_phase_detector->resize_buffers(device, stream);  // Resize adj pairs buffers
