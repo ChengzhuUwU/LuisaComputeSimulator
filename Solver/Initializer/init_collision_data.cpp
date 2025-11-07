@@ -104,6 +104,8 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
     std::vector<float> mesh_scaled_d_hat(mesh_data->num_meshes);
     for (uint mesh_idx = 0; mesh_idx < mesh_data->num_meshes; mesh_idx++)
     {
+        const bool is_rigid_body = world_data[mesh_idx].holds<RigidMaterial>();
+
         float thickness = world_data[mesh_idx].get_thickness();
         float d_hat     = world_data[mesh_idx].get_d_hat();
 
@@ -111,14 +113,14 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
         float scaled_d_hat  = d_hat;
 
         float       min_dist  = mesh_min_dist[mesh_idx];
-        const float safe_dist = 0.9f * min_dist;
-        if (safe_dist < 1e-3)  // Soft-body exist penetration in rest state
+        const float safe_dist = is_rigid_body ? 1e8f : 0.9f * min_dist;
+
+        if (safe_dist < 1e-4 && !is_rigid_body)  // Soft-body exist penetration in rest state
         {
-            //  && !shell_infos[mesh_idx].holds<RigidMaterial>()
-            // Note: We add this condition just for
-            LUISA_ERROR("Sub-milimeter simulation is not supported yet (Mesh {}, Min dist = {})",
-                        world_data[mesh_idx].get_model_name(),
-                        safe_dist);
+            // Note: We add this condition just for s
+            LUISA_INFO("Sub-milimeter simulation may not be stable due to scaled small gap distance (Mesh {}, Min dist = {})",
+                       world_data[mesh_idx].get_model_name(),
+                       safe_dist);
         }
         if (scaled_offset + d_hat < safe_dist)
         {
