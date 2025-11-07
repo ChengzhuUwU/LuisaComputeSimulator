@@ -993,7 +993,8 @@ void LBVH::construct_tree(Stream& stream)
     stream << lbvh_data->sa_sorted_get_original.copy_from(host_sorted_get_original.data())
            << fn_apply_sorted().dispatch(num_leaves) << fn_build_inner_nodes().dispatch(num_inner_nodes)
 
-           << fn_check_construction().dispatch(num_inner_nodes);
+           << fn_check_construction().dispatch(num_inner_nodes)
+           << lbvh_data->sa_is_healthy.copy_to(lbvh_data->host_is_healthy.data());
 }
 
 // Refit
