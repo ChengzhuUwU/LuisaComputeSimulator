@@ -1,68 +1,72 @@
 {
-    "scene_id": 10,
-    "contact_energy_type": 1,
+    "scene_id": 4,
+    "nonlinear_iter_count": 8,
     "shells": [
         {
-            "model_name": "square26K.obj",
+            "model_name": "square8K.obj",
             "translation": [
                 0.0,
-                0.5,
+                0.52,
                 0.0
             ],
-            "scale": 0.75,
+            "scale": 1,
             "fixed_points": [
                 {
-                    "method": "LeftBack"
+                    "method": "Left"
                 },
                 {
-                    "method": "RightBack"
-                },
-                {
-                    "method": "LeftFront"
-                },
-                {
-                    "method": "RightFront"
+                    "method": "Right"
                 }
             ]
         },
         {
-            "model_name": "cube.obj",
+            "model_name": "Extreme/arm_thicker.obj",
             "translation": [
                 0.0,
-                0.6,
+                1.0,
                 0.0
             ],
-            "scale": 0.1,
+            "rotation": [
+                0.5,
+                0.0,
+                0.0
+            ],
+            "scale": 1.0,
             "shell_type": "Rigid"
         },
         {
-            "model_name": "sphere63.obj",
+            "model_name": "bowl/bottle4.obj",
             "translation": [
-                0.0,
-                0.7,
+                0.2,
+                1.4,
                 0.1
             ],
-            "scale": 0.1,
-            "shell_type": "Rigid"
-        },
-        {
-            "model_name": "bowl/bowl5.obj",
-            "translation": [
-                0.1,
-                0.7,
+            "rotation": [
+                3.14,
+                0.0,
                 0.0
             ],
-            "scale": 0.1,
+            "scale": 0.5,
             "shell_type": "Rigid"
         },
         {
             "model_name": "sphere1K.obj",
             "translation": [
+                -0.2,
+                0.8,
+                0.2
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "sphere63.obj",
+            "translation": [
                 0.1,
                 0.7,
-                0.0
+                0.2
             ],
-            "scale": 0.1,
+            "scale": 0.2,
             "shell_type": "Rigid"
         }
     ]

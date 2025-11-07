@@ -86,8 +86,6 @@ struct LbvhData
     BufferType<uint>           sa_parrent;
     BufferType<uint2>          sa_children;
     BufferType<uint>           sa_object_idx;
-    BufferType<uint>           sa_apply_flag;
-    BufferType<aabbData>       sa_node_aabb;
     BufferType<CompressedAABB> sa_node_aabb_v2;
     BufferType<uint>           sa_is_healthy;
     BufferType<uint>           sa_num_leaves;
@@ -137,8 +135,8 @@ struct LbvhData
         resize_buffer(device, this->sa_parrent, num_nodes);
         resize_buffer(device, this->sa_children, num_nodes);
         resize_buffer(device, this->sa_object_idx, num_nodes);
-        resize_buffer(device, this->sa_apply_flag, num_nodes);
-        resize_buffer(device, this->sa_node_aabb, num_nodes);
+        // resize_buffer(device, this->sa_apply_flag, num_nodes);
+        // resize_buffer(device, this->sa_node_aabb, num_nodes);
         resize_buffer(device, this->sa_node_aabb_v2, num_nodes);
         resize_buffer(device, this->sa_is_healthy, 1);
 
@@ -188,24 +186,9 @@ class LBVH
     void construct_tree(Stream& stream);
     void refit(Stream& stream);
     void host_refit(Stream& stream);
+    void check_health(Stream& stream);
 
   public:
-    // From global thickness
-    void update_vert_tree_leave_aabb(Stream&               stream,
-                                     const float           thickness,
-                                     const Buffer<float3>& start_position,
-                                     const Buffer<float3>& end_position);
-    void update_edge_tree_leave_aabb(Stream&               stream,
-                                     const float           thickness,
-                                     const Buffer<float3>& start_position,
-                                     const Buffer<float3>& end_position,
-                                     const Buffer<uint2>&  input_edges);
-    void update_face_tree_leave_aabb(Stream&               stream,
-                                     const float           thickness,
-                                     const Buffer<float3>& start_position,
-                                     const Buffer<float3>& end_position,
-                                     const Buffer<uint3>&  input_faces);
-
     // From per element thickness
     void update_vert_tree_leave_aabb(Stream&               stream,
                                      const Buffer<float>&  thickness,
@@ -221,21 +204,6 @@ class LBVH
                                      const Buffer<float3>& start_position,
                                      const Buffer<float3>& end_position,
                                      const Buffer<uint3>&  input_faces);
-
-    // From global query range
-    void broad_phase_query_from_verts(Stream&                  stream,
-                                      const BufferView<float3> sa_x_begin,
-                                      const BufferView<float3> sa_x_end,
-                                      BufferView<uint>         broadphase_count,
-                                      BufferView<uint>         broad_phase_list,
-                                      const float              thickness);
-    void broad_phase_query_from_edges(Stream&                  stream,
-                                      const BufferView<float3> sa_x_begin,
-                                      const BufferView<float3> sa_x_end,
-                                      const BufferView<uint2>  sa_edges,
-                                      BufferView<uint>         broadphase_count,
-                                      BufferView<uint>         broad_phase_list,
-                                      const float              thickness);
 
     // From per element query range
     void broad_phase_query_from_verts(Stream&                 stream,
@@ -278,9 +246,6 @@ class LBVH
     luisa::compute::Shader<1> fn_check_construction;
 
     // Refit
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, float> fn_update_vert_tree_leave_aabb;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint2>, float> fn_update_edge_tree_leave_aabb;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<uint3>, float> fn_update_face_tree_leave_aabb;
     luisa::compute::Shader<1, luisa::compute::Buffer<uint>, luisa::compute::Buffer<CompressedAABB>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float>>
         fn_update_vert_tree_leave_aabb_v2;
     luisa::compute::Shader<1,
@@ -308,8 +273,6 @@ class LBVH
 
     // Query
     luisa::compute::Shader<1, luisa::compute::BufferView<uint>> fn_reset_collision_count;
-    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, float> fn_query_from_verts;
-    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<uint2>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, float> fn_query_from_edges;
 
     luisa::compute::Shader<1,
                            luisa::compute::Buffer<CompressedAABB>,
@@ -317,6 +280,7 @@ class LBVH
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
@@ -330,6 +294,7 @@ class LBVH
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,

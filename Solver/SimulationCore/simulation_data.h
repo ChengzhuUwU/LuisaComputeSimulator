@@ -127,6 +127,23 @@ struct SimulationData : SimulationType
     BufferType<float3>   sa_bending_edges_gradients;
     BufferType<float3x3> sa_bending_edges_hessians;
 
+    BufferType<uint4>    sa_stress_tets;
+    BufferType<float>    sa_stress_tets_rest_volume;
+    BufferType<float2>   sa_stress_tets_mu_lambda;
+    BufferType<float3x3> sa_stress_tets_Dm_inv;
+    BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
+    BufferType<float3>   sa_stress_tets_gradients;
+    BufferType<float3x3> sa_stress_tets_hessians;
+
+    // I am not familiar with elastic rods, so disable them for now
+    // BufferType<uint2>    sa_elastic_rods;
+    // BufferType<float>    sa_elastic_rods_rest_volume;
+    // BufferType<float>    sa_elastic_rods_stiffness;
+    // BufferType<float3x3> sa_elastic_rods_Dm_inv;
+    // BufferType<ushort>   sa_elastic_rods_offsets_in_adjlist;
+    // BufferType<float3>   sa_elastic_rods_gradients;
+    // BufferType<float3x3> sa_elastic_rods_hessians;
+
     std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
     BufferType<uint>             sa_vert_affine_bodies_id;
     BufferType<uint>             sa_affine_bodies_mesh_id;
@@ -182,12 +199,14 @@ struct SimulationData : SimulationType
     std::vector<std::vector<uint>> vert_adj_stretch_springs;
     std::vector<std::vector<uint>> vert_adj_stretch_faces;
     std::vector<std::vector<uint>> vert_adj_bending_edges;
+    std::vector<std::vector<uint>> vert_adj_stress_tets;
     std::vector<std::vector<uint>> vert_adj_affine_bodies;
 
     BufferType<uint> sa_vert_adj_material_force_verts_csr;
     BufferType<uint> sa_vert_adj_stretch_springs_csr;
     BufferType<uint> sa_vert_adj_stretch_faces_csr;
     BufferType<uint> sa_vert_adj_bending_edges_csr;
+    BufferType<uint> sa_vert_adj_stress_tets_csr;
     BufferType<uint> sa_vert_adj_affine_bodies_csr;
 };
 

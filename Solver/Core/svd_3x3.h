@@ -1,3 +1,6 @@
+// Modified from [https://github.com/ericjang/svd3/blob/master/svd3.h]
+
+
 #pragma once
 
 #include "Core/scalar.h"

@@ -1,8 +1,6 @@
 {
-    "scene_id": 9,
-    "use_floor": true,
+    "scene_id": 13,
     "use_gpu": false,
-    "contact_energy_type": 1,
     "shells": [
         {
             "model_name": "cube.obj",

@@ -1,17 +1,17 @@
 {
-    "scene_id": 3,
-    "pcg_iter_count": 50,
-    "nonlinear_iter_count": 1,
+    "scene_id": 6,
+    "nonlinear_iter_count": 3,
     "gravity": [
         0.0,
         0.0,
         0.0
     ],
     "use_floor": false,
-    "contact_energy_type": 0,
+    "contact_energy_type": 1,
+    "stiffness_collision": 1e9,
     "shells": [
         {
-            "model_name": "Cylinder/cylinder7K.obj",
+            "model_name": "Cylinder/cylinder88K.obj",
             "fixed_points": [
                 {
                     "method": "Left",

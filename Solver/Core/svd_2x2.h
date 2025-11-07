@@ -1,3 +1,5 @@
+// Modified from [https://github.com/st-tech/ppf-contact-solver]
+
 #pragma once
 
 #include "Core/float_n.h"

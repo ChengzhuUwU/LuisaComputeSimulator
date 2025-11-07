@@ -167,24 +167,60 @@ int main(int argc, char** argv)
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
-        solver.lcs::SolverInterface::load_saved_state_from_host(2201, "");
-        lcs::get_scene_params().current_frame = 2201;
-        fn_update_rendering_vertices();
-        
-        auto fn_single_step_without_ui = [&]()
+        // solver.lcs::SolverInterface::load_saved_state_from_host(2501, "");
+        // lcs::get_scene_params().current_frame = 2501 + 1;
+        // fn_update_rendering_vertices();
+
+        constexpr bool                                                 use_merge_writing = true;
+        std::map<uint, std::vector<std::vector<std::array<float, 3>>>> per_frame_rendering_vertices;
+        auto                                                           fn_save_frame_to_obj_merge =
+            [&](const std::pair<uint, std::vector<std::vector<std::array<float, 3>>>>& curr_frame_result,
+                const std::string& additional_info = "")
         {
-            fn_physics_step();
+            SimMesh::saveToOBJ_combined(curr_frame_result.second,
+                                        sa_rendering_faces,
+                                        luisa::format("0{}", lcs::get_scene_params().scene_id),
+                                        additional_info,
+                                        curr_frame_result.first);
         };
 
-        // solver.lcs::SolverInterface::restart_system();
+        auto fn_single_step_without_ui = [&]() { fn_physics_step(); };
+
+        const uint frame_start = lcs::get_scene_params().current_frame;
+        const uint frame_end   = frame_start + 300;
 
         fn_save_frame_to_obj("_init");
-        for (uint frame = 0; frame < 60; frame++)
+        for (uint frame = frame_start; frame < frame_end; frame++)
         {
             fn_single_step_without_ui();
 
             fn_update_rendering_vertices();
-            fn_save_frame_to_obj();
+
+            const uint curr_frame = lcs::get_scene_params().current_frame - 1;
+            if (use_merge_writing)
+            {
+                if (curr_frame % 2 == 1)
+                    per_frame_rendering_vertices[curr_frame] = sa_rendering_vertices;
+
+                if (curr_frame % 100 == 99 || frame == frame_end - 1)
+                {
+                    CpuParallel::parallel_for_each_core(0,
+                                                        per_frame_rendering_vertices.size(),
+                                                        [&](uint idx)
+                                                        {
+                                                            auto iter = per_frame_rendering_vertices.begin();
+                                                            std::advance(iter, idx);
+                                                            fn_save_frame_to_obj_merge(*iter);
+                                                        });
+                    per_frame_rendering_vertices.clear();
+                    if (curr_frame != frame_start)
+                        solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
+                }
+            }
+            else
+            {
+                fn_save_frame_to_obj();
+            }
         }
         // SimMesh::saveToOBJ_combined(
         //     sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
@@ -282,7 +318,7 @@ int main(int argc, char** argv)
                 ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
                 ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
                 if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
-                    && lcs::get_scene_params().use_self_collision)
+                    && (lcs::get_scene_params().use_self_collision || lcs::get_scene_params().use_floor))
                     lcs::get_scene_params().use_ccd_linesearch = true;
 
 
