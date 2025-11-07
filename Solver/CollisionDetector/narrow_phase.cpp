@@ -298,6 +298,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                     BufferVar<float3> sa_x_end_left,
                     BufferVar<float3> sa_x_end_right,
                     BufferVar<uint3>  sa_faces_right,
+                    BufferVar<uint>   sa_vert_body_idx,
                     BufferVar<float>  sa_vert_d_hat,  // Not relavent to d_hat
                     BufferVar<float>  sa_vert_offset,
                     Uint              dispatch_prefix)
@@ -306,12 +307,12 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
             auto& broadphase_count = collision_data->broad_phase_collision_count;
             auto& broadphase_list  = collision_data->broad_phase_list_vf;
 
-            const Uint pair_idx  = dispatch_x() + dispatch_prefix;
-            const Uint max_pairs = broadphase_count->read(offset_vf);
-            $if(pair_idx >= max_pairs)
-            {
-                $return();
-            };
+            const Uint pair_idx = dispatch_x() + dispatch_prefix;
+            // const Uint max_pairs = broadphase_count->read(offset_vf);
+            // $if(pair_idx >= max_pairs)
+            // {
+            //     $return();
+            // };
 
             const Uint vid = broadphase_list->read(2 * pair_idx + 0);
             const Uint fid = broadphase_list->read(2 * pair_idx + 1);
@@ -319,7 +320,10 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
             const Uint3 face = sa_faces_right.read(fid);
 
             Float toi = accd::line_search_max_t;
-            $if(vid == face[0] | vid == face[1] | vid == face[2])
+            $if(vid == face[0] | vid == face[1] | vid == face[2]
+                | (sa_vert_body_idx.read(vid) != -1u                               // Is from rigid body
+                   & sa_vert_body_idx.read(vid) == sa_vert_body_idx.read(face[0])  // From the same rigid body
+                   ))
             {
                 toi = accd::line_search_max_t;
             }
@@ -440,6 +444,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                     Var<Buffer<float3>> sa_x_end_b,
                     Var<Buffer<uint2>>  sa_edges_left,
                     Var<Buffer<uint2>>  sa_edges_right,
+                    BufferVar<uint>     sa_vert_body_idx,
                     BufferVar<float>    sa_vert_d_hat,  // Not relavent to d_hat
                     BufferVar<float>    sa_vert_offset,
                     Uint                dispatch_prefix)
@@ -448,12 +453,12 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
             auto& broadphase_count = collision_data->broad_phase_collision_count;
             auto& broadphase_list  = collision_data->broad_phase_list_ee;
 
-            const Uint pair_idx  = dispatch_x() + dispatch_prefix;
-            const Uint max_pairs = broadphase_count->read(offset_ee);
-            $if(pair_idx >= max_pairs)
-            {
-                $return();
-            };
+            const Uint pair_idx = dispatch_x() + dispatch_prefix;
+            // const Uint max_pairs = broadphase_count->read(offset_ee);
+            // $if(pair_idx >= max_pairs)
+            // {
+            //     $return();
+            // };
 
             const Uint  left       = broadphase_list.read(2 * pair_idx + 0);
             const Uint  right      = broadphase_list.read(2 * pair_idx + 1);
@@ -462,7 +467,10 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
             Float toi = accd::line_search_max_t;
             $if(left_edge[0] == right_edge[0] | left_edge[0] == right_edge[1]
-                | left_edge[1] == right_edge[0] | left_edge[1] == right_edge[1])
+                | left_edge[1] == right_edge[0] | left_edge[1] == right_edge[1]
+                | (sa_vert_body_idx.read(left_edge[0]) != -1u  // Is from rigid body
+                   & sa_vert_body_idx.read(left_edge[0]) == sa_vert_body_idx.read(right_edge[0])  // From the same rigid body
+                   ))
             {
                 toi = accd::line_search_max_t;
             }
@@ -504,7 +512,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                         toi,
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)));
-                
+
                     {
                         auto r0 = ea_t0_p1 - ea_t0_p0;
                         auto r1 = eb_t0_p1 - eb_t0_p0;
@@ -519,19 +527,20 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 
                 $if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
                 {
-                    Float init_Dist = sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
-                    Float end_Dist  = sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
+                    Float init_Dist =
+                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
+                    Float end_Dist =
+                        sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
                     if constexpr (print_unsafe_toi)
-                        device_log(
-                            "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}",
-                            left_edge,
-                            right_edge,
-                            toi,
-                            init_Dist,
-                            end_Dist,
-                            init_Dist - thickness,
-                            end_Dist - thickness,
-                            thickness);
+                        device_log("EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}",
+                                   left_edge,
+                                   right_edge,
+                                   toi,
+                                   init_Dist,
+                                   end_Dist,
+                                   init_Dist - thickness,
+                                   end_Dist - thickness,
+                                   thickness);
                     if constexpr (print_unsafe_toi)
                         device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
                                    left_edge,
@@ -603,6 +612,7 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
                                         const Buffer<float3>& sa_x_end_left,
                                         const Buffer<float3>& sa_x_end_right,
                                         const Buffer<uint3>&  sa_faces_right,
+                                        const Buffer<uint>&   sa_vert_affine_bodies_id,
                                         const Buffer<float>&  d_hat,
                                         const Buffer<float>&  thickness)
 {
@@ -634,8 +644,7 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
     if (num_vf_broadphase != 0)
     {
         dispatch_large_thread_template(
-            [this, &stream, &sa_x_begin_left, &sa_x_begin_right, &sa_x_end_left, &sa_x_end_right, &sa_faces_right, &d_hat, &thickness](
-                uint curr_dispatch_size, uint dispatch_prefix)
+            [&](uint curr_dispatch_size, uint dispatch_prefix)
             {
                 stream << fn_narrow_phase_vf_ccd_query(get_collision_data(),
                                                        sa_x_begin_left,
@@ -643,6 +652,7 @@ void NarrowPhasesDetector::vf_ccd_query(Stream&               stream,
                                                        sa_x_end_left,
                                                        sa_x_end_right,
                                                        sa_faces_right,
+                                                       sa_vert_affine_bodies_id,
                                                        d_hat,
                                                        thickness,
                                                        dispatch_prefix)
@@ -670,6 +680,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
                                         const Buffer<float3>& sa_x_end_b,
                                         const Buffer<uint2>&  sa_edges_left,
                                         const Buffer<uint2>&  sa_edges_right,
+                                        const Buffer<uint>&   sa_vert_affine_bodies_id,
                                         const Buffer<float>&  d_hat,
                                         const Buffer<float>&  thickness)
 {
@@ -704,8 +715,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
     if (num_ee_broadphase != 0)
     {
         dispatch_large_thread_template(
-            [this, &stream, &sa_x_begin_a, &sa_x_begin_b, &sa_x_end_a, &sa_x_end_b, &sa_edges_left, &sa_edges_right, &d_hat, &thickness](
-                uint curr_dispatch_size, uint dispatch_prefix)
+            [&](uint curr_dispatch_size, uint dispatch_prefix)
             {
                 stream << fn_narrow_phase_ee_ccd_query(get_collision_data(),
                                                        sa_x_begin_a,
@@ -714,6 +724,7 @@ void NarrowPhasesDetector::ee_ccd_query(Stream&               stream,
                                                        sa_x_end_b,
                                                        sa_edges_left,
                                                        sa_edges_right,
+                                                       sa_vert_affine_bodies_id,
                                                        d_hat,
                                                        thickness,
                                                        dispatch_prefix)
@@ -791,7 +802,9 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
             const Uint  fid  = broadphase_list->read(2 * pair_idx + 1);
             const Uint3 face = sa_faces_right.read(fid);
 
-            $if(vid == face[0] | vid == face[1] | vid == face[2])
+            $if(vid == face[0] | vid == face[1] | vid == face[2]
+                | (sa_vert_affine_bodies_id_left.read(vid) != -1u
+                   & sa_vert_affine_bodies_id_left.read(vid) == sa_vert_affine_bodies_id_right.read(face[0])))
             {
             }
             $else
@@ -956,9 +969,9 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
             const Uint2 right_edge = sa_edges_right.read(right);
             $if(left_edge[0] == right_edge[0] | left_edge[0] == right_edge[1]
                 | left_edge[1] == right_edge[0] | left_edge[1] == right_edge[1]
-                // | (vert_is_rigid_body(sa_vert_affine_bodies_id_left.read(left_edge[0]))
-                //    | vert_is_rigid_body(sa_vert_affine_bodies_id_right.read(right_edge[0])))
-            )
+                | (sa_vert_affine_bodies_id_left.read(left_edge[0]) != -1u
+                   & sa_vert_affine_bodies_id_left.read(left_edge[0])
+                         == sa_vert_affine_bodies_id_right.read(right_edge[0])))
             {
             }
             $else

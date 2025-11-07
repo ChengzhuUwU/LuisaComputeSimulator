@@ -100,6 +100,7 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_left,
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint3>&  sa_faces_right,
+                      const Buffer<uint>&   sa_vert_affine_bodies_id,
                       const Buffer<float>&  d_hat,
                       const Buffer<float>&  thickness);
 
@@ -110,6 +111,7 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint2>&  sa_edges_left,
                       const Buffer<uint2>&  sa_edges_right,
+                      const Buffer<uint>&   sa_vert_affine_bodies_id,
                       const Buffer<float>&  d_hat,
                       const Buffer<float>&  thickness);
 
@@ -214,6 +216,7 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint3>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
                            uint>
@@ -227,6 +230,7 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint2>,
                            luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
                            uint>

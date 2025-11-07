@@ -3250,6 +3250,7 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_x,
                                         sim_data->sa_x,
                                         mesh_data->sa_faces,
+                                        sim_data->sa_affine_bodies_mesh_id,
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
 
@@ -3264,6 +3265,7 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
                                         sim_data->sa_x,
                                         mesh_data->sa_edges,
                                         mesh_data->sa_edges,
+                                        sim_data->sa_affine_bodies_mesh_id,
                                         sim_data->sa_contact_active_verts_d_hat,
                                         sim_data->sa_contact_active_verts_offset);
 
@@ -3892,18 +3894,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         narrow_phase_detector->prescan_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
         narrow_phase_detector->download_narrowphase_collision_count(stream);
-        if (sim_data->num_affine_bodies == 0)
-        {
-            const uint num_pairs = host_collision_data->narrow_phase_collision_count.front();
-            const uint num_adj_pairs =
-                host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_pairs_offset()];
-            if (num_adj_pairs != num_pairs * 12)
-            {
-                LUISA_INFO("Adj pairs count {} not equal to 12 * pairs count {} when no rigid body involved!",
-                           num_adj_pairs,
-                           num_pairs);
-            }
-        }
         narrow_phase_detector->resize_buffers(device, stream);  // Resize adj pairs buffers
         narrow_phase_detector->construct_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
