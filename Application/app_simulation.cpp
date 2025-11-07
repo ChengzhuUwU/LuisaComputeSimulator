@@ -167,9 +167,9 @@ int main(int argc, char** argv)
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
-        solver.lcs::SolverInterface::load_saved_state_from_host(2399, "");
-        lcs::get_scene_params().current_frame = 2399 + 1;
-        fn_update_rendering_vertices();
+        // solver.lcs::SolverInterface::load_saved_state_from_host(2501, "");
+        // lcs::get_scene_params().current_frame = 2501 + 1;
+        // fn_update_rendering_vertices();
         
         constexpr bool use_merge_writing = true;
         std::map<uint, std::vector<std::vector<std::array<float, 3>>>> per_frame_rendering_vertices;
@@ -214,7 +214,8 @@ int main(int argc, char** argv)
                         fn_save_frame_to_obj_merge(*iter);
                     });
                     per_frame_rendering_vertices.clear();
-                    solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
+                    if (curr_frame != frame_start)
+                        solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
                 }
             }
             else

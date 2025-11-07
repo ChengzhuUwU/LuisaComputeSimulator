@@ -59,8 +59,8 @@ namespace accd
         {
             $if(iter_count > 10000)
             {
-                // toi = 0.01f;
-                luisa::compute::device_assert(false, "CCD iteration not converged in 10000 iteration");
+                toi = 0.001f;
+                // luisa::compute::device_assert(false, "CCD iteration not converged in 10000 iteration");
                 // luisa::compute::device_log("x0 = {}, offset = {}, u_max = {}", x0, offset, u_max);
                 $break;
             };

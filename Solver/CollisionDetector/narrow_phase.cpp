@@ -348,7 +348,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 //     sa_toi->atomic(1).fetch_min(end_dist);
                 // };
 
-                $if(toi == 0.01f)
+                $if(toi == 0.001f)
                 {
                     device_log("VF CCD pair {} : left = {}, vid = {}, right = {}, face = {}, TOI = {}, InitDist = {}, EndDist = {}",
                                pair_idx,
@@ -361,7 +361,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                                sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)));
                 };
 
-                $if(toi<0.0f | toi> accd::line_search_max_t)
+                $if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
                 {
                     if constexpr (print_unsafe_toi)
                         device_log(
@@ -492,7 +492,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                 //     sa_toi->atomic(1).fetch_min(end_dist);
                 // };
 
-                $if(toi == 0.01f)
+                $if(toi == 0.001f)
                 {
                     device_log(
                         "EE CCD pair {} : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, InitDist = {}, EndDist = {}",
@@ -504,18 +504,33 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                         toi,
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
                         sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)));
+                
+                    {
+                        auto r0 = ea_t0_p1 - ea_t0_p0;
+                        auto r1 = eb_t0_p1 - eb_t0_p0;
+
+                        auto len0             = distance::squared_norm(r0);
+                        auto len1             = distance::squared_norm(r1);
+                        auto cross_r          = cross(r0, r1);
+                        auto parallel_measure = distance::squared_norm(cross_r) / (len0 * len1 + 1e-8f);
+                        device_log("Parallel measure = {}", parallel_measure);
+                    }
                 };
 
-                $if(toi<0.0f | toi> accd::line_search_max_t)
+                $if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
                 {
+                    Float init_Dist = sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
+                    Float end_Dist  = sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
                     if constexpr (print_unsafe_toi)
                         device_log(
-                            "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+                            "EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}",
                             left_edge,
                             right_edge,
                             toi,
-                            sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
-                            sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)),
+                            init_Dist,
+                            end_Dist,
+                            init_Dist - thickness,
+                            end_Dist - thickness,
                             thickness);
                     if constexpr (print_unsafe_toi)
                         device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
@@ -530,6 +545,7 @@ void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
                                    eb_t1_p0,
                                    eb_t1_p1);
 
+                    luisa::compute::device_assert(false, "EE CCD failed");
                     // Float init_dist_sqr =
                     //     distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1);
                     // Float curr_dist_sqr =

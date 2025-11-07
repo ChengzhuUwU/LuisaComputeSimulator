@@ -263,7 +263,7 @@ namespace distance
         auto len0             = squared_norm(r0);
         auto len1             = squared_norm(r1);
         auto cross_r          = cross(r0, r1);
-        auto parallel_measure = squared_norm(cross_r) / (len0 * len1 + 1e-20f);
+        auto parallel_measure = squared_norm(cross_r) / (len0 * len1 + 1e-8f);
 
         // Compute EE dist
         Vec4f c_main = edge_edge_distance_coeff(ea0, ea1, eb0, eb1);
@@ -271,7 +271,7 @@ namespace distance
 
         Var<bool> valid = all_vec(c_main >= 0.0f) & all_vec(c_main <= 1.0f);
 
-        $if((parallel_measure < 1e-6f) | (!valid))
+        $if((parallel_measure < 1e-4f) | (!valid))
         {
             Vec2f c1 = point_edge_distance_coeff(ea0, eb0, eb1);
             Vec2f c2 = point_edge_distance_coeff(ea1, eb0, eb1);
