@@ -3244,30 +3244,33 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
     //        << luisa::compute::synchronize();
     // LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
-    narrow_phase_detector->vf_ccd_query(stream,
-                                        sim_data->sa_x_iter_start,
-                                        sim_data->sa_x_iter_start,
-                                        sim_data->sa_x,
-                                        sim_data->sa_x,
-                                        mesh_data->sa_faces,
-                                        sim_data->sa_affine_bodies_mesh_id,
-                                        sim_data->sa_contact_active_verts_d_hat,
-                                        sim_data->sa_contact_active_verts_offset);
+    if (get_scene_params().use_self_collision)
+    {
+        narrow_phase_detector->vf_ccd_query(stream,
+                                            sim_data->sa_x_iter_start,
+                                            sim_data->sa_x_iter_start,
+                                            sim_data->sa_x,
+                                            sim_data->sa_x,
+                                            mesh_data->sa_faces,
+                                            sim_data->sa_affine_bodies_mesh_id,
+                                            sim_data->sa_contact_active_verts_d_hat,
+                                            sim_data->sa_contact_active_verts_offset);
 
-    // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
-    //        << luisa::compute::synchronize();
-    // LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+        // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+        //        << luisa::compute::synchronize();
+        // LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
 
-    narrow_phase_detector->ee_ccd_query(stream,
-                                        sim_data->sa_x_iter_start,
-                                        sim_data->sa_x_iter_start,
-                                        sim_data->sa_x,
-                                        sim_data->sa_x,
-                                        mesh_data->sa_edges,
-                                        mesh_data->sa_edges,
-                                        sim_data->sa_affine_bodies_mesh_id,
-                                        sim_data->sa_contact_active_verts_d_hat,
-                                        sim_data->sa_contact_active_verts_offset);
+        narrow_phase_detector->ee_ccd_query(stream,
+                                            sim_data->sa_x_iter_start,
+                                            sim_data->sa_x_iter_start,
+                                            sim_data->sa_x,
+                                            sim_data->sa_x,
+                                            mesh_data->sa_edges,
+                                            mesh_data->sa_edges,
+                                            sim_data->sa_affine_bodies_mesh_id,
+                                            sim_data->sa_contact_active_verts_d_hat,
+                                            sim_data->sa_contact_active_verts_offset);
+    }
 
     // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
     //        << luisa::compute::synchronize();
@@ -3341,7 +3344,8 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    device_broadphase_ccd(stream);
+    if (get_scene_params().use_self_collision)
+        device_broadphase_ccd(stream);
 
     bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
     if (!succ)
