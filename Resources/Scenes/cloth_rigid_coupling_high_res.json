@@ -1,68 +1,52 @@
 {
-    "scene_id": 10,
-    "contact_energy_type": 1,
+    "scene_id": 8,
+    "nonlinear_iter_count": 2,
+    "use_self_collision": false,
+    "use_ccd_linesearch": true,
     "shells": [
         {
-            "model_name": "square26K.obj",
+            "model_name": "bowl/box.obj",
             "translation": [
                 0.0,
-                0.5,
+                0.3,
                 0.0
             ],
-            "scale": 0.75,
-            "fixed_points": [
-                {
-                    "method": "LeftBack"
-                },
-                {
-                    "method": "RightBack"
-                },
-                {
-                    "method": "LeftFront"
-                },
-                {
-                    "method": "RightFront"
-                }
-            ]
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
+            "rotation": [
                 0.0,
-                0.6,
-                0.0
+                0.0,
+                0.3
             ],
-            "scale": 0.1,
+            "scale": 0.8,
             "shell_type": "Rigid"
         },
         {
-            "model_name": "sphere63.obj",
+            "model_name": "Extreme/arm_thicker.obj",
             "translation": [
+                -0.3,
+                0.8,
+                0.0
+            ],
+            "rotation": [
+                0.5,
                 0.0,
-                0.7,
+                0.0
+            ],
+            "scale": 1.0,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "bowl/bottle4.obj",
+            "translation": [
+                0.2,
+                1.2,
                 0.1
             ],
-            "scale": 0.1,
-            "shell_type": "Rigid"
-        },
-        {
-            "model_name": "bowl/bowl.obj",
-            "translation": [
-                0.1,
-                0.7,
+            "rotation": [
+                3.14,
+                0.0,
                 0.0
             ],
-            "scale": 0.1,
-            "shell_type": "Rigid"
-        },
-        {
-            "model_name": "sphere1K.obj",
-            "translation": [
-                0.1,
-                0.7,
-                0.0
-            ],
-            "scale": 0.1,
+            "scale": 0.5,
             "shell_type": "Rigid"
         }
     ]
