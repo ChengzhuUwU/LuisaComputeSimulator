@@ -170,12 +170,12 @@ int main(int argc, char** argv)
         // solver.lcs::SolverInterface::load_saved_state_from_host(2501, "");
         // lcs::get_scene_params().current_frame = 2501 + 1;
         // fn_update_rendering_vertices();
-        
-        constexpr bool use_merge_writing = true;
+
+        constexpr bool                                                 use_merge_writing = true;
         std::map<uint, std::vector<std::vector<std::array<float, 3>>>> per_frame_rendering_vertices;
-        auto fn_save_frame_to_obj_merge = [&](
-            const std::pair<uint, std::vector<std::vector<std::array<float, 3>>>>& curr_frame_result, 
-            const std::string& additional_info = "")
+        auto                                                           fn_save_frame_to_obj_merge =
+            [&](const std::pair<uint, std::vector<std::vector<std::array<float, 3>>>>& curr_frame_result,
+                const std::string& additional_info = "")
         {
             SimMesh::saveToOBJ_combined(curr_frame_result.second,
                                         sa_rendering_faces,
@@ -184,13 +184,10 @@ int main(int argc, char** argv)
                                         curr_frame_result.first);
         };
 
-        auto fn_single_step_without_ui = [&]()
-        {
-            fn_physics_step();
-        };
+        auto fn_single_step_without_ui = [&]() { fn_physics_step(); };
 
         const uint frame_start = lcs::get_scene_params().current_frame;
-        const uint frame_end = frame_start + 4000;
+        const uint frame_end   = frame_start + 4000;
 
         fn_save_frame_to_obj("_init");
         for (uint frame = frame_start; frame < frame_end; frame++)
@@ -207,12 +204,14 @@ int main(int argc, char** argv)
 
                 if (curr_frame % 100 == 99 || frame == frame_end - 1)
                 {
-                    CpuParallel::parallel_for_each_core(0, per_frame_rendering_vertices.size(), [&](uint idx)
-                    {
-                        auto iter = per_frame_rendering_vertices.begin();
-                        std::advance(iter, idx);
-                        fn_save_frame_to_obj_merge(*iter);
-                    });
+                    CpuParallel::parallel_for_each_core(0,
+                                                        per_frame_rendering_vertices.size(),
+                                                        [&](uint idx)
+                                                        {
+                                                            auto iter = per_frame_rendering_vertices.begin();
+                                                            std::advance(iter, idx);
+                                                            fn_save_frame_to_obj_merge(*iter);
+                                                        });
                     per_frame_rendering_vertices.clear();
                     if (curr_frame != frame_start)
                         solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
@@ -319,7 +318,7 @@ int main(int argc, char** argv)
                 ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
                 ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
                 if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
-                    && lcs::get_scene_params().use_self_collision)
+                    && (lcs::get_scene_params().use_self_collision || lcs::get_scene_params().use_floor))
                     lcs::get_scene_params().use_ccd_linesearch = true;
 
 

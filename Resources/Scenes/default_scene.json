@@ -1,8 +1,8 @@
 {
     "scene_id": 8,
     "nonlinear_iter_count": 2,
-    "use_self_collision": false,
-    "use_ccd_linesearch": false,
+    "use_self_collision": true,
+    "use_ccd_linesearch": true,
     "shells": [
         {
             "model_name": "bowl/bowl.obj",

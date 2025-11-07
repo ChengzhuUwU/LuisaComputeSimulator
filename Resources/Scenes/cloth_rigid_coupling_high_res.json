@@ -46,7 +46,7 @@
             "shell_type": "Rigid"
         },
         {
-            "model_name": "bowl/bowl5.obj",
+            "model_name": "bowl/bowl.obj",
             "translation": [
                 0.1,
                 0.7,

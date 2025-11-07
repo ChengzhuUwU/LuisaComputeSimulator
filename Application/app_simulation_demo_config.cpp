@@ -194,6 +194,10 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
     if (val && yyjson_is_uint(val))
         lcs::get_scene_params().contact_energy_type = static_cast<uint>(yyjson_get_uint(val));
 
+    if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
+        && (lcs::get_scene_params().use_self_collision || lcs::get_scene_params().use_floor))
+        lcs::get_scene_params().use_ccd_linesearch = true;
+
     // Helper to parse FixedPointsType from string
     auto parse_fixed_method = [](const char* s)
     {
