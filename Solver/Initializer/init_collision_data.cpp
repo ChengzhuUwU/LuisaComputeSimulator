@@ -115,7 +115,7 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
         float       min_dist  = mesh_min_dist[mesh_idx];
         const float safe_dist = is_rigid_body ? 1e8f : 0.9f * min_dist;
 
-        if (safe_dist < 1e-4 && !is_rigid_body)  // Soft-body exist penetration in rest state
+        if (safe_dist < 1e-3 && !is_rigid_body)  // Soft-body exist penetration in rest state
         {
             // Note: We add this condition just for s
             LUISA_INFO("Sub-milimeter simulation may not be stable due to scaled small gap distance (Mesh {}, Min dist = {})",

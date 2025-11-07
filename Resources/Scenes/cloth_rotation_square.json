@@ -1,7 +1,5 @@
 {
-    "scene_id": 6,
-    "pcg_iter_count": 50,
-    "nonlinear_iter_count": 1,
+    "scene_id": 7,
     "gravity": [
         0.0,
         0.0,
@@ -11,8 +9,8 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2K.obj",
-            "scale": 0.5,
+            "model_name": "square26K.obj",
+            "scale": 1.0,
             "fixed_points": [
                 {
                     "method": "Left",

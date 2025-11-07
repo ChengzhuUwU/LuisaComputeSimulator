@@ -1,47 +1,49 @@
 {
-    "scene_id": 8,
+    "scene_id": 16,
     "nonlinear_iter_count": 2,
+    "use_self_collision": false,
+    "use_ccd_linesearch": false,
     "shells": [
         {
-            "model_name": "bowl/box.obj",
+            "model_name": "cube.obj",
+            "rotation": [
+                0.5235988,
+                0.0,
+                0.5235988
+            ],
             "translation": [
                 0.0,
-                0.3,
+                0.1,
                 0.0
             ],
-            "rotation": [
-                0.0,
-                0.0,
-                0.3
-            ],
-            "scale": 0.8,
+            "scale": 0.1,
             "shell_type": "Rigid"
         },
         {
-            "model_name": "Extreme/arm_thicker.obj",
+            "model_name": "cube.obj",
             "translation": [
-                -0.3,
-                0.8,
+                0.6,
+                0.4,
                 0.0
             ],
             "rotation": [
-                0.5,
+                0.5235988,
                 0.0,
-                0.0
+                1.0471976
             ],
-            "scale": 1.0,
+            "scale": 0.2,
             "shell_type": "Rigid"
         },
         {
-            "model_name": "bowl/bottle4.obj",
+            "model_name": "cube.obj",
             "translation": [
-                0.2,
-                1.2,
-                0.1
+                0.9,
+                0.6,
+                0.0
             ],
             "rotation": [
-                3.14,
-                0.0,
+                1.0471976,
+                0.5235988,
                 0.0
             ],
             "scale": 0.5,

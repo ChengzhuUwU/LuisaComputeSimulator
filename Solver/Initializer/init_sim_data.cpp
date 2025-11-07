@@ -703,12 +703,15 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 sim_data->sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
                 sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
-                // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                if (num_affine_bodies < 20)
+                {
+                    // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+                    LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                }
 
                 sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
                 sim_data->sa_affine_bodies_is_fixed[body_idx] =

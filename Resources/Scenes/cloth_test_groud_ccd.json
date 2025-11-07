@@ -1,8 +1,9 @@
 {
-    "scene_id": 1,
-    "implicit_dt": 0.0333,
+    "scene_id": 8,
+    "implicit_dt": 0.05,
     "nonlinear_iter_count": 1,
     "pcg_iter_count": 100,
+    "use_self_collision": false,
     "gravity": [
         0,
         -9.8,

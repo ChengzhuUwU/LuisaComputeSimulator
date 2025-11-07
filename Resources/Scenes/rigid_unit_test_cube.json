@@ -1,5 +1,5 @@
 {
-    "scene_id": 8,
+    "scene_id": 16,
     "nonlinear_iter_count": 2,
     "use_self_collision": false,
     "use_ccd_linesearch": false,
