@@ -78,13 +78,14 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 ## TODOLIST
 
-[ ] Frictional Contact
-[ ] Python Binding
-[ ] Thin Shell Rigid-Body Simulation
-[ ] Deformable Body Energy and Initilization (And atomatic tetrahedron mesh generation)
-[ ] Elastic Rod Energy
-[ ] Upper/Lower-Triangle of System Matrix Optization
-[ ] GPU-based Global Sort (For Matrix Assembly)
+- [ ] Frictional Contact
+- [ ] Python Binding
+- [ ] Thin Shell Rigid-Body Simulation
+- [ ] Deformable Body Energy and Initilization (And atomatic tetrahedron mesh generation)
+- [ ] Elastic Rod Energy
+- [ ] Upper/Lower-Triangle of System Matrix Optization
+- [ ] GPU-based Glocal Triplet Sorting (For Matrix Assembly)
+- [ ] Better Numerical Preconditioners
 
 
 
