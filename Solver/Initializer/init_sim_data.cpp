@@ -215,10 +215,10 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 use_spring = mesh_info.get_material<ClothMaterial>().stretch_model
                              == ConstitutiveStretchModelCloth::Spring;
             }
-            else if (mesh_info.holds<TetMaterial>())
-            {
-                use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
-            }
+            // else if (mesh_info.holds<TetMaterial>())
+            // {
+            //     use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
+            // }
             // else if (shell_info.holds<RigidMaterial>())
             // {
             //     use_spring = shell_info.get<RigidMaterial>().model == ConstitutiveModelRigid::Spring;
@@ -235,7 +235,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             return (use_spring && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_edges);
-    const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
 
     std::vector<uint> stretch_face_indices = fn_get_active_indices(
         [&](const uint fid)
@@ -253,7 +252,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             return (use_stretch_face && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_faces);
-    const uint num_stretch_faces = static_cast<uint>(stretch_face_indices.size());
 
     std::vector<uint> bending_edge_indices = fn_get_active_indices(
         [&](const uint eid)
@@ -271,7 +269,21 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             return (use_bending && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_dihedral_edges);
-    const uint num_bending_edges = static_cast<uint>(bending_edge_indices.size());
+
+    std::vector<uint> stress_tet_indices = fn_get_active_indices(
+        [&](const uint tid)
+        {
+            const uint  mesh_idx   = mesh_data->sa_tet_mesh_id[tid];
+            const auto& mesh_info  = world_data[mesh_idx];
+            bool        use_stress = mesh_info.holds<TetMaterial>();
+            uint4       tet        = mesh_data->sa_tetrahedrons[tid];
+            bool        is_dynamic = cull_unused_constraints ?
+                                         !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
+                                      || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]] :
+                                         true;
+            return (use_stress && is_dynamic) ? 1 : 0;
+        },
+        mesh_data->num_tets);
 
     std::vector<uint> affine_body_indices = fn_get_active_indices(
         [&](const uint meshIdx)
@@ -288,23 +300,30 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             return (is_rigid) ? 1 : 0;  // has_dynamic_vert
         },
         mesh_data->num_meshes);
-    const uint num_affine_bodies = static_cast<uint>(affine_body_indices.size());
 
     std::vector<uint> soft_vert_indices =
         fn_get_active_indices([&](const uint vid)
                               { return mesh_data->sa_vert_mesh_type[vid] == SimulationTypeRigid ? 0 : 1; },
                               mesh_data->num_verts);
-    const uint num_verts_soft = static_cast<uint>(soft_vert_indices.size());
 
-    LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})",
-               num_stretch_springs,
-               mesh_data->num_edges,
-               num_stretch_faces,
-               mesh_data->num_faces,
-               num_bending_edges,
-               mesh_data->num_dihedral_edges);
+    const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
+    const uint num_stretch_faces   = static_cast<uint>(stretch_face_indices.size());
+    const uint num_bending_edges   = static_cast<uint>(bending_edge_indices.size());
+    const uint num_stress_tets     = static_cast<uint>(stress_tet_indices.size());
+    const uint num_affine_bodies   = static_cast<uint>(affine_body_indices.size());
+    const uint num_verts_soft      = static_cast<uint>(soft_vert_indices.size());
+    const uint num_dof             = num_verts_soft + num_affine_bodies * 4;
 
-    const uint num_dof          = num_verts_soft + num_affine_bodies * 4;
+    LUISA_INFO("Initialized energy element counts:");
+    LUISA_INFO("      num Stretch Spring = {} (<{})", num_stretch_springs, mesh_data->num_edges);
+    LUISA_INFO("      num Stretch Face   = {} (<{})", num_stretch_faces, mesh_data->num_faces);
+    LUISA_INFO("      num Bending Edge   = {} (<{})", num_bending_edges, mesh_data->num_dihedral_edges);
+    LUISA_INFO("      num Stress Tet     = {} (<{})", num_stress_tets, mesh_data->num_tets);
+    LUISA_INFO("      num Affine Body    = {} (<{})", num_affine_bodies, mesh_data->num_meshes);
+    LUISA_INFO("      num Soft Vert      = {} (<{})", num_verts_soft, mesh_data->num_verts);
+    LUISA_INFO("      Total DOF = {}, NumVertSoft = {}, NumAffineBodies {}", num_dof, num_verts_soft, num_affine_bodies);
+
+
     sim_data->num_verts_soft    = num_verts_soft;
     sim_data->num_verts_rigid   = mesh_data->num_verts - num_verts_soft;
     sim_data->num_affine_bodies = num_affine_bodies;
@@ -312,7 +331,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
     sim_data->sa_num_dof.resize(1);
     sim_data->sa_num_dof[0] = num_dof;
 
-    LUISA_INFO("DOF = {}, NumVertSoft = {}, NumAffineBodies {}", num_dof, num_verts_soft, num_affine_bodies);
 
     // Init energy
     {
@@ -461,9 +479,49 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 }
             });
 
-        // LUISA_INFO("Stretch springs: {}", sim_data->sa_stretch_springs);
-        // LUISA_INFO("Stretch faces: {}", sim_data->sa_stretch_faces);
-        // LUISA_INFO("Bending edges: {}", sim_data->sa_bending_edges);
+        // Rest tetrahedron info
+        // BufferType<uint4>    sa_stress_tets;
+        // BufferType<float>    sa_stress_tets_rest_volume;
+        // BufferType<float>    sa_stress_tets_stiffness;
+        // BufferType<float3x3> sa_stress_tets_Dm_inv;
+        // BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
+        // BufferType<float3>   sa_stress_tets_gradients;
+        // BufferType<float3x3> sa_stress_tets_hessians;
+        sim_data->sa_stress_tets.resize(num_stress_tets);
+        sim_data->sa_stress_tets_rest_volume.resize(num_stress_tets);
+        sim_data->sa_stress_tets_mu_lambda.resize(num_stress_tets);
+        sim_data->sa_stress_tets_Dm_inv.resize(num_stress_tets);
+        sim_data->sa_stress_tets_offsets_in_adjlist.resize(num_stress_tets);
+        sim_data->sa_stress_tets_gradients.resize(num_stress_tets * 4);
+        sim_data->sa_stress_tets_hessians.resize(num_stress_tets * 16);
+        CpuParallel::parallel_for(0,
+                                  num_stress_tets,
+                                  [&](const uint tid)
+                                  {
+                                      const uint    orig_tid    = stress_tet_indices[tid];
+                                      uint4         tet         = mesh_data->sa_tetrahedrons[orig_tid];
+                                      const float3  vert_pos[4] = {mesh_data->sa_rest_x[tet[0]],
+                                                                   mesh_data->sa_rest_x[tet[1]],
+                                                                   mesh_data->sa_rest_x[tet[2]],
+                                                                   mesh_data->sa_rest_x[tet[3]]};
+                                      const float3& x0          = vert_pos[0];
+                                      const float3& x1          = vert_pos[1];
+                                      const float3& x2          = vert_pos[2];
+                                      const float3& x3          = vert_pos[3];
+                                      const float   volume      = compute_tet_volume(x0, x1, x2, x3);
+
+                                      const float3x3 Dm = luisa::make_float3x3(x1 - x0, x2 - x0, x3 - x0);
+                                      const float3x3 Dm_inv = luisa::inverse(Dm);
+                                      const auto& mesh_info = world_data[mesh_data->sa_tet_mesh_id[orig_tid]];
+                                      const auto& material = mesh_info.get_material<TetMaterial>();
+                                      const float E        = material.youngs_modulus;
+                                      const float nu       = material.poisson_ratio;
+                                      auto [mu, lambda]    = StretchEnergy::convert_prop(E, nu);
+                                      sim_data->sa_stress_tets[tid]             = tet;
+                                      sim_data->sa_stress_tets_rest_volume[tid] = volume;
+                                      sim_data->sa_stress_tets_Dm_inv[tid]      = Dm_inv;
+                                      sim_data->sa_stress_tets_mu_lambda[tid] = luisa::make_float2(mu, lambda);
+                                  });
 
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
@@ -647,6 +705,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->vert_adj_stretch_springs.resize(num_dof);
         sim_data->vert_adj_stretch_faces.resize(num_dof);
         sim_data->vert_adj_bending_edges.resize(num_dof);
+        sim_data->vert_adj_stress_tets.resize(num_dof);
         sim_data->vert_adj_affine_bodies.resize(num_dof);
 
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
@@ -727,6 +786,27 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             }
         }
         upload_2d_csr_from(sim_data->sa_vert_adj_bending_edges_csr, sim_data->vert_adj_bending_edges);
+
+        // Vert adj stress tets
+        for (uint tid = 0; tid < sim_data->sa_stress_tets.size(); tid++)
+        {
+            auto tet = sim_data->sa_stress_tets[tid];
+            for (uint j = 0; j < 4; j++)
+            {
+                sim_data->vert_adj_stress_tets[tet[j]].push_back(tid);
+            }
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj)
+                    {
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, tet[ii], tet[jj]);
+                    }
+                }
+            }
+        }
+        upload_2d_csr_from(sim_data->sa_vert_adj_stress_tets_csr, sim_data->vert_adj_stress_tets);
 
         // Vert adj orthogonality energy
         for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
@@ -988,6 +1068,20 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                                   sizeof(ushort) * 12);
                                   });
 
+        // Stress tetrahedron energy
+        sim_data->sa_stress_tets_offsets_in_adjlist.resize(sim_data->sa_stress_tets.size() * 12);
+        CpuParallel::parallel_for(0,
+                                  sim_data->sa_stress_tets.size(),
+                                  [&](const uint tid)
+                                  {
+                                      auto tet = sim_data->sa_stress_tets[tid];
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
+                                                                                               tet);  // size = 12
+                                      std::memcpy(sim_data->sa_stress_tets_offsets_in_adjlist.data() + tid * 12,
+                                                  mask.data(),
+                                                  sizeof(ushort) * 12);
+                                  });
+
         // Affine body inertia and orthogonality energy
         sim_data->sa_affine_bodies_offsets_in_adjlist.resize(num_affine_bodies * 12);
         CpuParallel::parallel_for(0,
@@ -1222,6 +1316,17 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                              output_data->colored_data.sa_lambda_bending,
                              input_data->colored_data.sa_lambda_bending)  // just resize
             ;
+    }
+    if (input_data->sa_stress_tets.size() > 0)
+    {
+        stream
+            << upload_buffer(device, output_data->sa_stress_tets, input_data->sa_stress_tets)
+            << upload_buffer(device, output_data->sa_stress_tets_mu_lambda, input_data->sa_stress_tets_mu_lambda)
+            << upload_buffer(device, output_data->sa_stress_tets_rest_volume, input_data->sa_stress_tets_rest_volume)
+            << upload_buffer(device, output_data->sa_stress_tets_Dm_inv, input_data->sa_stress_tets_Dm_inv)
+            << upload_buffer(device, output_data->sa_stress_tets_offsets_in_adjlist, input_data->sa_stress_tets_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_stress_tets_gradients, input_data->sa_stress_tets_gradients)
+            << upload_buffer(device, output_data->sa_stress_tets_hessians, input_data->sa_stress_tets_hessians);
     }
     if (input_data->sa_affine_bodies.size() > 0)
     {
