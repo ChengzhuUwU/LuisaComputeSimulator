@@ -1,3 +1,5 @@
+// Modified from [https://github.com/st-tech/ppf-contact-solver]
+
 #pragma once
 
 #include <luisa/luisa-compute.h>

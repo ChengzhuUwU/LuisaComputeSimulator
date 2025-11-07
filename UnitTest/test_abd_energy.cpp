@@ -245,8 +245,8 @@ void test_FEM_BW98()
     float2   duv0   = uv1 - uv0;
     float2   duv1   = uv2 - uv0;
     float2x2 Dm1    = float2x2(duv0, duv1);
-    auto Dm2 = StretchEnergy::libuipc::Dm2x2(float3_to_eigen3(X0), float3_to_eigen3(X1), float3_to_eigen3(X2));
 
+    // auto Dm2 = StretchEnergy::libuipc::Dm2x2(float3_to_eigen3(X0), float3_to_eigen3(X1), float3_to_eigen3(X2));
     // std::cout << "Dm1 = " << luisa::format("{}", Dm1) << std::endl;
     // std::cout << "Dm2 = " << Dm2 << std::endl;
 

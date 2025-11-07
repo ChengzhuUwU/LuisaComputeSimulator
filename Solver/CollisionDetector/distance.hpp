@@ -1,6 +1,4 @@
-// File: distance.hpp
-// Author: Ryoichi Ando (ryoichi.ando@zozo.com)
-// License: Apache v2.0
+// Modified from [https://github.com/st-tech/ppf-contact-solver]
 
 #ifndef DISTANCE_HPP
 #define DISTANCE_HPP
