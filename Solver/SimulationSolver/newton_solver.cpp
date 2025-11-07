@@ -3416,14 +3416,14 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
     //               .dispatch(aligned_diaptch_count);
 
-    // const auto& host_count      = host_collision_data->narrow_phase_collision_count;
-    // const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-    // const uint  aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
-    // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
-    //               .dispatch(aligned_diaptch_count);
+    const auto& host_count      = host_collision_data->narrow_phase_collision_count;
+    const uint  reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+    const uint  aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
+    stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+                  .dispatch(aligned_diaptch_count);
 
     // narrow_phase_detector->device_perVert_spmv(stream, input_ptr, output_ptr);
-    narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
+    // narrow_phase_detector->device_perPair_spmv(stream, input_ptr, output_ptr);
 }
 
 void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,

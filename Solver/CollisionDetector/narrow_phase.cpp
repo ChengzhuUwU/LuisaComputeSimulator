@@ -90,7 +90,7 @@ void NarrowPhasesDetector::resize_buffers(luisa::compute::Device& device, luisa:
     // Resize reduced triplet buffers
     {
         const uint num_reduced_triplet = narrow_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-        resize_template(device, collision_data->sa_cgA_contact_offdiag_triplet, num_reduced_triplet, "sa_cgA_contact_offdiag_triplet");
+        resize_template(device, collision_data->sa_cgA_contact_offdiag_triplet, num_reduced_triplet + 256, "sa_cgA_contact_offdiag_triplet");
     }
 }
 void NarrowPhasesDetector::reset_toi(Stream& stream)
