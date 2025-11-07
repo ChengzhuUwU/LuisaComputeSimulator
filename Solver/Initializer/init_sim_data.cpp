@@ -583,9 +583,13 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                     // LUISA_INFO("Affine Body {} Rest q = {}", body_idx, rest_q);
                 }
 
-                const uint curr_prefix    = mesh_data->prefix_num_verts[meshIdx];
-                const uint next_prefix    = mesh_data->prefix_num_verts[meshIdx + 1];
-                const uint num_verts_body = next_prefix - curr_prefix;
+                const uint curr_prefix_verts = mesh_data->prefix_num_verts[meshIdx];
+                const uint next_prefix_verts = mesh_data->prefix_num_verts[meshIdx + 1];
+                const uint curr_prefix_faces = mesh_data->prefix_num_faces[meshIdx];
+                const uint next_prefix_faces = mesh_data->prefix_num_faces[meshIdx + 1];
+                const uint curr_prefix_edges = mesh_data->prefix_num_edges[meshIdx];
+                const uint next_prefix_edges = mesh_data->prefix_num_edges[meshIdx + 1];
+                const uint num_verts_body    = next_prefix_verts - curr_prefix_verts;
 
                 EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
                 float4x4        compressed_mass_matrix;
@@ -595,7 +599,49 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 float3x3 I_body  = luisa::make_float3x3(0.0f);
                 if (mesh_info.get_is_shell())
                 {
-                    for (uint vid = curr_prefix; vid < next_prefix; vid++)
+                    // std::vector<float3> virtual_solid_verts((next_prefix_verts - curr_prefix_verts) * 2);
+                    // std::vector<uint3>  virtual_solid_faces(
+                    //     (mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx]) * 2);
+                    // for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                    // {
+                    //     float3 vert_pos       = mesh_data->sa_scaled_model_x[vid];
+                    //     float  half_thickness = 0.5f * mesh_info.get_thickness();
+                    //     float3 normal         = luisa::make_float3(0, 0, 0);
+                    //     for (const uint adj_fid : mesh_data->vert_adj_faces[vid])
+                    //     {
+                    //         uint3  face = mesh_data->sa_faces[adj_fid];
+                    //         float3 p0   = mesh_data->sa_scaled_model_x[face.x];
+                    //         float3 p1   = mesh_data->sa_scaled_model_x[face.y];
+                    //         float3 p2   = mesh_data->sa_scaled_model_x[face.z];
+                    //         float  area = compute_face_area(p0, p1, p2);
+                    //         normal += area * luisa::normalize(luisa::cross(p1 - p0, p2 - p0));
+                    //     }
+                    //     normal = luisa::normalize(normal);
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 0] = vert_pos + half_thickness * normal;
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 1] = vert_pos - half_thickness * normal;
+                    // }
+                    // for (uint fid = curr_prefix_faces; fid < next_prefix_faces; fid++)
+                    // {
+                    //     uint3 face = mesh_data->sa_faces[fid];
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 0] =
+                    //         luisa::make_uint3(2 * (face.x - curr_prefix_verts) + 0,
+                    //                           2 * (face.y - curr_prefix_verts) + 0,
+                    //                           2 * (face.z - curr_prefix_verts) + 0);
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 1] =
+                    //         luisa::make_uint3(2 * (face.z - curr_prefix_verts) + 1,
+                    //                           2 * (face.y - curr_prefix_verts) + 1,
+                    //                           2 * (face.x - curr_prefix_verts) + 1);
+                    // }
+                    // compute_trimesh_dyadic_mass(virtual_solid_verts,
+                    //                             virtual_solid_faces,
+                    //                             0,
+                    //                             static_cast<uint>(virtual_solid_faces.size()),
+                    //                             mesh_info.get_density(),
+                    //                             M_body,
+                    //                             MI_body,
+                    //                             I_body);
+
+                    for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
                     {
                         float  vert_mass = mesh_data->sa_vert_mass[vid];
                         float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
@@ -610,7 +656,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                     // If provided tetrahedron mesh for solid part
                     if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
                     {
-                        for (uint vid = curr_prefix; vid < next_prefix; vid++)
+                        for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
                         {
                             float  vert_mass = mesh_data->sa_vert_mass[vid];
                             float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
@@ -666,20 +712,20 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
                 sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
                 sim_data->sa_affine_bodies_is_fixed[body_idx] =
-                    std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix,
-                                mesh_data->sa_is_fixed.begin() + next_prefix,
+                    std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix_verts,
+                                mesh_data->sa_is_fixed.begin() + next_prefix_verts,
                                 [](const bool is_fixed) { return is_fixed; });
 
-                float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
-                                         mesh_data->sa_rest_vert_area.begin() + next_prefix,
+                float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix_verts,
+                                         mesh_data->sa_rest_vert_area.begin() + next_prefix_verts,
                                          0.0f);
 
                 sim_data->sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
                 sim_data->sa_affine_bodies_kappa[body_idx] = mesh_info.get_material<RigidMaterial>().stiffness;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
-                CpuParallel::single_thread_for(curr_prefix,
-                                               next_prefix,
+                CpuParallel::single_thread_for(curr_prefix_verts,
+                                               next_prefix_verts,
                                                [&](const uint vid)
                                                {
                                                    sim_data->sa_vert_affine_bodies_id[vid] = body_idx;

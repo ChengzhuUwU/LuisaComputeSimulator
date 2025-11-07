@@ -1,0 +1,26 @@
+{
+    "scene_id": 8,
+    "nonlinear_iter_count": 2,
+    "shells": [
+        {
+            "model_name": "square2.obj",
+            "translation": [
+                0.0,
+                0.14,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.01,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        }
+    ]
+}

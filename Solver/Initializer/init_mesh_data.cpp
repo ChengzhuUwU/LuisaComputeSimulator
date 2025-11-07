@@ -399,12 +399,24 @@ namespace Initializer
                 {
                     shell_info.physics_material = RigidMaterial();
                 }
+                const bool has_boundary =
+                    shell_info.input_mesh.dihedral_edges.size() != shell_info.input_mesh.edges.size();
+
                 auto& mat = shell_info.get_material<RigidMaterial>();
                 if (mat.is_shell)
                 {
+                    if (has_boundary)
+                    {
+                        // TODO: Later we may construct a virtual volume mesh for shell
+                        LUISA_ERROR("Non-closed mesh simulation is currently not supported for rigid body ");
+                    }
                 }
                 else
                 {
+                    if (has_boundary)
+                    {
+                        LUISA_ERROR("The solid mesh is not closed");
+                    }
                     mat.thickness = 0.0f;
                 }
             }
