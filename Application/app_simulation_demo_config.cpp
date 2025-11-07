@@ -559,6 +559,9 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "thickness");
                         if (v && yyjson_is_num(v))
                             mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "is_shell");
+                        if (v && yyjson_is_bool(v))
+                            mat.is_shell = static_cast<bool>(yyjson_get_bool(v));
 
                         info.set_physics_material(mat);
                         if (stype == nullptr)

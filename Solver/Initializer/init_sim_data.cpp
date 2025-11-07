@@ -1,4 +1,5 @@
 #include "Initializer/init_sim_data.h"
+#include "CollisionDetector/aabb.h"
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
@@ -480,13 +481,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             });
 
         // Rest tetrahedron info
-        // BufferType<uint4>    sa_stress_tets;
-        // BufferType<float>    sa_stress_tets_rest_volume;
-        // BufferType<float>    sa_stress_tets_stiffness;
-        // BufferType<float3x3> sa_stress_tets_Dm_inv;
-        // BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
-        // BufferType<float3>   sa_stress_tets_gradients;
-        // BufferType<float3x3> sa_stress_tets_hessians;
         sim_data->sa_stress_tets.resize(num_stress_tets);
         sim_data->sa_stress_tets_rest_volume.resize(num_stress_tets);
         sim_data->sa_stress_tets_mu_lambda.resize(num_stress_tets);
@@ -596,45 +590,60 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
                 float4x4        compressed_mass_matrix;
 
-                if (mesh_info.get_is_shell()
-                    || (mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                float    M_body  = 0.0f;
+                float3   MI_body = luisa::make_float3(0.0f);
+                float3x3 I_body  = luisa::make_float3x3(0.0f);
+                if (mesh_info.get_is_shell())
                 {
-                    // Shell or Tet mesh: integrate from vertices
-                    CpuParallel::single_thread_for(curr_prefix,
-                                                   next_prefix,
-                                                   [&](const uint vid)
-                                                   {
-                                                       float mass = mesh_data->sa_vert_mass[vid];
-                                                       float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
-                                                       auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
-                                                       // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
-                                                       body_mass += mass * J.transpose() * J;
-                                                   });
+                    for (uint vid = curr_prefix; vid < next_prefix; vid++)
+                    {
+                        float  vert_mass = mesh_data->sa_vert_mass[vid];
+                        float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
+
+                        M_body += vert_mass;
+                        MI_body += vert_mass * vert_pos;
+                        I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
+                    }
                 }
                 else  // Solid body: integrate from surface triangles
                 {
-                    float    rho = mesh_info.get_material<RigidMaterial>().density;
-                    float    m;
-                    float3   m_x_bar;
-                    float3x3 m_x_bar_x_bar;
+                    // If provided tetrahedron mesh for solid part
+                    if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                    {
+                        for (uint vid = curr_prefix; vid < next_prefix; vid++)
+                        {
+                            float  vert_mass = mesh_data->sa_vert_mass[vid];
+                            float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
 
-                    compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
-                                                mesh_data->sa_faces,
-                                                mesh_data->prefix_num_faces[meshIdx],
-                                                mesh_data->prefix_num_faces[meshIdx + 1],
-                                                rho,
-                                                m,
-                                                m_x_bar,
-                                                m_x_bar_x_bar);
-
-                    EigenFloat3x3 I = EigenFloat3x3::Identity();
-                    for (uint i = 0; i < 3; i++)
-                        body_mass.block<3, 3>(3 + i * 3, 0) = body_mass.block<3, 3>(0, 3 + i * 3) =
-                            m_x_bar[i] * I;
-                    for (uint i = 0; i < 3; i++)
-                        for (uint j = 0; j < 3; j++)
-                            body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = m_x_bar_x_bar[i][j] * I;
+                            M_body += vert_mass;
+                            MI_body += vert_mass * vert_pos;
+                            I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
+                        }
+                    }
+                    else  // If we only have surface mesh
+                    {
+                        compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
+                                                    mesh_data->sa_faces,
+                                                    mesh_data->prefix_num_faces[meshIdx],
+                                                    mesh_data->prefix_num_faces[meshIdx + 1],
+                                                    mesh_info.get_density(),
+                                                    M_body,
+                                                    MI_body,
+                                                    I_body);
+                    }
                 }
+
+                body_mass.block<3, 3>(0, 0) = M_body * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(3 + i * 3, 0) = MI_body[i] * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(0, 3 + i * 3) = MI_body[i] * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    for (uint j = 0; j < 3; j++)
+                        body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = I_body[i][j] * EigenFloat3x3::Identity();
 
                 body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
 
@@ -649,11 +658,11 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
                 // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                // LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
 
                 sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
                 sim_data->sa_affine_bodies_is_fixed[body_idx] =
