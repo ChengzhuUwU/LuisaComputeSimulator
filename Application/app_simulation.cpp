@@ -187,7 +187,7 @@ int main(int argc, char** argv)
         auto fn_single_step_without_ui = [&]() { fn_physics_step(); };
 
         const uint frame_start = lcs::get_scene_params().current_frame;
-        const uint frame_end   = frame_start + 4000;
+        const uint frame_end   = frame_start + 300;
 
         fn_save_frame_to_obj("_init");
         for (uint frame = frame_start; frame < frame_end; frame++)

@@ -56,7 +56,7 @@
             }
         },
         {
-            "model_name": "square2K.obj",
+            "model_name": "square8K.obj",
             "translation": [
                 1.0,
                 0.2,
@@ -77,9 +77,9 @@
             ],
             "shell_type": "Cloth",
             "material": {
-                "youngs_modulus": 1e5,
+                "youngs_modulus": 1e6,
                 "poisson_ratio": 0.3,
-                "area_bending_stiffness": 0.1
+                "area_bending_stiffness": 1.0
             }
         }
     ]

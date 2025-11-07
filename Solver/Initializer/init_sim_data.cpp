@@ -778,7 +778,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             }
         };
 
-        // Vert adj faces
+        // Vert adj stretch faces
         for (uint fid = 0; fid < sim_data->sa_stretch_faces.size(); fid++)
         {
             auto face = sim_data->sa_stretch_faces[fid];
