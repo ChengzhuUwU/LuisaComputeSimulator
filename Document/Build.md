@@ -14,14 +14,7 @@ sudo ln -s "$(pwd)/cmake-4.1.0-linux-x86_64/bin/cmake" /usr/local/bin/cmake
 cmake --version
 ```
 
-## Support build matrix
 
-|          | windows | ubantu | macos|
-|  -----   |---------|--------|------|
-| gcc-11   |  [ ]    |   [ ]  | [ ]  |
-| gcc-15   |  [ ]    |   [ ]  | [ ]  |
-| clang-14 |  [ ]    |   [ ]  | [ ]  |
-| clang-18 |  [ ]    |   [ ]  | [ ]  |
-| msvc(cl) |  [ ]    |        |      |
+
 <!-- | clang-cl |  [ ]    |   [ ]  | [ ]  | -->
 
