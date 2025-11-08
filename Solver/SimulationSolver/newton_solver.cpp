@@ -1839,7 +1839,7 @@ void NewtonSolver::host_evaluate_ground_collision()
                         k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
                         k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
                     }
-                    if (std::isnan(k1) || std::isnan(k2))
+                    if (luisa::isnan(k1) || luisa::isnan(k2))
                     {
                         LUISA_ERROR("NaN detected in ground collision computation: dist = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                                     dist,
@@ -2838,7 +2838,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                get_scene_params().current_nonlinear_iter,
                error,
                fast_infinity_norm(host_sim_data->sa_cgX));
-    if (std::isnan(error) || std::isinf(error))
+    if (luisa::isnan(error) || luisa::isinf(error))
     {
         LUISA_ERROR("NaN/INF detected in Eigen PCG solve!");
     }
