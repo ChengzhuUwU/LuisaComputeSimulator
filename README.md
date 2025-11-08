@@ -7,7 +7,7 @@
 [![macos](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml)
 
 
-LuisaComputeSimulator is a high-performance cross-platform **Physics Simulatior** based on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute), which provides support for simulating cloth and rigid body and for **Penetration-Free** contact handling.
+LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator** based on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute), providing support for **Cloth and Rigid-Body** simulations and support for **Penetration-Free** contact handling, accelated by variant GPU/CPU backends(e.g., CUDA, DirectX12, Vulkan, Metal, Fallback).
 
 ## Getting Started
 
@@ -63,35 +63,42 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 ## Examples
 
+
+|   [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)  |
+|  -----   |
+| ![Case6](Document/Images/RotationCylinder60s.gif)  |
+| 1.5 fps on RTX3090 (CUDA backend) |
+
 |       |   |
 |  -----   |------|
 | Moving Dirichlet Case |  |
 | ![Case0Bg](Document/Images/0_bg.png) [File](Resources/Scenes/cloth_moving_boundary.json) |  ![Teaser](Document/Images/0_ed.png) (The velocity of red plane is 3m/s )  |    
 |  Different Material Properties | Cloth-Rigid Coupling  Case 1 |
 | ![Case1](Document/Images/1.png) [File](Resources/Scenes/cloth_pinned.json)  |  ![Case3](Document/Images/3.png) [File](Resources/Scenes/cloth_rigid_coupling_drop.json) |
-|   Cloth-Rigid Coupling Case 2 | Rotation Cynlinder (21K DOF) |
+|   Cloth-Rigid Coupling Case 2 | Rotation Cylinder (21K DOF) |
 | ![Case4](Document/Images/4.png) [File](Resources/Scenes/cloth_rigid_coupling_high_res.json)  |  ![Case5](Document/Images/5.png) [File](Resources/Scenes/cloth_rotation_cylinder_7K.json) |
 |   Rotation Cylinder (260K DOF) | Large Thickness Case |
 | ![Case6](Document/Images/6.png) [File](Resources/Scenes/cloth_rotation_cylinder_88K.json)   |  ![Case9](Document/Images/9.png) [File](Resources/Scenes/cloth_unit_test_square2.json) |
-|   High-Resolusion Rigid-Body Case | Multi-Rigid-Body Case |
+|   Multi-Rigid-Body Case 1 | Multi-Rigid-Body Case 2 |
 | ![Case11](Document/Images/11.png)  [File](Resources/Scenes/rigid_bucket.json)  |  ![Case13](Document/Images/13.png) [File](Resources/Scenes/rigid_multi_folding_cubes.json) |
 
 ## TODOLIST
 
-- [ ] Frictional Contact
 - [ ] Python Binding
+- [ ] Frictional Contact
+- [ ] Strain Limiting
 - [ ] Thin Shell Rigid-Body Simulation
-- [ ] Deformable Body Energy and Initilization (And atomatic tetrahedron mesh generation)
+- [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy
-- [ ] Upper/Lower-Triangle of System Matrix Optization
-- [ ] GPU-based Glocal Triplet Sorting (For Matrix Assembly)
+- [ ] Upper/Lower-Triangle of System Matrix Optimization
+- [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
 - [ ] Better Numerical Preconditioners
 
 
 
 ## References
 
-- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g) and its [notes](https://zhuanlan.zhihu.com/p/441088912), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), libuipc, [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
+- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g) and its [notes](https://zhuanlan.zhihu.com/p/441088912), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
 - **DCD & CCD:** [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver), libuipc.
 - **PCG (Linear equation solver):** [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl), libuipc.
 - **Framework:** [libshell](https://github.com/legionus/libshell), [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting).
