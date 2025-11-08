@@ -749,13 +749,10 @@ struct spin_atomic
     using AtomicView = std::atomic<T>;
     using MemoryView = T;
 
+  private:
     AtomicView bits;
-    spin_atomic<T>()
-        : bits({0})
-    {
-    }
-    spin_atomic<T>(const T& f) { store(f); }
 
+  public:
     void store(const T& f)
     {
         MemoryView i;

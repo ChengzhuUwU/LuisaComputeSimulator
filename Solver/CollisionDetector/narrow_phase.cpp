@@ -890,7 +890,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
-                        $if(isnan(k1) | isnan(k2) | isinf(k1) | isinf(k2))
+                        $if(is_nan_scalar(k1) | is_nan_scalar(k2) | is_inf_scalar(k1) | is_inf_scalar(k2))
                         {
                             device_log("NaN/INF stiffness in DCD VF pair {}-{} : d = {} (d2 = {}), thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                                        vid,
@@ -1047,7 +1047,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
-                        $if(isnan(k1) | isnan(k2) | isinf(k1) | isinf(k2))
+                        $if(is_nan_scalar(k1) | is_nan_scalar(k2) | is_inf_scalar(k1) | is_inf_scalar(k2))
                         {
                             device_log("NaN/INF stiffness in DCD EE pair {}-{} : d = {} (d2 = {}) thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                                        left_edge,

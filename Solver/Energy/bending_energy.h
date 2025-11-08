@@ -1,6 +1,6 @@
-// Modified from [https://github.com/st-tech/ppf-contact-solver]
+// Modified from the appendix of [A Finite Element Formulation of Baraff-Witkin Cloth]
+//          and [https://github.com/st-tech/ppf-contact-solver]
 //          and [https://github.com/KemengHuang/GPU_IPC/blob/main/GPU_IPC/femEnergy.cu]
-
 
 #pragma once
 
