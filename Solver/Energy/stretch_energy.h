@@ -21,7 +21,7 @@ namespace StretchEnergy
             return x * x;
         }
 
-        inline constexpr float2x3 make_diff_mat3x2()
+        inline float2x3 make_diff_mat3x2()
         {
             float2x3 result;
             result.set_zero();
