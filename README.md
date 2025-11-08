@@ -17,9 +17,6 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 - **Install required packages:**  
     - Cmake > 3.26
 
-    - For Linux and Windows users:
-      - To you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: CUDA >= 12.0). Check the maximum supported CUDA version using `nvidia-smi`.
-
     - For MacOS users:
       - [Xcode](https://developer.apple.com/cn/xcode/) is required for the support of Metal Backend.
 
@@ -32,6 +29,9 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
       ```bash
       sudo apt-get install -y clang-18 wget uuid-dev ninja-build libvulkan-dev libeigen3-dev libx11-dev cmake
       ```
+      
+    - For Linux and Windows users:
+      - If you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: CUDA >= 12.0). Check the maximum supported CUDA version using `nvidia-smi`.
 
 - **You can build with Cmake:**  
   - Congiure: ```cmake -S . -B build```
@@ -40,12 +40,15 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
   - Build   : ```cmake --build build -j```
 
 - **You can also build with Xmake:**  
-  - Congiure: ```xmake l setup.lua```
+  - Congiure: ```xmake lua setup.lua```
   - Build   : ```xmake build```
 
 - **Run the application:**  
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
     `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
+
+    > If you are root-user, you may need `xmake lua --root setup.lua`
+
     In lanching arguments, you can specify your favorate backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provode several example scenarios in `Resources/Scenes` directory).
 
 More configuration support can be found in [the document of LuisaCompute](https://github.com/LuisaGroup/LuisaCompute/blob/stable/BUILD.md) and [Build.md](Document/Build.md).
@@ -61,13 +64,23 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 3. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
 
-## Examples
+## Supported Backends (of LuisaCompute)
 
+|   Backend |  Windows   | Linux   |  MacOS  | Description |
+|  -----    |  ------    |  ------ |  ------ |      ------ |
+| cuda      | - [x]      | - [x]   | - [ ]   | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
+| vulkan    | - [x]      | - [x]   | - [ ]   | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
+| metal     | - [ ]      | - [ ]   | - [x]   |   | 
+| dx        | - [x]      | - [ ]   | - [ ]   | Requires [vulkan SDK](https://vulkan.lunarg.com/) | 
+| fallback  | - [x]      | - [x]   | - [x]   | Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
+
+
+## Examples
 
 |   [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)  |
 |  -----   |
 | ![Case6](Document/Images/RotationCylinder60s.gif)  |
-| 1.5 fps on RTX3090 (CUDA backend) |
+| 2~3 fps on RTX3090 (CUDA backend), 2~3 fps on M2 Max (Metal Backend) |
 
 |       |   |
 |  -----   |------|

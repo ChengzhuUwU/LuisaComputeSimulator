@@ -1,6 +1,8 @@
 # Build
 
-## For linux users
+
+
+## For Linux Users
 
 If the cmake version is older than 3.26 (Check it using ``cmake --version``), you need to install a recent prebuilt release from https://cmake.org/files/LatestRelease:
 
