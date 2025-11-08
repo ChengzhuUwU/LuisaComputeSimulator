@@ -722,11 +722,11 @@ void LBVH::compile(AsyncCompiler& compiler)
                     };
                     auto orig_flag = sa_node_aabb->atomic(parrent)[0][3].compare_exchange(0.0f, 1.0f);
                     // sa_node_aabb->atomic(parrent).min_bound[3].fetch_add(1.0f);
-                    $if(orig_flag == 0)
+                    $if(orig_flag == 0.0f)
                     {
                         $break;
                     }
-                    $elif(orig_flag == 1)
+                    $elif(orig_flag == 1.0f)
                     {
                         sa_node_aabb->atomic(parrent)[0][3].compare_exchange(1.0f, 2.0f);
                         // sa_node_aabb->atomic(parrent).min_bound[3].fetch_add(1.0f);

@@ -503,7 +503,7 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
                         {
                             // ensure consistency when both provided
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Tetrahedral" || material_type == "Tet" || material_type == "TetMaterial")
@@ -534,7 +534,7 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Rigid")
@@ -571,7 +571,7 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Rod")
@@ -608,7 +608,7 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else
