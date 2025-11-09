@@ -12,7 +12,10 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 ## Getting Started
 
 - **Clone the repository:**
-    ```git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git```
+    ```
+    git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git
+    cd LuisaComputeSimulator
+    ```
 
 - **Install required packages:**  
     - Cmake > 3.26
@@ -27,15 +30,16 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
       sudo apt-get update -->
       Install required packages:
       ```bash
-      sudo apt-get install -y clang-18 wget uuid-dev ninja-build libvulkan-dev libeigen3-dev libx11-dev cmake
+      sudo apt-get install -y wget uuid-dev ninja-build libvulkan-dev libeigen3-dev libx11-dev cmake
       ```
+      Clang is recomanded as the compiler:`sudo apt-get install -y clang-15 `
       
     - For Linux and Windows users:
       - If you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: CUDA >= 12.0). Check the maximum supported CUDA version using `nvidia-smi`.
 
 - **You can build with Cmake:**  
   - Congiure: ```cmake -S . -B build```
-    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-18 -D CMAKE_CXX_COMPILER=clang++-18 -D CMAKE_BUILD_TYPE=Release` 
+    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release` 
     - (Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`).
   - Build   : ```cmake --build build -j```
 
@@ -66,13 +70,13 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 ## Supported Backends (of LuisaCompute)
 
-|   Backend |  Windows   | Linux   |  MacOS  | Description |
-|  -----    |  ------    |  ------ |  ------ |      ------ |
-| cuda      | - [x]      | - [x]   | - [ ]   | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
-| vulkan    | - [x]      | - [x]   | - [ ]   | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
-| metal     | - [ ]      | - [ ]   | - [x]   |   | 
-| dx        | - [x]      | - [ ]   | - [ ]   | Requires [vulkan SDK](https://vulkan.lunarg.com/) | 
-| fallback  | - [x]      | - [x]   | - [x]   | Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
+|   Backend |  Windows   | Linux     |  MacOS  | Description |
+|  -----    |  ------    |  ------   |  ------ |      ------ |
+| cuda      | Supported  | Supported |         | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
+| vulkan    |Supported   | Experimental | Developing  | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
+| metal     |            |           | Supported |   | 
+| dx        | Supported  |           |           | Requires [vulkan SDK](https://vulkan.lunarg.com/) | 
+| fallback  | Supported  | Supported | Supported | Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
 
 
 ## Examples
@@ -80,7 +84,7 @@ More configuration support can be found in [the document of LuisaCompute](https:
 |   [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)  |
 |  -----   |
 | ![Case6](Document/Images/RotationCylinder60s.gif)  |
-| 2~3 fps on RTX3090 (CUDA backend), 2~3 fps on M2 Max (Metal Backend) |
+| About 3 fps on RTX3090 (CUDA backend), 2 fps on M2 Max (Metal Backend) |
 
 |       |   |
 |  -----   |------|
