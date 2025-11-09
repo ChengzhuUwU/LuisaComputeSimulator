@@ -84,7 +84,7 @@ More configuration support can be found in [the document of LuisaCompute](https:
 |   [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)  |
 |  -----   |
 | ![Case6](Document/Images/RotationCylinder60s.gif)  |
-| About 3 fps on RTX3090 (CUDA backend), 2 fps on M2 Max (Metal Backend) |
+| About 3 fps on RTX3090 (CUDA backend), about 2 fps on M2 Max (Metal Backend) |
 
 |       |   |
 |  -----   |------|
