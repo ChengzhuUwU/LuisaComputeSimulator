@@ -47,11 +47,11 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
   - Congiure: ```xmake lua setup.lua```
   - Build   : ```xmake build```
 
+  > If you are root-user, you may need `xmake lua --root setup.lua`
+
 - **Run the application:**  
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
     `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
-
-    > If you are root-user, you may need `xmake lua --root setup.lua`
 
     In lanching arguments, you can specify your favorate backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provode several example scenarios in `Resources/Scenes` directory).
 
