@@ -27,13 +27,6 @@ target_include_directories(luisa-compute-solver-lib PUBLIC $<BUILD_INTERFACE:${C
 
 # External
 set(EXT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/ext)
-
-
-set(FETCHCONTENT_QUIET OFF)
-set(FETCHCONTENT_VERBOSE ON)
-include(FetchContent)
-
-
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext)
 include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
 
