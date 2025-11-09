@@ -29,6 +29,7 @@ includes("LuisaCompute")
 --     add_files("tbb/src/**.cpp")
 --     add_defines("__TBB_PREVIEW_PARALLEL_PHASE")
 -- target_end()
+add_defines("LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER")
 
 target("eigen")
 set_kind("headeronly")

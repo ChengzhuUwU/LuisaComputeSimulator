@@ -584,16 +584,17 @@ namespace Initializer
 
                 // Read fixed points
                 mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_indices.size());
-                CpuParallel::parallel_for(0,
-                                          curr_shell_info.fixed_point_indices.size(),
-                                          [&](const uint index)
-                                          {
-                                              const uint local_vid = curr_shell_info.fixed_point_indices[index];
-                                              const uint global_vid = prefix_num_verts + local_vid;
-                                              mesh_data->sa_is_fixed[global_vid] = true;
-                                              mesh_data->fixed_verts.push_back(global_vid);
-                                              mesh_data->fixed_verts_map[meshIdx][index] = global_vid;
-                                          });
+                CpuParallel::single_thread_for(0,
+                                               curr_shell_info.fixed_point_indices.size(),
+                                               [&](const uint index)
+                                               {
+                                                   const uint local_vid =
+                                                       curr_shell_info.fixed_point_indices[index];
+                                                   const uint global_vid = prefix_num_verts + local_vid;
+                                                   mesh_data->sa_is_fixed[global_vid] = true;
+                                                   mesh_data->fixed_verts.push_back(global_vid);
+                                                   mesh_data->fixed_verts_map[meshIdx][index] = global_vid;
+                                               });
                 // Set fixed-points
                 {
                     AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
