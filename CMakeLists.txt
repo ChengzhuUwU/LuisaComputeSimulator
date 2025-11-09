@@ -9,7 +9,7 @@ project(LuisaComputeSolver)
 option(LCS_ENABLE_GUI "Enable GUI support" OFF)
 option(LCS_ENABLE_TEST "Enable Unit Tests" OFF)
 option(LCS_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
-option(LCS_BUILD_MAIN_APPLICATION "Build Excutable Simulation Application" ON)
+option(LCS_BUILD_MAIN_APPLICATION "Build Executable Simulation Application" ON)
 
 option(LUISA_COMPUTE_ENABLE_CUDA "Enable CUDA backend" ON)
 option(LUISA_COMPUTE_ENABLE_METAL "Enable Metal backend" ON)

@@ -32,19 +32,19 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
       ```bash
       sudo apt-get install -y wget uuid-dev ninja-build libvulkan-dev libeigen3-dev libx11-dev cmake
       ```
-      Clang is recomanded as the compiler:`sudo apt-get install -y clang-15 `
+      Clang is recommended as the compiler:`sudo apt-get install -y clang-15 `
       
     - For Linux and Windows users:
       - If you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: CUDA >= 12.0). Check the maximum supported CUDA version using `nvidia-smi`.
 
 - **You can build with Cmake:**  
-  - Congiure: ```cmake -S . -B build```
+  - Configure: ```cmake -S . -B build```
     - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release` 
     - (Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`).
   - Build   : ```cmake --build build -j```
 
 - **You can also build with Xmake:**  
-  - Congiure: ```xmake lua setup.lua```
+  - Configure: ```xmake lua setup.lua```
   - Build   : ```xmake build```
 
   > If you are root-user, you may need `xmake lua --root setup.lua`
@@ -53,7 +53,7 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
     `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
 
-    In lanching arguments, you can specify your favorate backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provode several example scenarios in `Resources/Scenes` directory).
+    In launching arguments, you can specify your favorite backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in `Resources/Scenes` directory).
 
 More configuration support can be found in [the document of LuisaCompute](https://github.com/LuisaGroup/LuisaCompute/blob/stable/BUILD.md) and [Build.md](Document/Build.md).
 
