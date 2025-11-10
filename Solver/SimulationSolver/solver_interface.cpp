@@ -211,9 +211,9 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
     std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer);
     std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer);
 
-    const std::string filename = luisa::format("frame_{}{}.state", frame, addition_str);
+    const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
 
-    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
+    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + "/SimulationState/";
 
     {
         std::filesystem::path dir_path(full_directory);
@@ -232,7 +232,8 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
         }
     }
 
-    std::string   full_path = full_directory + filename;
+    std::string full_path = full_directory;
+    full_path += std::string_view{filename};
     std::ofstream file(full_path, std::ios::out);
 
 
@@ -273,10 +274,11 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
 }
 void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
 {
-    const std::string filename = luisa::format("frame_{}{}.state", frame, addition_str);
+    const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
-    std::string full_path      = full_directory + filename;
+    std::string full_path      = full_directory;
+    full_path += std::string_view{filename};
 
     std::ifstream file(full_path, std::ios::in);
     if (!file.is_open())
@@ -363,7 +365,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             {
                 if (index < host_sim_data->num_affine_bodies * 4)
                     sa_q_frame_saved[index] = {x, y, z};
-                else 
+                else
                 {
                     LUISA_INFO("Count of loaded q vertices exceeds the number of affine bodies in the sim data, stopping load.");
                     file.close();
@@ -411,7 +413,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
 {
     // , lcs::get_scene_params().current_frame
-    const std::string filename = luisa::format("frame_{}{}.obj", frame, addition_str);
+    const auto filename = luisa::format("frame_{}{}.obj", frame, addition_str);
 
     std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
 
@@ -432,7 +434,8 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
         }
     }
 
-    std::string   full_path = full_directory + filename;
+    std::string full_path = full_directory;
+    full_path += std::string_view{filename};
     std::ofstream file(full_path, std::ios::out);
 
     if (file.is_open())

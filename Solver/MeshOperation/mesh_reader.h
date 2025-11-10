@@ -7,6 +7,7 @@
 #include <array>
 #include <algorithm>
 #include <math.h>
+#include <luisa/core/stl/vector.h>
 
 #include "MeshOperation/tiny_obj_loader.h"
 #include "Utils/cpu_parallel.h"
@@ -76,15 +77,15 @@ void extract_edges_from_surface(const std::vector<Int3>& input_faces,
                                 bool                     extract_bending_edge);
 
 
-bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
-bool read_tet_file_vtk(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
-bool read_mesh_file(std::string mesh_name, TriangleMeshData& meshes);
+bool read_tet_file_t(std::string_view mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
+bool read_tet_file_vtk(std::string_view mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets);
+bool read_mesh_file(std::string_view mesh_name, TriangleMeshData& meshes);
 // bool read_tet_file_t(std::string mesh_name, TetrahedralMeshData& meshes);
 
 // template<typename Vert, typename Face>
-bool saveToOBJ_combined(std::vector<std::vector<Float3>> sa_rendering_vertices,
-                        std::vector<std::vector<Int3>>   sa_rendering_faces,
-                        const std::string&               addition_path,
-                        const std::string&               addition_str,
-                        const uint                       frame);
+bool saveToOBJ_combined(std::vector<std::vector<Float3>> const& sa_rendering_vertices,
+                        std::vector<std::vector<Int3>> const&   sa_rendering_faces,
+                        std::string_view                        addition_path,
+                        std::string_view                        addition_str,
+                        const uint                              frame);
 };  // namespace SimMesh

@@ -105,12 +105,10 @@ void extract_surface_face_and_vert_from_tets(const std::vector<Float3>& input_po
     };
     auto dot_vec = [](const Float3& left, const Float3& right) -> float
     { return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]; };
-    auto add_vec = [](const Float3& left, const Float3& right) -> Float3 {
-        return Float3{left[0] + right[0], left[1] + right[1], left[2] + right[2]};
-    };
-    auto sub_vec = [](const Float3& left, const Float3& right) -> Float3 {
-        return Float3{left[0] - right[0], left[1] - right[1], left[2] - right[2]};
-    };
+    auto add_vec = [](const Float3& left, const Float3& right) -> Float3
+    { return Float3{left[0] + right[0], left[1] + right[1], left[2] + right[2]}; };
+    auto sub_vec = [](const Float3& left, const Float3& right) -> Float3
+    { return Float3{left[0] - right[0], left[1] - right[1], left[2] - right[2]}; };
     auto length_vec = [](const Float3& vec) -> float
     { return sqrtf(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]); };
     auto normalize_vec = [length_vec](const Float3& vec) -> Float3
@@ -354,12 +352,12 @@ void extract_edges_from_surface(const std::vector<Int3>& input_faces,
 }
 
 
-bool read_mesh_file(std::string mesh_name, TriangleMeshData& mesh_data)
+bool read_mesh_file(std::string_view mesh_name, TriangleMeshData& mesh_data)
 {
     std::string err, warn;
 
 
-    std::string full_path = mesh_name;
+    std::string full_path{mesh_name};
 
     std::string mtl_path = std::filesystem::path(full_path).replace_extension(".mtl").string();
 
@@ -590,9 +588,9 @@ bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::
     }
     return true;
 }
-bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, std::vector<Int4>& tets)
+bool read_tet_file_vtk(std::string_view file_name, std::vector<Float3>& positions, std::vector<Int4>& tets)
 {
-    std::string full_path = file_name;
+    std::string full_path{file_name};
 
     std::ifstream infile(full_path);
     if (!infile.is_open())
@@ -680,14 +678,19 @@ bool read_tet_file_vtk(std::string file_name, std::vector<Float3>& positions, st
 
 
 // template<typename Vert, typename Face>
-bool saveToOBJ_combined(std::vector<std::vector<Float3>> sa_rendering_vertices,
-                        std::vector<std::vector<Int3>>   sa_rendering_faces,
-                        const std::string&               addition_path,
-                        const std::string&               addition_str,
-                        const uint                       frame)
+bool saveToOBJ_combined(std::vector<std::vector<Float3>> const& sa_rendering_vertices,
+                        std::vector<std::vector<Int3>> const&   sa_rendering_faces,
+                        std::string_view                        addition_path,
+                        std::string_view                        addition_str,
+                        const uint                              frame)
 {
-    const std::string filename = std::string("frame_") + std::to_string(frame) + addition_str + ".obj";
-    std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/") + addition_path + "/";
+    std::string filename = std::string("frame_") + std::to_string(frame);
+    filename += addition_str;
+    filename += ".obj";
+    std::string full_directory(LCSV_RESOURCE_PATH);
+    full_directory += "/OutputMesh/";
+    full_directory += addition_path;
+    full_directory += "/";
     std::string full_path = full_directory + filename;
 
     // Ensure the directory exists
