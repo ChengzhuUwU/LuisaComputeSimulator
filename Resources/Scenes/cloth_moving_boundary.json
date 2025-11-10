@@ -1,5 +1,5 @@
 {
-    "scene_id": 2,
+    "scene_id": 1,
     "use_floor": false,
     "implicit_dt": 0.05,
     "nonlinear_iter_count": 1,

@@ -43,24 +43,24 @@ void SolverInterface::set_data_pointer(SolverData& solver_data, SolverHelper& so
 }
 void SolverInterface::init_data(luisa::compute::Device&                   device,
                                 luisa::compute::Stream&                   stream,
-                                std::vector<lcs::Initializer::ShellInfo>& shell_list)
+                                std::vector<lcs::Initializer::WorldData>& world_data)
 {
     set_data_pointer(solver_data, solver_helper);
 
     // Init data
     {
-        lcs::Initializer::init_mesh_data(shell_list, host_mesh_data);
+        lcs::Initializer::init_mesh_data(world_data, host_mesh_data);
         lcs::Initializer::upload_mesh_buffers(device, stream, host_mesh_data, mesh_data);
     }
 
     {
-        lcs::Initializer::init_sim_data(shell_list, host_mesh_data, host_sim_data);
+        lcs::Initializer::init_sim_data(world_data, host_mesh_data, host_sim_data);
         lcs::Initializer::upload_sim_buffers(device, stream, host_sim_data, sim_data);
         lcs::Initializer::resize_pcg_data(device, stream, host_mesh_data, host_sim_data, sim_data);
     }
 
     {
-        lcs::Initializer::init_collision_data(shell_list, host_mesh_data, host_sim_data, host_collision_data);
+        lcs::Initializer::init_collision_data(world_data, host_mesh_data, host_sim_data, host_collision_data);
         lcs::Initializer::upload_collision_buffers(device, stream, host_sim_data, sim_data, host_collision_data, collision_data);
     }
 
@@ -339,24 +339,48 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             {
                 if (index < host_mesh_data->num_verts)
                     sa_x_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded position vertices exceeds the number of verts in the mesh data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Velocity)
             {
                 if (index < host_mesh_data->num_verts)
                     sa_v_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded velocity vertices exceeds the number of verts in the mesh data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Q)
             {
                 if (index < host_sim_data->num_affine_bodies * 4)
                     sa_q_frame_saved[index] = {x, y, z};
+                else 
+                {
+                    LUISA_INFO("Count of loaded q vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
             else if (current_section == Qv)
             {
                 if (index < host_sim_data->num_affine_bodies * 4)
                     sa_qv_frame_saved[index] = {x, y, z};
+                else
+                {
+                    LUISA_INFO("Count of loaded qv vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    file.close();
+                    return;
+                }
                 index++;
             }
         }

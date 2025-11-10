@@ -427,6 +427,30 @@ struct CollisionData : SimulationType
         lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
     }
 
+    inline size_t get_momery_bytes() const
+    {
+        const size_t collision_pair_bytes =
+            sizeof(uint) * this->broad_phase_collision_count.size()
+            + sizeof(uint) * this->narrow_phase_collision_count.size()
+            + sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
+            + sizeof(float) * this->toi_per_vert.size() + sizeof(float) * this->contact_energy.size()
+            + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
+            + sizeof(uint) * this->sa_triplet_info.size()
+            + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
+            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
+            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()
+            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property.size()
+            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property2.size()
+            + sizeof(uint) * this->per_vert_num_broad_phase_vf.size()
+            + sizeof(uint) * this->per_vert_num_broad_phase_ee.size()
+            + sizeof(uint) * this->per_vert_num_adj_pairs.size()
+            + sizeof(uint) * this->per_vert_num_adj_verts.size()
+            + sizeof(uint) * this->per_vert_prefix_adj_pairs.size()
+            + sizeof(uint) * this->per_vert_prefix_adj_verts.size();
+
+        return size_t(collision_pair_bytes);
+    }
+
     inline void resize_collision_data_list(luisa::compute::Device& device,
                                            const uint              num_verts,
                                            const uint              num_faces,
@@ -435,9 +459,9 @@ struct CollisionData : SimulationType
                                            const bool              allocate_contact_list,
                                            const bool              allocate_triplet)
     {
-        const uint per_element_count_BP        = 48;
-        const uint per_element_count_NP        = 24;
-        const uint per_element_count_NP_culled = 12;
+        const uint per_element_count_BP        = 4;
+        const uint per_element_count_NP        = 2;
+        const uint per_element_count_NP_culled = 2;
 
         if (allocate_contact_list)
         {
@@ -465,15 +489,7 @@ struct CollisionData : SimulationType
                 device, this->sa_cgA_contact_offdiag_triplet, max_scalar(max_culled_triplet, 256));
         }
 
-        const size_t collision_pair_bytes =
-            sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
-            + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
-            + sizeof(uint) * this->sa_triplet_info.size()
-            + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
-            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
-            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()
-            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property.size()
-            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property2.size();
+        const size_t collision_pair_bytes = get_momery_bytes();
 
         LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
         if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)

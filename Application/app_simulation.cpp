@@ -91,7 +91,7 @@ int main(int argc, char** argv)
     lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
     // Read Mesh
-    std::string scene_json_path = std::string(LCSV_RESOURCE_PATH) + "/Scenes/default_scene.json";
+    std::string scene_json_path = "default_scene.json";
     if (argc >= 3)
     {
         LUISA_INFO("Load target scene {}", argv[2]);
@@ -101,22 +101,22 @@ int main(int argc, char** argv)
     {
         LUISA_INFO("Load default scene {}", scene_json_path);
     }
-    std::vector<lcs::Initializer::ShellInfo> shell_list;
+    std::vector<lcs::Initializer::WorldData> world_data;
     // Demo::Simulation::load_default_scene(shell_list);
-    Demo::Simulation::load_scene_params_from_json(shell_list, scene_json_path);
+    Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
 
     // Init Solver
     lcs::NewtonSolver solver;
-    solver.init_solver(device, stream, shell_list);
+    solver.init_solver(device, stream, world_data);
 
     auto fn_update_pinned_verts = [&](const uint curr_frame)
     {
         // Animation for fixed points
-        for (uint mesh_idx = 0; mesh_idx < shell_list.size(); mesh_idx++)
+        for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
         {
-            const float                  curr_time  = curr_frame * lcs::get_scene_params().implicit_dt;
-            lcs::Initializer::ShellInfo& shell_info = shell_list[mesh_idx];
-            solver.update_pinned_verts_information(mesh_idx, shell_info.get_fixed_point_target_positions(curr_time));
+            const float curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
+            solver.update_pinned_verts_information(
+                mesh_idx, world_data[mesh_idx].get_fixed_point_target_positions(curr_time));
         }
     };
 
@@ -139,14 +139,14 @@ int main(int argc, char** argv)
     constexpr bool use_ui            = true;
 
     // Init rendering data
-    std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(shell_list.size() + 0 + 0);
-    std::vector<std::vector<std::array<uint, 3>>>  sa_rendering_faces(shell_list.size() + 0 + 0);
-    std::vector<std::vector<std::array<float, 3>>> face_color(shell_list.size());
+    std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(world_data.size() + 0 + 0);
+    std::vector<std::vector<std::array<uint, 3>>>  sa_rendering_faces(world_data.size() + 0 + 0);
+    std::vector<std::vector<std::array<float, 3>>> face_color(world_data.size());
     {
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
+        for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
         {
-            shell_list[meshIdx].get_rest_positions(sa_rendering_vertices[meshIdx]);
-            sa_rendering_faces[meshIdx] = shell_list[meshIdx].input_mesh.faces;
+            world_data[meshIdx].get_rest_positions(sa_rendering_vertices[meshIdx]);
+            sa_rendering_faces[meshIdx] = world_data[meshIdx].input_mesh.faces;
             face_color[meshIdx].resize(sa_rendering_faces[meshIdx].size(), {0.7, 0.2, 0.3});
         }
     }
@@ -167,22 +167,60 @@ int main(int argc, char** argv)
 
 #if !defined(SIMULATION_APP_USE_GUI)
     {
-        auto fn_single_step_without_ui = [&]()
-        {
-            LUISA_INFO("     Newton solver frame {}", lcs::get_scene_params().current_frame);
+        // solver.lcs::SolverInterface::load_saved_state_from_host(2501, "");
+        // lcs::get_scene_params().current_frame = 2501 + 1;
+        // fn_update_rendering_vertices();
 
-            fn_physics_step();
+        constexpr bool                                                 use_merge_writing = true;
+        std::map<uint, std::vector<std::vector<std::array<float, 3>>>> per_frame_rendering_vertices;
+        auto                                                           fn_save_frame_to_obj_merge =
+            [&](const std::pair<uint, std::vector<std::vector<std::array<float, 3>>>>& curr_frame_result,
+                const std::string& additional_info = "")
+        {
+            SimMesh::saveToOBJ_combined(curr_frame_result.second,
+                                        sa_rendering_faces,
+                                        luisa::format("0{}", lcs::get_scene_params().scene_id),
+                                        additional_info,
+                                        curr_frame_result.first);
         };
 
-        // solver.lcs::SolverInterface::restart_system();
+        auto fn_single_step_without_ui = [&]() { fn_physics_step(); };
+
+        const uint frame_start = lcs::get_scene_params().current_frame;
+        const uint frame_end   = frame_start + 300;
 
         fn_save_frame_to_obj("_init");
-        for (uint frame = 0; frame < 20; frame++)
+        for (uint frame = frame_start; frame < frame_end; frame++)
         {
             fn_single_step_without_ui();
 
             fn_update_rendering_vertices();
-            fn_save_frame_to_obj();
+
+            const uint curr_frame = lcs::get_scene_params().current_frame - 1;
+            if (use_merge_writing)
+            {
+                if (curr_frame % 2 == 1)
+                    per_frame_rendering_vertices[curr_frame] = sa_rendering_vertices;
+
+                if (curr_frame % 100 == 99 || frame == frame_end - 1)
+                {
+                    CpuParallel::parallel_for_each_core(0,
+                                                        per_frame_rendering_vertices.size(),
+                                                        [&](uint idx)
+                                                        {
+                                                            auto iter = per_frame_rendering_vertices.begin();
+                                                            std::advance(iter, idx);
+                                                            fn_save_frame_to_obj_merge(*iter);
+                                                        });
+                    per_frame_rendering_vertices.clear();
+                    if (curr_frame != frame_start)
+                        solver.lcs::SolverInterface::save_current_frame_state_to_host(curr_frame, "");
+                }
+            }
+            else
+            {
+                fn_save_frame_to_obj();
+            }
         }
         // SimMesh::saveToOBJ_combined(
         //     sa_rendering_vertices, sa_rendering_faces, "", "", lcs::get_scene_params().current_frame);
@@ -194,9 +232,9 @@ int main(int argc, char** argv)
         polyscope::init("openGL3_glfw");
         std::vector<polyscope::SurfaceMesh*> surface_meshes;
 
-        for (uint meshIdx = 0; meshIdx < shell_list.size(); meshIdx++)
+        for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
         {
-            const std::string& curr_mesh_name = shell_list[meshIdx].model_name + std::to_string(meshIdx);
+            const std::string& curr_mesh_name = world_data[meshIdx].model_name + std::to_string(meshIdx);
             polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
                 curr_mesh_name, sa_rendering_vertices[meshIdx], sa_rendering_faces[meshIdx]);
             curr_mesh_ptr->setEnabled(true);
@@ -206,7 +244,7 @@ int main(int argc, char** argv)
 
         auto fn_update_GUI_vertices = [&]()
         {
-            for (uint clothIdx = 0; clothIdx < shell_list.size(); clothIdx++)
+            for (uint clothIdx = 0; clothIdx < world_data.size(); clothIdx++)
             {
                 surface_meshes[clothIdx]->updateVertexPositions(sa_rendering_vertices[clothIdx]);
             }
@@ -280,7 +318,7 @@ int main(int argc, char** argv)
                 ImGui::Checkbox("Use Energy LineSearch", &lcs::get_scene_params().use_energy_linesearch);
                 ImGui::Checkbox("Use CCD LineSearch", &lcs::get_scene_params().use_ccd_linesearch);
                 if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
-                    && lcs::get_scene_params().use_self_collision)
+                    && (lcs::get_scene_params().use_self_collision || lcs::get_scene_params().use_floor))
                     lcs::get_scene_params().use_ccd_linesearch = true;
 
 

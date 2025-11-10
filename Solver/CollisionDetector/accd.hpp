@@ -1,3 +1,5 @@
+// Modified from [https://github.com/st-tech/ppf-contact-solver]
+
 #pragma once
 
 #include <luisa/luisa-compute.h>
@@ -59,7 +61,9 @@ namespace accd
         {
             $if(iter_count > 10000)
             {
-                luisa::compute::device_assert(false, "CCD iteration not converged in 1000 iteration!");
+                toi = 0.001f;
+                // luisa::compute::device_assert(false, "CCD iteration not converged in 10000 iteration");
+                // luisa::compute::device_log("x0 = {}, offset = {}, u_max = {}", x0, offset, u_max);
                 $break;
             };
             // if constexpr (print_ccd_iter_count)

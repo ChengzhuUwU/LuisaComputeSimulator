@@ -1,6 +1,5 @@
 {
-    "scene_id": 10,
-    "contact_energy_type": 1,
+    "scene_id": 3,
     "use_floor": false,
     "shells": [
         {

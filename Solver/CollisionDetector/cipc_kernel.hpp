@@ -71,54 +71,7 @@ namespace squared_ipc
 
 namespace cipc
 {
-
-    // template <typename T>
-    // inline void KappaBarrier(T& R, const T& kappa, const T& d2, const T& dHat, const T& xi)
-    // {
-    //     auto x0 = square_scalar(xi);
-    //     auto x1 = square_scalar(dHat) + T(2)*dHat*xi;
-    //     /* Simplified Expr */
-    //     R = -kappa*square_scalar(d2 - x0 - x1)*log_scalar((d2 - x0)/x1);
-    // }
-
-    template <typename T>
-    inline void NoKappa_Barrier(T& R, const T& d2, const T& dHat, const T& xi)
-    {
-        auto x0 = square_scalar(xi);
-        auto x1 = square_scalar(dHat) + static_cast<T>(2.0f) * dHat * xi;
-        /* Simplified Expr */
-        R = -square_scalar(d2 - x0 - x1) * log_scalar((d2 - x0) / x1);
-    }
-    template <typename T>
-    inline void NoKappa_dBarrier_dD(T& R, const T& d2, const T& dHat, const T& xi)
-    {
-        auto x0 = square_scalar(xi);
-        auto x1 = d2 - x0;
-        auto x2 = square_scalar(dHat);
-        auto x3 = dHat * xi;
-        auto x4 = x2 + static_cast<T>(2.0f) * x3;
-        /* Simplified Expr */
-        R = -(static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x0 - static_cast<T>(2.0f) * x2
-              - static_cast<T>(4.0f) * x3)
-                * log_scalar(x1 / x4)
-            - square_scalar(d2 - x0 - x4) / x1;
-    }
-    template <typename T>
-    inline void NoKappa_ddBarrier_ddD(T& R, const T& d2, const T& dHat, const T& xi)
-    {
-        auto x0 = square_scalar(xi);
-        auto x1 = d2 - x0;
-        auto x2 = square_scalar(dHat);
-        auto x3 = dHat * xi;
-        auto x4 = x2 + static_cast<T>(2.0f) * x3;
-        auto x5 = static_cast<T>(2.0f);
-        /* Simplified Expr */
-        R = square_scalar(d2 - x0 - x4) / square_scalar(x1) - x5 * log_scalar(x1 / x4)
-            - x5
-                  * (static_cast<T>(2.0f) * d2 - static_cast<T>(2.0f) * x0 - static_cast<T>(2.0f) * x2
-                     - static_cast<T>(4.0f) * x3)
-                  / x1;
-    }
+    // Modified from [https://github.com/spiriMirror/libuipc]
 
     template <typename T>
     inline void KappaBarrier(T& R, const T& kappa, const T& D, const T& dHat, const T& xi)

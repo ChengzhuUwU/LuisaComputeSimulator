@@ -3,20 +3,20 @@
 // #include <vcruntime_typeinfo.h>
 // #undef max
 // #undef min
-// #define LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER
 
 #include <numeric>
 #include <vector>
 #include <atomic>
 #include <cstring>
 #include <luisa/core/stl/algorithm.h>
+
 #ifdef LUISA_COMPUTE_SOLVER_USE_LUISA_FIBER
+#define LCS_PARALLEL_USE_FIBER
 #include <luisa/core/fiber.h>
 #include <luisa/core/spin_mutex.h>
 #endif
 
 #ifdef LUISA_COMPUTE_SOLVER_USE_SYSTEM_PARALLEL_FOR
-
 #if defined(LUISA_COMPUTE_SOLVER_ENABLE_TBB)
 #define LCS_PARALLEL_USE_TBB
 #include <tbb/tbb.h>
@@ -29,7 +29,6 @@
 #define LCS_PARALLEL_USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
-
 #endif
 
 namespace CpuParallel
@@ -477,7 +476,7 @@ inline void parallel_for_and_scan(
     //     });
 }
 
-#elif defined(USE_LUISA_FIBER)
+#elif defined(LCS_PARALLEL_USE_FIBER)
 
 template <typename FuncName>
 void parallel_for(uint start_pos, uint end_pos, FuncName func, const uint blockDim = 256)
@@ -749,13 +748,10 @@ struct spin_atomic
     using AtomicView = std::atomic<T>;
     using MemoryView = T;
 
+  private:
     AtomicView bits;
-    spin_atomic<T>()
-        : bits({0})
-    {
-    }
-    spin_atomic<T>(const T& f) { store(f); }
 
+  public:
     void store(const T& f)
     {
         MemoryView i;

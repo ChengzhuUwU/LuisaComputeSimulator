@@ -6,7 +6,7 @@ if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG 0a8ea6c33573e5f099a9278b661bbe195cbe0380
+        GIT_TAG 80b8dd807fc65353e30051c90934a14b591f23c5
         # GIT_TAG next
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
@@ -15,12 +15,6 @@ if (NOT TARGET luisa::compute)
     set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
     message(STATUS "LuisaCompute source dir: ${LuisaCompute_SOURCE_DIR}")
     # include(${LuisaCompute_SOURCE_DIR}/scripts/setup_output_dirs.cmake)
-
-    # set(LUISA_COMPUTE_ENABLE_CUDA ON CACHE BOOL "" FORCE)
-    # set(LUISA_COMPUTE_ENABLE_METAL ON CACHE BOOL "" FORCE)
-    # set(LUISA_COMPUTE_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
-    # set(LUISA_COMPUTE_ENABLE_DX OFF CACHE BOOL "" FORCE)
-    # set(LUISA_COMPUTE_ENABLE_FALLBACK OFF CACHE BOOL "" FORCE)
 
     set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_DOWNLOAD_NVCOMP OFF CACHE BOOL "" FORCE)
@@ -139,8 +133,8 @@ if (NOT TARGET yyjson)
     else ()
         add_library(luisa-compute-solver-ext-yyjson-interface INTERFACE)
         target_include_directories(luisa-compute-solver-ext-yyjson-interface INTERFACE
-                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yyjson/src>)
-        add_library(luisa-compute-solver-ext-yyjson OBJECT yyjson/src/yyjson.c yyjson/src/yyjson.h)
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/embed_yyjson>)
+        add_library(luisa-compute-solver-ext-yyjson OBJECT embed_yyjson/yyjson.c embed_yyjson/yyjson.h)
         target_link_libraries(luisa-compute-solver-ext-yyjson PUBLIC luisa-compute-solver-ext-yyjson-interface)
         if (UNIX AND NOT APPLE)
             set_target_properties(luisa-compute-solver-ext-yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -446,11 +446,11 @@ struct LargeMatrix
     static LargeMatrix<M, N> from_eigen_matrix(const Eigen::Matrix<float, N, M>& mat)
     {
         LargeMatrix<M, N> output;
-        for (size_t i = 0; i < block_M; i++)
+        for (size_t i = 0; i < M; i++)
         {
-            for (size_t j = 0; j < block_N; j++)
+            for (size_t j = 0; j < N; j++)
             {
-                output.block(i, j) = LargeMatrix<M, N>::convert_helper(mat.block<3, 3>(3 * j, 3 * i));
+                output.scalar(i, j) = output(j, i);
             }
         }
         return output;
@@ -667,30 +667,31 @@ using MATRIX3x12 = LargeMatrix<3, 12>;
 }  // namespace lcs
 
 
-#define DEFINE_XMATRIX_OPERATIONS(M, N)                                                                                      \
-  public:                                                                                                                    \
-    [[nodiscard]] luisa::compute::Var<luisa::Vector<float, N>>& operator[](size_t i) noexcept                                \
-    {                                                                                                                        \
-        return cols[i];                                                                                                      \
-    }                                                                                                                        \
-    [[nodiscard]] const luisa::compute::Var<luisa::Vector<float, N>>& operator[](size_t i) const noexcept                    \
-    {                                                                                                                        \
-        return cols[i];                                                                                                      \
-    }                                                                                                                        \
-    [[nodiscard]] luisa::compute::Var<luisa::Vector<float, N>>& operator[](luisa::compute::Var<uint> i) noexcept             \
-    {                                                                                                                        \
-        return cols[i];                                                                                                      \
-    }                                                                                                                        \
-    [[nodiscard]] const luisa::compute::Var<luisa::Vector<float, N>>& operator[](luisa::compute::Var<uint> i) const noexcept \
-    {                                                                                                                        \
-        return cols[i];                                                                                                      \
-    }                                                                                                                        \
-    void set_zero()                                                                                                          \
-    {                                                                                                                        \
-        for (size_t i = 0; i < M; i++)                                                                                       \
-        {                                                                                                                    \
-            cols[i] = luisa::compute::make_float##N(0.0f);                                                                   \
-        }                                                                                                                    \
+#define DEFINE_XMATRIX_OPERATIONS(M, N)                                                                              \
+  public:                                                                                                            \
+    [[nodiscard]] luisa::compute::Var<luisa::Vector<float, N>>& operator[](size_t i) noexcept                        \
+    {                                                                                                                \
+        return cols[i];                                                                                              \
+    }                                                                                                                \
+    [[nodiscard]] const luisa::compute::Var<luisa::Vector<float, N>>& operator[](size_t i) const noexcept            \
+    {                                                                                                                \
+        return cols[i];                                                                                              \
+    }                                                                                                                \
+    [[nodiscard]] luisa::compute::Var<luisa::Vector<float, N>>& operator[](luisa::compute::Var<uint32_t> i) noexcept \
+    {                                                                                                                \
+        return cols[i];                                                                                              \
+    }                                                                                                                \
+    [[nodiscard]] const luisa::compute::Var<luisa::Vector<float, N>>& operator[](luisa::compute::Var<uint32_t> i)    \
+        const noexcept                                                                                               \
+    {                                                                                                                \
+        return cols[i];                                                                                              \
+    }                                                                                                                \
+    void set_zero()                                                                                                  \
+    {                                                                                                                \
+        for (size_t i = 0; i < M; i++)                                                                               \
+        {                                                                                                            \
+            cols[i] = luisa::compute::make_float##N(0.0f);                                                           \
+        }                                                                                                            \
     }
 
 
@@ -744,19 +745,19 @@ using MATRIX3x12 = LargeMatrix<3, 12>;
     {                                                                                                   \
         return vec[idx / 3][idx % 3];                                                                   \
     }                                                                                                   \
-    luisa::compute::Var<luisa::float3>& block(luisa::compute::Var<uint> idx)                            \
+    luisa::compute::Var<luisa::float3>& block(luisa::compute::Var<uint32_t> idx)                        \
     {                                                                                                   \
         return vec[idx];                                                                                \
     }                                                                                                   \
-    const luisa::compute::Var<luisa::float3>& block(luisa::compute::Var<uint> idx) const                \
+    const luisa::compute::Var<luisa::float3>& block(luisa::compute::Var<uint32_t> idx) const            \
     {                                                                                                   \
         return vec[idx];                                                                                \
     }                                                                                                   \
-    luisa::compute::Var<float>& scalar(luisa::compute::Var<uint> idx)                                   \
+    luisa::compute::Var<float>& scalar(luisa::compute::Var<uint32_t> idx)                               \
     {                                                                                                   \
         return vec[idx / 3][idx % 3];                                                                   \
     }                                                                                                   \
-    const luisa::compute::Var<float>& scalar(luisa::compute::Var<uint> idx) const                       \
+    const luisa::compute::Var<float>& scalar(luisa::compute::Var<uint32_t> idx) const                   \
     {                                                                                                   \
         return vec[idx / 3][idx % 3];                                                                   \
     }                                                                                                   \
@@ -804,7 +805,7 @@ using MATRIX3x12 = LargeMatrix<3, 12>;
     template <size_t I, size_t J>                                                                       \
     static constexpr size_t inner_j = J % 3;                                                            \
     using Float                     = luisa::compute::Var<float>;                                       \
-    using Uint                      = luisa::compute::Var<uint>;                                        \
+    using Uint                      = luisa::compute::Var<uint32_t>;                                    \
     using Float3                    = luisa::compute::Var<luisa::float3>;                               \
     using Float3x3                  = luisa::compute::Var<luisa::float3x3>;                             \
     Float3x3& block(size_t idx1, size_t idx2)                                                           \
@@ -1126,12 +1127,12 @@ template <size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
 [[nodiscard]] inline lcs::XMatrix<L, N> operator*(const lcs::XMatrix<M, N>& left, const lcs::XMatrix<L, M>& right) noexcept
 {
     lcs::XMatrix<L, N> output;
-    for (uint j = 0; j < L; ++j)
+    for (uint32_t j = 0; j < L; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1144,12 +1145,12 @@ template <size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
 [[nodiscard]] luisa::Matrix<float, N> operator*(const lcs::XMatrix<M, N>& left, const lcs::XMatrix<L, M>& right) noexcept
 {
     luisa::Matrix<float, N> output;
-    for (uint j = 0; j < N; ++j)
+    for (uint32_t j = 0; j < N; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1163,12 +1164,12 @@ template <size_t M, size_t N, size_t L, std::enable_if_t<(N != L), int> = 0>
     const luisa::compute::Var<lcs::XMatrix<M, N>>& left, const luisa::compute::Var<lcs::XMatrix<L, M>>& right) noexcept
 {
     luisa::compute::Var<lcs::XMatrix<L, N>> output;
-    for (uint j = 0; j < L; ++j)
+    for (uint32_t j = 0; j < L; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1182,12 +1183,12 @@ template <size_t M, size_t N, size_t L, std::enable_if_t<(N == L), int> = 0>
     const luisa::compute::Var<lcs::XMatrix<M, N>>& left, const luisa::compute::Var<lcs::XMatrix<L, M>>& right) noexcept
 {
     luisa::compute::Var<luisa::Matrix<float, N>> output;
-    for (uint j = 0; j < N; ++j)
+    for (uint32_t j = 0; j < N; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1202,12 +1203,12 @@ template <size_t M, size_t N>
                                                   const luisa::Matrix<float, M>& right) noexcept
 {
     lcs::XMatrix<M, N> output;
-    for (uint j = 0; j < M; ++j)
+    for (uint32_t j = 0; j < M; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1220,12 +1221,12 @@ template <size_t M, size_t L>
                                                   const lcs::XMatrix<L, M>&      right) noexcept
 {
     lcs::XMatrix<L, M> output;
-    for (uint j = 0; j < L; ++j)
+    for (uint32_t j = 0; j < L; ++j)
     {
-        for (uint i = 0; i < M; ++i)
+        for (uint32_t i = 0; i < M; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left.cols[k][i] * right.cols[j][k];
             }
@@ -1239,12 +1240,12 @@ template <size_t M, size_t N>
     const luisa::compute::Var<lcs::XMatrix<M, N>>& left, const luisa::compute::Var<luisa::Matrix<float, M>>& right) noexcept
 {
     luisa::compute::Var<lcs::XMatrix<M, N>> output;
-    for (uint j = 0; j < M; ++j)
+    for (uint32_t j = 0; j < M; ++j)
     {
-        for (uint i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < N; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left.cols[k][i] * right[j][k];
             }
@@ -1257,12 +1258,12 @@ template <size_t M, size_t L>
     const luisa::compute::Var<luisa::Matrix<float, M>>& left, const luisa::compute::Var<lcs::XMatrix<L, M>>& right) noexcept
 {
     luisa::compute::Var<lcs::XMatrix<L, M>> output;
-    for (uint j = 0; j < L; ++j)
+    for (uint32_t j = 0; j < L; ++j)
     {
-        for (uint i = 0; i < M; ++i)
+        for (uint32_t i = 0; i < M; ++i)
         {
             output.cols[j][i] = 0.0f;
-            for (uint k = 0; k < M; ++k)
+            for (uint32_t k = 0; k < M; ++k)
             {
                 output.cols[j][i] += left[k][i] * right.cols[j][k];
             }

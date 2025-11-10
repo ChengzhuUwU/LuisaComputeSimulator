@@ -20,28 +20,24 @@ const std::string tet_mesh_path = std::string(LCSV_RESOURCE_PATH) + "/InputMesh/
 
 using namespace lcs::Initializer;
 
-void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
+void ccd_vf_unit_case(std::vector<WorldData>& shell_list)
 {
-    auto& up = shell_list
-                   .emplace_back(ShellInfo{.model_name = obj_mesh_path + "square2.obj",
-                                           .physics_material =
-                                               ClothMaterial{
-                                                   .thickness = 0.1f,
-                                               },
-                                           .fixed_point_range_info = {MakeFixedPointsInterface{
-                                               .method = lcs::Initializer::FixedPointsType::LeftBack}}})
-                   .load_mesh_data()
-                   .load_fixed_points();
+    WorldData& up = shell_list.emplace_back(WorldData())
+                        .set_name("upper square")
+                        .set_simulation_type(lcs::Initializer::SimulationTypeCloth)
+                        .load_mesh_from_path(obj_mesh_path + "square2.obj")
+                        .set_physics_material(ClothMaterial{.thickness = 0.1f})
+                        .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::LeftBack})
+                        .load_fixed_points();
 
-    auto& down =
-        shell_list
-            .emplace_back(ShellInfo{
-                .model_name  = obj_mesh_path + "square2.obj",
-                .translation = luisa::make_float3(0.1, -0.3, 0),
-                .fixed_point_range_info = {MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Left},
-                                           MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Right}}})
-            .load_mesh_data()
-            .load_fixed_points();
+    WorldData& down = shell_list.emplace_back(WorldData())
+                          .set_name("lower square")
+                          .set_simulation_type(lcs::Initializer::SimulationTypeCloth)
+                          .load_mesh_from_path(obj_mesh_path + "square2.obj")
+                          .set_physics_material(ClothMaterial{.thickness = 0.1f})
+                          .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Left})
+                          .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Right})
+                          .load_fixed_points();
 
     lcs::get_scene_params().use_floor             = false;
     lcs::get_scene_params().implicit_dt           = 0.2;
@@ -49,125 +45,70 @@ void ccd_vf_unit_case(std::vector<ShellInfo>& shell_list)
     lcs::get_scene_params().stiffness_DAB_bending = 200.0f;
     lcs::get_scene_params().use_gpu               = false;
 }
-void rigid_body_folding_cube_case(std::vector<ShellInfo>& shell_list)
+
+void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::string& json_path)
 {
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
-                                      .translation = luisa::make_float3(0, 1.0, 0),
-                                      .scale       = luisa::make_float3(0.1),
-                                      .shell_type  = ShellTypeRigid}
-                                .load_mesh_data());
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
-                                      .translation = luisa::make_float3(0, 0.7, 0),
-                                      //   .translation = luisa::make_float3(0.1, 0.511, 0.2),
-                                      //   .rotation    = luisa::make_float3(lcs::Pi / 6, 0, lcs::Pi / 6),
-                                      .scale      = luisa::make_float3(0.2),
-                                      .shell_type = ShellTypeRigid}
-                                .load_mesh_data());
-    shell_list.emplace_back(ShellInfo{.model_name  = obj_mesh_path + "cube.obj",
-                                      .translation = luisa::make_float3(0, 0.1, 0),
-                                      .scale       = luisa::make_float3(0.5),
-                                      .shell_type  = ShellTypeRigid}
-                                .load_mesh_data());
+    // Determine which path to open:
+    // 1) If user provided an absolute path and it exists, use it.
+    // 2) Otherwise, try "LCSV_RESOURCE_PATH/Scenes/" + json_path and then + basename(json_path).
+    // 3) If none exists, log a warning and return (use default scene params).
 
-    lcs::get_scene_params().use_floor = true;
-    // lcs::get_scene_params().implicit_dt          = 0.003;
-    // lcs::get_scene_params().nonlinear_iter_count = 1;
-}
-void ccd_rotation_cylinder_7K(std::vector<ShellInfo>& shell_list)
-{
-    auto left_rot_func = FixedPointAnimationInfo{
-        .use_rotate   = true,
-        .rotCenter    = luisa::make_float3(0.005, 0, 0),
-        .rotAxis      = luisa::make_float3(1, 0, 0),
-        .rotAngVelDeg = -72,
-    };
-    auto right_rot_func = FixedPointAnimationInfo{
-        .use_rotate   = true,
-        .rotCenter    = luisa::make_float3(-0.005, 0, 0),
-        .rotAxis      = luisa::make_float3(1, 0, 0),
-        .rotAngVelDeg = 72,
-    };
-
-    shell_list
-        .emplace_back(ShellInfo{
-            .model_name = obj_mesh_path + "Cylinder/cylinder7K.obj",
-            .fixed_point_range_info = {MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Left,
-                                                                .fixed_info = left_rot_func},
-                                       MakeFixedPointsInterface{.method = lcs::Initializer::FixedPointsType::Right,
-                                                                .fixed_info = right_rot_func}}})
-        .load_mesh_data()
-        .load_fixed_points();
-
-    // lcs::get_scene_params().use_ccd_linesearch    = false;
-    lcs::get_scene_params().pcg_iter_count       = 50;
-    lcs::get_scene_params().nonlinear_iter_count = 1;
-    lcs::get_scene_params().gravity              = luisa::make_float3(0.0f);
-    lcs::get_scene_params().use_floor            = false;
-    lcs::get_scene_params().contact_energy_type  = uint(lcs::ContactEnergyType::Barrier);
-}
-void pinned_cloth(std::vector<ShellInfo>& shell_list)
-{
-    auto& shell = shell_list
-                      .emplace_back(ShellInfo{.model_name             = obj_mesh_path + "square2K.obj",
-                                              .translation            = luisa::make_float3(0, 0.2, 0),
-                                              .scale                  = luisa::make_float3(0.2f),
-                                              .fixed_point_range_info = {MakeFixedPointsInterface{
-                                                  .method = lcs::Initializer::FixedPointsType::LeftBack}}})
-                      .load_mesh_data()
-                      .load_fixed_points();
-
-    lcs::get_scene_params().use_floor            = false;
-    lcs::get_scene_params().use_self_collision   = false;
-    lcs::get_scene_params().use_gpu              = false;
-    lcs::get_scene_params().nonlinear_iter_count = 1;
-    lcs::get_scene_params().use_ccd_linesearch   = false;
-    lcs::get_scene_params().pcg_iter_count       = 50;
-}
-void load_default_scene(std::vector<ShellInfo>& shell_list)
-{
-    lcs::get_scene_params().scene_id = 3;
-    const uint case_number           = lcs::get_scene_params().scene_id;
-
-    switch (case_number)
+    auto file_exists_safe = [](const std::string& p)
     {
-        case 0: {
-            ccd_vf_unit_case(shell_list);
-            break;
-        };
-        case 1: {
-            pinned_cloth(shell_list);
-            break;
-        };
-        case 3: {
-            ccd_rotation_cylinder_7K(shell_list);
-            break;
-        };
-        case 9: {
-            rigid_body_folding_cube_case(shell_list);
-            break;
-        };
-        default:
-            ccd_vf_unit_case(shell_list);
-            break;
-    };
-
-    for (auto& shell_info : shell_list)
-    {
-        if (shell_info.input_mesh.model_positions.empty())
+        try
         {
-            shell_info.load_mesh_data();
+            return std::filesystem::exists(p);
+        }
+        catch (...)
+        {
+            return false;
+        }
+    };
+
+    std::string           path_to_open;
+    std::filesystem::path user_path(json_path);
+    const std::string     resource_scenes = std::string(LCSV_RESOURCE_PATH) + "/Scenes/";
+
+    // Prefer user absolute path only when it's absolute and exists
+    if (user_path.is_absolute() && file_exists_safe(user_path.string()))
+    {
+        path_to_open = user_path.string();
+    }
+    else
+    {
+        // Try resource_scenes + json_path (keep any subdirs user provided)
+        std::string candidate = resource_scenes + json_path;
+        if (file_exists_safe(candidate))
+        {
+            path_to_open = candidate;
+        }
+        else
+        {
+            // Try basename only
+            std::string base = user_path.filename().string();
+            candidate        = resource_scenes + base;
+            if (file_exists_safe(candidate))
+            {
+                path_to_open = candidate;
+            }
         }
     }
-}
 
-void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::string& json_path)
-{
-    std::ifstream ifs(json_path);
-    if (!ifs.is_open())
+    if (path_to_open.empty())
     {
-        LUISA_WARNING("Cannot open json file: {}, using default scene params", json_path);
+        LUISA_WARNING("Cannot find json file at provided path '{}' nor in '{}', using default scene params",
+                      json_path,
+                      resource_scenes);
         return;
     }
+
+    std::ifstream ifs(path_to_open);
+    if (!ifs.is_open())
+    {
+        LUISA_WARNING("Found json candidate '{}' but failed to open it, using default scene params", path_to_open);
+        return;
+    }
+
     std::stringstream buffer;
     buffer << ifs.rdbuf();
     std::string content = buffer.str();
@@ -253,6 +194,10 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
     if (val && yyjson_is_uint(val))
         lcs::get_scene_params().contact_energy_type = static_cast<uint>(yyjson_get_uint(val));
 
+    if (lcs::get_scene_params().contact_energy_type == uint(lcs::ContactEnergyType::Barrier)
+        && (lcs::get_scene_params().use_self_collision || lcs::get_scene_params().use_floor))
+        lcs::get_scene_params().use_ccd_linesearch = true;
+
     // Helper to parse FixedPointsType from string
     auto parse_fixed_method = [](const char* s)
     {
@@ -300,7 +245,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
         {
             if (!yyjson_is_obj(shell_val))
                 continue;
-            lcs::Initializer::ShellInfo info;
+            lcs::Initializer::WorldData info;
 
             // model_name
             yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
@@ -322,12 +267,12 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
 
                 if (model_str.empty())
                 {
-                    info.model_name = model_str;
+                    info.set_name(model_str);
                 }
                 else if (file_exists(model_str))
                 {
                     // user provided a path that exists (absolute or relative)
-                    info.model_name = model_str;
+                    info.set_name(model_str);
                 }
                 else
                 {
@@ -335,7 +280,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     std::string candidate = obj_mesh_path + model_str;
                     if (file_exists(candidate))
                     {
-                        info.model_name = candidate;
+                        info.set_name(candidate);
                     }
                     else
                     {
@@ -345,7 +290,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         candidate = obj_mesh_path + base;
                         if (file_exists(candidate))
                         {
-                            info.model_name = candidate;
+                            info.set_name(candidate);
                         }
                         else
                         {
@@ -353,12 +298,12 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                             candidate = tet_mesh_path + model_str;
                             if (file_exists(candidate))
                             {
-                                info.model_name = candidate;
+                                info.set_name(candidate);
                             }
                             else
                             {
                                 // fallback: keep as provided (load_mesh_data will try to read it)
-                                info.model_name = model_str;
+                                info.set_name(model_str);
                             }
                         }
                     }
@@ -377,7 +322,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     if (idx < 3 && yyjson_is_num(e))
                         tv[idx] = static_cast<float>(yyjson_get_num(e));
                 }
-                info.translation = luisa::make_float3(tv[0], tv[1], tv[2]);
+                info.set_translation(tv[0], tv[1], tv[2]);
             }
             yyjson_val* r = yyjson_obj_get(shell_val, "rotation");
             if (r && yyjson_is_arr(r) && yyjson_get_len(r) >= 3)
@@ -390,7 +335,7 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     if (idx < 3 && yyjson_is_num(e))
                         rv[idx] = static_cast<float>(yyjson_get_num(e));
                 }
-                info.rotation = luisa::make_float3(rv[0], rv[1], rv[2]);
+                info.set_rotation(rv[0], rv[1], rv[2]);
             }
             yyjson_val* sc = yyjson_obj_get(shell_val, "scale");
             if (sc)
@@ -405,35 +350,34 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         if (idx < 3 && yyjson_is_num(e))
                             sv[idx] = static_cast<float>(yyjson_get_num(e));
                     }
-                    info.scale = luisa::make_float3(sv[0], sv[1], sv[2]);
+                    info.set_scale(sv[0], sv[1], sv[2]);
                 }
                 else if (yyjson_is_num(sc))
                 {
                     float sval = static_cast<float>(yyjson_get_num(sc));
-                    info.scale = luisa::make_float3(sval);
+                    info.set_scale(sval);  // Scale x,y,z with same range
                 }
             }
 
-            // shell_type
+            // set simulation type
             yyjson_val* stype = yyjson_obj_get(shell_val, "shell_type");
             if (stype && yyjson_is_str(stype))
             {
                 const char* ss = yyjson_get_str(stype);
                 if (strcmp(ss, "Rigid") == 0)
-                    info.shell_type = lcs::Initializer::ShellTypeRigid;
+                    info.set_simulation_type(lcs::Initializer::SimulationTypeRigid);
                 else if (strcmp(ss, "Tetrahedral") == 0)
-                    info.shell_type = lcs::Initializer::ShellTypeTetrahedral;
+                    info.set_simulation_type(lcs::Initializer::SimulationTypeTetrahedral);
                 else if (strcmp(ss, "Rod") == 0)
-                    info.shell_type = lcs::Initializer::ShellTypeRod;
+                    info.set_simulation_type(lcs::Initializer::SimulationTypeRod);
                 else
-                    info.shell_type = lcs::Initializer::ShellTypeCloth;
+                    info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
             }
 
-            // physics_material
+            // set physical material
             yyjson_val* pm = yyjson_obj_get(shell_val, "material");
             if (pm)
             {
-                // material may be an object or an array of objects (take first)
                 yyjson_val* mat_obj = nullptr;
                 if (yyjson_is_arr(pm))
                 {
@@ -461,21 +405,6 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     if (mtv && yyjson_is_str(mtv))
                         mtype_str = yyjson_get_str(mtv);
 
-                    // auto infer_type_if_missing = [&]() -> std::string
-                    // {
-                    //     // Heuristics: presence of certain keys -> material kind
-                    //     if (yyjson_obj_get(mat_obj, "radius") || yyjson_obj_get(mat_obj, "bending_stiffness")
-                    //         || yyjson_obj_get(mat_obj, "twisting_stiffness"))
-                    //         return std::string("Rod");
-                    //     if (yyjson_obj_get(mat_obj, "stiffness") || yyjson_obj_get(mat_obj, "model")
-                    //         || yyjson_obj_get(mat_obj, "constitutive"))
-                    //         return std::string("Rigid");
-                    //     // default to Cloth when uncertain (thickness commonly used for shells)
-                    //     return std::string("Cloth");
-                    // };
-                    // std::string material_type = mtype_str ? std::string(mtype_str) : infer_type_if_missing();
-
-
                     std::string material_type = mtype_str ? std::string(mtype_str) :
                                                 stype && yyjson_is_str(stype) ?
                                                             std::string(yyjson_get_str(stype)) :
@@ -485,12 +414,12 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                     auto material_to_shell = [&](const std::string& s)
                     {
                         if (s == "Rigid")
-                            return lcs::Initializer::ShellTypeRigid;
+                            return lcs::Initializer::SimulationTypeRigid;
                         else if (s == "Tetrahedral" || s == "Tet" || s == "TetMaterial")
-                            return lcs::Initializer::ShellTypeTetrahedral;
+                            return lcs::Initializer::SimulationTypeTetrahedral;
                         else if (s == "Rod")
-                            return lcs::Initializer::ShellTypeRod;
-                        return lcs::Initializer::ShellTypeCloth;
+                            return lcs::Initializer::SimulationTypeRod;
+                        return lcs::Initializer::SimulationTypeCloth;
                     };
 
                     // Parse and fill material struct based on material_type
@@ -564,17 +493,17 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                             }
                         }
 
-                        info.physics_material = mat;
+                        info.set_physics_material(mat);
                         // if shell_type not provided explicitly, set from material
                         if (stype == nullptr)
                         {
-                            info.shell_type = lcs::Initializer::ShellTypeCloth;
+                            info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
                         }
                         else
                         {
                             // ensure consistency when both provided
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Tetrahedral" || material_type == "Tet" || material_type == "TetMaterial")
@@ -597,15 +526,15 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         if (v && yyjson_is_num(v))
                             mat.d_hat = static_cast<float>(yyjson_get_num(v));
 
-                        info.physics_material = mat;
+                        info.set_physics_material(mat);
                         if (stype == nullptr)
                         {
-                            info.shell_type = lcs::Initializer::ShellTypeTetrahedral;
+                            info.set_simulation_type(lcs::Initializer::SimulationTypeTetrahedral);
                         }
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Rigid")
@@ -630,16 +559,19 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "thickness");
                         if (v && yyjson_is_num(v))
                             mat.thickness = static_cast<float>(yyjson_get_num(v));
+                        v = yyjson_obj_get(mat_obj, "is_shell");
+                        if (v && yyjson_is_bool(v))
+                            mat.is_shell = static_cast<bool>(yyjson_get_bool(v));
 
-                        info.physics_material = mat;
+                        info.set_physics_material(mat);
                         if (stype == nullptr)
                         {
-                            info.shell_type = lcs::Initializer::ShellTypeRigid;
+                            info.set_simulation_type(lcs::Initializer::SimulationTypeRigid);
                         }
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else if (material_type == "Rod")
@@ -668,15 +600,15 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         if (v && yyjson_is_num(v))
                             mat.radius = static_cast<float>(yyjson_get_num(v));
 
-                        info.physics_material = mat;
+                        info.set_physics_material(mat);
                         if (stype == nullptr)
                         {
-                            info.shell_type = lcs::Initializer::ShellTypeRod;
+                            info.set_simulation_type(lcs::Initializer::SimulationTypeRod);
                         }
                         else
                         {
                             auto mt = material_to_shell(material_type);
-                            assert(mt == info.shell_type && "shell_type and material.type mismatch");
+                            LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
                         }
                     }
                     else
@@ -689,9 +621,10 @@ void load_scene_params_from_json(std::vector<ShellInfo>& shell_list, const std::
                         v = yyjson_obj_get(mat_obj, "d_hat");
                         if (v && yyjson_is_num(v))
                             mat.d_hat = static_cast<float>(yyjson_get_num(v));
-                        info.physics_material = mat;
+
+                        info.set_physics_material(mat);
                         if (stype == nullptr)
-                            info.shell_type = lcs::Initializer::ShellTypeCloth;
+                            info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
                     }
                 }
             }

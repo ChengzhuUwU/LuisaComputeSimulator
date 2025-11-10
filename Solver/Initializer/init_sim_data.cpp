@@ -1,4 +1,5 @@
 #include "Initializer/init_sim_data.h"
+#include "CollisionDetector/aabb.h"
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
@@ -185,7 +186,7 @@ static void compute_trimesh_dyadic_mass(const std::vector<float3>& pos_view,
 }
 
 
-void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                    lcs::MeshData<std::vector>*               mesh_data,
                    lcs::SimulationData<std::vector>*         sim_data)
 {
@@ -208,24 +209,24 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint eid)
         {
             const uint  mesh_idx   = mesh_data->sa_edge_mesh_id[eid];
-            const auto& shell_info = shell_infos[mesh_idx];
+            const auto& mesh_info  = world_data[mesh_idx];
             bool        use_spring = false;
-            if (shell_info.holds<ClothMaterial>())
+            if (mesh_info.holds<ClothMaterial>())
             {
-                use_spring = shell_info.get_material<ClothMaterial>().stretch_model
+                use_spring = mesh_info.get_material<ClothMaterial>().stretch_model
                              == ConstitutiveStretchModelCloth::Spring;
             }
-            else if (shell_info.holds<TetMaterial>())
-            {
-                use_spring = shell_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
-            }
+            // else if (mesh_info.holds<TetMaterial>())
+            // {
+            //     use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
+            // }
             // else if (shell_info.holds<RigidMaterial>())
             // {
             //     use_spring = shell_info.get<RigidMaterial>().model == ConstitutiveModelRigid::Spring;
             // }
-            else if (shell_info.holds<RodMaterial>())
+            else if (mesh_info.holds<RodMaterial>())
             {
-                use_spring = shell_info.get_material<RodMaterial>().model == ConstitutiveModelRod::Spring;
+                use_spring = mesh_info.get_material<RodMaterial>().model == ConstitutiveModelRod::Spring;
             }
             // bool  is_cloth   = mesh_data->sa_vert_mesh_type[edge[0]] == uint(ShellTypeCloth);
             uint2 edge       = mesh_data->sa_edges[eid];
@@ -235,15 +236,14 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             return (use_spring && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_edges);
-    const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
 
     std::vector<uint> stretch_face_indices = fn_get_active_indices(
         [&](const uint fid)
         {
             const uint  mesh_idx         = mesh_data->sa_face_mesh_id[fid];
-            const auto& shell_info       = shell_infos[mesh_idx];
-            bool        use_stretch_face = shell_info.holds<ClothMaterial>()
-                                    && shell_info.get_material<ClothMaterial>().stretch_model
+            const auto& mesh_info        = world_data[mesh_idx];
+            bool        use_stretch_face = mesh_info.holds<ClothMaterial>()
+                                    && mesh_info.get_material<ClothMaterial>().stretch_model
                                            == ConstitutiveStretchModelCloth::FEM_BW98;
             uint3 face       = mesh_data->sa_faces[fid];
             bool  is_dynamic = cull_unused_constraints ?
@@ -253,15 +253,14 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             return (use_stretch_face && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_faces);
-    const uint num_stretch_faces = static_cast<uint>(stretch_face_indices.size());
 
     std::vector<uint> bending_edge_indices = fn_get_active_indices(
         [&](const uint eid)
         {
             const uint  mesh_idx    = mesh_data->sa_dihedral_edge_mesh_id[eid];
-            const auto& shell_info  = shell_infos[mesh_idx];
-            bool        use_bending = shell_info.holds<ClothMaterial>()
-                               && shell_info.get_material<ClothMaterial>().bending_model
+            const auto& mesh_info   = world_data[mesh_idx];
+            bool        use_bending = mesh_info.holds<ClothMaterial>()
+                               && mesh_info.get_material<ClothMaterial>().bending_model
                                       != ConstitutiveBendingModelCloth::None;
             uint4 edge       = mesh_data->sa_dihedral_edges[eid];
             bool  is_dynamic = cull_unused_constraints ?
@@ -271,7 +270,21 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             return (use_bending && is_dynamic) ? 1 : 0;
         },
         mesh_data->num_dihedral_edges);
-    const uint num_bending_edges = static_cast<uint>(bending_edge_indices.size());
+
+    std::vector<uint> stress_tet_indices = fn_get_active_indices(
+        [&](const uint tid)
+        {
+            const uint  mesh_idx   = mesh_data->sa_tet_mesh_id[tid];
+            const auto& mesh_info  = world_data[mesh_idx];
+            bool        use_stress = mesh_info.holds<TetMaterial>();
+            uint4       tet        = mesh_data->sa_tetrahedrons[tid];
+            bool        is_dynamic = cull_unused_constraints ?
+                                         !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
+                                      || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]] :
+                                         true;
+            return (use_stress && is_dynamic) ? 1 : 0;
+        },
+        mesh_data->num_tets);
 
     std::vector<uint> affine_body_indices = fn_get_active_indices(
         [&](const uint meshIdx)
@@ -283,28 +296,35 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 != (mesh_data->prefix_num_dihedral_edges[meshIdx + 1] - mesh_data->prefix_num_dihedral_edges[meshIdx]);
             // bool has_dynamic_vert = mesh_data->sa_is_fixed[first_vid];
             // bool is_rigid = (mesh_data->sa_vert_mesh_type[first_vid] == uint(ShellTypeRigid));  // ;&& !has_boundary_edge;
-            bool is_rigid = shell_infos[meshIdx].holds<RigidMaterial>();
-            LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
+            bool is_rigid = world_data[meshIdx].holds<RigidMaterial>();
+            // LUISA_INFO("Mesh {} is rigid = {}, has_boundary_edge = {}", meshIdx, is_rigid, has_boundary_edge);
             return (is_rigid) ? 1 : 0;  // has_dynamic_vert
         },
         mesh_data->num_meshes);
-    const uint num_affine_bodies = static_cast<uint>(affine_body_indices.size());
 
     std::vector<uint> soft_vert_indices =
         fn_get_active_indices([&](const uint vid)
-                              { return mesh_data->sa_vert_mesh_type[vid] == ShellTypeRigid ? 0 : 1; },
+                              { return mesh_data->sa_vert_mesh_type[vid] == SimulationTypeRigid ? 0 : 1; },
                               mesh_data->num_verts);
-    const uint num_verts_soft = static_cast<uint>(soft_vert_indices.size());
 
-    LUISA_INFO("num_stretch_springs = {} (<-{}), num_stretch_faces = {}(<-{}), num_bending_edges = {}(<-{})",
-               num_stretch_springs,
-               mesh_data->num_edges,
-               num_stretch_faces,
-               mesh_data->num_faces,
-               num_bending_edges,
-               mesh_data->num_dihedral_edges);
+    const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
+    const uint num_stretch_faces   = static_cast<uint>(stretch_face_indices.size());
+    const uint num_bending_edges   = static_cast<uint>(bending_edge_indices.size());
+    const uint num_stress_tets     = static_cast<uint>(stress_tet_indices.size());
+    const uint num_affine_bodies   = static_cast<uint>(affine_body_indices.size());
+    const uint num_verts_soft      = static_cast<uint>(soft_vert_indices.size());
+    const uint num_dof             = num_verts_soft + num_affine_bodies * 4;
 
-    const uint num_dof          = num_verts_soft + num_affine_bodies * 4;
+    LUISA_INFO("Initialized energy element counts:");
+    LUISA_INFO("      num Stretch Spring = {} (<{})", num_stretch_springs, mesh_data->num_edges);
+    LUISA_INFO("      num Stretch Face   = {} (<{})", num_stretch_faces, mesh_data->num_faces);
+    LUISA_INFO("      num Bending Edge   = {} (<{})", num_bending_edges, mesh_data->num_dihedral_edges);
+    LUISA_INFO("      num Stress Tet     = {} (<{})", num_stress_tets, mesh_data->num_tets);
+    LUISA_INFO("      num Affine Body    = {} (<{})", num_affine_bodies, mesh_data->num_meshes);
+    LUISA_INFO("      num Soft Vert      = {} (<{})", num_verts_soft, mesh_data->num_verts);
+    LUISA_INFO("      Total DOF = {}, NumVertSoft = {}, NumAffineBodies {}", num_dof, num_verts_soft, num_affine_bodies);
+
+
     sim_data->num_verts_soft    = num_verts_soft;
     sim_data->num_verts_rigid   = mesh_data->num_verts - num_verts_soft;
     sim_data->num_affine_bodies = num_affine_bodies;
@@ -312,7 +332,6 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
     sim_data->sa_num_dof.resize(1);
     sim_data->sa_num_dof[0] = num_dof;
 
-    LUISA_INFO("DOF = {}, NumVertSoft = {}, NumAffineBodies {}", num_dof, num_verts_soft, num_affine_bodies);
 
     // Init energy
     {
@@ -335,8 +354,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       sim_data->sa_stretch_spring_rest_state_length[eid] =
                                           lcs::length_vec(x1 - x2);
 
-                                      const auto& shell_info = shell_infos[mesh_data->sa_edge_mesh_id[orig_eid]];
-                                      const auto& material = shell_info.get_material<ClothMaterial>();
+                                      const auto& mesh_info = world_data[mesh_data->sa_edge_mesh_id[orig_eid]];
+                                      const auto& material = mesh_info.get_material<ClothMaterial>();
 
                                       const float E     = material.youngs_modulus;
                                       const float nu    = material.poisson_ratio;
@@ -368,8 +387,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                       const float2x2 inv_duv = StretchEnergy::get_Dm_inv(x_0, x_1, x_2);
                                       const float    area    = compute_face_area(x_0, x_1, x_2);
 
-                                      const auto& shell_info = shell_infos[mesh_data->sa_face_mesh_id[orig_fid]];
-                                      const auto& material = shell_info.get_material<ClothMaterial>();
+                                      const auto& mesh_info = world_data[mesh_data->sa_face_mesh_id[orig_fid]];
+                                      const auto& material = mesh_info.get_material<ClothMaterial>();
 
                                       const float E  = material.youngs_modulus;
                                       const float nu = material.poisson_ratio;
@@ -426,7 +445,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                     sim_data->sa_bending_edges[eid]            = edge;
                     sim_data->sa_bending_edges_rest_angle[eid] = angle;
                     sim_data->sa_bending_edges_stiffness[eid] =
-                        shell_infos[mesh_data->sa_dihedral_edge_mesh_id[orig_eid]]
+                        world_data[mesh_data->sa_dihedral_edge_mesh_id[orig_eid]]
                             .get_material<ClothMaterial>()
                             .area_bending_stiffness;
                 }
@@ -461,9 +480,42 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 }
             });
 
-        // LUISA_INFO("Stretch springs: {}", sim_data->sa_stretch_springs);
-        // LUISA_INFO("Stretch faces: {}", sim_data->sa_stretch_faces);
-        // LUISA_INFO("Bending edges: {}", sim_data->sa_bending_edges);
+        // Rest tetrahedron info
+        sim_data->sa_stress_tets.resize(num_stress_tets);
+        sim_data->sa_stress_tets_rest_volume.resize(num_stress_tets);
+        sim_data->sa_stress_tets_mu_lambda.resize(num_stress_tets);
+        sim_data->sa_stress_tets_Dm_inv.resize(num_stress_tets);
+        sim_data->sa_stress_tets_offsets_in_adjlist.resize(num_stress_tets);
+        sim_data->sa_stress_tets_gradients.resize(num_stress_tets * 4);
+        sim_data->sa_stress_tets_hessians.resize(num_stress_tets * 16);
+        CpuParallel::parallel_for(0,
+                                  num_stress_tets,
+                                  [&](const uint tid)
+                                  {
+                                      const uint    orig_tid    = stress_tet_indices[tid];
+                                      uint4         tet         = mesh_data->sa_tetrahedrons[orig_tid];
+                                      const float3  vert_pos[4] = {mesh_data->sa_rest_x[tet[0]],
+                                                                   mesh_data->sa_rest_x[tet[1]],
+                                                                   mesh_data->sa_rest_x[tet[2]],
+                                                                   mesh_data->sa_rest_x[tet[3]]};
+                                      const float3& x0          = vert_pos[0];
+                                      const float3& x1          = vert_pos[1];
+                                      const float3& x2          = vert_pos[2];
+                                      const float3& x3          = vert_pos[3];
+                                      const float   volume      = compute_tet_volume(x0, x1, x2, x3);
+
+                                      const float3x3 Dm = luisa::make_float3x3(x1 - x0, x2 - x0, x3 - x0);
+                                      const float3x3 Dm_inv = luisa::inverse(Dm);
+                                      const auto& mesh_info = world_data[mesh_data->sa_tet_mesh_id[orig_tid]];
+                                      const auto& material = mesh_info.get_material<TetMaterial>();
+                                      const float E        = material.youngs_modulus;
+                                      const float nu       = material.poisson_ratio;
+                                      auto [mu, lambda]    = StretchEnergy::convert_prop(E, nu);
+                                      sim_data->sa_stress_tets[tid]             = tet;
+                                      sim_data->sa_stress_tets_rest_volume[tid] = volume;
+                                      sim_data->sa_stress_tets_Dm_inv[tid]      = Dm_inv;
+                                      sim_data->sa_stress_tets_mu_lambda[tid] = luisa::make_float2(mu, lambda);
+                                  });
 
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
@@ -497,8 +549,8 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             num_affine_bodies,
             [&](const uint body_idx)
             {
-                const uint  meshIdx    = affine_body_indices[body_idx];
-                const auto& shell_info = shell_infos[meshIdx];
+                const uint  meshIdx   = affine_body_indices[body_idx];
+                const auto& mesh_info = world_data[meshIdx];
 
                 sim_data->sa_affine_bodies_mesh_id[body_idx] = meshIdx;
                 sim_data->sa_affine_bodies[body_idx] = luisa::make_uint4(num_verts_soft + 4 * body_idx + 0,
@@ -531,52 +583,113 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                     // LUISA_INFO("Affine Body {} Rest q = {}", body_idx, rest_q);
                 }
 
-                const uint curr_prefix    = mesh_data->prefix_num_verts[meshIdx];
-                const uint next_prefix    = mesh_data->prefix_num_verts[meshIdx + 1];
-                const uint num_verts_body = next_prefix - curr_prefix;
+                const uint curr_prefix_verts = mesh_data->prefix_num_verts[meshIdx];
+                const uint next_prefix_verts = mesh_data->prefix_num_verts[meshIdx + 1];
+                const uint curr_prefix_faces = mesh_data->prefix_num_faces[meshIdx];
+                const uint next_prefix_faces = mesh_data->prefix_num_faces[meshIdx + 1];
+                const uint curr_prefix_edges = mesh_data->prefix_num_edges[meshIdx];
+                const uint next_prefix_edges = mesh_data->prefix_num_edges[meshIdx + 1];
+                const uint num_verts_body    = next_prefix_verts - curr_prefix_verts;
 
                 EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
                 float4x4        compressed_mass_matrix;
 
-                if (shell_info.get_is_shell()
-                    || (mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                float    M_body  = 0.0f;
+                float3   MI_body = luisa::make_float3(0.0f);
+                float3x3 I_body  = luisa::make_float3x3(0.0f);
+                if (mesh_info.get_is_shell())
                 {
-                    // Shell or Tet mesh: integrate from vertices
-                    CpuParallel::single_thread_for(curr_prefix,
-                                                   next_prefix,
-                                                   [&](const uint vid)
-                                                   {
-                                                       float mass = mesh_data->sa_vert_mass[vid];
-                                                       float3 scaled_model_x = mesh_data->sa_scaled_model_x[vid];
-                                                       auto J = AffineBodyDynamics::get_jacobian_dxdq(scaled_model_x);
-                                                       // std::cout << "JtT of vert " << vid << " = \n" << J.transpose() * J << std::endl;
-                                                       body_mass += mass * J.transpose() * J;
-                                                   });
+                    // std::vector<float3> virtual_solid_verts((next_prefix_verts - curr_prefix_verts) * 2);
+                    // std::vector<uint3>  virtual_solid_faces(
+                    //     (mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx]) * 2);
+                    // for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                    // {
+                    //     float3 vert_pos       = mesh_data->sa_scaled_model_x[vid];
+                    //     float  half_thickness = 0.5f * mesh_info.get_thickness();
+                    //     float3 normal         = luisa::make_float3(0, 0, 0);
+                    //     for (const uint adj_fid : mesh_data->vert_adj_faces[vid])
+                    //     {
+                    //         uint3  face = mesh_data->sa_faces[adj_fid];
+                    //         float3 p0   = mesh_data->sa_scaled_model_x[face.x];
+                    //         float3 p1   = mesh_data->sa_scaled_model_x[face.y];
+                    //         float3 p2   = mesh_data->sa_scaled_model_x[face.z];
+                    //         float  area = compute_face_area(p0, p1, p2);
+                    //         normal += area * luisa::normalize(luisa::cross(p1 - p0, p2 - p0));
+                    //     }
+                    //     normal = luisa::normalize(normal);
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 0] = vert_pos + half_thickness * normal;
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 1] = vert_pos - half_thickness * normal;
+                    // }
+                    // for (uint fid = curr_prefix_faces; fid < next_prefix_faces; fid++)
+                    // {
+                    //     uint3 face = mesh_data->sa_faces[fid];
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 0] =
+                    //         luisa::make_uint3(2 * (face.x - curr_prefix_verts) + 0,
+                    //                           2 * (face.y - curr_prefix_verts) + 0,
+                    //                           2 * (face.z - curr_prefix_verts) + 0);
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 1] =
+                    //         luisa::make_uint3(2 * (face.z - curr_prefix_verts) + 1,
+                    //                           2 * (face.y - curr_prefix_verts) + 1,
+                    //                           2 * (face.x - curr_prefix_verts) + 1);
+                    // }
+                    // compute_trimesh_dyadic_mass(virtual_solid_verts,
+                    //                             virtual_solid_faces,
+                    //                             0,
+                    //                             static_cast<uint>(virtual_solid_faces.size()),
+                    //                             mesh_info.get_density(),
+                    //                             M_body,
+                    //                             MI_body,
+                    //                             I_body);
+
+                    for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                    {
+                        float  vert_mass = mesh_data->sa_vert_mass[vid];
+                        float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
+
+                        M_body += vert_mass;
+                        MI_body += vert_mass * vert_pos;
+                        I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
+                    }
                 }
                 else  // Solid body: integrate from surface triangles
                 {
-                    float    rho = shell_info.get_material<RigidMaterial>().density;
-                    float    m;
-                    float3   m_x_bar;
-                    float3x3 m_x_bar_x_bar;
+                    // If provided tetrahedron mesh for solid part
+                    if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                    {
+                        for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                        {
+                            float  vert_mass = mesh_data->sa_vert_mass[vid];
+                            float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
 
-                    compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
-                                                mesh_data->sa_faces,
-                                                mesh_data->prefix_num_faces[meshIdx],
-                                                mesh_data->prefix_num_faces[meshIdx + 1],
-                                                rho,
-                                                m,
-                                                m_x_bar,
-                                                m_x_bar_x_bar);
-
-                    EigenFloat3x3 I = EigenFloat3x3::Identity();
-                    for (uint i = 0; i < 3; i++)
-                        body_mass.block<3, 3>(3 + i * 3, 0) = body_mass.block<3, 3>(0, 3 + i * 3) =
-                            m_x_bar[i] * I;
-                    for (uint i = 0; i < 3; i++)
-                        for (uint j = 0; j < 3; j++)
-                            body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = m_x_bar_x_bar[i][j] * I;
+                            M_body += vert_mass;
+                            MI_body += vert_mass * vert_pos;
+                            I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
+                        }
+                    }
+                    else  // If we only have surface mesh
+                    {
+                        compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
+                                                    mesh_data->sa_faces,
+                                                    mesh_data->prefix_num_faces[meshIdx],
+                                                    mesh_data->prefix_num_faces[meshIdx + 1],
+                                                    mesh_info.get_density(),
+                                                    M_body,
+                                                    MI_body,
+                                                    I_body);
+                    }
                 }
+
+                body_mass.block<3, 3>(0, 0) = M_body * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(3 + i * 3, 0) = MI_body[i] * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(0, 3 + i * 3) = MI_body[i] * EigenFloat3x3::Identity();
+
+                for (uint i = 0; i < 3; i++)
+                    for (uint j = 0; j < 3; j++)
+                        body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = I_body[i][j] * EigenFloat3x3::Identity();
 
                 body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
 
@@ -590,29 +703,32 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                 sim_data->sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
                 sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
-                // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                // LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
-                // LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                if (num_affine_bodies < 20)
+                {
+                    // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+                    LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                }
 
                 sim_data->sa_affine_bodies_is_fixed[body_idx] = false;
                 sim_data->sa_affine_bodies_is_fixed[body_idx] =
-                    std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix,
-                                mesh_data->sa_is_fixed.begin() + next_prefix,
+                    std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix_verts,
+                                mesh_data->sa_is_fixed.begin() + next_prefix_verts,
                                 [](const bool is_fixed) { return is_fixed; });
 
-                float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix,
-                                         mesh_data->sa_rest_vert_area.begin() + next_prefix,
+                float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix_verts,
+                                         mesh_data->sa_rest_vert_area.begin() + next_prefix_verts,
                                          0.0f);
 
                 sim_data->sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
-                sim_data->sa_affine_bodies_kappa[body_idx] = shell_info.get_material<RigidMaterial>().stiffness;
+                sim_data->sa_affine_bodies_kappa[body_idx] = mesh_info.get_material<RigidMaterial>().stiffness;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
-                CpuParallel::single_thread_for(curr_prefix,
-                                               next_prefix,
+                CpuParallel::single_thread_for(curr_prefix_verts,
+                                               next_prefix_verts,
                                                [&](const uint vid)
                                                {
                                                    sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
@@ -647,6 +763,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         sim_data->vert_adj_stretch_springs.resize(num_dof);
         sim_data->vert_adj_stretch_faces.resize(num_dof);
         sim_data->vert_adj_bending_edges.resize(num_dof);
+        sim_data->vert_adj_stress_tets.resize(num_dof);
         sim_data->vert_adj_affine_bodies.resize(num_dof);
 
         auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
@@ -661,7 +778,7 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             }
         };
 
-        // Vert adj faces
+        // Vert adj stretch faces
         for (uint fid = 0; fid < sim_data->sa_stretch_faces.size(); fid++)
         {
             auto face = sim_data->sa_stretch_faces[fid];
@@ -727,6 +844,27 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
             }
         }
         upload_2d_csr_from(sim_data->sa_vert_adj_bending_edges_csr, sim_data->vert_adj_bending_edges);
+
+        // Vert adj stress tets
+        for (uint tid = 0; tid < sim_data->sa_stress_tets.size(); tid++)
+        {
+            auto tet = sim_data->sa_stress_tets[tid];
+            for (uint j = 0; j < 4; j++)
+            {
+                sim_data->vert_adj_stress_tets[tet[j]].push_back(tid);
+            }
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj)
+                    {
+                        insert_adj_vert(sim_data->vert_adj_material_force_verts, tet[ii], tet[jj]);
+                    }
+                }
+            }
+        }
+        upload_2d_csr_from(sim_data->sa_vert_adj_stress_tets_csr, sim_data->vert_adj_stress_tets);
 
         // Vert adj orthogonality energy
         for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
@@ -988,6 +1126,20 @@ void init_sim_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
                                                   sizeof(ushort) * 12);
                                   });
 
+        // Stress tetrahedron energy
+        sim_data->sa_stress_tets_offsets_in_adjlist.resize(sim_data->sa_stress_tets.size() * 12);
+        CpuParallel::parallel_for(0,
+                                  sim_data->sa_stress_tets.size(),
+                                  [&](const uint tid)
+                                  {
+                                      auto tet = sim_data->sa_stress_tets[tid];
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
+                                                                                               tet);  // size = 12
+                                      std::memcpy(sim_data->sa_stress_tets_offsets_in_adjlist.data() + tid * 12,
+                                                  mask.data(),
+                                                  sizeof(ushort) * 12);
+                                  });
+
         // Affine body inertia and orthogonality energy
         sim_data->sa_affine_bodies_offsets_in_adjlist.resize(num_affine_bodies * 12);
         CpuParallel::parallel_for(0,
@@ -1222,6 +1374,17 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                              output_data->colored_data.sa_lambda_bending,
                              input_data->colored_data.sa_lambda_bending)  // just resize
             ;
+    }
+    if (input_data->sa_stress_tets.size() > 0)
+    {
+        stream
+            << upload_buffer(device, output_data->sa_stress_tets, input_data->sa_stress_tets)
+            << upload_buffer(device, output_data->sa_stress_tets_mu_lambda, input_data->sa_stress_tets_mu_lambda)
+            << upload_buffer(device, output_data->sa_stress_tets_rest_volume, input_data->sa_stress_tets_rest_volume)
+            << upload_buffer(device, output_data->sa_stress_tets_Dm_inv, input_data->sa_stress_tets_Dm_inv)
+            << upload_buffer(device, output_data->sa_stress_tets_offsets_in_adjlist, input_data->sa_stress_tets_offsets_in_adjlist)
+            << upload_buffer(device, output_data->sa_stress_tets_gradients, input_data->sa_stress_tets_gradients)
+            << upload_buffer(device, output_data->sa_stress_tets_hessians, input_data->sa_stress_tets_hessians);
     }
     if (input_data->sa_affine_bodies.size() > 0)
     {

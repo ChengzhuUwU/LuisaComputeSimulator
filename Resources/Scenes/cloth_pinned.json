@@ -1,14 +1,6 @@
 {
-    "scene_id": 1,
-    "implicit_dt": 0.01,
-    "nonlinear_iter_count": 3,
-    "pcg_iter_count": 100,
-    "gravity": [
-        0,
-        -9.8,
-        0
-    ],
-    "contact_energy_type": 1,
+    "scene_id": 2,
+    "use_floor": false,
     "shells": [
         {
             "model_name": "square2K.obj",
@@ -30,13 +22,18 @@
                     ]
                 }
             ],
-            "shell_type": "Cloth"
+            "shell_type": "stretch_model",
+            "material": {
+                "StretchModel": "Spring",
+                "youngs_modulus": 1e5,
+                "poisson_ratio": 0.3
+            }
         },
         {
             "model_name": "square2K.obj",
             "translation": [
-                0.0,
-                0.3,
+                0.5,
+                0.2,
                 0.0
             ],
             "scale": [
@@ -52,13 +49,17 @@
                     ]
                 }
             ],
-            "shell_type": "Cloth"
+            "shell_type": "Cloth",
+            "material": {
+                "youngs_modulus": 1e5,
+                "poisson_ratio": 0.3
+            }
         },
         {
-            "model_name": "square2K.obj",
+            "model_name": "square8K.obj",
             "translation": [
-                0.0,
-                0.4,
+                1.0,
+                0.2,
                 0.0
             ],
             "scale": [
@@ -74,7 +75,12 @@
                     ]
                 }
             ],
-            "shell_type": "Cloth"
+            "shell_type": "Cloth",
+            "material": {
+                "youngs_modulus": 1e6,
+                "poisson_ratio": 0.3,
+                "area_bending_stiffness": 1.0
+            }
         }
     ]
 }

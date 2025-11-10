@@ -67,6 +67,31 @@ class NarrowPhasesDetector
     void  upload_spd_narrowphase_list(Stream& stream);
     void  resize_buffers(Device& decice, Stream& stream);
 
+  private:
+    template <typename T>
+    void resize_template(luisa::compute::Device&    device,
+                         luisa::compute::Buffer<T>& buffer,
+                         const uint                 curr_count,
+                         const std::string          name)
+    {
+        if (curr_count > buffer.size())
+        {
+            const uint desired_size = curr_count * 2;
+
+            LUISA_INFO("Resize buffer {} : from {} (< 2*CurrMax = {}) to {} ({} MB) , Total collision buffer size = {} MB",
+                       name,
+                       buffer.size(),
+                       curr_count * 2,
+                       desired_size,
+                       uint(desired_size * sizeof(T) / 1024 / 1024),
+                       collision_data->get_momery_bytes() / (1024 * 1024));
+            buffer.release();
+            buffer = device.create_buffer<T>(desired_size);
+        }
+    }
+
+    void dispatch_large_thread_template(const std::function<void(uint, uint)>& dispatch_func, uint total_size);
+
   public:
     // CCD
     void vf_ccd_query(Stream&               stream,
@@ -75,6 +100,7 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_left,
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint3>&  sa_faces_right,
+                      const Buffer<uint>&   sa_vert_affine_bodies_id,
                       const Buffer<float>&  d_hat,
                       const Buffer<float>&  thickness);
 
@@ -85,6 +111,7 @@ class NarrowPhasesDetector
                       const Buffer<float3>& sa_x_end_right,
                       const Buffer<uint2>&  sa_edges_left,
                       const Buffer<uint2>&  sa_edges_right,
+                      const Buffer<uint>&   sa_vert_affine_bodies_id,
                       const Buffer<float>&  d_hat,
                       const Buffer<float>&  thickness);
 
@@ -149,6 +176,7 @@ class NarrowPhasesDetector
                                                   Buffer<float3>&       sa_cgB,
                                                   Buffer<float3x3>&     sa_cgA_diag);
 
+    void prescan_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
     void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
     void host_perVert_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
@@ -188,8 +216,10 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint3>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>>
+                           luisa::compute::Buffer<float>,
+                           uint>
         fn_narrow_phase_vf_ccd_query;
 
     luisa::compute::Shader<1,
@@ -200,8 +230,10 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<float3>,
                            luisa::compute::Buffer<uint2>,
                            luisa::compute::Buffer<uint2>,
+                           luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>>
+                           luisa::compute::Buffer<float>,
+                           uint>
         fn_narrow_phase_ee_ccd_query;
 
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
@@ -223,7 +255,9 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
-                           float>
+                           float,
+                           uint,
+                           uint>
         fn_narrow_phase_vf_dcd_query;
 
     luisa::compute::Shader<1,
@@ -240,7 +274,9 @@ class NarrowPhasesDetector
                            luisa::compute::Buffer<uint>,
                            luisa::compute::Buffer<float>,
                            luisa::compute::Buffer<float>,
-                           float>
+                           float,
+                           uint,
+                           uint>
         fn_narrow_phase_ee_dcd_query;
 
     luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float> fn_compute_repulsion_energy;
@@ -251,11 +287,11 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, CDBG>                     fn_calc_pervert_prefix_adj_pairs;
     luisa::compute::Shader<1, CDBG>                     fn_calc_pervert_prefix_adj_verts;
     luisa::compute::Shader<1, CDBG, Buffer<uint>, uint> fn_fill_in_pairs_in_vert_adjacent;
-    luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint> fn_block_level_sort_contact_triplet;
-    luisa::compute::Shader<1, CDBG> fn_specify_target_slot;
-    luisa::compute::Shader<1, CDBG> fn_block_level_second_sort_contact_triplet_fill_in;
-    luisa::compute::Shader<1, CDBG> fn_specify_target_slot_2_level;
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, uint> fn_assemble_triplet_sorted;
+    luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint, uint> fn_block_level_sort_contact_triplet;
+    luisa::compute::Shader<1, CDBG>                   fn_specify_target_slot;
+    luisa::compute::Shader<1, CDBG, uint, uint, uint> fn_block_level_second_sort_contact_triplet_fill_in;
+    luisa::compute::Shader<1, CDBG, uint>             fn_specify_target_slot_2_level;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, uint, uint> fn_assemble_triplet_sorted;
     luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
     luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
 

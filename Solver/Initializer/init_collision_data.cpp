@@ -5,7 +5,7 @@
 namespace lcs::Initializer
 {
 
-void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
+void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
                          lcs::MeshData<std::vector>*               mesh_data,
                          lcs::SimulationData<std::vector>*         sim_data,
                          lcs::CollisionData<std::vector>*          collision_data)
@@ -18,8 +18,8 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint vid)
         {
             const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
-            const auto& shell_info = shell_infos[mesh_idx];
-            if (shell_info.shell_type == ShellTypeTetrahedral)
+            const auto& shell_info = world_data[mesh_idx];
+            if (shell_info.simulation_type == SimulationTypeTetrahedral)
             {
                 const auto& adj_faces = mesh_data->vert_adj_faces[vid];
                 if (!adj_faces.empty())
@@ -44,7 +44,7 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
         [&](const uint fid)
         {
             const uint  mesh_idx   = mesh_data->sa_face_mesh_id[fid];
-            const auto& shell_info = shell_infos[mesh_idx];
+            const auto& shell_info = world_data[mesh_idx];
             return 1;  // All faces are surface faces
         },
         mesh_data->num_faces);
@@ -104,20 +104,23 @@ void init_collision_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos,
     std::vector<float> mesh_scaled_d_hat(mesh_data->num_meshes);
     for (uint mesh_idx = 0; mesh_idx < mesh_data->num_meshes; mesh_idx++)
     {
-        float thickness = shell_infos[mesh_idx].get_thickness();
-        float d_hat     = shell_infos[mesh_idx].get_d_hat();
+        const bool is_rigid_body = world_data[mesh_idx].holds<RigidMaterial>();
+
+        float thickness = world_data[mesh_idx].get_thickness();
+        float d_hat     = world_data[mesh_idx].get_d_hat();
 
         float scaled_offset = 0.5f * thickness;
         float scaled_d_hat  = d_hat;
 
         float       min_dist  = mesh_min_dist[mesh_idx];
-        const float safe_dist = 0.9f * min_dist;
-        if (safe_dist < 1e-3)  // Soft-body exist penetration in rest state
+        const float safe_dist = is_rigid_body ? 1e8f : 0.9f * min_dist;
+
+        if (safe_dist < 1e-3 && !is_rigid_body)  // Soft-body exist penetration in rest state
         {
-            //  && !shell_infos[mesh_idx].holds<RigidMaterial>()
-            LUISA_ERROR("Sub-milimeter soft-body simulation is not supported yet (Mesh {}, Min dist = {})",
-                        shell_infos[mesh_idx].get_model_name(),
-                        safe_dist);
+            // Note: We add this condition just for s
+            LUISA_INFO("Sub-milimeter simulation may not be stable due to scaled small gap distance (Mesh {}, Min dist = {})",
+                       world_data[mesh_idx].get_model_name(),
+                       safe_dist);
         }
         if (scaled_offset + d_hat < safe_dist)
         {

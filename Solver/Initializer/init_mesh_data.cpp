@@ -35,7 +35,7 @@ namespace Initializer
         {
         }
     };
-    void ShellInfo::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
+    void WorldData::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
                                                     const FixedPointAnimationInfo&   fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -57,7 +57,7 @@ namespace Initializer
             }
         }
     }
-    void ShellInfo::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
+    void WorldData::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
                                                         const FixedPointAnimationInfo& fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -95,7 +95,7 @@ namespace Initializer
             }
         }
     }
-    void ShellInfo::set_pinned_verts_from_indices(const std::vector<uint>&       indices,
+    void WorldData::set_pinned_verts_from_indices(const std::vector<uint>&       indices,
                                                   const FixedPointAnimationInfo& fixed_info)
     {
         if (input_mesh.model_positions.size() == 0)
@@ -114,12 +114,16 @@ namespace Initializer
             fixed_point_animations.push_back(fixed_info);
         }
     }
-    ShellInfo& ShellInfo::load_fixed_points()
+    WorldData& WorldData::load_fixed_points()
     {
         if (input_mesh.model_positions.size() == 0)
         {
             load_mesh_data();
         }
+
+        auto from_norm_position = [&](const std::function<bool(const float3&)>& func,
+                                      const FixedPointAnimationInfo& info = FixedPointAnimationInfo())
+        { set_pinned_verts_from_norm_position(func, info); };
 
         for (const auto& fixed_point_func : fixed_point_range_info)
         {
@@ -265,7 +269,7 @@ namespace Initializer
         // return curr_fixed_point_verts;
     }
 
-    std::vector<float3> ShellInfo::get_fixed_point_target_positions(const float time)
+    std::vector<float3> WorldData::get_fixed_point_target_positions(const float time)
     {
         CpuParallel::parallel_for(
             0,
@@ -292,12 +296,12 @@ namespace Initializer
             });
         return fixed_point_target_positions;
     }
-    void ShellInfo::update_pinned_verts(const std::vector<float3>& new_positions)
+    void WorldData::update_pinned_verts(const std::vector<float3>& new_positions)
     {
         CpuParallel::parallel_copy(new_positions, fixed_point_target_positions);
     }
     // template <typename T>
-    void ShellInfo::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
+    void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
     {
         rest_positions.resize(input_mesh.model_positions.size());
         auto transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
@@ -317,15 +321,28 @@ namespace Initializer
                                       rest_positions[vid] = output;
                                   });
     }
+    WorldData& WorldData::load_mesh_data()
+    {
+        if (input_mesh.model_positions.empty())
+        {
+            bool second_read = SimMesh::read_mesh_file(model_name, input_mesh);
+        }
+        return *this;
+    }
+    WorldData& WorldData::load_mesh_from_path(const std::string& path)
+    {
+        bool succ = SimMesh::read_mesh_file(path, input_mesh);
+        return *this;
+    }
 
     // template<template<typename> typename BasicBuffer>
-    void init_mesh_data(std::vector<lcs::Initializer::ShellInfo>& shell_infos, lcs::MeshData<std::vector>* mesh_data)
+    void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
     {
-        std::sort(shell_infos.begin(),
-                  shell_infos.end(),
-                  [](const Initializer::ShellInfo& left, const Initializer::ShellInfo& right)
-                  { return int(left.shell_type) < int(right.shell_type); });
-        const uint num_meshes = shell_infos.size();
+        std::sort(world_data.begin(),
+                  world_data.end(),
+                  [](const Initializer::WorldData& left, const Initializer::WorldData& right)
+                  { return int(left.simulation_type) < int(right.simulation_type); });
+        const uint num_meshes = world_data.size();
         // std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
         mesh_data->num_meshes = num_meshes;
@@ -351,14 +368,14 @@ namespace Initializer
         // Pre-process materials
         for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            auto& shell_info = shell_infos[meshIdx];
+            auto& shell_info = world_data[meshIdx];
             auto& input_mesh = shell_info.input_mesh;
             if (input_mesh.model_positions.empty())
             {
                 shell_info.load_mesh_data();
             }
 
-            if (shell_info.shell_type == ShellTypeCloth)
+            if (shell_info.simulation_type == SimulationTypeCloth)
             {
                 if (!shell_info.holds<ClothMaterial>())
                 {
@@ -367,7 +384,7 @@ namespace Initializer
                 auto& mat    = shell_info.get_material<ClothMaterial>();
                 mat.is_shell = true;  // Cloth material must be shell
             }
-            else if (shell_info.shell_type == ShellTypeTetrahedral)
+            else if (shell_info.simulation_type == SimulationTypeTetrahedral)
             {
                 if (!shell_info.holds<TetMaterial>())
                 {
@@ -376,22 +393,34 @@ namespace Initializer
                 auto& mat    = shell_info.get_material<TetMaterial>();
                 mat.is_shell = false;
             }
-            else if (shell_info.shell_type == ShellTypeRigid)
+            else if (shell_info.simulation_type == SimulationTypeRigid)
             {
                 if (!shell_info.holds<RigidMaterial>())
                 {
                     shell_info.physics_material = RigidMaterial();
                 }
+                const bool has_boundary =
+                    shell_info.input_mesh.dihedral_edges.size() != shell_info.input_mesh.edges.size();
+
                 auto& mat = shell_info.get_material<RigidMaterial>();
                 if (mat.is_shell)
                 {
+                    if (has_boundary)
+                    {
+                        // TODO: Later we may construct a virtual volume mesh for shell
+                        LUISA_ERROR("Non-closed mesh simulation is currently not supported for rigid body ");
+                    }
                 }
                 else
                 {
+                    if (has_boundary)
+                    {
+                        LUISA_ERROR("The solid mesh is not closed");
+                    }
                     mat.thickness = 0.0f;
                 }
             }
-            else if (shell_info.shell_type == ShellTypeRod)
+            else if (shell_info.simulation_type == SimulationTypeRod)
             {
                 if (!shell_info.holds<RodMaterial>())
                 {
@@ -405,7 +434,7 @@ namespace Initializer
         // Constant scalar and init MeshData
         for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
         {
-            auto& shell_info = shell_infos[meshIdx];
+            auto& shell_info = world_data[meshIdx];
             auto& input_mesh = shell_info.input_mesh;
 
             mesh_data->prefix_num_verts[meshIdx]          = mesh_data->num_verts;
@@ -474,7 +503,7 @@ namespace Initializer
 
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
-                auto&       curr_shell_info = shell_infos[meshIdx];
+                auto&       curr_shell_info = world_data[meshIdx];
                 const auto& curr_input_mesh = curr_shell_info.input_mesh;
 
                 // Model info
@@ -506,7 +535,7 @@ namespace Initializer
                         mesh_data->sa_rest_x[prefix_num_verts + vid]       = world_position;
                         mesh_data->sa_rest_v[prefix_num_verts + vid]       = luisa::make_float3(0.0f);
                         mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
-                        mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.shell_type);
+                        mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.simulation_type);
                     });
                 // Read triangle face
                 CpuParallel::parallel_for(0,
@@ -555,16 +584,17 @@ namespace Initializer
 
                 // Read fixed points
                 mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_indices.size());
-                CpuParallel::parallel_for(0,
-                                          curr_shell_info.fixed_point_indices.size(),
-                                          [&](const uint index)
-                                          {
-                                              const uint local_vid = curr_shell_info.fixed_point_indices[index];
-                                              const uint global_vid = prefix_num_verts + local_vid;
-                                              mesh_data->sa_is_fixed[global_vid] = true;
-                                              mesh_data->fixed_verts.push_back(global_vid);
-                                              mesh_data->fixed_verts_map[meshIdx][index] = global_vid;
-                                          });
+                CpuParallel::single_thread_for(0,
+                                               curr_shell_info.fixed_point_indices.size(),
+                                               [&](const uint index)
+                                               {
+                                                   const uint local_vid =
+                                                       curr_shell_info.fixed_point_indices[index];
+                                                   const uint global_vid = prefix_num_verts + local_vid;
+                                                   mesh_data->sa_is_fixed[global_vid] = true;
+                                                   mesh_data->fixed_verts.push_back(global_vid);
+                                                   mesh_data->fixed_verts_map[meshIdx][index] = global_vid;
+                                               });
                 // Set fixed-points
                 {
                     AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
@@ -772,8 +802,7 @@ namespace Initializer
                                           mesh_data->sa_rest_face_area[fid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
-                                          mesh_data->sa_face_thickness[fid] =
-                                              shell_infos[mesh_idx].get_thickness();
+                                          mesh_data->sa_face_thickness[fid] = world_data[mesh_idx].get_thickness();
                                       });
             CpuParallel::parallel_for(0,
                                       num_tets,
@@ -798,7 +827,7 @@ namespace Initializer
                                           mesh_data->sa_rest_vert_area[vid] = area;
 
                                           const uint  mesh_idx   = mesh_data->sa_vert_mesh_id[vid];
-                                          const auto& shell_info = shell_infos[mesh_idx];
+                                          const auto& shell_info = world_data[mesh_idx];
                                           mesh_data->sa_vert_thickness[vid] = shell_info.get_thickness();
 
                                           const auto& adj_tets = mesh_data->vert_adj_tets[vid];
@@ -832,8 +861,7 @@ namespace Initializer
                                           mesh_data->sa_rest_edge_area[eid] = area;
 
                                           const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
-                                          mesh_data->sa_edge_thickness[eid] =
-                                              shell_infos[mesh_idx].get_thickness();
+                                          mesh_data->sa_edge_thickness[eid] = world_data[mesh_idx].get_thickness();
                                       });
 
             // float sum_face_area = CpuParallel::parallel_reduce_sum(mesh_data->sa_rest_face_area);
@@ -853,7 +881,7 @@ namespace Initializer
             mesh_data->sa_rest_body_area.resize(num_meshes, 0.0f);
             for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
             {
-                const auto& shell_info = shell_infos[meshIdx];
+                const auto& shell_info = world_data[meshIdx];
 
                 float sum_volume = 0.0f;
                 if (shell_info.get_is_shell())  // Shell volume = area * thickness
@@ -872,7 +900,7 @@ namespace Initializer
                 {
                     if (shell_info.input_mesh.tetrahedrons.empty())
                     {
-                        if (shell_info.shell_type == ShellTypeTetrahedral)
+                        if (shell_info.simulation_type == SimulationTypeTetrahedral)
                         {
                             LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
                         }
