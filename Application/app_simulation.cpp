@@ -62,6 +62,11 @@ int main(int argc, char** argv)
 #else
     std::string backend = "cuda";
 #endif
+    if (argc >= 2)
+    {
+        backend = argv[1];
+    }
+
     const std::string            binary_path(argv[0]);
     luisa::compute::Context      context{binary_path};
     luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
@@ -74,10 +79,7 @@ int main(int argc, char** argv)
     {
         LUISA_INFO("Device {}: {}", i, device_names[i]);
     }
-    if (argc >= 2)
-    {
-        backend = argv[1];
-    }
+
     luisa::compute::Device device = context.create_device(backend,
                                                           nullptr,
 #ifndef NDEBUG
@@ -187,7 +189,7 @@ int main(int argc, char** argv)
         auto fn_single_step_without_ui = [&]() { fn_physics_step(); };
 
         const uint frame_start = lcs::get_scene_params().current_frame;
-        const uint frame_end   = frame_start + 300;
+        const uint frame_end   = frame_start + 50;
 
         fn_save_frame_to_obj("_init");
         for (uint frame = frame_start; frame < frame_end; frame++)

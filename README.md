@@ -9,6 +9,8 @@
 
 LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator** based on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute), providing support for **Cloth and Rigid-Body** simulations and support for **Penetration-Free** contact handling, accelated by variant GPU/CPU backends(e.g., CUDA, DirectX12, Vulkan, Metal, Fallback).
 
+> Teasor figure: 88K vertices & 174K triangles, over 3,000,000 collision pairs, about 3 fps on RTX3090 (CUDA backend) and 2 fps on M2 Max (Metal Backend).
+
 ## Getting Started
 
 - **Clone the repository:**
@@ -39,8 +41,9 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 - **You can build with Cmake:**  
   - Configure: ```cmake -S . -B build```
-    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release` 
+    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release`.
     - (Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`).
+    - You can also enable/disable computing backends by adding `-D LUISA_COMPUTE_ENABLE_VULKAN=ON`.
   - Build   : ```cmake --build build -j```
 
 - **You can also build with Xmake:**  
@@ -53,18 +56,18 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
     `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
 
-    In launching arguments, you can specify your favorite backend by passing `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario by passing `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in `Resources/Scenes` directory).
+    The launching parameters `<backend-name> <scene-json-file>` is optional, you can specify your favorite backend in `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario in `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in [Resources/Scenes](Resources/Scenes) directory).
 
-More configuration support can be found in [the document of LuisaCompute](https://github.com/LuisaGroup/LuisaCompute/blob/stable/BUILD.md) and [Build.md](Document/Build.md).
+More building guidance about computing backend can be found in [the document of LuisaCompute](https://github.com/LuisaGroup/LuisaCompute/blob/stable/BUILD.md) and [Build.md](Document/Build.md).
 
 
 ### Other Configuration
 
-1. The default backend is `cuda` on Windows and Linux, and `metal` on macOS.  
-    To use other backends such as `dx`, `vulkan`, or `fallback (TBB)`, update the compile options in CMake/Xmake (e.g., LUISA_COMPUTE_ENABLE_DX or other backend selection) and specify the target backend by passing `<backend-name>` in the launching arguments.
+1. The default backend is `dx` (DirectX12) on Windows, `cuda` on Linux, and `metal` on macOS. 
+   To enable other backends such as `vulkan`, or `fallback (TBB)`, update the building options in CMake/Xmake (e.g., set `LUISA_COMPUTE_ENABLE_VULKAN` to `ON`), and specify the target backend by passing `<backend-name>` in the launching parameters.
 
 2. GUI is disabled by default for broader platform compatibility.  
-    To enable the GUI (based on [polyscope](https://github.com/nmwsharp/polyscope)), set the option `LCS_ENABLE_GUI` to `ON` in CMake/Xmake.
+   To enable the GUI (based on [polyscope](https://github.com/nmwsharp/polyscope)), set the option `LCS_ENABLE_GUI` to `ON` in CMake/Xmake.
 
 3. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
 
@@ -72,11 +75,11 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 |   Backend |  Windows   | Linux     |  MacOS  | Description |
 |  -----    |  ------    |  ------   |  ------ |      ------ |
-| cuda      | Supported  | Supported |         | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
-| vulkan    |Supported   | Experimental | Developing  | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
-| metal     |            |           | Supported |   | 
-| dx        | Supported  |           |           | Requires [vulkan SDK](https://vulkan.lunarg.com/) | 
-| fallback  | Supported  | Supported | Supported | Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
+| CUDA      | Supported  | Supported |         | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
+| Vulkan    | Supported  | Experimental | Developing  | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
+| DirectX12 | Supported  |           |           |   | 
+| Metal     |            |           | Supported |   | 
+| Fallback  | Supported  | Supported | Supported | Launch kernels on the CPU. Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
 
 
 ## Examples
@@ -115,7 +118,7 @@ More configuration support can be found in [the document of LuisaCompute](https:
 
 ## References
 
-- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g) and its [notes](https://zhuanlan.zhihu.com/p/441088912), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [C-IPC](https://github.com/ipc-sim/Codim-IPC)
+- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [Codim-IPC](https://github.com/ipc-sim/Codim-IPC)
 - **DCD & CCD:** [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver), libuipc.
 - **PCG (Linear equation solver):** [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl), libuipc.
 - **Framework:** [libshell](https://github.com/legionus/libshell), [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting).

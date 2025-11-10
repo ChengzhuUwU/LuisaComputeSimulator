@@ -10,7 +10,10 @@ option(LCS_ENABLE_GUI "Enable GUI support" OFF)
 option(LCS_ENABLE_TEST "Enable Unit Tests" OFF)
 option(LCS_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
 option(LCS_BUILD_MAIN_APPLICATION "Build Executable Simulation Application" ON)
+option(LCS_BUILD_PYBINDINGS "Build Python bindings (requires pybind11)" OFF)
+set(LCS_PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to the Python executable to build python bindings for (optional)")
 
+# LuisaCompute backends
 option(LUISA_COMPUTE_ENABLE_CUDA "Enable CUDA backend" ON)
 option(LUISA_COMPUTE_ENABLE_METAL "Enable Metal backend" ON)
 option(LUISA_COMPUTE_ENABLE_VULKAN "Enable Vulkan backend" OFF)
@@ -35,7 +38,7 @@ set(LCSV_RESOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="${LCSV_RESOURCE_PATH}")
 
 
-# Main Application
+# Executable application
 if(LCS_BUILD_MAIN_APPLICATION)
     add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
     target_link_libraries(app-simulation PRIVATE 
@@ -56,4 +59,23 @@ endif()
 
 if(LCS_ENABLE_TEST)
     add_subdirectory(UnitTest)
+endif()
+
+if(LCS_BUILD_PYBINDINGS)
+    if(LCS_PYTHON_EXECUTABLE)
+        set(PYBIND11_PYTHON_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python executable for pybind11")
+        message(STATUS "Using Python executable for bindings: ${PYBIND11_PYTHON_EXECUTABLE}")
+    endif()
+
+    find_package(pybind11 REQUIRED)
+    if(pybind11_FOUND)
+        pybind11_add_module(lcs_solver_py PythonBindings/python_bindings.cpp)
+        target_include_directories(lcs_solver_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Solver)
+        target_link_libraries(lcs_solver_py PRIVATE
+            luisa-compute-solver-lib
+            luisa::compute
+        )
+    else()
+        message(WARNING "pybind11 not found; Python bindings will not be built")
+    endif()
 endif()
