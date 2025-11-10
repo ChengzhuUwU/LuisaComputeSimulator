@@ -95,23 +95,6 @@ function install_lc()
             end
         })
     end
-    if is_empty_folder(lc_path) then
-        utils.error("LuisaCompute not installed.")
-    end
-    ------------------------------ llvm ------------------------------
-    local builddir
-    if os.is_host("windows") then
-        builddir = path.absolute("build/windows/x64/release")
-    elseif os.is_host("macosx") then
-        builddir = path.absolute("build/macosx/x64/release")
-    end
-    local lib = import("lib", {
-        rootdir = path.join(lc_path, "scripts")
-    })
-    print("install lc sdk")
-    local setup = import("setup", {rootdir = lc_path})
-    setup.main(path.join(lc_path, "SDKs"))
-    
 end
 
 function main(...)

@@ -59,5 +59,5 @@ target("app-simulation")
     })
     add_files("Application/*.cpp|app_test_features.cpp")
 
-    add_deps("luisa-compute-solver-lib", "polyscope")
+    add_deps("luisa-compute-solver-lib", "polyscope", "lc-yyjson")
     set_pcxxheader("Application/zzpch.h")
