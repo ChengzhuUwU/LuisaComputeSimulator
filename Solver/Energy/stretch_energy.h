@@ -1,5 +1,5 @@
 // Modified from [https://github.com/st-tech/ppf-contact-solver/blob/main/src/cpp/energy/model/baraffwitkin.hpp]
-
+//          and [https://github.com/KemengHuang/GPU_IPC/blob/main/GPU_IPC/femEnergy.cu]
 #pragma once
 
 #include "Core/float_n.h"

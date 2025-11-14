@@ -107,6 +107,8 @@ More building guidance about computing backend can be found in [the document of 
 - [ ] Python Binding
 - [ ] Frictional Contact
 - [ ] Strain Limiting
+- [ ] Consistent Solve
+- [ ] Replace All Constraint With Bindless-Group
 - [ ] Thin Shell Rigid-Body Simulation
 - [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy
