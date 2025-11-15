@@ -1,5 +1,6 @@
 #include "SimulationSolver/solver_interface.h"
 #include "CollisionDetector/cipc_kernel.hpp"
+#include "CollisionDetector/friction_kernel.hpp"
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energy/bending_energy.h"
@@ -555,7 +556,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
          sa_is_fixed                    = mesh_data->sa_is_fixed.view(),
          sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
          sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
-         sa_system_energy               = sim_data->sa_system_energy.view()](
+         sa_contact_active_verts_friction_coeff = sim_data->sa_contact_active_verts_friction_coeff.view(),
+         sa_x_step_start  = sim_data->sa_x_step_start.view(),
+         sa_system_energy = sim_data->sa_system_energy.view()](
             Var<BufferView<float3>> sa_x, Float floor_y, Bool use_ground_collision, Float stiffness, Uint collision_type)
         {
             const Uint vid = dispatch_id().x;
@@ -573,15 +576,30 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 {
                     Float area  = sa_rest_vert_area->read(vid);
                     Float stiff = stiffness * area;
+                    Float k1    = 0.0f;
 
                     $if(collision_type == 0)
                     {
                         energy = 0.5f * stiff * square_scalar(dist - thickness - d_hat);
+                        k1     = stiff * (dist - thickness - d_hat);
                     }
                     $else
                     {
                         energy = stiff * ipc::barrier(dist - thickness, d_hat);
+                        k1     = ipc::barrier_first_derivative(dist - thickness, d_hat);
                     };
+
+                    // Friction Part
+                    {
+                        Float3 normal         = make_float3(0.0f, 1.0f, 0.0f);
+                        Float3 x_0            = sa_x_step_start->read(vid);
+                        Float3 dv             = x_k - x_0;
+                        Float  friction_coeff = sa_contact_active_verts_friction_coeff->read(vid);
+                        Float  friction_eps   = Friction::GaussNewton::friction_eps;
+                        auto   lambda_P =
+                            Friction::GaussNewton::get_friction_lambda_P(k1, dv, normal, friction_coeff, friction_eps);
+                        energy += 0.5f * lambda_P.first * dot(dv, lambda_P.second * dv);
+                    }
 
                     // Float C    = d_hat + thickness - dist;
                     // Float area = sa_rest_vert_area->read(vid);
@@ -821,12 +839,15 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
         stream << fn_calc_energy_abd_ortho(sim_data->sa_affine_bodies_q).dispatch(host_sim_data->num_affine_bodies);
     }
 
-    stream << fn_calc_energy_ground_collision(curr_x,
-                                              get_scene_params().floor.y,
-                                              get_scene_params().use_floor,
-                                              get_scene_params().stiffness_collision,
-                                              get_scene_params().contact_energy_type)
-                  .dispatch(mesh_data->num_verts);
+    if (get_scene_params().use_floor)
+    {
+        stream << fn_calc_energy_ground_collision(curr_x,
+                                                  get_scene_params().floor.y,
+                                                  get_scene_params().use_floor,
+                                                  get_scene_params().stiffness_collision,
+                                                  get_scene_params().contact_energy_type)
+                      .dispatch(mesh_data->num_verts);
+    }
 
     if (host_sim_data->sa_stretch_springs.size() != 0)
     {

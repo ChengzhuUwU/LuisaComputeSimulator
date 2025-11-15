@@ -1,6 +1,7 @@
 #include "CollisionDetector/narrow_phase.h"
 #include "CollisionDetector/accd.hpp"
 #include "CollisionDetector/cipc_kernel.hpp"
+#include "CollisionDetector/friction_kernel.hpp"
 #include "CollisionDetector/libuipc/codim_ipc_simplex_normal_contact_function.h"
 #include "CollisionDetector/libuipc/distance/distance_flagged.h"
 #include "Core/lc_to_eigen.h"
@@ -873,7 +874,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                         if (contact_energy_type == ContactEnergyType::Quadratic)
                         {
-                            Float C     = thickness + d_hat - d;
+                            Float C     = (d - thickness) - d_hat;
                             Float stiff = avg_area * kappa;
                             k1          = stiff * C;
                             k2          = stiff;
@@ -1014,7 +1015,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                     // $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat) | d2 < 0.5f * rest_d2)
                     {
                         Float d = sqrt_scalar(d2);
-                        Float C = thickness + d_hat - d;
+                        Float C = (d - thickness) - d_hat;
                         // Float3 normal = normalize_vec(x);
                         Float3 normal = x / d;
 
@@ -1254,99 +1255,6 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
 
 namespace lcs  // Friction
 {
-namespace Friction
-{
-    namespace detail
-    {
-        template <typename T>
-        inline auto get_projection(const T& normal)
-        {
-            return Identity3x3 - outer_product(normal, normal);
-        }
-        inline std::pair<float, float3x3> get_friction_lambda_P(
-            const float3& force_contact, const float3& dx, const float3& normal, const float mu, const float min_dx)
-        {
-            float    contact = -dot(force_contact, normal);
-            float3x3 P       = get_projection(normal);
-
-            float lambda;
-            if (mu > 0.0f)
-            {
-                float denom = length_squared_vec(P * dx);
-                if (denom > 0.0f)
-                {
-                    lambda = mu * contact / luisa::max(min_dx, luisa::sqrt(denom));
-                }
-                else
-                {
-                    lambda = mu * contact / min_dx;
-                }
-            }
-            else
-            {
-                lambda = 0.0f;
-            }
-            return std::make_pair(lambda, P);
-        }
-        inline std::pair<Var<float>, Var<float3x3>> get_friction_lambda_P(const Var<float3>& force_contact,
-                                                                          const Var<float3>& dx,
-                                                                          const Var<float3>& normal,
-                                                                          const Var<float>   mu,
-                                                                          const Var<float>   min_dx)
-        {
-            Var<float>    contact = -luisa::compute::dot(force_contact, normal);
-            Var<float3x3> P       = get_projection(normal);
-
-            Var<float> lambda;
-            $if(mu > 0.0f)
-            {
-                Var<float> denom = length_squared_vec(P * dx);
-                $if(denom > 0.0f)
-                {
-                    lambda = mu * contact / luisa::compute::max(min_dx, luisa::compute::sqrt(denom));
-                }
-                $else
-                {
-                    lambda = mu * contact / min_dx;
-                };
-            }
-            $else
-            {
-                lambda = 0.0f;
-            };
-            return std::make_pair(lambda, P);
-        }
-    }  // namespace detail
-
-    inline void compute_gradient_hessian(const float3& force_contact,
-                                         const float3& dx,
-                                         const float3& normal,
-                                         const float   mu,
-                                         const float   min_dx,
-                                         float3&       gradient,
-                                         float3x3&     hessian)
-    {
-        auto        lambda_P = detail::get_friction_lambda_P(force_contact, dx, normal, mu, min_dx);
-        const auto& lambda   = lambda_P.first;
-        const auto& P        = lambda_P.second;
-        gradient             = lambda * (P * dx);
-        hessian              = lambda * P;
-    }
-    inline void compute_gradient_hessian(const Var<float3>& force_contact,
-                                         const Var<float3>& dx,
-                                         const Var<float3>& normal,
-                                         const Var<float>   mu,
-                                         const Var<float>   min_dx,
-                                         Var<float3>&       gradient,
-                                         Var<float3x3>&     hessian)
-    {
-        auto        lambda_P = detail::get_friction_lambda_P(force_contact, dx, normal, mu, min_dx);
-        const auto& lambda   = lambda_P.first;
-        const auto& P        = lambda_P.second;
-        gradient             = lambda * (P * dx);
-        hessian              = lambda * P;
-    }
-}  // namespace Friction
 
 void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
 {
@@ -1375,11 +1283,13 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
                 + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
             const Float3 dv = dx - dx0;
 
-            // 0.5 * sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]);
-            Float        friction_mu  = 0.5f;
-            Float        friction_eps = 1e-5f;
+            // TODO: Area weighted?
+            Float friction_mu =
+                0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
+            Float        friction_eps = Friction::GaussNewton::friction_eps;
             const Float3 gradient     = k1 * normal;
-            auto lambda_P = Friction::detail::get_friction_lambda_P(gradient, dx, normal, friction_mu, friction_eps);
+            auto         lambda_P =
+                Friction::GaussNewton::get_friction_lambda_P(gradient, dx, normal, friction_mu, friction_eps);
             pair->set_friction_values(dv, lambda_P.first);
             narrowphase_list.write(pair_idx, pair);
         },
@@ -2600,11 +2510,11 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
             // Friction part
             {
-                Float3   dv     = pair->get_delta_v();
-                Float3x3 P      = Identity3x3 - outer_product(normal, normal);
-                Float    lambda = pair->get_friction_lambda();
-                grad += lambda * P * dv;
-                hess += lambda * P;
+                Float3 dv     = pair->get_delta_v();
+                Float  lambda = pair->get_friction_lambda();
+                auto friction_grad_hess = Friction::GaussNewton::compute_gradient_hessian(lambda, normal, dv);
+                grad += friction_grad_hess.first;
+                hess += friction_grad_hess.second;
             }
 
             $if(is_nan_vec(k1 * k2 * normal))
@@ -2733,9 +2643,11 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             const Float3 normal  = pair->get_normal();
             Float3x3     hess    = k2 * outer_product(normal, normal);
 
-            Float    lambda = pair->get_friction_lambda();
-            Float3x3 P      = Identity3x3 - outer_product(normal, normal);
-            hess += lambda * P;
+            {
+                Float    lambda        = pair->get_friction_lambda();
+                Float3x3 friction_hess = Friction::GaussNewton::compute_hessian(lambda, normal);
+                hess += friction_hess;
+            }
 
             const Uint2 triplet_info = triplet_indices->read(triplet_idx);
             const Uint  vid          = triplet_info[0] & mask_get_active_vid;
@@ -3191,10 +3103,11 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
                 // Friction Part
                 {
-                    Float3   normal = pair->get_normal();
-                    Float3   dv     = pair->get_delta_v();
-                    Float3x3 P      = Identity3x3 - outer_product(normal, normal);
-                    energy += 0.5f * dot(dv, P * dv);
+                    Float3   normal          = pair->get_normal();
+                    Float3   dv              = pair->get_delta_v();
+                    Float    friction_lambda = pair->get_friction_lambda();
+                    Float3x3 P               = Identity3x3 - outer_product(normal, normal);
+                    energy += 0.5f * friction_lambda * dot(dv, P * dv);
                 }
             };
 

@@ -3,6 +3,7 @@
 #include <Eigen/Eigenvalues>
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/distance.hpp"
+#include "CollisionDetector/friction_kernel.hpp"
 #include "Core/affine_position.h"
 #include "Core/float_n.h"
 #include "Energy/bending_energy.h"
@@ -883,12 +884,14 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
     compiler.compile<1>(
         fn_evaluate_ground_collision,
         [sa_x                           = sim_data->sa_x.view(),
+         sa_x_step_start                = sim_data->sa_x_step_start.view(),
          sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
          sa_cgB                         = sim_data->sa_cgB.view(),
          sa_cgA_diag                    = sim_data->sa_cgA_diag.view(),
          sa_is_fixed                    = mesh_data->sa_is_fixed.view(),
          sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
-         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view()](
+         sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
+         sa_contact_active_verts_friction_coeff = sim_data->sa_contact_active_verts_friction_coeff.view()](
             Float floor_y, Bool use_ground_collision, Float stiffness, Uint collision_type)
         {
             const UInt vid = dispatch_id().x;
@@ -923,6 +926,19 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                             k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
                             k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
                         };
+
+                        // Friction
+                        {
+                            Float3 x_0        = sa_x_step_start->read(vid);
+                            Float3 dv         = x_k - x_0;
+                            Float friction_mu = area * sa_contact_active_verts_friction_coeff->read(vid);
+                            auto  lambda_P    = Friction::GaussNewton::get_friction_lambda_P(
+                                k1 * normal, dv, normal, friction_mu, 1e-5f);
+                            auto friction_grad_hess =
+                                Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                            force -= friction_grad_hess.first;
+                            hessian += friction_grad_hess.second;
+                        }
                         // device_log("Vert {} ground collision: dist = {}, force = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                         //            vid,
                         //            dist,
@@ -1336,14 +1352,16 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             fn_evaluate_abd_ground_collision,
             [sa_scaled_model_x              = mesh_data->sa_scaled_model_x.view(),
              sa_x                           = sim_data->sa_x.view(),
+             sa_x_step_start                = sim_data->sa_x_step_start.view(),
              abd_q                          = sim_data->sa_affine_bodies_q.view(),
              abd_perVert_body_id            = sim_data->sa_vert_affine_bodies_id.view(),
              sa_rest_vert_area              = mesh_data->sa_rest_vert_area.view(),
              sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
              sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
-             abd_gradients                  = sim_data->sa_affine_bodies_gradients.view(),
-             abd_hessians                   = sim_data->sa_affine_bodies_hessians.view(),
-             sa_is_fixed                    = mesh_data->sa_is_fixed.view()](
+             sa_contact_active_verts_friction_coeff = sim_data->sa_contact_active_verts_friction_coeff.view(),
+             abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
+             abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
+             sa_is_fixed   = mesh_data->sa_is_fixed.view()](
                 Float floor_y, Bool use_ground_collision, Float stiffness, Uint vid_start, Uint collision_type)
             {
                 const UInt vid = vid_start + dispatch_id().x;
@@ -1381,6 +1399,20 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
                             Float3   gradient = k1 * normal;
                             Float3x3 hessian  = k2 * outer_product(normal, normal);
+
+                            // Friction
+                            {
+                                Float3 x_0 = sa_x_step_start->read(vid);
+                                Float3 dv  = x_k - x_0;
+                                Float friction_mu = area * sa_contact_active_verts_friction_coeff->read(vid);
+                                Float friction_eps = Friction::GaussNewton::friction_eps;
+                                auto  lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                                    k1 * normal, dv, normal, friction_mu, friction_eps);
+                                auto friction_grad_hess =
+                                    Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                                gradient += friction_grad_hess.first;
+                                hessian += friction_grad_hess.second;
+                            }
 
                             const Uint   body_idx = abd_perVert_body_id->read(vid);
                             const Float4 weight   = make_float4(1.0f, sa_scaled_model_x->read(vid));
@@ -1803,13 +1835,15 @@ void NewtonSolver::host_evaluate_ground_collision()
         [sa_cgB                         = host_sim_data->sa_cgB.data(),
          sa_cgA_diag                    = host_sim_data->sa_cgA_diag.data(),
          sa_x                           = host_sim_data->sa_x.data(),
+         sa_x_step_start                = host_sim_data->sa_x_step_start.data(),
          sa_contact_active_verts_offset = host_sim_data->sa_contact_active_verts_offset.data(),
          sa_contact_active_verts_d_hat  = host_sim_data->sa_contact_active_verts_d_hat.data(),
-         sa_is_fixed                    = host_mesh_data->sa_is_fixed.data(),
-         sa_rest_vert_area              = host_mesh_data->sa_rest_vert_area.data(),
-         stiffness_ground               = stiffness_ground,
-         collision_type                 = get_scene_params().contact_energy_type,
-         floor_y                        = get_scene_params().floor.y](const uint vid)
+         sa_contact_active_verts_friction_coeff = host_sim_data->sa_contact_active_verts_friction_coeff.data(),
+         sa_is_fixed       = host_mesh_data->sa_is_fixed.data(),
+         sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data(),
+         stiffness_ground  = stiffness_ground,
+         collision_type    = get_scene_params().contact_energy_type,
+         floor_y           = get_scene_params().floor.y](const uint vid)
         {
             if (sa_is_fixed[vid])
                 return;
@@ -1848,10 +1882,23 @@ void NewtonSolver::host_evaluate_ground_collision()
                                     k1,
                                     k2);
                     }
-                    float3   grad    = k1 * normal;
-                    float3x3 hessian = k2 * outer_product(normal, normal);
+                    float3   gradient = k1 * normal;
+                    float3x3 hessian  = k2 * outer_product(normal, normal);
 
-                    sa_cgB[vid]      = sa_cgB[vid] - grad;
+                    // Friction
+                    {
+                        float3 x_0          = sa_x_step_start[vid];
+                        float3 dv           = x_k - x_0;
+                        float  friction_mu  = area * sa_contact_active_verts_friction_coeff[vid];
+                        float  friction_eps = Friction::GaussNewton::friction_eps;
+                        auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                            k1 * normal, dv, normal, friction_mu, friction_eps);
+                        auto friction_grad_hess = Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                        gradient += friction_grad_hess.first;
+                        hessian = hessian + friction_grad_hess.second;
+                    }
+
+                    sa_cgB[vid]      = sa_cgB[vid] - gradient;
                     sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
                 }
             }
@@ -1903,6 +1950,20 @@ void NewtonSolver::host_evaluate_ground_collision()
 
                         float3   gradient = k1 * normal;
                         float3x3 hessian  = k2 * outer_product(normal, normal);
+
+                        // Friction
+                        {
+                            float3 x_0 = host_sim_data->sa_x_step_start[vid];
+                            float3 dv  = x_k - x_0;
+                            float friction_mu = area * host_sim_data->sa_contact_active_verts_friction_coeff[vid];
+                            float friction_eps = Friction::GaussNewton::friction_eps;
+                            auto  lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                                k1 * normal, dv, normal, friction_mu, friction_eps);
+                            auto friction_grad_hess =
+                                Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                            gradient += friction_grad_hess.first;
+                            hessian = hessian + friction_grad_hess.second;
+                        }
 
                         uint   idx     = 4;
                         float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
