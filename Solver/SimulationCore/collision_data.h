@@ -56,7 +56,7 @@ namespace CollisionPair
         uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
 
         float3 get_normal() const { return vec1.xyz(); }
-        float  get_stiffness() const { return vec1[3]; }
+        float  get_area() const { return vec1[3]; }
         float3 get_delta_v() const { return vec3.xyz(); }
         float  get_friction_lambda() const { return vec3[3]; }
 
@@ -333,7 +333,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2, vec
     }
 
     luisa::compute::Float3 get_normal() const { return vec1.xyz(); }
-    luisa::compute::Float get_stiffness() const { return vec1[3]; }
+    luisa::compute::Float get_area() const { return vec1[3]; }
     luisa::compute::Float3 get_delta_v() const { return vec3.xyz(); }
     luisa::compute::Float get_friction_lambda() const { return vec3[3]; }
 

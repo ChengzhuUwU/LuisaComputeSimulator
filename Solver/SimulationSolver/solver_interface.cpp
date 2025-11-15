@@ -586,7 +586,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                     $else
                     {
                         energy = stiff * ipc::barrier(dist - thickness, d_hat);
-                        k1     = ipc::barrier_first_derivative(dist - thickness, d_hat);
+                        k1     = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
                     };
 
                     // Friction Part
@@ -596,8 +596,8 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                         Float3 dv             = x_k - x_0;
                         Float  friction_coeff = sa_contact_active_verts_friction_coeff->read(vid);
                         Float  friction_eps   = Friction::GaussNewton::friction_eps;
-                        auto   lambda_P =
-                            Friction::GaussNewton::get_friction_lambda_P(k1, dv, normal, friction_coeff, friction_eps);
+                        auto   lambda_P       = Friction::GaussNewton::get_friction_lambda_P(
+                            k1 * normal, dv, normal, friction_coeff, friction_eps);
                         energy += 0.5f * lambda_P.first * dot(dv, lambda_P.second * dv);
                     }
 

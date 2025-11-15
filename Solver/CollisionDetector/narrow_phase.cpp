@@ -769,7 +769,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
     luisa::compute::ShaderOption option{.enable_fast_math = true, .enable_debug_info = true};
 
-    // TODO: PreScan, preventing buffer out of range
     compiler.compile<1>(
         fn_narrow_phase_vf_dcd_query,
         [contact_energy_type, offset_vf](Var<CDBG>         collision_data,
@@ -913,7 +912,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             {
                                 Var<CollisionPair::CollisionPairTemplate> vf_pair;
                                 vf_pair->make_vf_pair(
-                                    make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area * kappa, bary);
+                                    make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area, bary);
                                 narrowphase_list->write(idx, vf_pair);
                                 // device_log("Make VF Pair {} : {}, indices = {}", idx, vf_pair, vf_pair->get_indices());
                                 if constexpr (print_dcd_detail)
@@ -1015,7 +1014,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                     // $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat) | d2 < 0.5f * rest_d2)
                     {
                         Float d = sqrt_scalar(d2);
-                        Float C = (d - thickness) - d_hat;
                         // Float3 normal = normalize_vec(x);
                         Float3 normal = x / d;
 
@@ -1032,6 +1030,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                         if (contact_energy_type == ContactEnergyType::Quadratic)
                         {
+                            Float C     = (d - thickness) - d_hat;
                             Float stiff = kappa * avg_area;
                             k1          = stiff * C;
                             k2          = stiff;
@@ -1074,7 +1073,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                     normal,
                                     k1,
                                     k2,
-                                    avg_area * kappa,
+                                    avg_area,
                                     bary.xy(),
                                     bary.zw());
                                 narrowphase_list->write(idx, ee_pair);
@@ -3089,10 +3088,10 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             $if(d < thickness + d_hat)
             {
-                const Float stiff = pair->get_stiffness();
+                const Float stiff = pair->get_area() * kappa;
                 if (contact_energy_type == ContactEnergyType::Quadratic)
                 {
-                    Float C = thickness + d_hat - d;
+                    Float C = d - thickness - d_hat;
                     energy  = 0.5f * stiff * C * C;
                 }
                 else if (contact_energy_type == ContactEnergyType::Barrier)

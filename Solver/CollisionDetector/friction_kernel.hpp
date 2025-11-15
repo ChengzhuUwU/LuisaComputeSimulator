@@ -101,34 +101,6 @@ namespace Friction
             }
             return std::make_pair(lambda, P);
         }
-        inline std::pair<Var<float>, Var<float3x3>> get_friction_lambda_P(const Var<float>& dbdd,  // First derivative of energy to distance
-                                                                          const Var<float3>& dx,
-                                                                          const Var<float3>& normal,
-                                                                          const Var<float>   mu,
-                                                                          const Var<float>   min_dx)
-        {
-            Var<float>    contact = -dbdd;
-            Var<float3x3> P       = get_projection(normal);
-
-            Var<float> lambda;
-            $if(mu > 0.0f)
-            {
-                Var<float> denom = length_squared_vec(P * dx);
-                $if(denom > 0.0f)
-                {
-                    lambda = mu * contact / luisa::compute::max(min_dx, luisa::compute::sqrt(denom));
-                }
-                $else
-                {
-                    lambda = mu * contact / min_dx;
-                };
-            }
-            $else
-            {
-                lambda = 0.0f;
-            };
-            return std::make_pair(lambda, P);
-        }
 
         template <typename PairType, typename Vec>
         inline auto compute_gradient_hessian(const PairType& lambda_P, const Vec& dx)
