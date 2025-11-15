@@ -105,17 +105,17 @@ More building guidance about computing backend can be found in [the document of 
 ## TODOLIST
 
 - [ ] Python Binding
-- [ ] Frictional Contact
+- [ ] Deformable Body Energy (And atomatic tet mesh generation)
+- [ ] Elastic Rod Energy
 - [ ] Strain Limiting
 - [ ] Consistent Solve
 - [ ] Replace All Constraint With Bindless-Group
 - [ ] Thin Shell Rigid-Body Simulation
-- [ ] Deformable Body Energy (And atomatic tet mesh generation)
-- [ ] Elastic Rod Energy
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
-- [ ] Better Numerical Preconditioners
 - [ ] Mesh Split
+- [ ] Accurate Frictional Modeling
+- [ ] Better Numerical Preconditioners
 
 
 ## References

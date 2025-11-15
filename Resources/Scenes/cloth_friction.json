@@ -6,10 +6,37 @@
         {
             "model_name": "square2K.obj",
             "translation": [
+                -1.1,
+                0.5,
+                0.0
+            ],
+            "material": {
+                "friction_mu": 0.0
+            },
+            "scale": 1.0
+        },
+        {
+            "model_name": "square2K.obj",
+            "translation": [
                 0.0,
                 0.5,
                 0.0
             ],
+            "material": {
+                "friction_mu": 0.1
+            },
+            "scale": 1.0
+        },
+        {
+            "model_name": "square2K.obj",
+            "translation": [
+                1.1,
+                0.5,
+                0.0
+            ],
+            "material": {
+                "friction_mu": 0.5
+            },
             "scale": 1.0
         },
         {
@@ -21,10 +48,13 @@
             ],
             "scale": 5.0,
             "rotation": [
+                -0.314,
                 0.0,
-                0.0,
-                0.314
+                0.0
             ],
+            "material": {
+                "friction_mu": 0.0
+            },
             "fixed_points": [
                 {
                     "method": "All"
