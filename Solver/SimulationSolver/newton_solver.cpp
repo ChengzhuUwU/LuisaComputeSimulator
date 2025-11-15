@@ -4109,6 +4109,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             // CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);  // x_prev = x
             // CpuParallel::parallel_copy(host_sim_data->sa_affine_bodies_q,
             //                            host_sim_data->sa_affine_bodies_q_iter_start);  // q_prev = q
+
+            if (iter == 99)
+                LUISA_ERROR("Solver is not converged in 100 iters");
         }
         host_update_velocity();
     }
@@ -4352,6 +4355,9 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             ADD_HOST_TIME_STAMP("End");
 
             narrow_phase_detector->resize_buffers(device, stream);  // Pre-allocatation
+
+            if (iter == 99)
+                LUISA_ERROR("Solver is not converged in 100 iters");
         }
 
         if (host_sim_data->num_verts_soft != 0)
