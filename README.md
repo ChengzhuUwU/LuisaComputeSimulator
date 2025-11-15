@@ -1,4 +1,4 @@
-# LuisaComputeSolver: Physics Simulation Based on LuisaCompute
+# LuisaComputeSolver: Physics Simulator Based on LuisaCompute
 
 ![Teaser](Document/README1.png)
 
