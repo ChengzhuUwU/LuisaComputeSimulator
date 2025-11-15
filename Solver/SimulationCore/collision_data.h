@@ -50,12 +50,15 @@ namespace CollisionPair
         uint4  indices;
         float4 vec1;  // normal:3, area:1
         float4 vec2;  // stiff:2, bary:2
+        float4 vec3;  // dv:3, lambda:1
 
         uint  get_index(const uint i) const { return indices[i] & mask_get_index; }
         uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
 
         float3 get_normal() const { return vec1.xyz(); }
-        float  get_stiffness() const { return vec1[3]; }
+        float  get_area() const { return vec1[3]; }
+        float3 get_delta_v() const { return vec3.xyz(); }
+        float  get_friction_lambda() const { return vec3[3]; }
 
         float         get_k1() const { return vec2[0]; }
         float         get_k2() const { return vec2[1]; }
@@ -82,6 +85,7 @@ namespace CollisionPair
             indices = luisa::make_uint4(vids.x, -1u, vids.y, -1u);
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, 1.0f, 1.0f);
+            vec3 = luisa::make_float4(0.0f);
             set_collision_type(type_vv());
         }
         void make_ve_pair(const uint3& vids, const float3& normal, const float k1, const float k2, const float area, const float2& edge_bary)
@@ -89,6 +93,7 @@ namespace CollisionPair
             indices = luisa::make_uint4(vids.x, -1u, vids.y, vids.z);
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
+            vec3 = luisa::make_float4(0.0f);
             set_collision_type(type_ve());
         }
         void make_vf_pair(const uint4& vids, const float3& normal, const float k1, const float k2, const float area, const float3& face_bary)
@@ -96,6 +101,7 @@ namespace CollisionPair
             indices = vids;
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, face_bary[0], face_bary[1]);
+            vec3 = luisa::make_float4(0.0f);
             set_collision_type(type_vf());
         }
         void make_ee_pair(const uint4& vids, const float3& normal, const float k1, const float k2, const float area, const float2& edge1_bary, const float2& edge2_bary)
@@ -103,7 +109,12 @@ namespace CollisionPair
             indices = vids;
             vec1 = luisa::make_float4(normal, area);
             vec2 = luisa::make_float4(k1, k2, edge1_bary[0], edge2_bary[0]);
+            vec3 = luisa::make_float4(0.0f);
             set_collision_type(type_ee());
+        }
+        void set_friction_values(const float3& dv, const float lambda)
+        {
+            vec3 = luisa::make_float4(dv, lambda);
         }
         
         [[nodiscard]] float4 get_vv_weight() const { return luisa::make_float4(1.0f, 0.0f, -1.0f, 0.0f); }
@@ -126,7 +137,7 @@ namespace CollisionPair
 };  // namespace lcs
 
 // clang-format off
-LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
+LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2, vec3)
 {
     luisa::compute::Var<uint> get_collision_type() const
     {
@@ -151,6 +162,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         indices = luisa::compute::make_uint4(vids.x, -1u, vids.y, -1u);
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, 1.0f, 1.0f);
+        vec3    = luisa::compute::make_float4(0.0f);
         set_collision_type(lcs::CollisionPair::type_vv());
     }
     void make_ve_pair(const luisa::compute::UInt3&  vids,
@@ -163,6 +175,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         indices = luisa::compute::make_uint4(vids.x, -1u, vids.y, vids.z);
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, edge_bary[0], edge_bary[1]);
+        vec3    = luisa::compute::make_float4(0.0f);
         set_collision_type(lcs::CollisionPair::type_ve());
     }
     void make_vf_pair(const luisa::compute::UInt4&  vids,
@@ -175,6 +188,7 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         indices = vids;
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, face_bary[0], face_bary[1]);
+        vec3    = luisa::compute::make_float4(0.0f);
         set_collision_type(lcs::CollisionPair::type_vf());
     }
     void make_ee_pair(const luisa::compute::UInt4&  vids,
@@ -188,7 +202,13 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
         indices = vids;
         vec1    = luisa::compute::make_float4(normal, area);
         vec2    = luisa::compute::make_float4(k1, k2, edge1_bary[0], edge2_bary[0]);
+        vec3    = luisa::compute::make_float4(0.0f);
         set_collision_type(lcs::CollisionPair::type_ee());
+    }
+    void set_friction_values(const luisa::compute::Float3& dv,
+                             const luisa::compute::Float  lambda)
+    {
+        vec3 = luisa::compute::make_float4(dv, lambda);
     }
 
     luisa::compute::UInt get_index(const uint i) const { return indices[i] & lcs::mask_get_index; }
@@ -313,7 +333,9 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2)
     }
 
     luisa::compute::Float3 get_normal() const { return vec1.xyz(); }
-    luisa::compute::Float get_stiffness() const { return vec1[3]; }
+    luisa::compute::Float get_area() const { return vec1[3]; }
+    luisa::compute::Float3 get_delta_v() const { return vec3.xyz(); }
+    luisa::compute::Float get_friction_lambda() const { return vec3[3]; }
 
     luisa::compute::Float get_k1() const { return vec2[0]; }
     luisa::compute::Float get_k2() const { return vec2[1]; }

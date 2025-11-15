@@ -402,7 +402,8 @@ namespace Initializer
                 const bool has_boundary =
                     shell_info.input_mesh.dihedral_edges.size() != shell_info.input_mesh.edges.size();
 
-                auto& mat = shell_info.get_material<RigidMaterial>();
+                auto& mat    = shell_info.get_material<RigidMaterial>();
+                mat.is_shell = !mat.is_solid;
                 if (mat.is_shell)
                 {
                     if (has_boundary)

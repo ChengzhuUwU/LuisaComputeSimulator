@@ -169,6 +169,7 @@ struct SimulationData : SimulationType
     BufferType<uint>  sa_contact_active_faces;
     BufferType<float> sa_contact_active_verts_d_hat;
     BufferType<float> sa_contact_active_verts_offset;
+    BufferType<float> sa_contact_active_verts_friction_coeff;
 
 
     BufferType<float3> sa_affine_bodies_q_outer;

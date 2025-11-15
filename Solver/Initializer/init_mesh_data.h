@@ -219,10 +219,6 @@ namespace Initializer
         //     return std::get_if<T>(&physics_material);
         // }
 
-        // Return whether the contained material should be treated as a shell.
-        // We can't call std::get<MaterialBase>() because MaterialBase is not
-        // a variant alternative; instead expose this helper which visits the
-        // active alternative and reads its `is_shell` member.
         bool get_is_shell() const
         {
             return std::visit([](auto const& m) noexcept { return m.is_shell; }, physics_material);
@@ -238,6 +234,10 @@ namespace Initializer
         float get_d_hat() const
         {
             return std::visit([](auto const& m) noexcept { return m.d_hat; }, physics_material);
+        }
+        float get_friction_mu() const
+        {
+            return std::visit([](auto const& m) noexcept { return m.friction_mu; }, physics_material);
         }
         float get_thickness() const
         {

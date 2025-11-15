@@ -18,7 +18,7 @@ GRAVITY = np.array([0.0, -9.8, 0.0], dtype=float).reshape((3,1))
 np.set_printoptions(linewidth=1000)
 
 USE_ORTHO = True
-USE_AUTO_DIFF = False
+USE_AUTO_DIFF = True
 
 # ----------------------
 # Utility / Jacobian
@@ -440,8 +440,8 @@ def run_simulation():
     # vert_mass = np.array([5, 6.220084, 6.220084, 6.220084], dtype=float) 
 
     import trimesh
-    mesh = trimesh.load("/Users/huohuo/Desktop/OpenSource/Codim-IPC/Projects/FEMShell/input/cube.obj")
-    # mesh = trimesh.load("/Users/huohuo/Desktop/Project/LuisaComputeSolver/Resources/InputMesh/sphere63.obj")
+    mesh = trimesh.load("Resources/InputMesh/cube.obj")
+    # mesh = trimesh.load("Resources/InputMesh/sphere63.obj")
     X = mesh.vertices  # numpy array of shape (n, 3)
     num_verts = X.shape[0]
     X = X.reshape((-1, 3, 1))
@@ -454,9 +454,9 @@ def run_simulation():
     # Example usage:
     init_rotate = np.zeros((3,3), float)
     init_q = np.zeros(12, dtype=float).reshape(12, 1)
-    init_q[0:3, :] = np.array([0.0, -0.1, 0.0]).reshape(3, 1)  # lift slightly above ground
+    init_q[0:3, :] = np.array([0.0, 0.9, 0.0]).reshape(3, 1)  # lift slightly above ground
     # rx, ry, rz = np.pi/6, 0.0, np.pi/6
-    rx, ry, rz = 0.0, 0.0, 0.0
+    rx, ry, rz = 0.2, 0.2, 0.5
     R = rotation_matrix_from_euler(rx, ry, rz)
     R = R
     init_q[3:6, 0] = R[:,0]; init_q[6:9, 0] = R[:,1]; init_q[9:12, 0] = R[:,2]
@@ -493,7 +493,7 @@ def run_simulation():
     nsteps = 400
     stiffness_ground = 1e5     # penalty stiffness for ground
     stiffness_ortho = 1e5      # orthogonality soft constraint stiffness (you can tune)
-    newton_iters = 2
+    newton_iters = 10
 
     # visualization state
     state = {"q": q, "vq": vq}

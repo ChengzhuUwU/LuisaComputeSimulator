@@ -651,7 +651,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                         I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
                     }
                 }
-                else  // Solid body: integrate from surface triangles
+                else  // Solid body
                 {
                     // If provided tetrahedron mesh for solid part
                     if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
@@ -666,7 +666,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                             I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
                         }
                     }
-                    else  // If we only have surface mesh
+                    else  // If we only have surface mesh: integrate from surface triangles
                     {
                         compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
                                                     mesh_data->sa_faces,
