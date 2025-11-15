@@ -165,7 +165,8 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   const uint mesh_idx = mesh_data->sa_vert_mesh_id[vid];
                                   sim_data->sa_contact_active_verts_d_hat[vid] = mesh_scaled_d_hat[mesh_idx];
                                   sim_data->sa_contact_active_verts_offset[vid] = mesh_scaled_offset[mesh_idx];
-                                  sim_data->sa_contact_active_verts_friction_coeff[vid] = 0.5f;  // Currently set all to 0.5
+                                  sim_data->sa_contact_active_verts_friction_coeff[vid] =
+                                      world_data[mesh_idx].get_friction_mu();
                                   //   LUISA_INFO("Vertex {}: d_hat = {}, offset = {}",
                                   //              vid,
                                   //              sim_data->sa_contact_active_verts_d_hat[vid],

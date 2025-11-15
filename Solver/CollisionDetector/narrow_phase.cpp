@@ -1283,7 +1283,7 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
                 + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
             const Float3 dv = dx - dx0;
 
-            // TODO: Area weighted?
+            // Note: Friction should not be affected by contact area
             Float friction_mu =
                 0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
             Float        friction_eps = Friction::GaussNewton::friction_eps;

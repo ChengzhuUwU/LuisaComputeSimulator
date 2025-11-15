@@ -115,7 +115,7 @@ More building guidance about computing backend can be found in [the document of 
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
 - [ ] Better Numerical Preconditioners
-
+- [ ] Mesh Split
 
 
 ## References

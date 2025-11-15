@@ -7,11 +7,55 @@
             "model_name": "cube.obj",
             "translation": [
                 0.0,
-                0.7,
+                0.2,
                 0.0
             ],
-            "scale": 0.25,
-            "shell_type": "Rigid"
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.0
+            }
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.2,
+                0.2,
+                0.0
+            ],
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.1
+            }
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.4,
+                0.2,
+                0.0
+            ],
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.5
+            }
         },
         {
             "model_name": "square2K.obj",
@@ -20,12 +64,15 @@
                 0.0,
                 0.0
             ],
-            "scale": 5.0,
+            "scale": 2.0,
             "rotation": [
+                -0.618,
                 0.0,
-                0.0,
-                1.2
+                0.0
             ],
+            "material": {
+                "friction_mu": 0.0
+            },
             "fixed_points": [
                 {
                     "method": "All"

@@ -929,11 +929,12 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
                         // Friction
                         {
-                            Float3 x_0        = sa_x_step_start->read(vid);
-                            Float3 dv         = x_k - x_0;
-                            Float friction_mu = area * sa_contact_active_verts_friction_coeff->read(vid);
-                            auto  lambda_P    = Friction::GaussNewton::get_friction_lambda_P(
-                                k1 * normal, dv, normal, friction_mu, 1e-5f);
+                            Float3 x_0          = sa_x_step_start->read(vid);
+                            Float3 dv           = x_k - x_0;
+                            Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                            Float  friction_eps = Friction::GaussNewton::friction_eps;
+                            auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                                k1 * normal, dv, normal, friction_mu, friction_eps);
                             auto friction_grad_hess =
                                 Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
                             force -= friction_grad_hess.first;
@@ -1402,11 +1403,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
                             // Friction
                             {
-                                Float3 x_0 = sa_x_step_start->read(vid);
-                                Float3 dv  = x_k - x_0;
-                                Float friction_mu = area * sa_contact_active_verts_friction_coeff->read(vid);
-                                Float friction_eps = Friction::GaussNewton::friction_eps;
-                                auto  lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                                Float3 x_0          = sa_x_step_start->read(vid);
+                                Float3 dv           = x_k - x_0;
+                                Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                                Float  friction_eps = Friction::GaussNewton::friction_eps;
+                                auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
                                     k1 * normal, dv, normal, friction_mu, friction_eps);
                                 auto friction_grad_hess =
                                     Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
@@ -1889,7 +1890,7 @@ void NewtonSolver::host_evaluate_ground_collision()
                     {
                         float3 x_0          = sa_x_step_start[vid];
                         float3 dv           = x_k - x_0;
-                        float  friction_mu  = area * sa_contact_active_verts_friction_coeff[vid];
+                        float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
                         float  friction_eps = Friction::GaussNewton::friction_eps;
                         auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
                             k1 * normal, dv, normal, friction_mu, friction_eps);
@@ -1955,7 +1956,7 @@ void NewtonSolver::host_evaluate_ground_collision()
                         {
                             float3 x_0 = host_sim_data->sa_x_step_start[vid];
                             float3 dv  = x_k - x_0;
-                            float friction_mu = area * host_sim_data->sa_contact_active_verts_friction_coeff[vid];
+                            float friction_mu = host_sim_data->sa_contact_active_verts_friction_coeff[vid];
                             float friction_eps = Friction::GaussNewton::friction_eps;
                             auto  lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
                                 k1 * normal, dv, normal, friction_mu, friction_eps);
