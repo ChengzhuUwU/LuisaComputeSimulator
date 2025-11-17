@@ -842,6 +842,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                face,
                                sqrt_scalar(d2),
                                thickness);
+                    collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                    device_assert(false, "NaN/INF stiffness in DCD VF pair");
                 };
 
                 $if(d2 < square_scalar(thickness + d_hat)
@@ -1000,6 +1002,17 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                 // Float d_hat     = 1e-3f;
                 // Float thickness = 0.0f;
+
+                $if(d2 < square_scalar(thickness))
+                {
+                    device_log("Exist penetration in DCD EE pair {}-{} : d = {}, thickness = {}",
+                               left_edge,
+                               right_edge,
+                               sqrt_scalar(d2),
+                               thickness);
+                    collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                    device_assert(false, "NaN/INF stiffness in DCD EE pair");
+                };
 
                 $if(d2 < square_scalar(thickness + d_hat)
                     //  & d2 > 1e-8f
@@ -2271,9 +2284,10 @@ void NarrowPhasesDetector::device_assemble_contact_triplet(luisa::compute::Strea
             },
             num_triplet);
 
-        stream << fn_reset_triplet(get_collision_data(),
-                                   collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
-                      .dispatch(alinged_count);  // For alignment
+        if (alinged_count != 0)
+            stream << fn_reset_triplet(get_collision_data(),
+                                       collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
+                          .dispatch(alinged_count);  // For alignment
 
         dispatch_large_thread_template(
             [&](const uint dispatch_count, const uint prefix)
