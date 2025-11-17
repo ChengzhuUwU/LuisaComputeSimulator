@@ -130,4 +130,4 @@ More building guidance about computing backend can be found in [the document of 
 
 ## Others
 
-Thanks to LuisaCompute and Libuipc community, their open-source spirit has propelled the advancement of graphics and embodied intelligence.
+Thanks to LuisaCompute and Libuipc community, their open-source spirit has propelled the advancement of the reality.
