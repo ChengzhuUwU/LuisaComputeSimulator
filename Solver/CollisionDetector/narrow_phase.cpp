@@ -1,6 +1,7 @@
 #include "CollisionDetector/narrow_phase.h"
 #include "CollisionDetector/accd.hpp"
 #include "CollisionDetector/cipc_kernel.hpp"
+#include "CollisionDetector/friction_kernel.hpp"
 #include "CollisionDetector/libuipc/codim_ipc_simplex_normal_contact_function.h"
 #include "CollisionDetector/libuipc/distance/distance_flagged.h"
 #include "Core/lc_to_eigen.h"
@@ -50,6 +51,7 @@ void NarrowPhasesDetector::compile(AsyncCompiler& compiler)
 
     compile_ccd(compiler);
     compile_dcd(compiler, contact_energy_type);
+    compile_friction(compiler, contact_energy_type);
     compile_energy(compiler, contact_energy_type);
     compile_construct_pervert_adj_collision_list(compiler);
     compile_make_contact_triplet(compiler);
@@ -767,7 +769,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
     luisa::compute::ShaderOption option{.enable_fast_math = true, .enable_debug_info = true};
 
-    // TODO: PreScan, preventing buffer out of range
     compiler.compile<1>(
         fn_narrow_phase_vf_dcd_query,
         [contact_energy_type, offset_vf](Var<CDBG>         collision_data,
@@ -841,6 +842,8 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                face,
                                sqrt_scalar(d2),
                                thickness);
+                    collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                    device_assert(false, "NaN/INF stiffness in DCD VF pair");
                 };
 
                 $if(d2 < square_scalar(thickness + d_hat)
@@ -872,7 +875,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                         if (contact_energy_type == ContactEnergyType::Quadratic)
                         {
-                            Float C     = thickness + d_hat - d;
+                            Float C     = (d - thickness) - d_hat;
                             Float stiff = avg_area * kappa;
                             k1          = stiff * C;
                             k2          = stiff;
@@ -886,7 +889,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             // k1     = -dBdD;
                             // k2     = ddBddD;
                             // normal = 2.0f * x;  // Scaled by d(d2)/d(d) = 2d
-                            k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
+                            k1 = avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
@@ -911,7 +914,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             {
                                 Var<CollisionPair::CollisionPairTemplate> vf_pair;
                                 vf_pair->make_vf_pair(
-                                    make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area * kappa, bary);
+                                    make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area, bary);
                                 narrowphase_list->write(idx, vf_pair);
                                 // device_log("Make VF Pair {} : {}, indices = {}", idx, vf_pair, vf_pair->get_indices());
                                 if constexpr (print_dcd_detail)
@@ -1000,6 +1003,17 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                 // Float d_hat     = 1e-3f;
                 // Float thickness = 0.0f;
 
+                $if(d2 < square_scalar(thickness))
+                {
+                    device_log("Exist penetration in DCD EE pair {}-{} : d = {}, thickness = {}",
+                               left_edge,
+                               right_edge,
+                               sqrt_scalar(d2),
+                               thickness);
+                    collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
+                    device_assert(false, "NaN/INF stiffness in DCD EE pair");
+                };
+
                 $if(d2 < square_scalar(thickness + d_hat)
                     //  & d2 > 1e-8f
                 )
@@ -1013,7 +1027,6 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                     // $if(rest_d2 > rest_distance_culling_rate * square_scalar(thickness + d_hat) | d2 < 0.5f * rest_d2)
                     {
                         Float d = sqrt_scalar(d2);
-                        Float C = thickness + d_hat - d;
                         // Float3 normal = normalize_vec(x);
                         Float3 normal = x / d;
 
@@ -1030,6 +1043,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
 
                         if (contact_energy_type == ContactEnergyType::Quadratic)
                         {
+                            Float C     = (d - thickness) - d_hat;
                             Float stiff = kappa * avg_area;
                             k1          = stiff * C;
                             k2          = stiff;
@@ -1043,7 +1057,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                             // k1     = -dBdD;
                             // k2     = ddBddD;
                             // normal = 2.0f * x;
-                            k1 = -avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
+                            k1 = avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
                             k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
                         }
 
@@ -1072,7 +1086,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                     normal,
                                     k1,
                                     k2,
-                                    avg_area * kappa,
+                                    avg_area,
                                     bary.xy(),
                                     bary.zw());
                                 narrowphase_list->write(idx, ee_pair);
@@ -1248,6 +1262,51 @@ void NarrowPhasesDetector::ee_dcd_query_repulsion(Stream&               stream,
     }
 }
 
+}  // namespace lcs
+
+
+namespace lcs  // Friction
+{
+
+void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
+{
+    using namespace luisa::compute;
+
+    luisa::compute::ShaderOption option{.enable_fast_math = true, .enable_debug_info = true};
+
+
+    compiler.compile<1>(
+        fn_process_collision_pair_friction,
+        [](Var<CDBG> collision_data, BufferVar<float3> sa_x, BufferVar<float3> sa_x_step_start, BufferVar<float> sa_vert_friction_mu, Float min_dx)
+        {
+            auto&      narrowphase_list = collision_data->narrow_phase_list;
+            const Uint pair_idx         = dispatch_x();
+
+            auto         pair    = narrowphase_list->read(pair_idx);
+            const Uint4  indices = pair->get_indices();
+            const Float4 weight  = pair->get_weight();
+            const Float3 normal  = pair->get_normal();
+            const Float  k1      = pair->get_k1();
+
+            const Float3 dx = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
+                              + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
+            const Float3 dx0 =
+                weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
+                + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
+            const Float3 dv = dx - dx0;
+
+            // Note: Friction should not be affected by contact area
+            Float friction_mu =
+                0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
+            Float        friction_eps = Friction::GaussNewton::friction_eps;
+            const Float3 gradient     = k1 * normal;
+            auto         lambda_P =
+                Friction::GaussNewton::get_friction_lambda_P(gradient, dx, normal, friction_mu, friction_eps);
+            pair->set_friction_values(dv, lambda_P.first);
+            narrowphase_list.write(pair_idx, pair);
+        },
+        option);
+}
 }  // namespace lcs
 
 
@@ -1756,128 +1815,6 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             };
         },
         option);
-
-    compiler.compile<1>(
-        fn_assemble_triplet_sorted,
-        [](Var<CDBG> collision_data, BufferVar<float3> sa_scaled_model_x, const Uint prefix_abd, const Uint dispatch_prefix)
-        {
-            auto& narrow_phase_list         = collision_data->narrow_phase_list;
-            auto& sa_triplet_info           = collision_data->sa_triplet_info;
-            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
-            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
-            auto& triplet_indices           = collision_data->sa_cgA_contact_offdiag_triplet_indices;
-            auto& triplet_property          = collision_data->sa_cgA_contact_offdiag_triplet_property;
-            auto& triplet                   = collision_data->sa_cgA_contact_offdiag_triplet;
-            auto& narrow_phase_count        = collision_data->narrow_phase_collision_count;
-
-            const Uint triplet_idx = dispatch_x() + dispatch_prefix;
-            // const Uint num_triplet =
-            //     narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
-            // $if(triplet_idx >= num_triplet)
-            // {
-            //     $return();
-            // };
-
-            const Uint pair_info        = sa_triplet_info->read(triplet_idx);
-            const Uint pair_idx         = pair_info & 0x3FFFFFFF;
-            const Uint upper_lower_flag = pair_info >> 30;
-
-            const auto& pair = narrow_phase_list->read(pair_idx);
-
-            const auto&    indices = pair->get_indices();
-            const Float4   weight  = pair->get_weight();
-            const Float    k2      = pair->get_k2();  // dBdD, ddBddD
-            const Float3   normal  = pair->get_normal();
-            const Float3x3 hess    = k2 * outer_product(normal, normal);
-
-            const Uint2 triplet_info = triplet_indices->read(triplet_idx);
-            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
-            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
-            const Uint  ii           = triplet_info[0] >> 30;
-            const Uint  jj           = triplet_info[1] >> 30;
-
-            const auto collision_type = pair->get_collision_type();
-
-            const Uint JtJH_i      = (triplet_info[0] >> 28) & 0x3;  // For soft vert is 0
-            const Uint JtJH_j      = (triplet_info[1] >> 28) & 0x3;
-            Uint2      left_range  = make_uint2(ii, ii);
-            Uint2      right_range = make_uint2(jj, jj);
-
-            $if(vid >= prefix_abd)
-            {
-                $if(collision_type == CollisionPair::type_vf())
-                {
-                    $if(upper_lower_flag < 2)
-                    {
-                        left_range = make_uint2(0, 0);
-                    }
-                    $else
-                    {
-                        left_range = make_uint2(1, 3);
-                    };
-                }
-                $elif(collision_type == CollisionPair::type_ee())
-                {
-                    $if(upper_lower_flag < 2)
-                    {
-                        left_range = make_uint2(0, 1);
-                    }
-                    $else
-                    {
-                        left_range = make_uint2(2, 3);
-                    };
-                };
-            };
-            $if(adj_vid >= prefix_abd)
-            {
-                $if(collision_type == CollisionPair::type_vf())
-                {
-                    $if(upper_lower_flag % 2 == 0)
-                    {
-                        right_range = make_uint2(0, 0);
-                    }
-                    $else
-                    {
-                        right_range = make_uint2(1, 3);
-                    };
-                }
-                $elif(collision_type == CollisionPair::type_ee())
-                {
-                    $if(upper_lower_flag % 2 == 0)
-                    {
-                        right_range = make_uint2(0, 1);
-                    }
-                    $else
-                    {
-                        right_range = make_uint2(2, 3);
-                    };
-                };
-            };
-
-            // Float sum_weight = weight[ii] * weight[jj];
-            Float sum_weight = 0.0f;
-            $for(i, left_range[0], left_range[1] + 1)
-            {
-                $for(j, right_range[0], right_range[1] + 1)
-                {
-                    sum_weight += weight[i] * weight[j]
-                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[i]))[JtJH_i]
-                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[j]))[JtJH_j];
-                };
-            };
-            const Uint target_triplet_idx = triplet_property->read(triplet_idx);
-            // device_log("Triplet {} ({}, {}) (iimjj={},{}) from pair {} add to triplet {} with hess {}",
-            //            triplet_idx,
-            //            vid,
-            //            adj_vid,
-            //            ii,
-            //            jj,
-            //            pair_idx,
-            //            target_triplet_idx,
-            //            sum_weight * hess);
-            atomic_add_triplet_matrix(triplet, target_triplet_idx, sum_weight * hess);
-        },
-        option);
 }
 
 void NarrowPhasesDetector::device_sort_contact_triplet(luisa::compute::Stream& stream)
@@ -2347,9 +2284,10 @@ void NarrowPhasesDetector::device_assemble_contact_triplet(luisa::compute::Strea
             },
             num_triplet);
 
-        stream << fn_reset_triplet(get_collision_data(),
-                                   collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
-                      .dispatch(alinged_count);  // For alignment
+        if (alinged_count != 0)
+            stream << fn_reset_triplet(get_collision_data(),
+                                       collision_data->sa_cgA_contact_offdiag_triplet.view(num_triplet_assembled, alinged_count))
+                          .dispatch(alinged_count);  // For alignment
 
         dispatch_large_thread_template(
             [&](const uint dispatch_count, const uint prefix)
@@ -2578,9 +2516,19 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             //            normal,
             //            stiff);
 
-            const Float    k1  = stiff[0];
-            const Float    k2  = stiff[1];
-            const Float3x3 nnT = outer_product(normal, normal);
+            const Float k1   = stiff[0];
+            const Float k2   = stiff[1];
+            Float3      grad = k1 * normal;
+            Float3x3    hess = k2 * outer_product(normal, normal);
+
+            // Friction part
+            {
+                Float3 dv     = pair->get_delta_v();
+                Float  lambda = pair->get_friction_lambda();
+                auto friction_grad_hess = Friction::GaussNewton::compute_gradient_hessian(lambda, normal, dv);
+                grad += friction_grad_hess.first;
+                hess += friction_grad_hess.second;
+            }
 
             $if(is_nan_vec(k1 * k2 * normal))
             {
@@ -2602,8 +2550,8 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 for (uint ii = start; ii <= end; ii++)
                 {
                     // device_log("Pari {} apply to soft vert {} = {}", pair_idx, indices[ii], k1 * weight[ii] * normal);
-                    atomic_add_float3(sa_cgB, indices[ii], k1 * weight[ii] * normal);
-                    atomic_add_float3x3(sa_cgA_diag, indices[ii], k2 * weight[ii] * weight[ii] * nnT);
+                    atomic_add_float3(sa_cgB, indices[ii], -weight[ii] * grad);
+                    atomic_add_float3x3(sa_cgA_diag, indices[ii], weight[ii] * weight[ii] * hess);
                 }
             };
             auto add_to_rigid_body = [&](const uint start, const uint end, const Uint body_index)
@@ -2622,8 +2570,8 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 for (uint ii = 0; ii < 4; ii++)
                 {
                     const Uint vid = prefix_abd + 4 * body_index + ii;
-                    atomic_add_float3(sa_cgB, vid, k1 * aligned_weight[ii] * normal);
-                    atomic_add_float3x3(sa_cgA_diag, vid, k2 * aligned_weight[ii] * aligned_weight[ii] * nnT);
+                    atomic_add_float3(sa_cgB, vid, -aligned_weight[ii] * grad);
+                    atomic_add_float3x3(sa_cgA_diag, vid, aligned_weight[ii] * aligned_weight[ii] * hess);
                 }
             };
 
@@ -2674,6 +2622,134 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             };
         },
         option);
+
+    compiler.compile<1>(
+        fn_assemble_triplet_sorted,
+        [](Var<CDBG> collision_data, BufferVar<float3> sa_scaled_model_x, const Uint prefix_abd, const Uint dispatch_prefix)
+        {
+            auto& narrow_phase_list         = collision_data->narrow_phase_list;
+            auto& sa_triplet_info           = collision_data->sa_triplet_info;
+            auto& per_vert_num_adj_verts    = collision_data->per_vert_num_adj_verts;
+            auto& per_vert_prefix_adj_verts = collision_data->per_vert_prefix_adj_verts;
+            auto& triplet_indices           = collision_data->sa_cgA_contact_offdiag_triplet_indices;
+            auto& triplet_property          = collision_data->sa_cgA_contact_offdiag_triplet_property;
+            auto& triplet                   = collision_data->sa_cgA_contact_offdiag_triplet;
+            auto& narrow_phase_count        = collision_data->narrow_phase_collision_count;
+
+            const Uint triplet_idx = dispatch_x() + dispatch_prefix;
+            // const Uint num_triplet =
+            //     narrow_phase_count->read(CollisionPair::CollisionCount::total_adj_pairs_offset());
+            // $if(triplet_idx >= num_triplet)
+            // {
+            //     $return();
+            // };
+
+            const Uint pair_info        = sa_triplet_info->read(triplet_idx);
+            const Uint pair_idx         = pair_info & 0x3FFFFFFF;
+            const Uint upper_lower_flag = pair_info >> 30;
+
+            const auto& pair = narrow_phase_list->read(pair_idx);
+
+            const auto&  indices = pair->get_indices();
+            const Float4 weight  = pair->get_weight();
+            const Float  k2      = pair->get_k2();  // dBdD, ddBddD
+            const Float3 normal  = pair->get_normal();
+            Float3x3     hess    = k2 * outer_product(normal, normal);
+
+            {
+                Float    lambda        = pair->get_friction_lambda();
+                Float3x3 friction_hess = Friction::GaussNewton::compute_hessian(lambda, normal);
+                hess += friction_hess;
+            }
+
+            const Uint2 triplet_info = triplet_indices->read(triplet_idx);
+            const Uint  vid          = triplet_info[0] & mask_get_active_vid;
+            const Uint  adj_vid      = triplet_info[1] & mask_get_active_vid;
+            const Uint  ii           = triplet_info[0] >> 30;
+            const Uint  jj           = triplet_info[1] >> 30;
+
+            const auto collision_type = pair->get_collision_type();
+
+            const Uint JtJH_i      = (triplet_info[0] >> 28) & 0x3;  // For soft vert is 0
+            const Uint JtJH_j      = (triplet_info[1] >> 28) & 0x3;
+            Uint2      left_range  = make_uint2(ii, ii);
+            Uint2      right_range = make_uint2(jj, jj);
+
+            $if(vid >= prefix_abd)
+            {
+                $if(collision_type == CollisionPair::type_vf())
+                {
+                    $if(upper_lower_flag < 2)
+                    {
+                        left_range = make_uint2(0, 0);
+                    }
+                    $else
+                    {
+                        left_range = make_uint2(1, 3);
+                    };
+                }
+                $elif(collision_type == CollisionPair::type_ee())
+                {
+                    $if(upper_lower_flag < 2)
+                    {
+                        left_range = make_uint2(0, 1);
+                    }
+                    $else
+                    {
+                        left_range = make_uint2(2, 3);
+                    };
+                };
+            };
+            $if(adj_vid >= prefix_abd)
+            {
+                $if(collision_type == CollisionPair::type_vf())
+                {
+                    $if(upper_lower_flag % 2 == 0)
+                    {
+                        right_range = make_uint2(0, 0);
+                    }
+                    $else
+                    {
+                        right_range = make_uint2(1, 3);
+                    };
+                }
+                $elif(collision_type == CollisionPair::type_ee())
+                {
+                    $if(upper_lower_flag % 2 == 0)
+                    {
+                        right_range = make_uint2(0, 1);
+                    }
+                    $else
+                    {
+                        right_range = make_uint2(2, 3);
+                    };
+                };
+            };
+
+            // Float sum_weight = weight[ii] * weight[jj];
+            Float sum_weight = 0.0f;
+            $for(i, left_range[0], left_range[1] + 1)
+            {
+                $for(j, right_range[0], right_range[1] + 1)
+                {
+                    sum_weight += weight[i] * weight[j]
+                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[i]))[JtJH_i]
+                                  * make_float4(1.0f, sa_scaled_model_x.read(indices[j]))[JtJH_j];
+                };
+            };
+            const Uint target_triplet_idx = triplet_property->read(triplet_idx);
+            // device_log("Triplet {} ({}, {}) (iimjj={},{}) from pair {} add to triplet {} with hess {}",
+            //            triplet_idx,
+            //            vid,
+            //            adj_vid,
+            //            ii,
+            //            jj,
+            //            pair_idx,
+            //            target_triplet_idx,
+            //            sum_weight * hess);
+            atomic_add_triplet_matrix(triplet, target_triplet_idx, sum_weight * hess);
+        },
+        option);
 }
 void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler)
 {
@@ -2691,8 +2767,8 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
                             const Uint num_adj_pairs = per_vert_num_narrow_phase->read(vid);
                             const Uint prefix        = per_vert_prefix_narrow_phase->read(vid);
 
-                            Float3   sum_force = make_float3(0.0f);
-                            Float3x3 sum_hess  = Zero3x3;
+                            Float3   sum_grad = make_float3(0.0f);
+                            Float3x3 sum_hess = Zero3x3;
                             $for(j, num_adj_pairs)
                             {
                                 const Uint fill_in_index = prefix + j;
@@ -2704,13 +2780,13 @@ void NarrowPhasesDetector::compile_assemble_non_conflict(AsyncCompiler& compiler
                                 const Float4   weight   = adj_pair->get_weight();
                                 const Float2   stiff    = adj_pair->get_stiff();  // dBdD, ddBddD
                                 const Float3   normal   = adj_pair->get_normal();
-                                const Float3   force    = stiff[0] * normal;
+                                const Float3   grad     = stiff[0] * normal;
                                 const Float3x3 hess     = stiff[1] * outer_product(normal, normal);
 
-                                sum_force += weight[local_offset] * force;
+                                sum_grad += weight[local_offset] * grad;
                                 sum_hess += weight[local_offset] * weight[local_offset] * hess;
                             };
-                            sa_cgB.write(vid, sa_cgB.read(vid) + sum_force);
+                            sa_cgB.write(vid, sa_cgB.read(vid) - sum_grad);
                             sa_cgA_diag.write(vid, sa_cgA_diag.read(vid) + sum_hess);
                         });
 }
@@ -2817,8 +2893,11 @@ void NarrowPhasesDetector::compile_SpMV(AsyncCompiler& compiler)
 void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compute::Stream& stream,
                                                                     const Buffer<float3>&   sa_x_left,
                                                                     const Buffer<float3>&   sa_x_right,
-                                                                    const Buffer<float>&    d_hat,
-                                                                    const Buffer<float>&    thickness,
+                                                                    const Buffer<float3>& sa_x_step_start_left,
+                                                                    const Buffer<float3>& sa_x_step_start_right,
+                                                                    const Buffer<float>& sa_vert_friction_coeff,
+                                                                    const Buffer<float>& d_hat,
+                                                                    const Buffer<float>& thickness,
                                                                     const Buffer<uint>& sa_vert_affine_bodies_id,
                                                                     const Buffer<float3>& sa_scaled_model_x,
                                                                     const uint        prefix_abd,
@@ -2829,6 +2908,10 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
     const uint  num_pairs  = host_count.front();
 
     if (num_pairs != 0)
+    {
+        stream << fn_process_collision_pair_friction(
+                      get_collision_data(), sa_x_left, sa_x_step_start_left, sa_vert_friction_coeff, 1e-5f)
+                      .dispatch(num_pairs);
         stream << fn_perPair_assemble_gradient_hessian(get_collision_data(),
                                                        sa_x_left,
                                                        sa_x_right,
@@ -2840,6 +2923,7 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
                                                        sa_cgB,
                                                        sa_cgA_diag)
                       .dispatch(num_pairs);
+    }
 }
 
 void NarrowPhasesDetector::host_perPair_spmv(Stream&                    stream,
@@ -3018,16 +3102,25 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             $if(d < thickness + d_hat)
             {
-                const Float stiff = pair->get_stiffness();
+                const Float stiff = pair->get_area() * kappa;
                 if (contact_energy_type == ContactEnergyType::Quadratic)
                 {
-                    Float C = thickness + d_hat - d;
+                    Float C = d - thickness - d_hat;
                     energy  = 0.5f * stiff * C * C;
                 }
                 else if (contact_energy_type == ContactEnergyType::Barrier)
                 {
                     energy = stiff * ipc::barrier(d - thickness, d_hat);
                     // cipc::KappaBarrier(energy, stiff, d2, d_hat, thickness);
+                }
+
+                // Friction Part
+                {
+                    Float3   normal          = pair->get_normal();
+                    Float3   dv              = pair->get_delta_v();
+                    Float    friction_lambda = pair->get_friction_lambda();
+                    Float3x3 P               = Identity3x3 - outer_product(normal, normal);
+                    energy += 0.5f * friction_lambda * dot(dv, P * dv);
                 }
             };
 

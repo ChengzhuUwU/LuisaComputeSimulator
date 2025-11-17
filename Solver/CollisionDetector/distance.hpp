@@ -1,4 +1,4 @@
-// Modified from [https://github.com/st-tech/ppf-contact-solver]
+// Modified from [https://github.com/st-tech/ppf-contact-solver/blob/main/src/cpp/contact/distance.hpp]
 
 #ifndef DISTANCE_HPP
 #define DISTANCE_HPP

@@ -1,4 +1,4 @@
-# LuisaComputeSolver: Physics Simulation Based on LuisaCompute
+# LuisaComputeSolver: Physics Simulator Based on LuisaCompute
 
 ![Teaser](Document/README1.png)
 
@@ -105,15 +105,17 @@ More building guidance about computing backend can be found in [the document of 
 ## TODOLIST
 
 - [ ] Python Binding
-- [ ] Frictional Contact
-- [ ] Strain Limiting
-- [ ] Thin Shell Rigid-Body Simulation
 - [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy
+- [ ] Strain Limiting
+- [ ] Consistent Solve
+- [ ] Replace All Constraint With Bindless-Group
+- [ ] Thin Shell Rigid-Body Simulation
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
+- [ ] Mesh Split
+- [ ] Accurate Frictional Modeling
 - [ ] Better Numerical Preconditioners
-
 
 
 ## References
@@ -128,4 +130,4 @@ More building guidance about computing backend can be found in [the document of 
 
 ## Others
 
-Thanks to LuisaCompute and Libuipc community, their open-source spirit has propelled the advancement of graphics and embodied intelligence.
+Thanks to LuisaCompute and Libuipc community, their open-source spirit has propelled the advancement of the reality.

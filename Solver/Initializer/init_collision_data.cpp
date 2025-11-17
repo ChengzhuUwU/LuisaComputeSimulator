@@ -157,6 +157,7 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
     sim_data->sa_contact_active_verts_d_hat.resize(mesh_data->num_verts);
     sim_data->sa_contact_active_verts_offset.resize(mesh_data->num_verts);
+    sim_data->sa_contact_active_verts_friction_coeff.resize(mesh_data->num_verts);
     CpuParallel::parallel_for(0,
                               mesh_data->num_verts,
                               [&](const uint vid)
@@ -164,6 +165,8 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   const uint mesh_idx = mesh_data->sa_vert_mesh_id[vid];
                                   sim_data->sa_contact_active_verts_d_hat[vid] = mesh_scaled_d_hat[mesh_idx];
                                   sim_data->sa_contact_active_verts_offset[vid] = mesh_scaled_offset[mesh_idx];
+                                  sim_data->sa_contact_active_verts_friction_coeff[vid] =
+                                      world_data[mesh_idx].get_friction_mu();
                                   //   LUISA_INFO("Vertex {}: d_hat = {}, offset = {}",
                                   //              vid,
                                   //              sim_data->sa_contact_active_verts_d_hat[vid],
@@ -181,9 +184,11 @@ void upload_collision_buffers(luisa::compute::Device&                      devic
            << upload_buffer(device, output_sim_data->sa_contact_active_faces, input_sim_data->sa_contact_active_faces)
            << upload_buffer(device, output_sim_data->sa_contact_active_edges, input_sim_data->sa_contact_active_edges);
 
-    stream << upload_buffer(device, output_sim_data->sa_contact_active_verts_d_hat, input_sim_data->sa_contact_active_verts_d_hat)
-           << upload_buffer(device, output_sim_data->sa_contact_active_verts_offset, input_sim_data->sa_contact_active_verts_offset)
-           << luisa::compute::synchronize();
+    stream
+        << upload_buffer(device, output_sim_data->sa_contact_active_verts_d_hat, input_sim_data->sa_contact_active_verts_d_hat)
+        << upload_buffer(device, output_sim_data->sa_contact_active_verts_offset, input_sim_data->sa_contact_active_verts_offset)
+        << upload_buffer(device, output_sim_data->sa_contact_active_verts_friction_coeff, input_sim_data->sa_contact_active_verts_friction_coeff)
+        << luisa::compute::synchronize();
 }
 
 
