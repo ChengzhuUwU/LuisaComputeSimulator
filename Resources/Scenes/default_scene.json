@@ -1,51 +1,82 @@
 {
-    "scene_id": 6,
-    "nonlinear_iter_count": 3,
-    "gravity": [
-        0.0,
-        0.0,
-        0.0
-    ],
-    "use_floor": false,
+    "scene_id": 18,
     "contact_energy_type": 1,
-    "stiffness_collision": 1e9,
+    "nonlinear_iter_count": 20,
+    "use_energy_linesearch": true,
     "shells": [
         {
-            "model_name": "Cylinder/cylinder88K.obj",
+            "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.0
+            }
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.2,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.1
+            }
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.4,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "scale": 0.1,
+            "shell_type": "Rigid",
+            "material": {
+                "friction_mu": 0.5
+            }
+        },
+        {
+            "model_name": "square2K.obj",
+            "translation": [
+                0.0,
+                0.8,
+                0.0
+            ],
+            "scale": 2.0,
+            "rotation": [
+                -0.618,
+                0.0,
+                0.0
+            ],
+            "material": {
+                "friction_mu": 0.0
+            },
             "fixed_points": [
                 {
-                    "method": "Left",
-                    "fixed_info": {
-                        "use_rotate": true,
-                        "rotCenter": [
-                            0.005,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAxis": [
-                            1.0,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAngVelDeg": -72.0
-                    }
-                },
-                {
-                    "method": "Right",
-                    "fixed_info": {
-                        "use_rotate": true,
-                        "rotCenter": [
-                            -0.005,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAxis": [
-                            1.0,
-                            0.0,
-                            0.0
-                        ],
-                        "rotAngVelDeg": 72.0
-                    }
+                    "method": "All"
                 }
             ]
         }

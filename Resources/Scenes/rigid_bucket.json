@@ -1,6 +1,6 @@
 {
     "scene_id": 11,
-    "nonlinear_iter_count": 2,
+    "nonlinear_iter_count": 5,
     "shells": [
         {
             "model_name": "bowl/box.obj",

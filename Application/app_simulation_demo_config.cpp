@@ -179,6 +179,7 @@ void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::
     get_bool("use_gpu", lcs::get_scene_params().use_gpu);
     get_bool("use_self_collision", lcs::get_scene_params().use_self_collision);
     get_bool("use_ccd_linesearch", lcs::get_scene_params().use_ccd_linesearch);
+    get_bool("use_energy_linesearch", lcs::get_scene_params().use_energy_linesearch);
 
     get_real("implicit_dt", lcs::get_scene_params().implicit_dt);
     get_real("stiffness_collision", lcs::get_scene_params().stiffness_collision);

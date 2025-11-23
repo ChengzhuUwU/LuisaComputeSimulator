@@ -47,7 +47,7 @@ namespace Initializer
         float mass        = 0.0f;
         float density     = 1e3f;
         float d_hat       = 1e-3f;
-        float friction_mu = 0.5f;
+        float friction_mu = 0.1f;
         bool  is_shell    = true;
     };
 

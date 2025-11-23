@@ -1,13 +1,14 @@
 {
-    "scene_id": 9,
-    "use_floor": false,
+    "scene_id": 18,
     "contact_energy_type": 1,
+    "nonlinear_iter_count": 20,
+    "use_energy_linesearch": true,
     "shells": [
         {
             "model_name": "cube.obj",
             "translation": [
                 0.0,
-                0.2,
+                1.0,
                 0.0
             ],
             "rotation": [
@@ -25,7 +26,7 @@
             "model_name": "cube.obj",
             "translation": [
                 0.2,
-                0.2,
+                1.0,
                 0.0
             ],
             "rotation": [
@@ -43,7 +44,7 @@
             "model_name": "cube.obj",
             "translation": [
                 0.4,
-                0.2,
+                1.0,
                 0.0
             ],
             "rotation": [
@@ -61,7 +62,7 @@
             "model_name": "square2K.obj",
             "translation": [
                 0.0,
-                0.0,
+                0.8,
                 0.0
             ],
             "scale": 2.0,
