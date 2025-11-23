@@ -591,15 +591,18 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
                     // Friction Part
                     {
-                        Float3 normal         = make_float3(0.0f, 1.0f, 0.0f);
-                        Float3 x_0            = sa_x_step_start->read(vid);
-                        Float3 dv             = x_k - x_0;
-                        Float  friction_coeff = sa_contact_active_verts_friction_coeff->read(vid);
-                        Float  friction_eps   = Friction::GaussNewton::friction_eps;
-                        auto   lambda_P       = Friction::GaussNewton::get_friction_lambda_P(
-                            k1 * normal, dv, normal, friction_coeff, friction_eps);
-                        Float3 dv_proj = lambda_P.second * dv;
-                        energy += 0.5f * lambda_P.first * dot(dv_proj, dv_proj);
+                        Float3 normal       = make_float3(0.0f, 1.0f, 0.0f);
+                        Float3 x_0          = sa_x_step_start->read(vid);
+                        Float3 rel_dx       = x_k - x_0;
+                        Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                        Float  friction_eps = Friction::ando_barrier::friction_eps;
+                        Float3 gradient     = k1 * normal;
+                        auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                            gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
+                        Float    friction_lambda = lambda_P.first;
+                        Float3x3 friction_P      = lambda_P.second;
+                        Float3   tan_rel_dx      = friction_P * rel_dx;
+                        energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
                     }
 
                     // Float C    = d_hat + thickness - dist;

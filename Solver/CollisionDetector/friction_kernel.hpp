@@ -11,7 +11,7 @@ namespace lcs
 
 namespace Friction
 {
-    namespace GaussNewton
+    namespace ando_barrier
     {
         //
         // Modified from [https://github.com/st-tech/ppf-contact-solver/blob/main/src/cpp/energy/model/friction.hpp]
@@ -21,10 +21,13 @@ namespace Friction
         template <typename T>
         inline auto get_projection(const T& normal)
         {
-            return Identity3x3 - outer_product(normal, normal);
+            return Identity3x3 - outer_product(normal, normal);  // P*dv = dv - dot(dv, n)*n
         }
-        inline std::pair<float, float3x3> get_friction_lambda_P(
-            const float3& grad_contact, const float3& dx, const float3& normal, const float mu, const float min_dx)
+        inline std::pair<float, float3x3> get_friction_lambda_P(const float3& grad_contact,
+                                                                const float3& rel_dx,
+                                                                const float3& normal,
+                                                                const float   mu,
+                                                                const float   min_dx)
         {
             float    contact = -dot(grad_contact, normal);
             float3x3 P       = get_projection(normal);
@@ -32,7 +35,7 @@ namespace Friction
             float lambda;
             if (mu > 0.0f)
             {
-                float denom = length_squared_vec(P * dx);
+                float denom = length_squared_vec(P * rel_dx);
                 if (denom > 0.0f)
                 {
                     lambda = mu * contact / luisa::max(min_dx, luisa::sqrt(denom));
@@ -49,7 +52,7 @@ namespace Friction
             return std::make_pair(lambda, P);
         }
         inline std::pair<Var<float>, Var<float3x3>> get_friction_lambda_P(const Var<float3>& grad_contact,
-                                                                          const Var<float3>& dx,
+                                                                          const Var<float3>& rel_dx,
                                                                           const Var<float3>& normal,
                                                                           const Var<float>   mu,
                                                                           const Var<float>   min_dx)
@@ -60,7 +63,7 @@ namespace Friction
             Var<float> lambda;
             $if(mu > 0.0f)
             {
-                Var<float> denom = length_squared_vec(P * dx);
+                Var<float> denom = length_squared_vec(P * rel_dx);
                 $if(denom > 0.0f)
                 {
                     lambda = mu * contact / luisa::compute::max(min_dx, luisa::compute::sqrt(denom));
@@ -77,7 +80,7 @@ namespace Friction
             return std::make_pair(lambda, P);
         }
         inline std::pair<float, float3x3> get_friction_lambda_P(
-            const float dbdd, const float3& dx, const float3& normal, const float mu, const float min_dx)
+            const float dbdd, const float3& rel_dx, const float3& normal, const float mu, const float min_dx)
         {
             float    contact = -dbdd;
             float3x3 P       = get_projection(normal);
@@ -85,7 +88,7 @@ namespace Friction
             float lambda;
             if (mu > 0.0f)
             {
-                float denom = length_squared_vec(P * dx);
+                float denom = length_squared_vec(P * rel_dx);
                 if (denom > 0.0f)
                 {
                     lambda = mu * contact / luisa::max(min_dx, luisa::sqrt(denom));
@@ -103,19 +106,19 @@ namespace Friction
         }
 
         template <typename PairType, typename Vec>
-        inline auto compute_gradient_hessian(const PairType& lambda_P, const Vec& dx)
+        inline auto compute_gradient_hessian(const PairType& lambda_P, const Vec& rel_dx)
         {
             const auto& lambda   = lambda_P.first;
             const auto& P        = lambda_P.second;
-            auto        gradient = lambda * (P * dx);
+            auto        gradient = lambda * (P * rel_dx);
             auto        hessian  = lambda * P;
             return std::make_pair(gradient, hessian);
         }
         template <typename FloatType, typename Vec>
-        inline auto compute_gradient_hessian(const FloatType& lambda, const Vec& normal, const Vec& dx)
+        inline auto compute_gradient_hessian(const FloatType& lambda, const Vec& normal, const Vec& rel_dx)
         {
             const auto P        = Identity3x3 - outer_product(normal, normal);
-            auto       gradient = lambda * (P * dx);
+            auto       gradient = lambda * (P * rel_dx);
             auto       hessian  = lambda * P;
             return std::make_pair(gradient, hessian);
         }
@@ -126,7 +129,7 @@ namespace Friction
             auto       hessian = lambda * P;
             return hessian;
         }
-    }  // namespace GaussNewton
+    }  // namespace ando_barrier
 }  // namespace Friction
 
 namespace Friction

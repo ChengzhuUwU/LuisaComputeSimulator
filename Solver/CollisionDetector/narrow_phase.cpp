@@ -1293,16 +1293,16 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             const Float3 dx0 =
                 weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
                 + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
-            const Float3 hdv = dx - dx0;
+            const Float3 rel_dx = dx - dx0;
 
             // Note: Friction should not be affected by contact area
             Float friction_mu =
                 0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
-            Float        friction_eps = Friction::GaussNewton::friction_eps;
+            Float        friction_eps = Friction::ando_barrier::friction_eps;
             const Float3 gradient     = k1 * normal;
             auto         lambda_P =
-                Friction::GaussNewton::get_friction_lambda_P(gradient, hdv, normal, friction_mu, friction_eps);
-            pair->set_friction_values(hdv, lambda_P.first);
+                Friction::ando_barrier::get_friction_lambda_P(gradient, rel_dx, normal, friction_mu, friction_eps);
+            pair->set_friction_values(rel_dx, lambda_P.first);
             narrowphase_list.write(pair_idx, pair);
         },
         option);
@@ -2525,7 +2525,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             {
                 Float3 dv     = pair->get_delta_v();
                 Float  lambda = pair->get_friction_lambda();
-                auto friction_grad_hess = Friction::GaussNewton::compute_gradient_hessian(lambda, normal, dv);
+                auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda, normal, dv);
                 grad += friction_grad_hess.first;
                 hess += friction_grad_hess.second;
             }
@@ -2658,7 +2658,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
             {
                 Float    lambda        = pair->get_friction_lambda();
-                Float3x3 friction_hess = Friction::GaussNewton::compute_hessian(lambda, normal);
+                Float3x3 friction_hess = Friction::ando_barrier::compute_hessian(lambda, normal);
                 hess += friction_hess;
             }
 
@@ -3054,8 +3054,10 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
         [contact_energy_type](Var<CDBG>               collision_data,
                               Var<BufferView<float3>> sa_x_left,
                               Var<BufferView<float3>> sa_x_right,
+                              Var<BufferView<float3>> sa_x_step_start,
                               Var<BufferView<float>>  per_vert_d_hat,
                               Var<BufferView<float>>  per_vert_offset,
+                              Var<BufferView<float>>  sa_vert_friction_mu,
                               Float                   kappa)
         {
             auto& contact_energy   = collision_data->contact_energy;
@@ -3099,29 +3101,43 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             Float d_hat     = 0.5f * (per_vert_d_hat.read(indices[0]) + per_vert_d_hat.read(indices[2]));
             Float thickness = (per_vert_offset.read(indices[0]) + per_vert_offset.read(indices[2]));
+            Float friction_mu =
+                0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
 
             $if(d < thickness + d_hat)
             {
                 const Float stiff = pair->get_area() * kappa;
+                Float       k1;
                 if (contact_energy_type == ContactEnergyType::Quadratic)
                 {
                     Float C = d - thickness - d_hat;
                     energy  = 0.5f * stiff * C * C;
+                    k1      = stiff * C;
                 }
                 else if (contact_energy_type == ContactEnergyType::Barrier)
                 {
                     energy = stiff * ipc::barrier(d - thickness, d_hat);
+                    k1     = stiff * ipc::barrier_first_derivative(d - thickness, d_hat);
                     // cipc::KappaBarrier(energy, stiff, d2, d_hat, thickness);
                 }
 
                 // Friction Part
                 {
-                    Float3   normal          = pair->get_normal();
-                    Float3   dv              = pair->get_delta_v();
-                    Float    friction_lambda = pair->get_friction_lambda();
-                    Float3x3 P               = Identity3x3 - outer_product(normal, normal);
-                    Float3   dv_proj         = P * dv;  // dv_proj = dv - dot(dv, normal) * normal;
-                    energy += 0.5f * friction_lambda * dot(dv_proj, dv_proj);
+                    Float3 gradient = k1 * normal;
+
+
+                    Float3 normal = pair->get_normal();
+                    Float3 diff0  = weight[0] * sa_x_step_start.read(indices[0])
+                                   + weight[1] * sa_x_step_start.read(indices[1])
+                                   + weight[2] * sa_x_step_start.read(indices[2])
+                                   + weight[3] * sa_x_step_start.read(indices[3]);
+                    Float3 rel_dx   = diff - diff0;
+                    auto   lambda_P = Friction::ando_barrier::get_friction_lambda_P(
+                        gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
+                    Float    friction_lambda = lambda_P.first;
+                    Float3x3 friction_P      = lambda_P.second;
+                    Float3 tan_rel_dx = friction_P * rel_dx;  // dv_proj = dv - dot(dv, normal) * normal;
+                    energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
                 }
             };
 
@@ -3143,11 +3159,13 @@ void NarrowPhasesDetector::compute_contact_energy_from_iter_start_list(Stream&  
                                                                        const Buffer<float3>& sa_x_right,
                                                                        const Buffer<float3>& sa_rest_x_left,
                                                                        const Buffer<float3>& sa_rest_x_right,
+                                                                       const Buffer<float3>& sa_x_step_start,
                                                                        const Buffer<float>& sa_rest_area_left,
                                                                        const Buffer<float>& sa_rest_area_right,
                                                                        const Buffer<uint3>& sa_faces_right,
                                                                        const Buffer<float>& d_hat,
                                                                        const Buffer<float>& thickness,
+                                                                       const Buffer<float>& friction_mu,
                                                                        const float          kappa)
 {
     auto&      contact_energy = collision_data->contact_energy;
@@ -3156,7 +3174,8 @@ void NarrowPhasesDetector::compute_contact_energy_from_iter_start_list(Stream&  
 
     if (num_pairs != 0)
     {
-        stream << fn_compute_repulsion_energy(get_collision_data(), sa_x_left, sa_x_right, d_hat, thickness, kappa)
+        stream << fn_compute_repulsion_energy(
+                      get_collision_data(), sa_x_left, sa_x_right, sa_x_step_start, d_hat, thickness, friction_mu, kappa)
                       .dispatch(num_pairs)
             // << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
             ;

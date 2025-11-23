@@ -932,11 +932,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                             Float3 x_0          = sa_x_step_start->read(vid);
                             Float3 dv           = x_k - x_0;
                             Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
-                            Float  friction_eps = Friction::GaussNewton::friction_eps;
-                            auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                            Float  friction_eps = Friction::ando_barrier::friction_eps;
+                            auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
                                 k1 * normal, dv, normal, friction_mu, friction_eps);
                             auto friction_grad_hess =
-                                Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                                Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
                             force -= friction_grad_hess.first;
                             hessian += friction_grad_hess.second;
                         }
@@ -1406,11 +1406,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                                 Float3 x_0          = sa_x_step_start->read(vid);
                                 Float3 dv           = x_k - x_0;
                                 Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
-                                Float  friction_eps = Friction::GaussNewton::friction_eps;
-                                auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                                Float  friction_eps = Friction::ando_barrier::friction_eps;
+                                auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
                                     k1 * normal, dv, normal, friction_mu, friction_eps);
                                 auto friction_grad_hess =
-                                    Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                                    Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
                                 gradient += friction_grad_hess.first;
                                 hessian += friction_grad_hess.second;
                             }
@@ -1891,10 +1891,10 @@ void NewtonSolver::host_evaluate_ground_collision()
                         float3 x_0          = sa_x_step_start[vid];
                         float3 dv           = x_k - x_0;
                         float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
-                        float  friction_eps = Friction::GaussNewton::friction_eps;
-                        auto   lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                        float  friction_eps = Friction::ando_barrier::friction_eps;
+                        auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
                             k1 * normal, dv, normal, friction_mu, friction_eps);
-                        auto friction_grad_hess = Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                        auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
                         gradient += friction_grad_hess.first;
                         hessian = hessian + friction_grad_hess.second;
                     }
@@ -1957,11 +1957,11 @@ void NewtonSolver::host_evaluate_ground_collision()
                             float3 x_0 = host_sim_data->sa_x_step_start[vid];
                             float3 dv  = x_k - x_0;
                             float friction_mu = host_sim_data->sa_contact_active_verts_friction_coeff[vid];
-                            float friction_eps = Friction::GaussNewton::friction_eps;
-                            auto  lambda_P     = Friction::GaussNewton::get_friction_lambda_P(
+                            float friction_eps = Friction::ando_barrier::friction_eps;
+                            auto  lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
                                 k1 * normal, dv, normal, friction_mu, friction_eps);
                             auto friction_grad_hess =
-                                Friction::GaussNewton::compute_gradient_hessian(lambda_P, dv);
+                                Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
                             gradient += friction_grad_hess.first;
                             hessian = hessian + friction_grad_hess.second;
                         }
@@ -3447,6 +3447,7 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
     narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
                                                                        sim_data->sa_x,
                                                                        sim_data->sa_x,
+                                                                       sim_data->sa_x_step_start,
                                                                        mesh_data->sa_rest_x,
                                                                        mesh_data->sa_rest_x,
                                                                        mesh_data->sa_rest_vert_area,
@@ -3454,6 +3455,7 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
                                                                        mesh_data->sa_faces,
                                                                        sim_data->sa_contact_active_verts_d_hat,
                                                                        sim_data->sa_contact_active_verts_offset,
+                                                                       sim_data->sa_contact_active_verts_friction_coeff,
                                                                        kappa);
 
     auto contact_energy = narrow_phase_detector->download_energy(stream);
