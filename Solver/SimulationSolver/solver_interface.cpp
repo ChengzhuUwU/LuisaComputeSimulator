@@ -598,7 +598,8 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                         Float  friction_eps   = Friction::GaussNewton::friction_eps;
                         auto   lambda_P       = Friction::GaussNewton::get_friction_lambda_P(
                             k1 * normal, dv, normal, friction_coeff, friction_eps);
-                        energy += 0.5f * lambda_P.first * dot(dv, lambda_P.second * dv);
+                        Float3 dv_proj = lambda_P.second * dv;
+                        energy += 0.5f * lambda_P.first * dot(dv_proj, dv_proj);
                     }
 
                     // Float C    = d_hat + thickness - dist;

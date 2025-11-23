@@ -1293,7 +1293,7 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             const Float3 dx0 =
                 weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
                 + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
-            const Float3 dv = dx - dx0;
+            const Float3 hdv = dx - dx0;
 
             // Note: Friction should not be affected by contact area
             Float friction_mu =
@@ -1301,8 +1301,8 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             Float        friction_eps = Friction::GaussNewton::friction_eps;
             const Float3 gradient     = k1 * normal;
             auto         lambda_P =
-                Friction::GaussNewton::get_friction_lambda_P(gradient, dx, normal, friction_mu, friction_eps);
-            pair->set_friction_values(dv, lambda_P.first);
+                Friction::GaussNewton::get_friction_lambda_P(gradient, hdv, normal, friction_mu, friction_eps);
+            pair->set_friction_values(hdv, lambda_P.first);
             narrowphase_list.write(pair_idx, pair);
         },
         option);
@@ -3120,7 +3120,8 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
                     Float3   dv              = pair->get_delta_v();
                     Float    friction_lambda = pair->get_friction_lambda();
                     Float3x3 P               = Identity3x3 - outer_product(normal, normal);
-                    energy += 0.5f * friction_lambda * dot(dv, P * dv);
+                    Float3   dv_proj         = P * dv;  // dv_proj = dv - dot(dv, normal) * normal;
+                    energy += 0.5f * friction_lambda * dot(dv_proj, dv_proj);
                 }
             };
 
