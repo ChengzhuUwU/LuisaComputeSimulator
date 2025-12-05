@@ -22,9 +22,9 @@
                     ]
                 }
             ],
-            "shell_type": "stretch_model",
+            "shell_type": "Cloth",
             "material": {
-                "StretchModel": "Spring",
+                "stretch_model": "Spring",
                 "youngs_modulus": 1e5,
                 "poisson_ratio": 0.3
             }

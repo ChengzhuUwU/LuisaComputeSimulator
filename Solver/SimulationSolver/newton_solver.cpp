@@ -3170,7 +3170,7 @@ void NewtonSolver::host_material_energy_assembly()
         };
 
 
-        if (host_sim_data->sa_stretch_springs.size() != 0 && false)
+        if (host_sim_data->sa_stretch_springs.size() != 0)
             CpuParallel::parallel_for(
                 0,
                 host_sim_data->num_verts_soft,
