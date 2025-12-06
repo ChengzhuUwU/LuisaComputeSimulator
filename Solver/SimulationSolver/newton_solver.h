@@ -111,7 +111,7 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet;  // Float substep_dt, stiffness_dirichlet
     luisa::compute::Shader<1, float, bool, float, uint> fn_evaluate_ground_collision;
     luisa::compute::Shader<1, float, bool>              fn_gound_collision_ccd;
-    luisa::compute::Shader<1, float>                    fn_evaluate_spring;  // Float stiffness_stretch
+    luisa::compute::Shader<1>                           fn_evaluate_spring;  // Float stiffness_stretch
     luisa::compute::Shader<1>                           fn_evaluate_stretch_face;
     luisa::compute::Shader<1, float>                    fn_evaluate_bending;  // Float stiffness_bending
 

@@ -1022,11 +1022,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             [sa_x = sim_data->sa_x.view(),
              // sa_cgB = sim_data->sa_cgB.view(),
              // sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-             output_gradient_ptr = sim_data->sa_stretch_springs_gradients.view(),
-             output_hessian_ptr  = sim_data->sa_stretch_springs_hessians.view(),
-             sa_edges            = sim_data->sa_stretch_springs.view(),
-             sa_rest_length      = sim_data->sa_stretch_spring_rest_state_length.view(),
-             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view()](const Float stiffness_stretch)
+             output_gradient_ptr         = sim_data->sa_stretch_springs_gradients.view(),
+             output_hessian_ptr          = sim_data->sa_stretch_springs_hessians.view(),
+             sa_edges                    = sim_data->sa_stretch_springs.view(),
+             sa_rest_length              = sim_data->sa_stretch_spring_rest_state_length.view(),
+             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view()]()
             {
                 const UInt eid  = dispatch_id().x;
                 UInt2      edge = sa_edges->read(eid);
@@ -2917,7 +2917,8 @@ void NewtonSolver::host_evaluete_stretch_spring()
                                sa_rest_length = host_sim_data->sa_stretch_spring_rest_state_length.data(),
                                output_gradient_ptr = host_sim_data->sa_stretch_springs_gradients.data(),
                                output_hessian_ptr  = host_sim_data->sa_stretch_springs_hessians.data(),
-                               stiffness_stretch   = get_scene_params().stiffness_spring](const uint eid)
+                               sa_stretch_spring_stiffness =
+                                   host_sim_data->sa_stretch_spring_stiffness.data()](const uint eid)
                               {
                                   uint2 edge = sa_edges[eid];
 
@@ -2925,8 +2926,8 @@ void NewtonSolver::host_evaluete_stretch_spring()
                                   float3   gradients[2] = {Zero3, Zero3};
                                   float3x3 He           = luisa::make_float3x3(0.0f);
 
-                                  const float L                        = sa_rest_length[eid];
-                                  const float stiffness_stretch_spring = stiffness_stretch;
+                                  const float L = sa_rest_length[eid];
+                                  const float stiffness_stretch_spring = sa_stretch_spring_stiffness[eid];
 
                                   float3 diff = vert_pos[0] - vert_pos[1];
                                   float  l    = max_scalar(length_vec(diff), Epsilon);
@@ -4305,8 +4306,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
                 if (host_sim_data->sa_stretch_springs.size() != 0)
                 {
-                    stream << fn_evaluate_spring(get_scene_params().stiffness_spring)
-                                  .dispatch(host_sim_data->sa_stretch_springs.size());
+                    stream << fn_evaluate_spring().dispatch(host_sim_data->sa_stretch_springs.size());
                     stream << fn_material_energy_assembly_stretch_spring().dispatch(host_sim_data->num_verts_soft);
                 }
 
