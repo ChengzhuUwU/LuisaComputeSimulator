@@ -916,6 +916,10 @@ using MATRIX3x12 = LargeMatrix<3, 12>;
                 {                                                                                                    \
                     mat[i][j] = luisa::make_float3x3(1.0f);                                                          \
                 }                                                                                                    \
+                else                                                                                                 \
+                {                                                                                                    \
+                    mat[i][j] = luisa::make_float3x3(0.0f);                                                          \
+                }                                                                                                    \
     }                                                                                                                \
     static luisa::compute::Var<lcs::LargeMatrix<N, N>> identity()                                                    \
     {                                                                                                                \

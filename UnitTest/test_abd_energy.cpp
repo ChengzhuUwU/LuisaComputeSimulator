@@ -209,7 +209,7 @@ void shearHessian(const Matrix3x2& F, Matrix6x6& pPpF, const float _mu)
     // half from mu and leading 2 on Hessian cancel
     pPpF *= _mu;
 }
-void test_FEM_BW98()
+void test_FEM_BW98(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
     using namespace lcs;
 
@@ -273,6 +273,7 @@ void test_FEM_BW98()
     const float mu            = mu_tmp;
     const float lambda        = lambda_tmp;
 
+    if constexpr (false)
     {
         float2x2 Dm_inv = luisa::inverse(Dm1);
         {
@@ -325,16 +326,38 @@ void test_FEM_BW98()
             // }
             // std::cout << "dFdx3 = \n" << (result).to_eigen_matrix() << std::endl;
         }
+        return;
     }
 
-    return;
+    {
+        auto fn_test_fem = device.compile<1>(
+            [](luisa::compute::BufferVar<float6x6> out_hessian,
+               luisa::compute::Var<float2x3>       F,
+               luisa::compute::Var<float>          mu,
+               luisa::compute::Var<float>          lambda) noexcept
+            {
+                auto H_stretch = StretchEnergy::detail::stretch_hessian(F, mu);
+                auto H_shear   = StretchEnergy::detail::shear_hessian(F, lambda);
+                out_hessian.write(0, H_stretch);
+                out_hessian.write(1, H_shear);
+            });
+        luisa::compute::Buffer<float6x6> out_hessian = device.create_buffer<float6x6>(2u);
+        luisa::compute::vector<float6x6> hessian_data(2u);
 
+        float2x3 F = makeFloat2x3(x1 - x0, x2 - x0) * luisa::inverse(Dm1);
+        stream << fn_test_fem(out_hessian, F, mu, lambda).dispatch(1u)
+               << out_hessian.copy_to(hessian_data.data()) << luisa::compute::synchronize();
+        std::cout << "GPU : \n";
+        if constexpr (false)
+            std::cout << "Hessian_stretch : \n" << hessian_data[0].to_eigen_matrix() << std::endl;
+        std::cout << "Hessian_shear : \n" << hessian_data[1].to_eigen_matrix() << std::endl;
+    }
     {
         float2x3 F = makeFloat2x3(x1 - x0, x2 - x0) * luisa::inverse(Dm1);
 
         float6x6 H_stretch = StretchEnergy::detail::stretch_hessian(F, mu);
-        // float6x6 H_shear   = StretchEnergy::detail::shear_hessian(F, lambda);
-        float6x6 H_shear = shear_hessian(F, lambda);
+        float6x6 H_shear   = StretchEnergy::detail::shear_hessian(F, lambda);
+        // float6x6 H_shear = shear_hessian(F, lambda);
         // StretchEnergy::compute_gradient_hessian(
         //     vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu, lambda, area, gradients, hessians);
 
@@ -351,9 +374,11 @@ void test_FEM_BW98()
         // std::cout << "Result : \n" << (M + H).inverse() * G << std::endl;
         // std::cout << "Hessian : \n" << H << std::endl;
         // std::cout << "F : \n" << F.to_eigen_matrix() << std::endl;
-        std::cout << "Hessian_stretch : \n" << H_stretch.to_eigen_matrix() << std::endl;
+        if constexpr (false)
+            std::cout << "Hessian_stretch : \n" << H_stretch.to_eigen_matrix() << std::endl;
         std::cout << "Hessian_shear : \n" << H_shear.to_eigen_matrix() << std::endl;
     }
+    if constexpr (false)
     {
         auto F = (makeFloat2x3(x1 - x0, x2 - x0) * Dm1).to_eigen_matrix();
         // auto F = StretchEnergy::libuipc::Ds3x2(float3_to_eigen3(x0), float3_to_eigen3(x1), float3_to_eigen3(x2))
@@ -374,8 +399,32 @@ void test_FEM_BW98()
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    luisa::log_level_info();
+    std::cout << "Hello, LuisaComputeSimulation!" << std::endl;
+
+    // Init GPU system
+#if defined(__APPLE__)
+    std::string backend = "metal";
+#else
+    std::string backend = "cuda";
+#endif
+    const std::string            binary_path(argv[0]);
+    luisa::compute::Context      context{binary_path};
+    luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
+    if (device_names.empty())
+    {
+        LUISA_WARNING("No haredware device found.");
+        exit(1);
+    }
+    for (size_t i = 0; i < device_names.size(); ++i)
+    {
+        LUISA_INFO("Device {}: {}", i, device_names[i]);
+    }
+    luisa::compute::Device device = context.create_device(backend);
+    luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
+
     using namespace lcs;
 
     EigenFloat12x12 cgA = EigenFloat12x12::Zero();
@@ -399,7 +448,7 @@ int main()
     // std::cout << "Ortho gradient: " << std::endl << result.first << std::endl;
     // std::cout << "Ortho hessian: " << std::endl << result.second << std::endl;
 
-    test_FEM_BW98();
+    test_FEM_BW98(device, stream);
 
 
     // float6 vec1;
