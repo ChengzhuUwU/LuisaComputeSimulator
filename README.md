@@ -102,6 +102,8 @@ More building guidance about computing backend can be found in [the document of 
 | ![Case6](Document/Images/6.png) [File](Resources/Scenes/cloth_rotation_cylinder_88K.json)   |  ![Case9](Document/Images/9.png) [File](Resources/Scenes/cloth_unit_test_square2.json) |
 |   Multi-Rigid-Body Case 1 | Multi-Rigid-Body Case 2 |
 | ![Case11](Document/Images/11.png)  [File](Resources/Scenes/rigid_bucket.json)  |  ![Case13](Document/Images/13.png) [File](Resources/Scenes/rigid_multi_folding_cubes.json) |
+|  Friciontal Test |  |
+| ![Case11](Document/Images/18.png)  [File](Resources/Scenes/rigid_frictional_test.json)  |  |
 
 ## TODOLIST
 
