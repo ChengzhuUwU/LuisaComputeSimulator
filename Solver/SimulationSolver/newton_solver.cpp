@@ -3949,7 +3949,8 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
             {
                 if (host_mesh_data->sa_is_fixed[vid])
                 {
-                    float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
+                    // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
+                    float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
                     return luisa::length(delta);
                 }
                 return 0.0f;  // Non-fixed point
