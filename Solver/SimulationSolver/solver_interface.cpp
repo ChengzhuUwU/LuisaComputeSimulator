@@ -580,8 +580,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
                     $if(collision_type == 0)
                     {
-                        energy = 0.5f * stiff * square_scalar(dist - thickness - d_hat);
-                        k1     = stiff * (dist - thickness - d_hat);
+                        Float C = d_hat + thickness - dist;
+                        energy  = 0.5f * stiff * C * C;
+                        k1      = stiff * C;
                     }
                     $else
                     {
@@ -596,13 +597,25 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                         Float3 rel_dx       = x_k - x_0;
                         Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
                         Float  friction_eps = Friction::ando_barrier::friction_eps;
-                        Float3 gradient     = k1 * normal;
-                        auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                            gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
-                        Float    friction_lambda = lambda_P.first;
-                        Float3x3 friction_P      = lambda_P.second;
-                        Float3   tan_rel_dx      = friction_P * rel_dx;
-                        energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
+
+                        auto lambda = -k1 * friction_mu;
+                        auto energy_friction =
+                            Friction::ipc_barrier::compute_friction_energy(lambda, normal, rel_dx, friction_eps);
+                        energy += energy_friction;
+                        // device_log("vid {}, friction energy {} (lambda = {}, rel_dx = {}, normal = {}, mu = {})",
+                        //            vid,
+                        //            energy_friction,
+                        //            lambda,
+                        //            rel_dx,
+                        //            normal,
+                        //            friction_mu);
+                        // Float3 gradient     = k1 * normal;
+                        // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                        //     gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
+                        // Float    friction_lambda = lambda_P.first;
+                        // Float3x3 friction_P      = lambda_P.second;
+                        // Float3   tan_rel_dx      = friction_P * rel_dx;
+                        // energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
                     }
 
                     // Float C    = d_hat + thickness - dist;

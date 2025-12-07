@@ -1298,11 +1298,17 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             // Note: Friction should not be affected by contact area
             Float friction_mu =
                 0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
-            Float        friction_eps = Friction::ando_barrier::friction_eps;
-            const Float3 gradient     = k1 * normal;
-            auto         lambda_P =
-                Friction::ando_barrier::get_friction_lambda_P(gradient, rel_dx, normal, friction_mu, friction_eps);
-            pair->set_friction_values(rel_dx, lambda_P.first);
+            Float friction_eps = Friction::ando_barrier::friction_eps;
+            // const Float3 gradient     = k1 * normal;
+            // Float3       force        = -luisa::compute::dot(gradient, normal);
+            // Float        lambda       = friction_mu * force;
+            Float lambda = -friction_mu * k1;
+            pair->set_friction_values(rel_dx, lambda);
+
+            // auto         lambda_P =
+            //     Friction::ando_barrier::get_friction_lambda_P(gradient, rel_dx, normal, friction_mu, friction_eps);
+            // pair->set_friction_values(rel_dx, lambda_P.first);
+
             narrowphase_list.write(pair_idx, pair);
         },
         option);
@@ -2523,11 +2529,20 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
             // Friction part
             {
-                Float3 dv     = pair->get_delta_v();
-                Float  lambda = pair->get_friction_lambda();
-                auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda, normal, dv);
-                grad += friction_grad_hess.first;
-                hess += friction_grad_hess.second;
+                // Float3 dv     = pair->get_delta_v();
+                // Float  lambda = pair->get_friction_lambda();
+                // auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda, normal, dv);
+                // grad += friction_grad_hess.first;
+                // hess += friction_grad_hess.second;
+
+                Float friction_eps = Friction::ando_barrier::friction_eps;
+                Float lambda       = pair->get_friction_mu_lambda();
+                auto  rel_dx       = pair->get_friction_rel_dx();
+                auto vals = Friction::ipc_barrier::compute_friction_gradient_hessian(lambda, normal, rel_dx, friction_eps);
+                Float3   friction_grad = vals.first;
+                Float3x3 friction_hess = vals.second;
+                grad += friction_grad;
+                hess += friction_hess;
             }
 
             $if(is_nan_vec(k1 * k2 * normal))
@@ -2657,8 +2672,12 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
             Float3x3     hess    = k2 * outer_product(normal, normal);
 
             {
-                Float    lambda        = pair->get_friction_lambda();
-                Float3x3 friction_hess = Friction::ando_barrier::compute_hessian(lambda, normal);
+                Float lambda = pair->get_friction_mu_lambda();
+                // Float3x3 friction_hess = Friction::ando_barrier::compute_hessian(lambda, normal);
+                Float friction_eps = Friction::ando_barrier::friction_eps;
+                auto  rel_dx       = pair->get_friction_rel_dx();
+                auto vals = Friction::ipc_barrier::compute_friction_gradient_hessian(lambda, normal, rel_dx, friction_eps);
+                Float3x3 friction_hess = vals.second;
                 hess += friction_hess;
             }
 
@@ -2907,10 +2926,12 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
     const auto& host_count = host_collision_data->narrow_phase_collision_count;
     const uint  num_pairs  = host_count.front();
 
+    const float epsilon_v = 1e-3f;
+    const float epsilon_h = epsilon_v * get_scene_params().get_substep_dt();
     if (num_pairs != 0)
     {
         stream << fn_process_collision_pair_friction(
-                      get_collision_data(), sa_x_left, sa_x_step_start_left, sa_vert_friction_coeff, 1e-5f)
+                      get_collision_data(), sa_x_left, sa_x_step_start_left, sa_vert_friction_coeff, epsilon_h)
                       .dispatch(num_pairs);
         stream << fn_perPair_assemble_gradient_hessian(get_collision_data(),
                                                        sa_x_left,
@@ -3123,21 +3144,52 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
                 // Friction Part
                 {
-                    Float3 gradient = k1 * normal;
-
+                    Float mu           = friction_mu;
+                    Float lambda_mu    = -k1 * friction_mu;
+                    Float friction_eps = Friction::ando_barrier::friction_eps;
 
                     Float3 normal = pair->get_normal();
-                    Float3 diff0  = weight[0] * sa_x_step_start.read(indices[0])
-                                   + weight[1] * sa_x_step_start.read(indices[1])
-                                   + weight[2] * sa_x_step_start.read(indices[2])
-                                   + weight[3] * sa_x_step_start.read(indices[3]);
-                    Float3 rel_dx   = diff - diff0;
-                    auto   lambda_P = Friction::ando_barrier::get_friction_lambda_P(
-                        gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
-                    Float    friction_lambda = lambda_P.first;
-                    Float3x3 friction_P      = lambda_P.second;
-                    Float3 tan_rel_dx = friction_P * rel_dx;  // dv_proj = dv - dot(dv, normal) * normal;
-                    energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
+                    Float3 diff0;
+                    $if(collision_type == CollisionPair::type_vf())
+                    {
+                        Float3 bary = distance::point_triangle_distance_coeff_unclassified(
+                            sa_x_step_start.read(indices[0]),
+                            sa_x_step_start.read(indices[1]),
+                            sa_x_step_start.read(indices[2]),
+                            sa_x_step_start.read(indices[3]));
+                        diff0 = sa_x_step_start.read(indices[0])
+                                - (bary[0] * sa_x_step_start.read(indices[1])
+                                   + bary[1] * sa_x_step_start.read(indices[2])
+                                   + bary[2] * sa_x_step_start.read(indices[3]));
+                    }
+                    $elif(collision_type == CollisionPair::type_ee())
+                    {
+                        Float4 bary =
+                            distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                            sa_x_step_start.read(indices[1]),
+                                                                            sa_x_step_start.read(indices[2]),
+                                                                            sa_x_step_start.read(indices[3]));
+                        diff0 = (bary[0] * sa_x_step_start.read(indices[0])
+                                 + bary[1] * sa_x_step_start.read(indices[1]))
+                                - (bary[2] * sa_x_step_start.read(indices[2])
+                                   + bary[3] * sa_x_step_start.read(indices[3]));
+                    };
+                    // Float3 diff0  = weight[0] * sa_x_step_start.read(indices[0])
+                    //                + weight[1] * sa_x_step_start.read(indices[1])
+                    //                + weight[2] * sa_x_step_start.read(indices[2])
+                    //                + weight[3] * sa_x_step_start.read(indices[3]);
+                    Float3 rel_dx = diff - diff0;
+                    auto   energy_contrib =
+                        Friction::ipc_barrier::compute_friction_energy(lambda_mu, normal, rel_dx, friction_eps);
+                    energy += energy_contrib;
+
+                    // Float3 rel_dx   = diff - diff0;
+                    // auto   lambda_P = Friction::ando_barrier::get_friction_lambda_P(
+                    //     gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
+                    // Float    friction_lambda = lambda_P.first;
+                    // Float3x3 friction_P      = lambda_P.second;
+                    // Float3 tan_rel_dx = friction_P * rel_dx;  // dv_proj = dv - dot(dv, normal) * normal;
+                    // energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
                 }
             };
 

@@ -91,6 +91,7 @@ More building guidance about computing backend can be found in [the document of 
 
 |       |   |
 |  -----   |------|
+|          |      |
 | Moving Dirichlet Case |  |
 | ![Case0Bg](Document/Images/0_bg.png) [File](Resources/Scenes/cloth_moving_boundary.json) |  ![Teaser](Document/Images/0_ed.png) (The velocity of red plane is 3m/s )  |    
 |  Different Material Properties | Cloth-Rigid Coupling  Case 1 |

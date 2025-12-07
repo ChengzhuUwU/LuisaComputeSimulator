@@ -905,8 +905,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                     Float thickness = sa_contact_active_verts_offset->read(vid);
                     Float dist      = x_k.y - floor_y;
 
-                    Float3   force   = sa_cgB->read(vid);
-                    Float3x3 hessian = sa_cgA_diag->read(vid);
+                    Float3   grad = make_float3(0.0f);
+                    Float3x3 hess = make_float3x3(0.0f);
                     $if(dist - thickness < d_hat)
                     {
                         // Float  C      = d_hat + thickness - diff;
@@ -933,12 +933,15 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                             Float3 dv           = x_k - x_0;
                             Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
                             Float  friction_eps = Friction::ando_barrier::friction_eps;
-                            auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                                k1 * normal, dv, normal, friction_mu, friction_eps);
-                            auto friction_grad_hess =
-                                Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
-                            force -= friction_grad_hess.first;
-                            hessian += friction_grad_hess.second;
+                            // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                            //     k1 * normal, dv, normal, friction_mu, friction_eps);
+                            // auto friction_grad_hess =
+                            //     Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                            auto lambda_mu = -k1 * friction_mu;
+                            auto friction_grad_hess = Friction::ipc_barrier::compute_friction_gradient_hessian(
+                                lambda_mu, normal, dv, friction_eps);
+                            grad += friction_grad_hess.first;
+                            hess += friction_grad_hess.second;
                         }
                         // device_log("Vert {} ground collision: dist = {}, force = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                         //            vid,
@@ -956,11 +959,11 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                         //                thickness,
                         //                d_hat);
                         // };
-                        force -= k1 * normal;
-                        hessian += k2 * outer_product(normal, normal);
+                        grad += k1 * normal;
+                        hess += k2 * outer_product(normal, normal);
                     };
-                    sa_cgB->write(vid, force);
-                    sa_cgA_diag->write(vid, hessian);
+                    sa_cgB->write(vid, sa_cgB->read(vid) - grad);
+                    sa_cgA_diag->write(vid, sa_cgA_diag->read(vid) + hess);
                 };
             };
         },
@@ -1398,21 +1401,24 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                                 k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
                             };
 
-                            Float3   gradient = k1 * normal;
-                            Float3x3 hessian  = k2 * outer_product(normal, normal);
+                            Float3   grad = k1 * normal;
+                            Float3x3 hess = k2 * outer_product(normal, normal);
 
                             // Friction
                             {
                                 Float3 x_0          = sa_x_step_start->read(vid);
-                                Float3 dv           = x_k - x_0;
+                                Float3 rel_dx       = x_k - x_0;
                                 Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
                                 Float  friction_eps = Friction::ando_barrier::friction_eps;
-                                auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                                    k1 * normal, dv, normal, friction_mu, friction_eps);
-                                auto friction_grad_hess =
-                                    Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
-                                gradient += friction_grad_hess.first;
-                                hessian += friction_grad_hess.second;
+                                // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                                //     k1 * normal, dv, normal, friction_mu, friction_eps);
+                                // auto friction_grad_hess =
+                                //     Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                                auto lambda_mu = -k1 * friction_mu;
+                                auto friction_grad_hess = Friction::ipc_barrier::compute_friction_gradient_hessian(
+                                    lambda_mu, normal, rel_dx, friction_eps);
+                                grad += friction_grad_hess.first;
+                                hess += friction_grad_hess.second;
                             }
 
                             const Uint   body_idx = abd_perVert_body_id->read(vid);
@@ -1422,12 +1428,12 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                             for (uint ii = 0; ii < 4; ii++)
                             {
                                 Float  wi          = weight[ii];
-                                Float3 affine_grad = wi * gradient;
+                                Float3 affine_grad = wi * grad;
                                 atomic_buffer_add(abd_gradients, 4 * body_idx + ii, affine_grad);
                                 for (uint jj = 0; jj < 4; jj++)
                                 {
                                     Float    wj          = weight[jj];
-                                    Float3x3 affine_hess = wi * wj * hessian;
+                                    Float3x3 affine_hess = wi * wj * hess;
                                     if (ii == jj)
                                     {
                                         atomic_buffer_add(abd_hessians, 16 * body_idx + ii, affine_hess);
@@ -1892,9 +1898,12 @@ void NewtonSolver::host_evaluate_ground_collision()
                         float3 dv           = x_k - x_0;
                         float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
                         float  friction_eps = Friction::ando_barrier::friction_eps;
-                        auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                            k1 * normal, dv, normal, friction_mu, friction_eps);
-                        auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                        // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                        //     k1 * normal, dv, normal, friction_mu, friction_eps);
+                        // auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                        auto lambda_mu = -k1 * friction_mu;
+                        auto friction_grad_hess =
+                            Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, dv, friction_eps);
                         gradient += friction_grad_hess.first;
                         hessian = hessian + friction_grad_hess.second;
                     }
@@ -1954,14 +1963,17 @@ void NewtonSolver::host_evaluate_ground_collision()
 
                         // Friction
                         {
-                            float3 x_0 = host_sim_data->sa_x_step_start[vid];
-                            float3 dv  = x_k - x_0;
+                            float3 x_0    = host_sim_data->sa_x_step_start[vid];
+                            float3 rel_dx = x_k - x_0;
                             float friction_mu = host_sim_data->sa_contact_active_verts_friction_coeff[vid];
                             float friction_eps = Friction::ando_barrier::friction_eps;
-                            auto  lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                                k1 * normal, dv, normal, friction_mu, friction_eps);
-                            auto friction_grad_hess =
-                                Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                            // auto  lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
+                            //     k1 * normal, dv, normal, friction_mu, friction_eps);
+                            // auto friction_grad_hess =
+                            //     Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
+                            auto lambda_mu = -k1 * friction_mu;
+                            auto friction_grad_hess = Friction::ipc_barrier::compute_friction_gradient_hessian(
+                                lambda_mu, normal, rel_dx, friction_eps);
                             gradient += friction_grad_hess.first;
                             hessian = hessian + friction_grad_hess.second;
                         }
