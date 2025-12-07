@@ -56,8 +56,8 @@ namespace Initializer
         ConstitutiveStretchModelCloth stretch_model  = ConstitutiveStretchModelCloth::FEM_BW98;
         ConstitutiveBendingModelCloth bending_model  = ConstitutiveBendingModelCloth::DihedralAngle;
         float                         thickness      = 1e-3f;
-        float                         youngs_modulus = 1e5f;
-        float                         poisson_ratio  = 0.25f;
+        float                         youngs_modulus = 1e6f;
+        float                         poisson_ratio  = 0.35f;
         float                         area_bending_stiffness = 5e-3f;
         // float                         area_youngs_modulus = 1e3f;
     };

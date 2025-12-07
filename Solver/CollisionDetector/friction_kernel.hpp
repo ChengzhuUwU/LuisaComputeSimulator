@@ -228,11 +228,12 @@ namespace Friction
             const Float3x3 I   = Identity3x3;
             const Float3x3 P   = I - nnT;
 
-            const Float3   u     = P * rel_dx;
-            const Float    s2    = dot_vec(u, u);
-            const Float    s     = sqrt_scalar(s2);
-            const Float3   u_bar = u / s;
-            const Float3x3 uuT   = outer_product(u, u);
+            const Float3 u     = P * rel_dx;
+            const Float  s2    = dot_vec(u, u);
+            const Float  s     = sqrt_scalar(s2);
+            Float3       u_bar = u / s;
+            u_bar              = normalize_vec(u_bar);
+            const Float3x3 uuT = outer_product(u, u);
 
             Float f1_devide_s = f1_scalar_devide_s(s, E);
             Float f2_val      = f2_scalar(s, E);
@@ -247,7 +248,7 @@ namespace Friction
             $else
             {
                 grad_u = f1_devide_s * u;
-                hess_u = f2_val * outer_product(u_bar, u_bar) + f1_devide_s * P;
+                hess_u = (f2_val - f1_devide_s) * outer_product(u_bar, u_bar) + f1_devide_s * P;
             };
 
             Float3   grad = mu_lambda * grad_u;
@@ -288,7 +289,7 @@ namespace Friction
             else  // s >= E
             {
                 grad_u = f1_devide_s * u;
-                hess_u = f2_val * outer_product(u_bar, u_bar) + f1_devide_s * P;
+                hess_u = (f2_val - f1_devide_s) * outer_product(u_bar, u_bar) + f1_devide_s * P;
             };
 
             Float3   grad = mu_lambda * grad_u;

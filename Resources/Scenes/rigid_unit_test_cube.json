@@ -6,6 +6,11 @@
     "shells": [
         {
             "model_name": "cube.obj",
+            "translation": [
+                0.0,
+                0.2,
+                0.0
+            ],
             "rotation": [
                 0.5235988,
                 0.0,

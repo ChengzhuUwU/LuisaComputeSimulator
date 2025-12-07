@@ -1,6 +1,8 @@
 {
     "scene_id": 17,
     "use_floor": false,
+    "nonlinear_iter_count": 20,
+    "use_energy_linesearch": true,
     "contact_energy_type": 1,
     "shells": [
         {
