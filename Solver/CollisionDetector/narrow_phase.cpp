@@ -1290,9 +1290,32 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
 
             const Float3 dx = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
                               + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
-            const Float3 dx0 =
-                weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
-                + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
+            // const Float3 dx0 =
+            //     weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
+            //     + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
+            const auto collision_type = pair->get_collision_type();
+            Float3     dx0;
+            $if(collision_type == CollisionPair::type_vf())
+            {
+                Float3 bary =
+                    distance::point_triangle_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                         sa_x_step_start.read(indices[1]),
+                                                                         sa_x_step_start.read(indices[2]),
+                                                                         sa_x_step_start.read(indices[3]));
+                dx0 = sa_x_step_start.read(indices[0])
+                      - (bary[0] * sa_x_step_start.read(indices[1]) + bary[1] * sa_x_step_start.read(indices[2])
+                         + bary[2] * sa_x_step_start.read(indices[3]));
+            }
+            $elif(collision_type == CollisionPair::type_ee())
+            {
+                Float4 bary =
+                    distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                    sa_x_step_start.read(indices[1]),
+                                                                    sa_x_step_start.read(indices[2]),
+                                                                    sa_x_step_start.read(indices[3]));
+                dx0 = (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
+                      - (bary[2] * sa_x_step_start.read(indices[2]) + bary[3] * sa_x_step_start.read(indices[3]));
+            };
             const Float3 rel_dx = dx - dx0;
 
             // Note: Friction should not be affected by contact area
