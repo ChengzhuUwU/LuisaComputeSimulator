@@ -107,6 +107,7 @@ More building guidance about computing backend can be found in [the document of 
 
 ## TODOLIST
 
+- [ ] Joint Constraint
 - [ ] Python Binding
 - [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy

@@ -1290,6 +1290,9 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
 
             const Float3 dx = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
                               + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
+
+            // We can not use current barycentric coords to compute relative tangential displacement
+            //      since they are changing over iterations
             // const Float3 dx0 =
             //     weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
             //     + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
@@ -1321,7 +1324,7 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             // Note: Friction should not be affected by contact area
             Float friction_mu =
                 0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
-            Float friction_eps = Friction::ando_barrier::friction_eps;
+            // Float friction_eps = Friction::ando_barrier::friction_eps;
             // const Float3 gradient     = k1 * normal;
             // Float3       force        = -luisa::compute::dot(gradient, normal);
             // Float        lambda       = friction_mu * force;
@@ -2688,7 +2691,7 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
 
             const auto& pair = narrow_phase_list->read(pair_idx);
 
-            const auto&  indices = pair->get_indices();
+            const Uint4  indices = pair->get_indices();
             const Float4 weight  = pair->get_weight();
             const Float  k2      = pair->get_k2();  // dBdD, ddBddD
             const Float3 normal  = pair->get_normal();
