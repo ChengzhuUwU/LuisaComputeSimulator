@@ -33,17 +33,6 @@
 template <typename T>
 using Buffer = luisa::compute::Buffer<T>;
 
-static uint energy_idx = 0;
-
-
-enum SolverType
-{
-    SolverTypeGaussNewton,
-    SolverTypeXPBD_CPU,
-    SolverTypeVBD_CPU,
-    SolverTypeVBD_async,
-};
-
 int main(int argc, char** argv)
 {
 
@@ -59,6 +48,8 @@ int main(int argc, char** argv)
     // Init GPU system
 #if defined(__APPLE__)
     std::string backend = "metal";
+#elif defined(_WIN32)
+    std::string backend = "cuda";
 #else
     std::string backend = "cuda";
 #endif
@@ -72,7 +63,7 @@ int main(int argc, char** argv)
     luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
     if (device_names.empty())
     {
-        LUISA_WARNING("No haredware device found.");
+        LUISA_WARNING("No hardware device found.");
         exit(1);
     }
     for (size_t i = 0; i < device_names.size(); ++i)
@@ -405,7 +396,7 @@ int main(int argc, char** argv)
                             device_collision_data.broad_phase_list_vf.size() / 2,
                             device_collision_data.broad_phase_list_ee.size() / 2,
                             device_collision_data.narrow_phase_list.size(),
-                            device_collision_data.sa_cgA_contact_offdiag_triplet.size());
+                            device_collision_data.triplet_data.sa_cgA_contact_offdiag_triplet.size());
             }
 
             if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen))

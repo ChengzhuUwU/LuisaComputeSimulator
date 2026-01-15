@@ -5,6 +5,7 @@
 #include "Core/matrix_triplet.h"
 #include "SimulationCore/simulation_type.h"
 #include "Utils/buffer_allocator.h"
+#include "luisa/dsl/binding_group.h"
 #include <vector>
 #include <string>
 #include <luisa/luisa-compute.h>
@@ -384,6 +385,17 @@ namespace CollisionPair
 }  // namespace CollisionPair
 
 
+template <template <typename...> typename BufferType>
+struct ContactTripletData : SimulationType
+{
+    BufferType<uint>             sa_triplet_info;
+    BufferType<MatrixTriplet3x3> sa_cgA_contact_offdiag_triplet;
+    BufferType<uint2>            sa_cgA_contact_offdiag_triplet_indices;
+    BufferType<uint2>            sa_cgA_contact_offdiag_triplet_indices2;
+    BufferType<uint>             sa_cgA_contact_offdiag_triplet_property;
+    BufferType<uint>             sa_cgA_contact_offdiag_triplet_property2;
+};
+
 // template <typename T>
 // using BufferType = std::vector<T>;
 template <template <typename...> typename BufferType>
@@ -400,12 +412,8 @@ struct CollisionData : SimulationType
     BufferType<float> contact_energy;
 
     BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
-    BufferType<uint>                                 sa_triplet_info;
-    BufferType<MatrixTriplet3x3>                     sa_cgA_contact_offdiag_triplet;
-    BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices;
-    BufferType<uint2>                                sa_cgA_contact_offdiag_triplet_indices2;
-    BufferType<uint>                                 sa_cgA_contact_offdiag_triplet_property;
-    BufferType<uint>                                 sa_cgA_contact_offdiag_triplet_property2;
+
+    ContactTripletData<BufferType> triplet_data;
 
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
     // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
@@ -457,12 +465,12 @@ struct CollisionData : SimulationType
             + sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
             + sizeof(float) * this->toi_per_vert.size() + sizeof(float) * this->contact_energy.size()
             + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
-            + sizeof(uint) * this->sa_triplet_info.size()
-            + sizeof(MatrixTriplet3x3) * this->sa_cgA_contact_offdiag_triplet.size()
-            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices.size()
-            + sizeof(uint2) * this->sa_cgA_contact_offdiag_triplet_indices2.size()
-            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property.size()
-            + sizeof(uint) * this->sa_cgA_contact_offdiag_triplet_property2.size()
+            + sizeof(uint) * this->triplet_data.sa_triplet_info.size()
+            + sizeof(MatrixTriplet3x3) * this->triplet_data.sa_cgA_contact_offdiag_triplet.size()
+            + sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices.size()
+            + sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2.size()
+            + sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property.size()
+            + sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property2.size()
             + sizeof(uint) * this->per_vert_num_broad_phase_vf.size()
             + sizeof(uint) * this->per_vert_num_broad_phase_ee.size()
             + sizeof(uint) * this->per_vert_num_adj_pairs.size()
@@ -496,19 +504,20 @@ struct CollisionData : SimulationType
             const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
 
             lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
-            lcs::Initializer::resize_buffer(device, this->sa_triplet_info, max_pairs * 4);
+            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_triplet_info, max_pairs * 4);
 
-            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->sa_cgA_contact_offdiag_triplet_property2, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property, max_triplet);
+            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property2, max_triplet);
         }
 
         if (allocate_triplet)
         {
             const uint max_culled_triplet = per_element_count_NP_culled * (num_verts + num_edges);
-            lcs::Initializer::resize_buffer(
-                device, this->sa_cgA_contact_offdiag_triplet, max_scalar(max_culled_triplet, 256));
+            lcs::Initializer::resize_buffer(device,
+                                            this->triplet_data.sa_cgA_contact_offdiag_triplet,
+                                            max_scalar(max_culled_triplet, 256));
         }
 
         const size_t collision_pair_bytes = get_momery_bytes();
@@ -523,6 +532,29 @@ struct CollisionData : SimulationType
 
 }  // namespace lcs
 
+
+LUISA_BINDING_GROUP(lcs::CollisionData<luisa::compute::Buffer>,
+                    broad_phase_collision_count,
+                    narrow_phase_collision_count,
+                    broad_phase_list_vf,
+                    broad_phase_list_ee,
+                    toi_per_vert,
+                    contact_energy,
+                    narrow_phase_list,
+                    per_vert_num_broad_phase_vf,
+                    per_vert_num_broad_phase_ee,
+                    per_vert_num_adj_pairs,
+                    per_vert_num_adj_verts,
+                    per_vert_prefix_adj_pairs,
+                    per_vert_prefix_adj_verts){};
+
+LUISA_BINDING_GROUP(lcs::ContactTripletData<luisa::compute::Buffer>,
+                    sa_triplet_info,
+                    sa_cgA_contact_offdiag_triplet,
+                    sa_cgA_contact_offdiag_triplet_indices,
+                    sa_cgA_contact_offdiag_triplet_indices2,
+                    sa_cgA_contact_offdiag_triplet_property,
+                    sa_cgA_contact_offdiag_triplet_property2){};
 
 // Full matrix
 namespace lcs

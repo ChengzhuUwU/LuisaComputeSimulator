@@ -2888,7 +2888,9 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         const uint triplet_count =
             host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
         std::vector<MatrixTriplet3x3> hessian_blocks(triplet_count);
-        CpuParallel::parallel_copy(host_collision_data->sa_cgA_contact_offdiag_triplet, hessian_blocks, triplet_count);
+        CpuParallel::parallel_copy(host_collision_data->triplet_data.sa_cgA_contact_offdiag_triplet,
+                                   hessian_blocks,
+                                   triplet_count);
         Eigen::SparseMatrix<float> cgA_contact_offdiag(num_dof * 3, num_dof * 3);
         cgA_contact_offdiag.setZero();
         convert_triplets_to_sparse_matrix(cgA_contact_offdiag, hessian_blocks);
@@ -3326,8 +3328,6 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
     {
         narrow_phase_detector->vf_ccd_query(stream,
                                             sim_data->sa_x_iter_start,
-                                            sim_data->sa_x_iter_start,
-                                            sim_data->sa_x,
                                             sim_data->sa_x,
                                             mesh_data->sa_faces,
                                             sim_data->sa_vert_affine_bodies_id,
@@ -3340,10 +3340,7 @@ void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 
         narrow_phase_detector->ee_ccd_query(stream,
                                             sim_data->sa_x_iter_start,
-                                            sim_data->sa_x_iter_start,
                                             sim_data->sa_x,
-                                            sim_data->sa_x,
-                                            mesh_data->sa_edges,
                                             mesh_data->sa_edges,
                                             sim_data->sa_vert_affine_bodies_id,
                                             sim_data->sa_contact_active_verts_d_hat,
@@ -3360,13 +3357,10 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 
     narrow_phase_detector->vf_dcd_query_repulsion(stream,
                                                   sim_data->sa_x,
-                                                  sim_data->sa_x,
-                                                  mesh_data->sa_rest_x,
                                                   mesh_data->sa_rest_x,
                                                   mesh_data->sa_rest_vert_area,
                                                   mesh_data->sa_rest_face_area,
                                                   mesh_data->sa_faces,
-                                                  sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_contact_active_verts_d_hat,
                                                   sim_data->sa_contact_active_verts_offset,
@@ -3374,14 +3368,9 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 
     narrow_phase_detector->ee_dcd_query_repulsion(stream,
                                                   sim_data->sa_x,
-                                                  sim_data->sa_x,
-                                                  mesh_data->sa_rest_x,
                                                   mesh_data->sa_rest_x,
                                                   mesh_data->sa_rest_edge_area,
-                                                  mesh_data->sa_rest_edge_area,
                                                   mesh_data->sa_edges,
-                                                  mesh_data->sa_edges,
-                                                  sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_vert_affine_bodies_id,
                                                   sim_data->sa_contact_active_verts_d_hat,
                                                   sim_data->sa_contact_active_verts_offset,
@@ -3493,7 +3482,7 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
 
     // const uint num_pairs             = host_count.front();
     // const uint aligned_diaptch_count = get_dispatch_threads(num_pairs * 12, 256);
-    // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+    // stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->triplet_data.sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
     //               .dispatch(aligned_diaptch_count);
 
     const auto& host_count      = host_collision_data->narrow_phase_collision_count;
@@ -3501,7 +3490,7 @@ void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
     if (reduced_triplet != 0)
     {
         const uint aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
-        stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+        stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->triplet_data.sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
                       .dispatch(aligned_diaptch_count);
     }
 
@@ -3616,7 +3605,7 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
 
         const auto& host_count     = host_collision_data->narrow_phase_collision_count;
         const uint reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
-        fn_SpMV_reduce_by_key(host_collision_data->sa_cgA_contact_offdiag_triplet,
+        fn_SpMV_reduce_by_key(host_collision_data->triplet_data.sa_cgA_contact_offdiag_triplet,
                               get_dispatch_block(reduced_triplet, 256),
                               reduced_triplet);
     }
@@ -3652,7 +3641,7 @@ void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream)
         const uint reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
         for (uint i = 0; i < reduced_triplet; i++)
         {
-            new_triplet.push_back(host_collision_data->sa_cgA_contact_offdiag_triplet[i]);
+            new_triplet.push_back(host_collision_data->triplet_data.sa_cgA_contact_offdiag_triplet[i]);
         }
     }
     convert_triplets_to_sparse_matrix(cgA, new_triplet);
