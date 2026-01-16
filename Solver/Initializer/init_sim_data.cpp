@@ -16,7 +16,7 @@
 namespace lcs::Initializer
 {
 
-template <uint N>
+template <size_t N>
 std::array<luisa::ushort, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
     const std::vector<std::vector<uint>>& vert_adj_verts, const luisa::Vector<uint, N>& element)
 {
@@ -185,6 +185,70 @@ static void compute_trimesh_dyadic_mass(const std::vector<float3>& pos_view,
     // m_x_bar_x_bar = luisa::transpose(m_x_bar_x_bar);
 }
 
+static void insert_adj_vert(std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
+{
+    if (vid1 == vid2)
+        std::cerr << "Try to build connection with self vertex";
+    auto& inner_list  = adj_map[vid1];
+    auto  find_result = std::find(inner_list.begin(), inner_list.end(), vid2);
+    if (find_result == inner_list.end())
+    {
+        inner_list.push_back(vid2);
+    }
+};
+
+
+template <typename Derived>
+static void traverse_constitution_elements(std::vector<std::vector<uint>>& adj_map,
+                                           Constitutions::ConstitutionInterface<std::vector, Derived>& constitution_template)
+{
+    constexpr size_t N                        = Derived::vertices_per_constraint();
+    const uint       num_dof                  = adj_map.size();
+    const auto&      sa_constitution_elements = constitution_template.get_indices();
+    constitution_template.vert_adj_constraints.resize(num_dof);
+    for (uint eid = 0; eid < sa_constitution_elements.size(); eid++)
+    {
+        auto element = sa_constitution_elements[eid];
+        for (uint j = 0; j < N; j++)
+        {
+            constitution_template.vert_adj_constraints[element[j]].push_back(eid);
+        }
+        for (uint ii = 0; ii < N; ii++)
+        {
+            for (uint jj = 0; jj < N; jj++)
+            {
+                if (ii != jj)
+                {
+                    insert_adj_vert(adj_map, element[ii], element[jj]);
+                }
+            }
+        }
+    }
+    upload_2d_csr_from(constitution_template.vert_adj_constraints_csr, constitution_template.vert_adj_constraints);
+};
+
+template <typename Derived>
+static void init_constitution_offsets_in_adjlist(const std::vector<std::vector<uint>>& adj_map,
+                                                 Constitutions::ConstitutionInterface<std::vector, Derived>& constitution_template)
+{
+    constexpr size_t N           = Derived::vertices_per_constraint();
+    constexpr size_t num_offdiag = N * (N - 1);
+
+    const auto& sa_constitution_elements           = constitution_template.get_indices();
+    auto&       sa_constitution_offsets_in_adjlist = constitution_template.constraint_offsets_in_adjlist;
+
+    sa_constitution_offsets_in_adjlist.resize(sa_constitution_elements.size() * num_offdiag);
+    CpuParallel::parallel_for(0,
+                              sa_constitution_elements.size(),
+                              [&](const uint eid)
+                              {
+                                  auto element = sa_constitution_elements[eid];
+                                  auto mask = get_offsets_in_adjlist_from_adjacent_list<N>(adj_map, element);  // size = N*(N-1)
+                                  std::memcpy(sa_constitution_offsets_in_adjlist.data() + eid * num_offdiag,
+                                              mask.data(),
+                                              sizeof(ushort) * num_offdiag);
+                              });
+}
 
 void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                    lcs::MeshData<std::vector>*               mesh_data,
@@ -336,22 +400,25 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
     // Init energy
     {
         sim_data->sa_system_energy.resize(10240);
+
         // Rest spring length
-        sim_data->sa_stretch_springs.resize(num_stretch_springs);
-        sim_data->sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
-        sim_data->sa_stretch_spring_stiffness.resize(num_stretch_springs);
-        sim_data->sa_stretch_springs_gradients.resize(num_stretch_springs * 2);
-        sim_data->sa_stretch_springs_hessians.resize(num_stretch_springs * 4);
+        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
+        stretch_spring_data.sa_stretch_springs.resize(num_stretch_springs);
+        stretch_spring_data.sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
+        stretch_spring_data.sa_stretch_spring_stiffness.resize(num_stretch_springs);
+        stretch_spring_data.constraint_gradients.resize(num_stretch_springs * 2);
+        stretch_spring_data.constraint_hessians.resize(num_stretch_springs * 4);
+
         CpuParallel::parallel_for(0,
                                   num_stretch_springs,
                                   [&](const uint eid)
                                   {
-                                      const uint orig_eid               = stretch_spring_indices[eid];
-                                      uint2      edge                   = mesh_data->sa_edges[orig_eid];
-                                      float3     x1                     = mesh_data->sa_rest_x[edge[0]];
-                                      float3     x2                     = mesh_data->sa_rest_x[edge[1]];
-                                      sim_data->sa_stretch_springs[eid] = edge;
-                                      sim_data->sa_stretch_spring_rest_state_length[eid] =
+                                      const uint orig_eid = stretch_spring_indices[eid];
+                                      uint2      edge     = mesh_data->sa_edges[orig_eid];
+                                      float3     x1       = mesh_data->sa_rest_x[edge[0]];
+                                      float3     x2       = mesh_data->sa_rest_x[edge[1]];
+                                      stretch_spring_data.sa_stretch_springs[eid] = edge;
+                                      stretch_spring_data.sa_stretch_spring_rest_state_length[eid] =
                                           lcs::length_vec(x1 - x2);
 
                                       const auto& mesh_info = world_data[mesh_data->sa_edge_mesh_id[orig_eid]];
@@ -361,16 +428,17 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                       const float nu    = material.poisson_ratio;
                                       auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
                                       mu                = mu * material.thickness;  // scale by thickness
-                                      sim_data->sa_stretch_spring_stiffness[eid] = mu;
+                                      stretch_spring_data.sa_stretch_spring_stiffness[eid] = mu;
                                   });
 
         // Rest stretch face length
-        sim_data->sa_stretch_faces.resize(num_stretch_faces);
-        sim_data->sa_stretch_faces_mu_lambda.resize(num_stretch_faces);
-        sim_data->sa_stretch_faces_rest_area.resize(num_stretch_faces);
-        sim_data->sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
-        sim_data->sa_stretch_faces_gradients.resize(num_stretch_faces * 3);
-        sim_data->sa_stretch_faces_hessians.resize(num_stretch_faces * 9);
+        auto& stretch_face_data = sim_data->get_stretch_face_data();
+        stretch_face_data.sa_stretch_faces.resize(num_stretch_faces);
+        stretch_face_data.sa_stretch_faces_mu_lambda.resize(num_stretch_faces);
+        stretch_face_data.sa_stretch_faces_rest_area.resize(num_stretch_faces);
+        stretch_face_data.sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
+        stretch_face_data.constraint_gradients.resize(num_stretch_faces * 3);
+        stretch_face_data.constraint_hessians.resize(num_stretch_faces * 9);
         CpuParallel::parallel_for(0,
                                   num_stretch_faces,
                                   [&](const uint fid)
@@ -396,10 +464,11 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                       auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
                                       mu                = material.thickness * mu;  // scale by thickness
                                       lambda            = material.thickness * lambda;
-                                      sim_data->sa_stretch_faces_mu_lambda[fid] = luisa::make_float2(mu, lambda);
-                                      sim_data->sa_stretch_faces[fid]           = face;
-                                      sim_data->sa_stretch_faces_rest_area[fid] = area;
-                                      sim_data->sa_stretch_faces_Dm_inv[fid]    = inv_duv;
+                                      stretch_face_data.sa_stretch_faces_mu_lambda[fid] =
+                                          luisa::make_float2(mu, lambda);
+                                      stretch_face_data.sa_stretch_faces[fid]           = face;
+                                      stretch_face_data.sa_stretch_faces_rest_area[fid] = area;
+                                      stretch_face_data.sa_stretch_faces_Dm_inv[fid]    = inv_duv;
                                   });
 
         // Rest bending info
@@ -760,13 +829,13 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
     {
         // num_variables_in_system
         sim_data->vert_adj_material_force_verts.resize(num_dof);
-        sim_data->vert_adj_stretch_springs.resize(num_dof);
-        sim_data->vert_adj_stretch_faces.resize(num_dof);
+
         sim_data->vert_adj_bending_edges.resize(num_dof);
         sim_data->vert_adj_stress_tets.resize(num_dof);
         sim_data->vert_adj_affine_bodies.resize(num_dof);
 
-        auto insert_adj_vert = [](std::vector<std::vector<uint>>& adj_map, const uint& vid1, const uint& vid2)
+        auto& adj_map         = sim_data->vert_adj_material_force_verts;
+        auto  insert_adj_vert = [&adj_map](const uint& vid1, const uint& vid2)
         {
             if (vid1 == vid2)
                 std::cerr << "Try to build connection with self vertex";
@@ -778,50 +847,13 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             }
         };
 
-        // Vert adj stretch faces
-        for (uint fid = 0; fid < sim_data->sa_stretch_faces.size(); fid++)
-        {
-            auto face = sim_data->sa_stretch_faces[fid];
-
-            for (uint j = 0; j < 3; j++)
-            {
-                sim_data->vert_adj_stretch_faces[face[j]].push_back(fid);
-            }
-
-            for (uint ii = 0; ii < 3; ii++)
-            {
-                for (uint jj = 0; jj < 3; jj++)
-                {
-                    if (ii != jj)
-                    {
-                        insert_adj_vert(sim_data->vert_adj_material_force_verts, face[ii], face[jj]);
-                    }
-                }
-            }
-        }
-        upload_2d_csr_from(sim_data->sa_vert_adj_stretch_faces_csr, sim_data->vert_adj_stretch_faces);
-
         // Vert adj stretch springs
-        for (uint eid = 0; eid < sim_data->sa_stretch_springs.size(); eid++)
-        {
-            auto edge = sim_data->sa_stretch_springs[eid];
-            for (uint j = 0; j < 2; j++)
-            {
-                sim_data->vert_adj_stretch_springs[edge[j]].push_back(eid);
-            }
+        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
+        traverse_constitution_elements(adj_map, stretch_spring_data);
 
-            for (uint ii = 0; ii < 2; ii++)
-            {
-                for (uint jj = 0; jj < 2; jj++)
-                {
-                    if (ii != jj)
-                    {
-                        insert_adj_vert(sim_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
-                    }
-                }
-            }
-        }
-        upload_2d_csr_from(sim_data->sa_vert_adj_stretch_springs_csr, sim_data->vert_adj_stretch_springs);
+        // Vert adj stretch faces
+        auto& stretch_face_data = sim_data->get_stretch_face_data();
+        traverse_constitution_elements(adj_map, stretch_face_data);
 
         // Vert adj bending edges
         for (uint eid = 0; eid < sim_data->sa_bending_edges.size(); eid++)
@@ -838,7 +870,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(sim_data->vert_adj_material_force_verts, edge[ii], edge[jj]);
+                        insert_adj_vert(edge[ii], edge[jj]);
                     }
                 }
             }
@@ -859,7 +891,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(sim_data->vert_adj_material_force_verts, tet[ii], tet[jj]);
+                        insert_adj_vert(tet[ii], tet[jj]);
                     }
                 }
             }
@@ -881,7 +913,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 {
                     if (ii != jj)
                     {
-                        insert_adj_vert(sim_data->vert_adj_material_force_verts, body[ii], body[jj]);
+                        insert_adj_vert(body[ii], body[jj]);
                     }
                 }
             }
@@ -1078,39 +1110,15 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
     // Find material-force-offset
     {
-        const std::vector<std::vector<uint>>& reference_adj_list = sim_data->vert_adj_material_force_verts;
+        const std::vector<std::vector<uint>>& adj_list = sim_data->vert_adj_material_force_verts;
 
         // Spring energy
-        sim_data->sa_stretch_springs_offsets_in_adjlist.resize(sim_data->sa_stretch_springs.size() * 2);
-        CpuParallel::parallel_for(0,
-                                  sim_data->sa_stretch_springs.size(),
-                                  [&](const uint eid)
-                                  {
-                                      auto edge = sim_data->sa_stretch_springs[eid];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<2>(reference_adj_list,
-                                                                                               edge);  // size = 2
-                                      std::memcpy(sim_data->sa_stretch_springs_offsets_in_adjlist.data() + eid * 2,
-                                                  mask.data(),
-                                                  sizeof(ushort) * 2);
-                                  });
-        for (uint i = 0; i < sim_data->sa_stretch_springs_offsets_in_adjlist.size(); i++)
-        {
-            auto adj_offset = sim_data->sa_stretch_springs_offsets_in_adjlist[i];
-        }
+        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
+        init_constitution_offsets_in_adjlist(adj_list, stretch_spring_data);
 
         // Stretch face energy
-        sim_data->sa_stretch_faces_offsets_in_adjlist.resize(sim_data->sa_stretch_faces.size() * 6);
-        CpuParallel::parallel_for(0,
-                                  sim_data->sa_stretch_faces.size(),
-                                  [&](const uint fid)
-                                  {
-                                      auto face = sim_data->sa_stretch_faces[fid];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<3>(reference_adj_list,
-                                                                                               face);  // size = 6
-                                      std::memcpy(sim_data->sa_stretch_faces_offsets_in_adjlist.data() + fid * 6,
-                                                  mask.data(),
-                                                  sizeof(ushort) * 6);
-                                  });
+        auto& stretch_face_data = sim_data->get_stretch_face_data();
+        init_constitution_offsets_in_adjlist(adj_list, stretch_face_data);
 
         // Bending angle energy
         sim_data->sa_bending_edges_offsets_in_adjlist.resize(sim_data->sa_bending_edges.size() * 12);
@@ -1119,8 +1127,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   [&](const uint eid)
                                   {
                                       auto edge = sim_data->sa_bending_edges[eid];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
-                                                                                               edge);  // size = 12
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list(adj_list, edge);  // size = 12
                                       std::memcpy(sim_data->sa_bending_edges_offsets_in_adjlist.data() + eid * 12,
                                                   mask.data(),
                                                   sizeof(ushort) * 12);
@@ -1133,8 +1140,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   [&](const uint tid)
                                   {
                                       auto tet = sim_data->sa_stress_tets[tid];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
-                                                                                               tet);  // size = 12
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list(adj_list, tet);  // size = 12
                                       std::memcpy(sim_data->sa_stress_tets_offsets_in_adjlist.data() + tid * 12,
                                                   mask.data(),
                                                   sizeof(ushort) * 12);
@@ -1147,8 +1153,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   [&](const uint body_idx)
                                   {
                                       auto body = sim_data->sa_affine_bodies[body_idx];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list<4>(reference_adj_list,
-                                                                                               body);  // size = 12
+                                      auto mask = get_offsets_in_adjlist_from_adjacent_list(adj_list, body);  // size = 12
                                       std::memcpy(sim_data->sa_affine_bodies_offsets_in_adjlist.data() + body_idx * 12,
                                                   mask.data(),
                                                   sizeof(ushort) * 12);
@@ -1160,10 +1165,11 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
     std::vector<std::vector<uint>> tmp_clusterd_constraint_bending;
     auto*                          colored_data = &sim_data->colored_data;
     {
+        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
         fn_graph_coloring_per_constraint("Distance  Spring Constraint",
                                          tmp_clusterd_constraint_stretch_mass_spring,
-                                         sim_data->vert_adj_stretch_springs,
-                                         sim_data->sa_stretch_springs,
+                                         stretch_spring_data.vert_adj_constraints,
+                                         stretch_spring_data.sa_stretch_springs,
                                          2);
 
         fn_graph_coloring_per_constraint("Bending   Angle  Constraint",
@@ -1220,6 +1226,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
     {
         // Spring Constraint
         {
+            auto& stretch_spring_data = sim_data->get_stretch_spring_data();
+
             colored_data->sa_merged_stretch_springs.resize(num_stretch_springs);
             colored_data->sa_merged_stretch_spring_rest_length.resize(num_stretch_springs);
             colored_data->sa_lambda_stretch_mass_spring.resize(num_stretch_springs);
@@ -1235,14 +1243,14 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                               const uint eid = curr_cluster[i];
                                               {
                                                   colored_data->sa_merged_stretch_springs[prefix + i] =
-                                                      sim_data->sa_stretch_springs[eid];
+                                                      stretch_spring_data.sa_stretch_springs[eid];
                                                   colored_data->sa_merged_stretch_spring_rest_length[prefix + i] =
-                                                      sim_data->sa_stretch_spring_rest_state_length[eid];
+                                                      stretch_spring_data.sa_stretch_spring_rest_state_length[eid];
                                               }
                                           });
                 prefix += curr_cluster.size();
             }
-            if (prefix != sim_data->sa_stretch_springs.size())
+            if (prefix != stretch_spring_data.sa_stretch_springs.size())
                 LUISA_ERROR("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
         }
 
@@ -1304,15 +1312,20 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
 
     stream << upload_buffer(device, output_data->sa_target_positions, input_data->sa_target_positions);
 
-    if (input_data->sa_stretch_springs.size() > 0)
+    auto& stretch_spring_I = input_data->get_stretch_spring_data();
+    auto& stretch_spring_O = output_data->get_stretch_spring_data();
+    if (stretch_spring_I.get_indices().size() > 0)
     {
         stream
-            << upload_buffer(device, output_data->sa_stretch_springs, input_data->sa_stretch_springs)
-            << upload_buffer(device, output_data->sa_stretch_spring_rest_state_length, input_data->sa_stretch_spring_rest_state_length)
-            << upload_buffer(device, output_data->sa_stretch_spring_stiffness, input_data->sa_stretch_spring_stiffness)
-            << upload_buffer(device, output_data->sa_stretch_springs_offsets_in_adjlist, input_data->sa_stretch_springs_offsets_in_adjlist)
-            << upload_buffer(device, output_data->sa_stretch_springs_gradients, input_data->sa_stretch_springs_gradients)
-            << upload_buffer(device, output_data->sa_stretch_springs_hessians, input_data->sa_stretch_springs_hessians)
+            << upload_buffer(device, stretch_spring_O.sa_stretch_springs, stretch_spring_I.sa_stretch_springs)
+            << upload_buffer(device,
+                             stretch_spring_O.sa_stretch_spring_rest_state_length,
+                             stretch_spring_I.sa_stretch_spring_rest_state_length)
+            << upload_buffer(device, stretch_spring_O.sa_stretch_spring_stiffness, stretch_spring_I.sa_stretch_spring_stiffness)
+            << upload_buffer(device, stretch_spring_O.constraint_offsets_in_adjlist, stretch_spring_I.constraint_offsets_in_adjlist)
+            << upload_buffer(device, stretch_spring_O.constraint_gradients, stretch_spring_I.constraint_gradients)
+            << upload_buffer(device, stretch_spring_O.constraint_hessians, stretch_spring_I.constraint_hessians)
+            << upload_buffer(device, stretch_spring_O.vert_adj_constraints_csr, stretch_spring_I.vert_adj_constraints_csr)
 
             << upload_buffer(device,
                              output_data->colored_data.sa_merged_stretch_springs,
@@ -1331,16 +1344,20 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                              output_data->colored_data.sa_lambda_stretch_mass_spring,
                              input_data->colored_data.sa_lambda_stretch_mass_spring);  // just resize
     }
-    if (input_data->sa_stretch_faces.size() > 0)
+
+    auto& stretch_face_I = input_data->get_stretch_face_data();
+    auto& stretch_face_O = output_data->get_stretch_face_data();
+    if (stretch_face_I.get_indices().size() > 0)
     {
         stream
-            << upload_buffer(device, output_data->sa_stretch_faces, input_data->sa_stretch_faces)
-            << upload_buffer(device, output_data->sa_stretch_faces_mu_lambda, input_data->sa_stretch_faces_mu_lambda)
-            << upload_buffer(device, output_data->sa_stretch_faces_rest_area, input_data->sa_stretch_faces_rest_area)
-            << upload_buffer(device, output_data->sa_stretch_faces_Dm_inv, input_data->sa_stretch_faces_Dm_inv)
-            << upload_buffer(device, output_data->sa_stretch_faces_offsets_in_adjlist, input_data->sa_stretch_faces_offsets_in_adjlist)
-            << upload_buffer(device, output_data->sa_stretch_faces_gradients, input_data->sa_stretch_faces_gradients)
-            << upload_buffer(device, output_data->sa_stretch_faces_hessians, input_data->sa_stretch_faces_hessians);
+            << upload_buffer(device, stretch_face_O.sa_stretch_faces, stretch_face_I.sa_stretch_faces)
+            << upload_buffer(device, stretch_face_O.sa_stretch_faces_mu_lambda, stretch_face_I.sa_stretch_faces_mu_lambda)
+            << upload_buffer(device, stretch_face_O.sa_stretch_faces_rest_area, stretch_face_I.sa_stretch_faces_rest_area)
+            << upload_buffer(device, stretch_face_O.sa_stretch_faces_Dm_inv, stretch_face_I.sa_stretch_faces_Dm_inv)
+            << upload_buffer(device, stretch_face_O.constraint_offsets_in_adjlist, stretch_face_I.constraint_offsets_in_adjlist)
+            << upload_buffer(device, stretch_face_O.constraint_gradients, stretch_face_I.constraint_gradients)
+            << upload_buffer(device, stretch_face_O.constraint_hessians, stretch_face_I.constraint_hessians)
+            << upload_buffer(device, stretch_face_O.vert_adj_constraints_csr, stretch_face_I.vert_adj_constraints_csr);
     }
     if (input_data->sa_bending_edges.size() > 0)
     {
@@ -1414,8 +1431,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
         << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet, input_data->sa_cgA_fixtopo_offdiag_triplet)
         << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet_info, input_data->sa_cgA_fixtopo_offdiag_triplet_info)
         << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
-        << upload_buffer(device, output_data->sa_vert_adj_stretch_springs_csr, input_data->sa_vert_adj_stretch_springs_csr)
-        << upload_buffer(device, output_data->sa_vert_adj_stretch_faces_csr, input_data->sa_vert_adj_stretch_faces_csr)
+
         << upload_buffer(device, output_data->sa_vert_adj_bending_edges_csr, input_data->sa_vert_adj_bending_edges_csr)
         << upload_buffer(device, output_data->sa_vert_adj_affine_bodies_csr, input_data->sa_vert_adj_affine_bodies_csr)
 
@@ -1439,13 +1455,7 @@ void resize_pcg_data(luisa::compute::Device&                      device,
                      lcs::SimulationData<std::vector>*            host_data,
                      lcs::SimulationData<luisa::compute::Buffer>* device_data)
 {
-    const uint num_springs       = host_data->sa_stretch_springs.size();
-    const uint num_bending_edges = host_data->sa_bending_edges.size();
-    const uint num_faces         = host_data->sa_stretch_faces.size();
-    const uint num_affine_bodies = host_data->num_affine_bodies;
-    const uint num_verts         = host_data->num_dof;
-
-    // const uint off_diag_count = std::max(uint(device_data->sa_hessian_pairs.size()), num_springs * 2);
+    const uint num_verts = host_data->num_dof;
 
     resize_buffer(host_data->sa_cgX, num_verts);
     resize_buffer(host_data->sa_cgB, num_verts);

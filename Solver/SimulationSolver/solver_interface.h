@@ -162,12 +162,14 @@ class SolverInterface
     //     float // stiffness_dirichlet
     //     > fn_calc_energy_dirichlet;
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,  // sa_x
-                           float                                // stiffness_spring
+                           Constitutions::StretchSpringConstitution<luisa::compute::Buffer>,  // stretch_spring_constitution
+                           luisa::compute::BufferView<float3>,                                // sa_x
+                           float  // stiffness_spring
                            >
         fn_calc_energy_spring;
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>  // sa_x
+                           Constitutions::StretchFaceConstitution<luisa::compute::Buffer>,  // stretch_face_constitution
+                           luisa::compute::BufferView<float3>                               // sa_x
                            >
         fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,

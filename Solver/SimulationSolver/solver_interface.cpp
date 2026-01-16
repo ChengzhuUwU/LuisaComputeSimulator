@@ -635,71 +635,78 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         },
         default_option);
 
-    if (host_sim_data->sa_stretch_springs.size() > 0)
-        compiler.compile<1>(
-            fn_calc_energy_spring,
-            [sa_edges                    = sim_data->sa_stretch_springs.view(),
-             sa_edge_rest_state_length   = sim_data->sa_stretch_spring_rest_state_length.view(),
-             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float stiffness_spring)
+    // if (host_sim_data->sa_stretch_springs.size() > 0)
+    compiler.compile<1>(
+        fn_calc_energy_spring,
+        [sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::StretchSpringConstitution<Buffer>> sa_stretch_springs, Var<BufferView<float3>> sa_x, Float stiffness_spring)
+        {
+            auto& sa_edges                    = sa_stretch_springs->sa_stretch_springs;
+            auto& sa_edge_rest_state_length   = sa_stretch_springs->sa_stretch_spring_rest_state_length;
+            auto& sa_stretch_spring_stiffness = sa_stretch_springs->sa_stretch_spring_stiffness;
+
+            const Uint eid    = dispatch_id().x;
+            Float      energy = 0.0f;
             {
-                const Uint eid    = dispatch_id().x;
-                Float      energy = 0.0f;
-                {
-                    const Uint2 edge             = sa_edges->read(eid);
-                    const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
-                    Float3      diff             = sa_x->read(edge[1]) - sa_x->read(edge[0]);
-                    Float       orig_lengthsqr   = length_squared_vec(diff);
-                    Float       l                = sqrt_scalar(orig_lengthsqr);
-                    Float       l0               = rest_edge_length;
-                    Float       C                = l - l0;
-                    // if (C > 0.0f)
-                    energy = 0.5f * sa_stretch_spring_stiffness->read(eid) * C * C;
-                };
-                energy = ParallelIntrinsic::block_intrinsic_reduce(
-                    eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-                $if(eid % 256 == 0)
-                {
-                    // sa_system_energy->write(eid / 256, energy);
-                    sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);
-                };
-            },
-            default_option);
-
-    if (host_sim_data->sa_stretch_faces.size() > 0)
-        compiler.compile<1>(
-            fn_calc_energy_stretch_face,
-            [sa_faces                   = sim_data->sa_stretch_faces.view(),
-             sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
-             sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
-             sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x)
+                const Uint2 edge             = sa_edges->read(eid);
+                const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
+                Float3      diff             = sa_x->read(edge[1]) - sa_x->read(edge[0]);
+                Float       orig_lengthsqr   = length_squared_vec(diff);
+                Float       l                = sqrt_scalar(orig_lengthsqr);
+                Float       l0               = rest_edge_length;
+                Float       C                = l - l0;
+                // if (C > 0.0f)
+                energy = 0.5f * sa_stretch_spring_stiffness->read(eid) * C * C;
+            };
+            energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(eid % 256 == 0)
             {
-                const Uint fid    = dispatch_id().x;
-                Float      energy = 0.0f;
-                {
-                    const Uint3 face   = sa_faces->read(fid);
-                    Float3 vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
+                // sa_system_energy->write(eid / 256, energy);
+                sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);
+            };
+        },
+        default_option);
 
-                    Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
-                    Float    area   = sa_stretch_faces_rest_area->read(fid);
+    // if (host_sim_data->sa_stretch_faces.size() > 0)
+    compiler.compile<1>(
+        fn_calc_energy_stretch_face,
+        [
+            // [sa_faces                   = sim_data->sa_stretch_faces.view(),
+            //  sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
+            //  sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
+            //  sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view(),
+            sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::StretchFaceConstitution<Buffer>> sa_stretch_faces, Var<BufferView<float3>> sa_x)
+        {
+            auto& sa_faces                   = sa_stretch_faces->sa_stretch_faces;
+            auto& sa_stretch_faces_rest_area = sa_stretch_faces->sa_stretch_faces_rest_area;
+            auto& sa_stretch_faces_Dm_inv    = sa_stretch_faces->sa_stretch_faces_Dm_inv;
+            auto& sa_stretch_faces_mu_lambda = sa_stretch_faces->sa_stretch_faces_mu_lambda;
 
-                    Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
-                    Float  mu_cloth     = mu_lambda[0];
-                    Float  lambda_cloth = mu_lambda[1];
+            const Uint fid    = dispatch_id().x;
+            Float      energy = 0.0f;
+            {
+                const Uint3 face   = sa_faces->read(fid);
+                Float3 vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
 
-                    energy = StretchEnergy::compute_energy(
-                        vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area);
-                };
-                energy = ParallelIntrinsic::block_intrinsic_reduce(
-                    fid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+                Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
+                Float    area   = sa_stretch_faces_rest_area->read(fid);
 
-                $if(fid % 256 == 0)
-                {
-                    sa_system_energy->atomic(offset_stretch_face).fetch_add(energy);
-                };
-            },
-            default_option);
+                Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
+                Float  mu_cloth     = mu_lambda[0];
+                Float  lambda_cloth = mu_lambda[1];
+
+                energy = StretchEnergy::compute_energy(
+                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area);
+            };
+            energy = ParallelIntrinsic::block_intrinsic_reduce(fid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+
+            $if(fid % 256 == 0)
+            {
+                sa_system_energy->atomic(offset_stretch_face).fetch_add(energy);
+            };
+        },
+        default_option);
 
     if (host_sim_data->sa_bending_edges.size() > 0)
         compiler.compile<1>(
@@ -866,14 +873,18 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                       .dispatch(mesh_data->num_verts);
     }
 
-    if (host_sim_data->sa_stretch_springs.size() != 0)
+    const auto& stretch_spring_constitution = sim_data->stretch_spring_constitution;
+    if (host_sim_data->stretch_spring_constitution.is_valid())
     {
-        stream << fn_calc_energy_spring(curr_x, get_scene_params().stiffness_spring)
-                      .dispatch(host_sim_data->sa_stretch_springs.size());
+        stream << fn_calc_energy_spring(stretch_spring_constitution, curr_x, get_scene_params().stiffness_spring)
+                      .dispatch(stretch_spring_constitution.get_num_indices());
     }
-    if (host_sim_data->sa_stretch_faces.size() != 0)
+
+    const auto& stretch_face_constitution = sim_data->stretch_face_constitution;
+    if (host_sim_data->stretch_face_constitution.is_valid())
     {
-        stream << fn_calc_energy_stretch_face(curr_x).dispatch(host_sim_data->sa_stretch_faces.size());
+        stream << fn_calc_energy_stretch_face(stretch_face_constitution, curr_x)
+                      .dispatch(stretch_face_constitution.get_num_indices());
     }
     if (host_sim_data->sa_bending_edges.size() != 0)
     {

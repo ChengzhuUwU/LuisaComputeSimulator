@@ -711,14 +711,14 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
         [sa_vert_adj_material_force_verts_csr = sim_data->sa_vert_adj_material_force_verts_csr.view(),
          sa_cgB                               = sim_data->sa_cgB.view(),
          sa_cgA_diag                          = sim_data->sa_cgA_diag.view(),
-         sa_cgA_offdiag_triplet               = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](
-            const uint                  N,
-            const Uint                  vid,
-            const BufferView<uint>&     vert_adj_constraints_csr,
-            const auto&                 constaints,
-            const BufferView<float3>&   constaint_gradients,
-            const BufferView<float3x3>& constaint_hessians,
-            const BufferView<ushort>&   constaint_offsets_in_adjlist)
+         sa_cgA_offdiag_triplet =
+             sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](const uint  N,
+                                                              const Uint  vid,
+                                                              const auto& vert_adj_constraints_csr,
+                                                              const auto& constaints,
+                                                              const auto& constaint_gradients,
+                                                              const auto& constaint_hessians,
+                                                              const auto& constaint_offsets_in_adjlist)
     {
         const Uint curr_prefix = sa_vert_adj_material_force_verts_csr->read(vid);
         const Uint next_prefix = sa_vert_adj_material_force_verts_csr->read(vid + 1);
@@ -759,33 +759,36 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
         };
     };
 
-    // Assembly
-    if (host_sim_data->sa_stretch_springs.size() != 0)
-        compiler.compile(
-            fn_material_energy_assembly_stretch_spring,
-            [vert_adj_constraints_csr     = sim_data->sa_vert_adj_stretch_springs_csr.view(),
-             constaints                   = sim_data->sa_stretch_springs.view(),
-             constaint_gradients          = sim_data->sa_stretch_springs_gradients.view(),
-             constaint_hessians           = sim_data->sa_stretch_springs_hessians.view(),
-             constaint_offsets_in_adjlist = sim_data->sa_stretch_springs_offsets_in_adjlist.view(),
-             assembly_template]()
-            {
-                const Uint vid = dispatch_x();
-                assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-            });
+    using ConstitutionSpring = Constitutions::StretchSpringConstitution<luisa::compute::Buffer>;
+    using ConstitutionFace   = Constitutions::StretchFaceConstitution<luisa::compute::Buffer>;
 
-    if (host_sim_data->sa_stretch_faces.size() != 0)
-        compiler.compile(fn_material_energy_assembly_stretch_face,
-                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_stretch_faces_csr.view(),
-                          constaints               = sim_data->sa_stretch_faces.view(),
-                          constaint_gradients      = sim_data->sa_stretch_faces_gradients.view(),
-                          constaint_hessians       = sim_data->sa_stretch_faces_hessians.view(),
-                          constaint_offsets_in_adjlist = sim_data->sa_stretch_faces_offsets_in_adjlist.view(),
-                          assembly_template]()
-                         {
-                             const Uint vid = dispatch_x();
-                             assembly_template(3, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                         });
+    // Assembly
+    // if (host_sim_data->sa_stretch_springs.size() != 0)
+    compiler.compile(fn_material_energy_assembly_stretch_spring,
+                     [assembly_template](Var<ConstitutionSpring> stretch_springs)
+                     {
+                         const Uint vid = dispatch_x();
+                         assembly_template(2,
+                                           vid,
+                                           stretch_springs.vert_adj_constraints_csr,
+                                           stretch_springs.sa_stretch_springs,
+                                           stretch_springs.constraint_gradients,
+                                           stretch_springs.constraint_hessians,
+                                           stretch_springs.constraint_offsets_in_adjlist);
+                     });
+
+    compiler.compile(fn_material_energy_assembly_stretch_face,
+                     [assembly_template](Var<ConstitutionFace> stretch_faces)
+                     {
+                         const Uint vid = dispatch_x();
+                         assembly_template(3,
+                                           vid,
+                                           stretch_faces.vert_adj_constraints_csr,
+                                           stretch_faces.sa_stretch_faces,
+                                           stretch_faces.constraint_gradients,
+                                           stretch_faces.constraint_hessians,
+                                           stretch_faces.constraint_offsets_in_adjlist);
+                     });
 
     if (host_sim_data->sa_bending_edges.size() != 0)
         compiler.compile(fn_material_energy_assembly_bending,
@@ -1019,105 +1022,106 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
         },
         default_option);
 
-    if (host_sim_data->sa_stretch_springs.size() != 0)
-        compiler.compile<1>(
-            fn_evaluate_spring,
-            [sa_x = sim_data->sa_x.view(),
-             // sa_cgB = sim_data->sa_cgB.view(),
-             // sa_cgA_diag = sim_data->sa_cgA_diag.view(),
-             output_gradient_ptr         = sim_data->sa_stretch_springs_gradients.view(),
-             output_hessian_ptr          = sim_data->sa_stretch_springs_hessians.view(),
-             sa_edges                    = sim_data->sa_stretch_springs.view(),
-             sa_rest_length              = sim_data->sa_stretch_spring_rest_state_length.view(),
-             sa_stretch_spring_stiffness = sim_data->sa_stretch_spring_stiffness.view()]()
+    // if (host_sim_data->sa_stretch_springs.size() != 0)
+    compiler.compile<1>(
+        fn_evaluate_spring,
+        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchSpringConstitution<luisa::compute::Buffer>> stretch_springs)
+        {
+            auto& sa_edges                    = stretch_springs.sa_stretch_springs;
+            auto& sa_rest_length              = stretch_springs.sa_stretch_spring_rest_state_length;
+            auto& sa_stretch_spring_stiffness = stretch_springs.sa_stretch_spring_stiffness;
+            auto& output_gradient_ptr         = stretch_springs.constraint_gradients;
+            auto& output_hessian_ptr          = stretch_springs.constraint_hessians;
+
+
+            const UInt eid  = dispatch_id().x;
+            UInt2      edge = sa_edges->read(eid);
+
+            Float3   vert_pos[2]  = {sa_x->read(edge.x), sa_x->read(edge.y)};
+            Float3   gradients[2] = {make_float3(0.0f), make_float3(0.0f)};
+            Float3x3 He           = make_float3x3(0.0f);
+
+            const Float L                = sa_rest_length->read(eid);
+            const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
+            // const Float stiffness_spring = stiffness_stretch;
+
+            Float3 diff = vert_pos[0] - vert_pos[1];
+            Float  l    = max(length(diff), Epsilon);
+            Float  l0   = L;
+            Float  C    = l - l0;
+
+            Float3   dir           = diff / l;
+            Float3x3 xxT           = outer_product(diff, diff);
+            Float    x_inv         = 1.f / l;
+            Float    x_squared_inv = x_inv * x_inv;
+
+            gradients[0] = stiffness_spring * dir * C;
+            gradients[1] = -gradients[0];
+            He           = stiffness_spring * x_squared_inv * xxT
+                 + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
+
+            // Output
             {
-                const UInt eid  = dispatch_id().x;
-                UInt2      edge = sa_edges->read(eid);
+                output_gradient_ptr->write(eid * 2 + 0, gradients[0]);
+                output_gradient_ptr->write(eid * 2 + 1, gradients[1]);
 
-                Float3   vert_pos[2]  = {sa_x->read(edge.x), sa_x->read(edge.y)};
-                Float3   gradients[2] = {make_float3(0.0f), make_float3(0.0f)};
-                Float3x3 He           = make_float3x3(0.0f);
+                output_hessian_ptr->write(eid * 4 + 0, He);
+                output_hessian_ptr->write(eid * 4 + 1, He);
+                output_hessian_ptr->write(eid * 4 + 2, -1.0f * He);
+                output_hessian_ptr->write(eid * 4 + 3, -1.0f * He);
+            }
+        },
+        default_option);
 
-                const Float L                = sa_rest_length->read(eid);
-                const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
-                // const Float stiffness_spring = stiffness_stretch;
+    // if (host_sim_data->sa_stretch_faces.size() != 0)
+    compiler.compile<1>(
+        fn_evaluate_stretch_face,
+        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchFaceConstitution<luisa::compute::Buffer>> stretch_faces)
+        {
+            auto& sa_faces                   = stretch_faces.sa_stretch_faces;
+            auto& sa_stretch_faces_Dm_inv    = stretch_faces.sa_stretch_faces_Dm_inv;
+            auto& sa_stretch_faces_rest_area = stretch_faces.sa_stretch_faces_rest_area;
+            auto& sa_stretch_faces_mu_lambda = stretch_faces.sa_stretch_faces_mu_lambda;
+            auto& output_gradient_ptr        = stretch_faces.constraint_gradients;
+            auto& output_hessian_ptr         = stretch_faces.constraint_hessians;
 
-                Float3 diff = vert_pos[0] - vert_pos[1];
-                Float  l    = max(length(diff), Epsilon);
-                Float  l0   = L;
-                Float  C    = l - l0;
+            const UInt  fid  = dispatch_id().x;
+            const UInt3 face = sa_faces->read(fid);
 
-                Float3   dir           = diff / l;
-                Float3x3 xxT           = outer_product(diff, diff);
-                Float    x_inv         = 1.f / l;
-                Float    x_squared_inv = x_inv * x_inv;
+            Float3   vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
+            Float3x3 gradients;
+            Float9x9 hessians;
 
-                gradients[0] = stiffness_spring * dir * C;
-                gradients[1] = -gradients[0];
-                He           = stiffness_spring * x_squared_inv * xxT
-                     + stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
+            Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
+            Float    area   = sa_stretch_faces_rest_area->read(fid);
 
-                // Output
-                {
-                    output_gradient_ptr->write(eid * 2 + 0, gradients[0]);
-                    output_gradient_ptr->write(eid * 2 + 1, gradients[1]);
+            Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
+            Float  mu_cloth     = mu_lambda[0];
+            Float  lambda_cloth = mu_lambda[1];
 
-                    output_hessian_ptr->write(eid * 4 + 0, He);
-                    output_hessian_ptr->write(eid * 4 + 1, He);
-                    output_hessian_ptr->write(eid * 4 + 2, -1.0f * He);
-                    output_hessian_ptr->write(eid * 4 + 3, -1.0f * He);
-                }
-            },
-            default_option);
+            StretchEnergy::compute_gradient_hessian(
+                vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
 
-    if (host_sim_data->sa_stretch_faces.size() != 0)
-        compiler.compile<1>(
-            fn_evaluate_stretch_face,
-            [sa_x                       = sim_data->sa_x.view(),
-             output_gradient_ptr        = sim_data->sa_stretch_faces_gradients.view(),
-             output_hessian_ptr         = sim_data->sa_stretch_faces_hessians.view(),
-             sa_faces                   = sim_data->sa_stretch_faces.view(),
-             sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
-             sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
-             sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view()]()
+            // Output
             {
-                const UInt  fid  = dispatch_id().x;
-                const UInt3 face = sa_faces->read(fid);
+                output_gradient_ptr->write(fid * 3 + 0, gradients[0]);
+                output_gradient_ptr->write(fid * 3 + 1, gradients[1]);
+                output_gradient_ptr->write(fid * 3 + 2, gradients[2]);
+            }
+            {
+                output_hessian_ptr->write(fid * 9 + 0, hessians->block(0, 0));
+                output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 1));
+                output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 2));
 
-                Float3   vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
-                Float3x3 gradients;
-                Float9x9 hessians;
-
-                Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
-                Float    area   = sa_stretch_faces_rest_area->read(fid);
-
-                Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
-                Float  mu_cloth     = mu_lambda[0];
-                Float  lambda_cloth = mu_lambda[1];
-
-                StretchEnergy::compute_gradient_hessian(
-                    vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
-
-                // Output
-                {
-                    output_gradient_ptr->write(fid * 3 + 0, gradients[0]);
-                    output_gradient_ptr->write(fid * 3 + 1, gradients[1]);
-                    output_gradient_ptr->write(fid * 3 + 2, gradients[2]);
-                }
-                {
-                    output_hessian_ptr->write(fid * 9 + 0, hessians->block(0, 0));
-                    output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 1));
-                    output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 2));
-
-                    output_hessian_ptr->write(fid * 9 + 3, hessians->block(1, 0));  // lower triangle
-                    output_hessian_ptr->write(fid * 9 + 4, hessians->block(2, 0));
-                    output_hessian_ptr->write(fid * 9 + 5, hessians->block(0, 1));
-                    output_hessian_ptr->write(fid * 9 + 6, hessians->block(2, 1));
-                    output_hessian_ptr->write(fid * 9 + 7, hessians->block(0, 2));
-                    output_hessian_ptr->write(fid * 9 + 8, hessians->block(1, 2));
-                }
-            },
-            default_option);
+                output_hessian_ptr->write(fid * 9 + 3, hessians->block(1, 0));  // lower triangle
+                output_hessian_ptr->write(fid * 9 + 4, hessians->block(2, 0));
+                output_hessian_ptr->write(fid * 9 + 5, hessians->block(0, 1));
+                output_hessian_ptr->write(fid * 9 + 6, hessians->block(2, 1));
+                output_hessian_ptr->write(fid * 9 + 7, hessians->block(0, 2));
+                output_hessian_ptr->write(fid * 9 + 8, hessians->block(1, 2));
+            }
+        },
+        default_option);
 
     if (host_sim_data->sa_bending_edges.size() != 0)
         compiler.compile<1>(
@@ -2077,16 +2081,18 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Soft stretch face
     // if constexpr (false)
     {
-        std::vector<EigenTripletBlock<3>> hessian_blocks(host_sim_data->sa_stretch_faces.size());
+        const auto& stretch_faces = host_sim_data->stretch_face_constitution;
+
+        std::vector<EigenTripletBlock<3>> hessian_blocks(stretch_faces.sa_stretch_faces.size());
         CpuParallel::single_thread_for(
             0,
-            host_sim_data->sa_stretch_faces.size(),
+            stretch_faces.sa_stretch_faces.size(),
             [sa_x                       = host_sim_data->sa_x.data(),
              sa_rest_x                  = host_mesh_data->sa_rest_x.data(),
-             sa_faces                   = host_sim_data->sa_stretch_faces.data(),
-             sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
-             sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
-             sa_stretch_faces_mu_lambda = host_sim_data->sa_stretch_faces_mu_lambda.data(),
+             sa_faces                   = stretch_faces.sa_stretch_faces.data(),
+             sa_stretch_faces_rest_area = stretch_faces.sa_stretch_faces_rest_area.data(),
+             sa_stretch_faces_Dm_inv    = stretch_faces.sa_stretch_faces_Dm_inv.data(),
+             sa_stretch_faces_mu_lambda = stretch_faces.sa_stretch_faces_mu_lambda.data(),
              youngs_modulus_cloth       = get_scene_params().youngs_modulus_cloth,
              poisson_ratio_cloth        = get_scene_params().poisson_ratio_cloth,
              &hessian_blocks,
@@ -2144,16 +2150,18 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Soft stretch spring
     // if constexpr (false)
     {
-        std::vector<EigenTripletBlock<2>> hessian_blocks(host_sim_data->sa_stretch_springs.size());
+        const auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+
+        std::vector<EigenTripletBlock<2>> hessian_blocks(stretch_springs.sa_stretch_springs.size());
         CpuParallel::single_thread_for(
             0,
-            host_sim_data->sa_stretch_springs.size(),
+            stretch_springs.sa_stretch_springs.size(),
             [sa_x                        = host_sim_data->sa_x.data(),
-             sa_edges                    = host_sim_data->sa_stretch_springs.data(),
-             sa_rest_length              = host_sim_data->sa_stretch_spring_rest_state_length.data(),
-             sa_stretch_spring_stiffness = host_sim_data->sa_stretch_spring_stiffness.data(),
-             output_gradient_ptr         = host_sim_data->sa_stretch_springs_gradients.data(),
-             output_hessian_ptr          = host_sim_data->sa_stretch_springs_hessians.data(),
+             sa_edges                    = stretch_springs.sa_stretch_springs.data(),
+             sa_rest_length              = stretch_springs.sa_stretch_spring_rest_state_length.data(),
+             sa_stretch_spring_stiffness = stretch_springs.sa_stretch_spring_stiffness.data(),
+             output_gradient_ptr         = stretch_springs.constraint_gradients.data(),
+             output_hessian_ptr          = stretch_springs.constraint_hessians.data(),
              stiffness_stretch           = get_scene_params().stiffness_spring,
              &cgB,
              &hessian_blocks](const uint eid)
@@ -2924,15 +2932,17 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
 }
 void NewtonSolver::host_evaluete_stretch_spring()
 {
+    auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_stretch_springs.size(),
+                              stretch_springs.sa_stretch_springs.size(),
                               [sa_x     = host_sim_data->sa_x.data(),
-                               sa_edges = host_sim_data->sa_stretch_springs.data(),
-                               sa_rest_length = host_sim_data->sa_stretch_spring_rest_state_length.data(),
-                               output_gradient_ptr = host_sim_data->sa_stretch_springs_gradients.data(),
-                               output_hessian_ptr  = host_sim_data->sa_stretch_springs_hessians.data(),
+                               sa_edges = stretch_springs.sa_stretch_springs.data(),
+                               sa_rest_length = stretch_springs.sa_stretch_spring_rest_state_length.data(),
+                               output_gradient_ptr = stretch_springs.constraint_gradients.data(),
+                               output_hessian_ptr  = stretch_springs.constraint_hessians.data(),
                                sa_stretch_spring_stiffness =
-                                   host_sim_data->sa_stretch_spring_stiffness.data()](const uint eid)
+                                   stretch_springs.sa_stretch_spring_stiffness.data()](const uint eid)
                               {
                                   uint2 edge = sa_edges[eid];
 
@@ -2974,16 +2984,18 @@ void NewtonSolver::host_evaluete_stretch_spring()
 }
 void NewtonSolver::host_evaluete_stretch_face()
 {
+    auto& stretch_faces = host_sim_data->stretch_face_constitution;
+
     CpuParallel::parallel_for(
         0,
-        host_sim_data->sa_stretch_faces.size(),
+        stretch_faces.sa_stretch_faces.size(),
         [sa_x                       = host_sim_data->sa_x.data(),
-         sa_faces                   = host_sim_data->sa_stretch_faces.data(),
-         sa_stretch_faces_rest_area = host_sim_data->sa_stretch_faces_rest_area.data(),
-         sa_stretch_faces_Dm_inv    = host_sim_data->sa_stretch_faces_Dm_inv.data(),
-         sa_stretch_faces_mu_lambda = host_sim_data->sa_stretch_faces_mu_lambda.data(),
-         output_gradient_ptr        = host_sim_data->sa_stretch_faces_gradients.data(),
-         output_hessian_ptr         = host_sim_data->sa_stretch_faces_hessians.data()](const uint fid)
+         sa_faces                   = stretch_faces.sa_stretch_faces.data(),
+         sa_stretch_faces_rest_area = stretch_faces.sa_stretch_faces_rest_area.data(),
+         sa_stretch_faces_Dm_inv    = stretch_faces.sa_stretch_faces_Dm_inv.data(),
+         sa_stretch_faces_mu_lambda = stretch_faces.sa_stretch_faces_mu_lambda.data(),
+         output_gradient_ptr        = stretch_faces.constraint_gradients.data(),
+         output_hessian_ptr         = stretch_faces.constraint_hessians.data()](const uint fid)
         {
             uint3 face = sa_faces[fid];
 
@@ -3184,30 +3196,31 @@ void NewtonSolver::host_material_energy_assembly()
             };
         };
 
-
-        if (host_sim_data->sa_stretch_springs.size() != 0)
+        auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+        if (!stretch_springs.sa_stretch_springs.empty())
             CpuParallel::parallel_for(
                 0,
                 host_sim_data->num_verts_soft,
-                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_springs_csr.data(),
-                 constaints               = host_sim_data->sa_stretch_springs.data(),
-                 constaint_gradients      = host_sim_data->sa_stretch_springs_gradients.data(),
-                 constaint_hessians       = host_sim_data->sa_stretch_springs_hessians.data(),
-                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_springs_offsets_in_adjlist.data(),
+                [vert_adj_constraints_csr     = stretch_springs.vert_adj_constraints_csr.data(),
+                 constaints                   = stretch_springs.sa_stretch_springs.data(),
+                 constaint_gradients          = stretch_springs.constraint_gradients.data(),
+                 constaint_hessians           = stretch_springs.constraint_hessians.data(),
+                 constaint_offsets_in_adjlist = stretch_springs.constraint_offsets_in_adjlist.data(),
                  assembly_template](const uint vid)
                 {
                     assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
                 });
 
-        if (host_sim_data->sa_stretch_faces.size() != 0)
+        auto& stretch_faces = host_sim_data->stretch_face_constitution;
+        if (stretch_faces.sa_stretch_faces.size() != 0)
             CpuParallel::parallel_for(
                 0,
                 host_sim_data->num_verts_soft,
-                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_stretch_faces_csr.data(),
-                 constaints               = host_sim_data->sa_stretch_faces.data(),
-                 constaint_gradients      = host_sim_data->sa_stretch_faces_gradients.data(),
-                 constaint_hessians       = host_sim_data->sa_stretch_faces_hessians.data(),
-                 constaint_offsets_in_adjlist = host_sim_data->sa_stretch_faces_offsets_in_adjlist.data(),
+                [vert_adj_constraints_csr     = stretch_faces.vert_adj_constraints_csr.data(),
+                 constaints                   = stretch_faces.sa_stretch_faces.data(),
+                 constaint_gradients          = stretch_faces.constraint_gradients.data(),
+                 constaint_hessians           = stretch_faces.constraint_hessians.data(),
+                 constaint_offsets_in_adjlist = stretch_faces.constraint_offsets_in_adjlist.data(),
                  assembly_template](const uint vid)
                 {
                     assembly_template(3, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
@@ -3519,20 +3532,20 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
     {
         if constexpr (false)
         {
-            auto& sa_edges             = host_sim_data->sa_stretch_springs;
-            auto& off_diag_hessian_ptr = host_sim_data->sa_stretch_springs_hessians;
-            CpuParallel::single_thread_for(0,
-                                           sa_edges.size(),
-                                           [&](const uint eid)
-                                           {
-                                               const uint2 edge = sa_edges[eid];
-                                               float3x3 offdiag_hessian1 = off_diag_hessian_ptr[4 * eid + 2];
-                                               float3x3 offdiag_hessian2 = off_diag_hessian_ptr[4 * eid + 3];
-                                               float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
-                                               float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
-                                               output_ptr[edge[0]] += output_vec0;
-                                               output_ptr[edge[1]] += output_vec1;
-                                           });
+            // auto& sa_edges             = host_sim_data->sa_stretch_springs;
+            // auto& off_diag_hessian_ptr = host_sim_data->sa_stretch_springs_hessians;
+            // CpuParallel::single_thread_for(0,
+            //                                sa_edges.size(),
+            //                                [&](const uint eid)
+            //                                {
+            //                                    const uint2 edge = sa_edges[eid];
+            //                                    float3x3 offdiag_hessian1 = off_diag_hessian_ptr[4 * eid + 2];
+            //                                    float3x3 offdiag_hessian2 = off_diag_hessian_ptr[4 * eid + 3];
+            //                                    float3 output_vec0 = offdiag_hessian1 * input_ptr[edge[1]];
+            //                                    float3 output_vec1 = offdiag_hessian2 * input_ptr[edge[0]];
+            //                                    output_ptr[edge[0]] += output_vec0;
+            //                                    output_ptr[edge[1]] += output_vec1;
+            //                                });
             return;
         }
 
@@ -4306,16 +4319,20 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                                   .dispatch(host_sim_data->num_verts_soft);
                 }
 
-                if (host_sim_data->sa_stretch_springs.size() != 0)
+                const auto& sa_stretch_springs = sim_data->stretch_spring_constitution;
+                if (sa_stretch_springs.is_valid())
                 {
-                    stream << fn_evaluate_spring().dispatch(host_sim_data->sa_stretch_springs.size());
-                    stream << fn_material_energy_assembly_stretch_spring().dispatch(host_sim_data->num_verts_soft);
+                    stream << fn_evaluate_spring(sa_stretch_springs).dispatch(sa_stretch_springs.get_num_indices());
+                    stream << fn_material_energy_assembly_stretch_spring(sa_stretch_springs)
+                                  .dispatch(host_sim_data->num_verts_soft);
                 }
 
-                if (host_sim_data->sa_stretch_faces.size() != 0)
+                const auto& sa_stretch_faces = sim_data->stretch_face_constitution;
+                if (sa_stretch_faces.is_valid())
                 {
-                    stream << fn_evaluate_stretch_face().dispatch(host_sim_data->sa_stretch_faces.size());
-                    stream << fn_material_energy_assembly_stretch_face().dispatch(host_sim_data->num_verts_soft);
+                    stream << fn_evaluate_stretch_face(sa_stretch_faces).dispatch(sa_stretch_faces.get_num_indices());
+                    stream << fn_material_energy_assembly_stretch_face(sa_stretch_faces)
+                                  .dispatch(host_sim_data->num_verts_soft);
                 }
 
                 if (host_sim_data->sa_bending_edges.size() != 0)
