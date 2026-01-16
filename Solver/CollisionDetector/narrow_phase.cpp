@@ -1488,8 +1488,8 @@ void NarrowPhasesDetector::compile_make_contact_triplet(AsyncCompiler& compiler)
             // };
             // $return();
 
-            luisa::compute::Shared<uint>     cache_offset(ParallelIntrinsic::reduce_block_dim);
-            luisa::compute::Shared<uint>     cache_key(ParallelIntrinsic::reduce_block_dim);
+            luisa::compute::Shared<ushort>   cache_offset(ParallelIntrinsic::reduce_block_dim);
+            luisa::compute::Shared<ushort>   cache_key(ParallelIntrinsic::reduce_block_dim);
             luisa::compute::Shared<uint64_t> cache_value(ParallelIntrinsic::reduce_block_dim);  // 2.5 MB
             cache_offset[threadIdx] = 0;
             cache_key[threadIdx]    = threadIdx;

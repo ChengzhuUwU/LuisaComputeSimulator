@@ -390,11 +390,11 @@ namespace ParallelIntrinsic
     }
 
     template <typename T>
-    inline void block_bitonic_sort(luisa::compute::Shared<uint>& cache_key,
-                                   luisa::compute::Shared<T>&    cache_value,
-                                   const luisa::compute::UInt&   vid,
-                                   const Var<T>&                 thread_value,
-                                   bool                          ascending = true)
+    inline void block_bitonic_sort(luisa::compute::Shared<ushort>& cache_key,
+                                   luisa::compute::Shared<T>&      cache_value,
+                                   const luisa::compute::UInt&     vid,
+                                   const Var<T>&                   thread_value,
+                                   bool                            ascending = true)
     {
         luisa::compute::set_block_size(reduce_block_dim);
         const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
