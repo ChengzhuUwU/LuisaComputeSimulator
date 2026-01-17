@@ -243,14 +243,16 @@ void DescentSolver::compile(luisa::compute::Device& device)
     //     }
     // }
 
+    const auto& stretch_springs = sim_data->get_stretch_spring_data();
+
     fn_evaluate_stretch_spring = device.compile<1>(
         [sa_Hf                 = sim_data->sa_Hf.view(),
          sa_Hf1                = sim_data->sa_Hf1.view(),
          sa_iter_position      = sim_data->sa_x.view(),
          sa_start_position     = sim_data->sa_x_step_start.view(),
          sa_vert_adj_edges_csr = mesh_data->sa_vert_adj_edges_csr.view(),
-         sa_edges              = sim_data->stretch_spring_constitution.sa_stretch_springs.view(),
-         sa_rest_length = sim_data->stretch_spring_constitution.sa_stretch_spring_rest_state_length.view(),
+         sa_edges              = stretch_springs.sa_stretch_springs.view(),
+         sa_rest_length        = stretch_springs.sa_stretch_spring_rest_state_length.view(),
          extractHf,
          writeHf,
          outer_product,
@@ -654,12 +656,13 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
     };
     auto evaluate_spring = [&](const float stiffness_stretch)
     {
+        const auto& stretch_springs = host_sim_data->get_stretch_spring_data();
+
         auto* sa_iter_position      = host_sim_data->sa_x.data();
         auto* sa_vert_adj_edges_csr = host_mesh_data->sa_vert_adj_edges_csr.data();
-        auto* sa_edges = host_sim_data->stretch_spring_constitution.sa_stretch_springs.data();
-        auto* sa_rest_length =
-            host_sim_data->stretch_spring_constitution.sa_stretch_spring_rest_state_length.data();
-        auto* sa_Hf1 = host_sim_data->sa_Hf1.data();
+        auto* sa_edges              = stretch_springs.sa_stretch_springs.data();
+        auto* sa_rest_length        = stretch_springs.sa_stretch_spring_rest_state_length.data();
+        auto* sa_Hf1                = host_sim_data->sa_Hf1.data();
 
         CpuParallel::parallel_for(0,
                                   host_mesh_data->num_verts,

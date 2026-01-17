@@ -257,8 +257,8 @@ namespace StretchEnergy
         {
             float    w = luisa::dot(F.cols[0], F.cols[1]);
             float2x3 result;
-            result[0] = w * F.cols[1];
-            result[1] = w * F.cols[0];
+            result.cols[0] = w * F.cols[1];
+            result.cols[1] = w * F.cols[0];
             return lmd * result;
         }
 

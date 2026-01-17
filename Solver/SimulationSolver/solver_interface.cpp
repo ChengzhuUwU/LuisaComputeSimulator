@@ -639,7 +639,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
     compiler.compile<1>(
         fn_calc_energy_spring,
         [sa_system_energy = sim_data->sa_system_energy.view()](
-            Var<Constitutions::StretchSpringConstitution<Buffer>> sa_stretch_springs, Var<BufferView<float3>> sa_x, Float stiffness_spring)
+            Var<Constitutions::StretchSpring<Buffer>> sa_stretch_springs, Var<BufferView<float3>> sa_x, Float stiffness_spring)
         {
             auto& sa_edges                    = sa_stretch_springs->sa_stretch_springs;
             auto& sa_edge_rest_state_length   = sa_stretch_springs->sa_stretch_spring_rest_state_length;
@@ -675,8 +675,8 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
             //  sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
             //  sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
             //  sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view(),
-            sa_system_energy = sim_data->sa_system_energy.view()](
-            Var<Constitutions::StretchFaceConstitution<Buffer>> sa_stretch_faces, Var<BufferView<float3>> sa_x)
+            sa_system_energy = sim_data->sa_system_energy.view()](Var<Constitutions::StretchFace<Buffer>> sa_stretch_faces,
+                                                                  Var<BufferView<float3>> sa_x)
         {
             auto& sa_faces                   = sa_stretch_faces->sa_stretch_faces;
             auto& sa_stretch_faces_rest_area = sa_stretch_faces->sa_stretch_faces_rest_area;
@@ -873,15 +873,15 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
                       .dispatch(mesh_data->num_verts);
     }
 
-    const auto& stretch_spring_constitution = sim_data->stretch_spring_constitution;
-    if (host_sim_data->stretch_spring_constitution.is_valid())
+    const auto& stretch_spring_constitution = sim_data->get_stretch_spring_data();
+    if (stretch_spring_constitution.is_valid())
     {
         stream << fn_calc_energy_spring(stretch_spring_constitution, curr_x, get_scene_params().stiffness_spring)
                       .dispatch(stretch_spring_constitution.get_num_indices());
     }
 
-    const auto& stretch_face_constitution = sim_data->stretch_face_constitution;
-    if (host_sim_data->stretch_face_constitution.is_valid())
+    const auto& stretch_face_constitution = sim_data->get_stretch_face_data();
+    if (stretch_face_constitution.is_valid())
     {
         stream << fn_calc_energy_stretch_face(stretch_face_constitution, curr_x)
                       .dispatch(stretch_face_constitution.get_num_indices());

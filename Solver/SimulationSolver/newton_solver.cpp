@@ -759,8 +759,8 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
         };
     };
 
-    using ConstitutionSpring = Constitutions::StretchSpringConstitution<luisa::compute::Buffer>;
-    using ConstitutionFace   = Constitutions::StretchFaceConstitution<luisa::compute::Buffer>;
+    using ConstitutionSpring = Constitutions::StretchSpring<luisa::compute::Buffer>;
+    using ConstitutionFace   = Constitutions::StretchFace<luisa::compute::Buffer>;
 
     // Assembly
     // if (host_sim_data->sa_stretch_springs.size() != 0)
@@ -1025,7 +1025,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
     // if (host_sim_data->sa_stretch_springs.size() != 0)
     compiler.compile<1>(
         fn_evaluate_spring,
-        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchSpringConstitution<luisa::compute::Buffer>> stretch_springs)
+        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchSpring<luisa::compute::Buffer>> stretch_springs)
         {
             auto& sa_edges                    = stretch_springs.sa_stretch_springs;
             auto& sa_rest_length              = stretch_springs.sa_stretch_spring_rest_state_length;
@@ -1076,7 +1076,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
     // if (host_sim_data->sa_stretch_faces.size() != 0)
     compiler.compile<1>(
         fn_evaluate_stretch_face,
-        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchFaceConstitution<luisa::compute::Buffer>> stretch_faces)
+        [sa_x = sim_data->sa_x.view()](Var<Constitutions::StretchFace<luisa::compute::Buffer>> stretch_faces)
         {
             auto& sa_faces                   = stretch_faces.sa_stretch_faces;
             auto& sa_stretch_faces_Dm_inv    = stretch_faces.sa_stretch_faces_Dm_inv;
@@ -2081,7 +2081,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Soft stretch face
     // if constexpr (false)
     {
-        const auto& stretch_faces = host_sim_data->stretch_face_constitution;
+        const auto& stretch_faces = host_sim_data->get_stretch_face_data();
 
         std::vector<EigenTripletBlock<3>> hessian_blocks(stretch_faces.sa_stretch_faces.size());
         CpuParallel::single_thread_for(
@@ -2150,7 +2150,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Soft stretch spring
     // if constexpr (false)
     {
-        const auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+        const auto& stretch_springs = host_sim_data->get_stretch_spring_data();
 
         std::vector<EigenTripletBlock<2>> hessian_blocks(stretch_springs.sa_stretch_springs.size());
         CpuParallel::single_thread_for(
@@ -2932,7 +2932,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
 }
 void NewtonSolver::host_evaluete_stretch_spring()
 {
-    auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+    auto& stretch_springs = host_sim_data->get_stretch_spring_data();
 
     CpuParallel::parallel_for(0,
                               stretch_springs.sa_stretch_springs.size(),
@@ -2984,7 +2984,7 @@ void NewtonSolver::host_evaluete_stretch_spring()
 }
 void NewtonSolver::host_evaluete_stretch_face()
 {
-    auto& stretch_faces = host_sim_data->stretch_face_constitution;
+    auto& stretch_faces = host_sim_data->get_stretch_face_data();
 
     CpuParallel::parallel_for(
         0,
@@ -3196,7 +3196,7 @@ void NewtonSolver::host_material_energy_assembly()
             };
         };
 
-        auto& stretch_springs = host_sim_data->stretch_spring_constitution;
+        auto& stretch_springs = host_sim_data->get_stretch_spring_data();
         if (!stretch_springs.sa_stretch_springs.empty())
             CpuParallel::parallel_for(
                 0,
@@ -3211,7 +3211,7 @@ void NewtonSolver::host_material_energy_assembly()
                     assembly_template(2, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
                 });
 
-        auto& stretch_faces = host_sim_data->stretch_face_constitution;
+        auto& stretch_faces = host_sim_data->get_stretch_face_data();
         if (stretch_faces.sa_stretch_faces.size() != 0)
             CpuParallel::parallel_for(
                 0,
@@ -3951,9 +3951,11 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
             {
                 if (host_mesh_data->sa_is_fixed[vid])
                 {
-                    // float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
-                    float3 delta = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
-                    return luisa::length(delta);
+                    // Converged condition: ||x - x_tilde|| < tol, or ||x - x_iter_start|| < tol
+                    float3 delta1 = host_sim_data->sa_x[vid] - host_sim_data->sa_x_tilde[vid];
+                    float3 delta2 = host_sim_data->sa_x[vid] - host_sim_data->sa_x_iter_start[vid];
+                    float  delta  = luisa::min(luisa::length(delta1), luisa::length(delta2));
+                    return delta;
                 }
                 return 0.0f;  // Non-fixed point
             },
@@ -4319,20 +4321,20 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                                   .dispatch(host_sim_data->num_verts_soft);
                 }
 
-                const auto& sa_stretch_springs = sim_data->stretch_spring_constitution;
-                if (sa_stretch_springs.is_valid())
+                const auto& stretch_springs = sim_data->get_stretch_spring_data();
+                if (stretch_springs.is_valid())
                 {
-                    stream << fn_evaluate_spring(sa_stretch_springs).dispatch(sa_stretch_springs.get_num_indices());
-                    stream << fn_material_energy_assembly_stretch_spring(sa_stretch_springs)
+                    stream << fn_evaluate_spring(stretch_springs).dispatch(stretch_springs.get_num_indices());
+                    stream << fn_material_energy_assembly_stretch_spring(stretch_springs)
                                   .dispatch(host_sim_data->num_verts_soft);
                 }
 
-                const auto& sa_stretch_faces = sim_data->stretch_face_constitution;
-                if (sa_stretch_faces.is_valid())
+                const auto& stretch_faces = sim_data->get_stretch_face_data();
+                if (stretch_faces.is_valid())
                 {
-                    stream << fn_evaluate_stretch_face(sa_stretch_faces).dispatch(sa_stretch_faces.get_num_indices());
-                    stream << fn_material_energy_assembly_stretch_face(sa_stretch_faces)
-                                  .dispatch(host_sim_data->num_verts_soft);
+                    stream << fn_evaluate_stretch_face(stretch_faces).dispatch(stretch_faces.get_num_indices());
+                    stream
+                        << fn_material_energy_assembly_stretch_face(stretch_faces).dispatch(host_sim_data->num_verts_soft);
                 }
 
                 if (host_sim_data->sa_bending_edges.size() != 0)

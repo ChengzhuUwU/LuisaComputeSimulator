@@ -92,7 +92,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct StretchSpringConstitution : ConstitutionInterface<BufferType, StretchSpringConstitution<BufferType>>
+    struct StretchSpring : ConstitutionInterface<BufferType, StretchSpring<BufferType>>
     {
         BufferType<uint2> sa_stretch_springs;
         BufferType<float> sa_stretch_spring_rest_state_length;
@@ -104,7 +104,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct StretchFaceConstitution : ConstitutionInterface<BufferType, StretchFaceConstitution<BufferType>>
+    struct StretchFace : ConstitutionInterface<BufferType, StretchFace<BufferType>>
     {
         BufferType<uint3> sa_stretch_faces;
         BufferType<float> sa_stretch_faces_rest_area;
@@ -117,7 +117,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct BendingEdgeConstitution : ConstitutionInterface<BufferType, BendingEdgeConstitution<BufferType>>
+    struct BendingEdge : ConstitutionInterface<BufferType, BendingEdge<BufferType>>
     {
         BufferType<uint4>    sa_bending_edges;
         BufferType<float>    sa_bending_edges_rest_angle;
@@ -131,7 +131,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct StressTetConstitution : ConstitutionInterface<BufferType, StressTetConstitution<BufferType>>
+    struct StressTet : ConstitutionInterface<BufferType, StressTet<BufferType>>
     {
         BufferType<uint4>    sa_stress_tets;
         BufferType<float>    sa_stress_tets_rest_volume;
@@ -144,7 +144,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct ElasticRodConstitution : ConstitutionInterface<BufferType, ElasticRodConstitution<BufferType>>
+    struct ElasticRod : ConstitutionInterface<BufferType, ElasticRod<BufferType>>
     {
         BufferType<uint2>    sa_elastic_rods;
         BufferType<float>    sa_elastic_rods_rest_volume;
@@ -157,7 +157,7 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct AffineBodyConstitution : ConstitutionInterface<BufferType, AffineBodyConstitution<BufferType>>
+    struct AffineBody : ConstitutionInterface<BufferType, AffineBody<BufferType>>
     {
         BufferType<uint>     sa_affine_bodies;
         BufferType<float>    sa_affine_bodies_volume;
@@ -248,41 +248,25 @@ struct SimulationData : SimulationType
     BufferType<uint>  sa_num_dof;
     BufferType<float> sa_system_energy;
 
-    // BufferType<uint2>    sa_stretch_springs;
-    // BufferType<float>    sa_stretch_spring_rest_state_length;
-    // BufferType<float>    sa_stretch_spring_stiffness;
-    // BufferType<ushort>   sa_stretch_springs_offsets_in_adjlist;
-    // BufferType<float3>   sa_stretch_springs_gradients;
-    // BufferType<float3x3> sa_stretch_springs_hessians;
+  private:
+    Constitutions::StretchSpring<BufferType> stretch_spring_constitution;
 
-    // BufferType<uint3>    sa_stretch_faces;
-    // BufferType<float>    sa_stretch_faces_rest_area;
-    // BufferType<float2>   sa_stretch_faces_mu_lambda;  // scaled by thickness, thus only multiply by area
-    // BufferType<float2x2> sa_stretch_faces_Dm_inv;
-    // BufferType<ushort>   sa_stretch_faces_offsets_in_adjlist;
-    // BufferType<float3>   sa_stretch_faces_gradients;
-    // BufferType<float3x3> sa_stretch_faces_hessians;
+    Constitutions::StretchFace<BufferType> stretch_face_constitution;
 
-    Constitutions::StretchSpringConstitution<BufferType> stretch_spring_constitution;
-
-    Constitutions::StretchFaceConstitution<BufferType> stretch_face_constitution;
-
-    const Constitutions::StretchSpringConstitution<BufferType>& get_stretch_spring_data() const
+  public:
+    const Constitutions::StretchSpring<BufferType>& get_stretch_spring_data() const
     {
         return stretch_spring_constitution;
     }
-    Constitutions::StretchSpringConstitution<BufferType>& get_stretch_spring_data()
+    Constitutions::StretchSpring<BufferType>& get_stretch_spring_data()
     {
         return stretch_spring_constitution;
     }
-    const Constitutions::StretchFaceConstitution<BufferType>& get_stretch_face_data() const
+    const Constitutions::StretchFace<BufferType>& get_stretch_face_data() const
     {
         return stretch_face_constitution;
     }
-    Constitutions::StretchFaceConstitution<BufferType>& get_stretch_face_data()
-    {
-        return stretch_face_constitution;
-    }
+    Constitutions::StretchFace<BufferType>& get_stretch_face_data() { return stretch_face_constitution; }
 
 
     BufferType<uint4>    sa_bending_edges;
@@ -375,7 +359,7 @@ struct SimulationData : SimulationType
 
 }  // namespace lcs
 
-LUISA_BINDING_GROUP(lcs::Constitutions::StretchSpringConstitution<luisa::compute::Buffer>,
+LUISA_BINDING_GROUP(lcs::Constitutions::StretchSpring<luisa::compute::Buffer>,
                     constraint_offsets_in_adjlist,
                     constraint_gradients,
                     constraint_hessians,
@@ -384,7 +368,7 @@ LUISA_BINDING_GROUP(lcs::Constitutions::StretchSpringConstitution<luisa::compute
                     sa_stretch_spring_rest_state_length,
                     sa_stretch_spring_stiffness){};
 
-LUISA_BINDING_GROUP(lcs::Constitutions::StretchFaceConstitution<luisa::compute::Buffer>,
+LUISA_BINDING_GROUP(lcs::Constitutions::StretchFace<luisa::compute::Buffer>,
                     constraint_offsets_in_adjlist,
                     constraint_gradients,
                     constraint_hessians,

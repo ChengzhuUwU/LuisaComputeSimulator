@@ -11,7 +11,7 @@
 namespace lcs
 {
 
-namespace Initializer
+namespace Initializer  // WorldData
 {
     struct AABB
     {
@@ -335,6 +335,11 @@ namespace Initializer
         return *this;
     }
 
+}  // namespace Initializer
+
+
+namespace Initializer
+{
     // template<template<typename> typename BasicBuffer>
     void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
     {
