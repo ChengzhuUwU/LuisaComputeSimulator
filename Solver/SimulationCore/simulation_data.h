@@ -74,10 +74,18 @@ namespace Constitutions
         std::vector<std::vector<uint>> vert_adj_constraints;
         BufferType<uint>               vert_adj_constraints_csr;
 
-        static constexpr size_t vertices_per_constraint() { return Derived::vertices_per_constraint(); }
+        static constexpr size_t get_num_verts_per_constaint()
+        {
+            return Derived::get_num_verts_per_constaint();
+        }
         static constexpr ConstraintType constraint_type() { return Derived::constraint_type(); }
         auto& get_indices() const { return static_cast<const Derived*>(this)->get_indices_impl(); }
-        // bool  is_valid() const { return get_indices().size() > 0; }
+        auto& get_constraint_offsets_in_adjlist() const { return constraint_offsets_in_adjlist; }
+        auto& get_constraint_gradients() const { return constraint_gradients; }
+        auto& get_constraint_hessians() const { return constraint_hessians; }
+        auto& get_vert_adj_constraints() const { return vert_adj_constraints; }
+        auto& get_vert_adj_constraints_csr() const { return vert_adj_constraints_csr; }
+
 
         template <typename T>
         static bool is_buffer_valid(const BufferType<T>& buffer)
@@ -98,7 +106,7 @@ namespace Constitutions
         BufferType<float> sa_stretch_spring_rest_state_length;
         BufferType<float> sa_stretch_spring_stiffness;
 
-        static constexpr size_t         vertices_per_constraint() { return 2; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 2; }
         static constexpr ConstraintType constraint_type() { return ConstraintType::StretchSpring; }
         auto&                           get_indices_impl() const { return sa_stretch_springs; }
     };
@@ -113,7 +121,7 @@ namespace Constitutions
 
         static constexpr ConstraintType constraint_type() { return ConstraintType::StretchFace; }
         auto&                           get_indices_impl() const { return sa_stretch_faces; }
-        static constexpr size_t         vertices_per_constraint() { return 3; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 3; }
     };
 
     template <template <typename...> typename BufferType>
@@ -127,7 +135,7 @@ namespace Constitutions
 
         static constexpr ConstraintType constraint_type() { return ConstraintType::BendingEdge; }
         auto&                           get_indices_impl() const { return sa_bending_edges; }
-        static constexpr size_t         vertices_per_constraint() { return 4; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 4; }
     };
 
     template <template <typename...> typename BufferType>
@@ -140,7 +148,7 @@ namespace Constitutions
 
         static constexpr ConstraintType constraint_type() { return ConstraintType::StressTet; }
         auto&                           get_indices_impl() const { return sa_stress_tets; }
-        static constexpr size_t         vertices_per_constraint() { return 4; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 4; }
     };
 
     template <template <typename...> typename BufferType>
@@ -153,7 +161,7 @@ namespace Constitutions
 
         static constexpr ConstraintType constraint_type() { return ConstraintType::ElasticRod; }
         auto&                           get_indices_impl() const { return sa_elastic_rods; }
-        static constexpr size_t         vertices_per_constraint() { return 2; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 2; }
     };
 
     template <template <typename...> typename BufferType>
@@ -250,10 +258,20 @@ struct SimulationData : SimulationType
 
   private:
     Constitutions::StretchSpring<BufferType> stretch_spring_constitution;
+    Constitutions::StretchFace<BufferType>   stretch_face_constitution;
+    Constitutions::BendingEdge<BufferType>   bending_edge_constitution;
+    Constitutions::AffineBody<BufferType>    affine_body_constitution;
+    Constitutions::StressTet<BufferType>     stress_tet_constitution;
+    Constitutions::ElasticRod<BufferType>    elastic_rod_constitution;
 
-    Constitutions::StretchFace<BufferType> stretch_face_constitution;
 
   public:
+    Constitutions::StretchFace<BufferType>& get_stretch_face_data() { return stretch_face_constitution; }
+    Constitutions::BendingEdge<BufferType>& get_bending_edge_data() { return bending_edge_constitution; }
+    Constitutions::AffineBody<BufferType>&  get_affine_body_data() { return affine_body_constitution; }
+    Constitutions::StressTet<BufferType>&   get_stress_tet_data() { return stress_tet_constitution; }
+    Constitutions::ElasticRod<BufferType>&  get_elastic_rod_data() { return elastic_rod_constitution; }
+
     const Constitutions::StretchSpring<BufferType>& get_stretch_spring_data() const
     {
         return stretch_spring_constitution;
@@ -266,25 +284,40 @@ struct SimulationData : SimulationType
     {
         return stretch_face_constitution;
     }
-    Constitutions::StretchFace<BufferType>& get_stretch_face_data() { return stretch_face_constitution; }
+    const Constitutions::BendingEdge<BufferType>& get_bending_edge_data() const
+    {
+        return bending_edge_constitution;
+    }
+    const Constitutions::AffineBody<BufferType>& get_affine_body_data() const
+    {
+        return affine_body_constitution;
+    }
+    const Constitutions::StressTet<BufferType>& get_stress_tet_data() const
+    {
+        return stress_tet_constitution;
+    }
+    const Constitutions::ElasticRod<BufferType>& get_elastic_rod_data() const
+    {
+        return elastic_rod_constitution;
+    }
 
 
-    BufferType<uint4>    sa_bending_edges;
-    BufferType<float>    sa_bending_edges_rest_angle;
-    BufferType<float>    sa_bending_edges_stiffness;
-    BufferType<float4x4> sa_bending_edges_Q;
-    BufferType<float>    sa_bending_edges_rest_area;
-    BufferType<ushort>   sa_bending_edges_offsets_in_adjlist;
-    BufferType<float3>   sa_bending_edges_gradients;
-    BufferType<float3x3> sa_bending_edges_hessians;
+    // BufferType<uint4>    sa_bending_edges;
+    // BufferType<float>    sa_bending_edges_rest_angle;
+    // BufferType<float>    sa_bending_edges_stiffness;
+    // BufferType<float4x4> sa_bending_edges_Q;
+    // BufferType<float>    sa_bending_edges_rest_area;
+    // BufferType<ushort>   sa_bending_edges_offsets_in_adjlist;
+    // BufferType<float3>   sa_bending_edges_gradients;
+    // BufferType<float3x3> sa_bending_edges_hessians;
 
-    BufferType<uint4>    sa_stress_tets;
-    BufferType<float>    sa_stress_tets_rest_volume;
-    BufferType<float2>   sa_stress_tets_mu_lambda;
-    BufferType<float3x3> sa_stress_tets_Dm_inv;
-    BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
-    BufferType<float3>   sa_stress_tets_gradients;
-    BufferType<float3x3> sa_stress_tets_hessians;
+    // BufferType<uint4>    sa_stress_tets;
+    // BufferType<float>    sa_stress_tets_rest_volume;
+    // BufferType<float2>   sa_stress_tets_mu_lambda;
+    // BufferType<float3x3> sa_stress_tets_Dm_inv;
+    // BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
+    // BufferType<float3>   sa_stress_tets_gradients;
+    // BufferType<float3x3> sa_stress_tets_hessians;
 
 
     std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
@@ -352,8 +385,8 @@ struct SimulationData : SimulationType
     BufferType<uint> sa_vert_adj_material_force_verts_csr;
     // BufferType<uint> sa_vert_adj_stretch_springs_csr;
     // BufferType<uint> sa_vert_adj_stretch_faces_csr;
-    BufferType<uint> sa_vert_adj_bending_edges_csr;
-    BufferType<uint> sa_vert_adj_stress_tets_csr;
+    // BufferType<uint> sa_vert_adj_bending_edges_csr;
+    // BufferType<uint> sa_vert_adj_stress_tets_csr;
     BufferType<uint> sa_vert_adj_affine_bodies_csr;
 };
 
@@ -378,6 +411,26 @@ LUISA_BINDING_GROUP(lcs::Constitutions::StretchFace<luisa::compute::Buffer>,
                     sa_stretch_faces_mu_lambda,
                     sa_stretch_faces_Dm_inv){};
 
+LUISA_BINDING_GROUP(lcs::Constitutions::BendingEdge<luisa::compute::Buffer>,
+                    constraint_offsets_in_adjlist,
+                    constraint_gradients,
+                    constraint_hessians,
+                    vert_adj_constraints_csr,
+                    sa_bending_edges,
+                    sa_bending_edges_rest_angle,
+                    sa_bending_edges_stiffness,
+                    sa_bending_edges_Q,
+                    sa_bending_edges_rest_area){};
+
+LUISA_BINDING_GROUP(lcs::Constitutions::StressTet<luisa::compute::Buffer>,
+                    constraint_offsets_in_adjlist,
+                    constraint_gradients,
+                    constraint_hessians,
+                    vert_adj_constraints_csr,
+                    sa_stress_tets,
+                    sa_stress_tets_rest_volume,
+                    sa_stress_tets_mu_lambda,
+                    sa_stress_tets_Dm_inv){};
 
 /*
 struct BaseSimulationData

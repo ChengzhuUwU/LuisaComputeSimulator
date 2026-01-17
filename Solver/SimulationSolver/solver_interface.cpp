@@ -635,15 +635,14 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         },
         default_option);
 
-    // if (host_sim_data->sa_stretch_springs.size() > 0)
     compiler.compile<1>(
         fn_calc_energy_spring,
         [sa_system_energy = sim_data->sa_system_energy.view()](
-            Var<Constitutions::StretchSpring<Buffer>> sa_stretch_springs, Var<BufferView<float3>> sa_x, Float stiffness_spring)
+            Var<Constitutions::StretchSpring<Buffer>> constraint, Var<BufferView<float3>> sa_x, Float stiffness_spring)
         {
-            auto& sa_edges                    = sa_stretch_springs->sa_stretch_springs;
-            auto& sa_edge_rest_state_length   = sa_stretch_springs->sa_stretch_spring_rest_state_length;
-            auto& sa_stretch_spring_stiffness = sa_stretch_springs->sa_stretch_spring_stiffness;
+            auto& sa_edges                    = constraint->sa_stretch_springs;
+            auto& sa_edge_rest_state_length   = constraint->sa_stretch_spring_rest_state_length;
+            auto& sa_stretch_spring_stiffness = constraint->sa_stretch_spring_stiffness;
 
             const Uint eid    = dispatch_id().x;
             Float      energy = 0.0f;
@@ -667,21 +666,15 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         },
         default_option);
 
-    // if (host_sim_data->sa_stretch_faces.size() > 0)
     compiler.compile<1>(
         fn_calc_energy_stretch_face,
-        [
-            // [sa_faces                   = sim_data->sa_stretch_faces.view(),
-            //  sa_stretch_faces_rest_area = sim_data->sa_stretch_faces_rest_area.view(),
-            //  sa_stretch_faces_Dm_inv    = sim_data->sa_stretch_faces_Dm_inv.view(),
-            //  sa_stretch_faces_mu_lambda = sim_data->sa_stretch_faces_mu_lambda.view(),
-            sa_system_energy = sim_data->sa_system_energy.view()](Var<Constitutions::StretchFace<Buffer>> sa_stretch_faces,
-                                                                  Var<BufferView<float3>> sa_x)
+        [sa_system_energy = sim_data->sa_system_energy.view()](Var<Constitutions::StretchFace<Buffer>> constraint,
+                                                               Var<BufferView<float3>> sa_x)
         {
-            auto& sa_faces                   = sa_stretch_faces->sa_stretch_faces;
-            auto& sa_stretch_faces_rest_area = sa_stretch_faces->sa_stretch_faces_rest_area;
-            auto& sa_stretch_faces_Dm_inv    = sa_stretch_faces->sa_stretch_faces_Dm_inv;
-            auto& sa_stretch_faces_mu_lambda = sa_stretch_faces->sa_stretch_faces_mu_lambda;
+            auto& sa_faces                   = constraint->sa_stretch_faces;
+            auto& sa_stretch_faces_rest_area = constraint->sa_stretch_faces_rest_area;
+            auto& sa_stretch_faces_Dm_inv    = constraint->sa_stretch_faces_Dm_inv;
+            auto& sa_stretch_faces_mu_lambda = constraint->sa_stretch_faces_mu_lambda;
 
             const Uint fid    = dispatch_id().x;
             Float      energy = 0.0f;
@@ -708,53 +701,58 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         },
         default_option);
 
-    if (host_sim_data->sa_bending_edges.size() > 0)
-        compiler.compile<1>(
-            fn_calc_energy_bending,
-            [sa_edges                    = sim_data->sa_bending_edges.view(),
-             sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
-             sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
-             sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
-             sa_bending_edges_stiffness  = sim_data->sa_bending_edges_stiffness.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float scaling)
+    compiler.compile<1>(
+        fn_calc_energy_bending,
+        [
+            //     sa_edges                    = sim_data->sa_bending_edges.view(),
+            //  sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
+            //  sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
+            //  sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
+            //  sa_bending_edges_stiffness  = sim_data->sa_bending_edges_stiffness.view(),
+            sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::BendingEdge<Buffer>> constraint, Var<BufferView<float3>> sa_x, Float scaling)
+        {
+            auto& sa_edges                    = constraint->sa_bending_edges;
+            auto& sa_bending_edges_rest_angle = constraint->sa_bending_edges_rest_angle;
+            auto& sa_bending_edges_rest_area  = constraint->sa_bending_edges_rest_area;
+            auto& sa_bending_edges_stiffness  = constraint->sa_bending_edges_stiffness;
+            // auto& sa_bending_edges_Q          = constraint->sa_bending_edges_Q;
+
+            const Uint eid    = dispatch_id().x;
+            Float      energy = 0.0f;
             {
-                const Uint eid    = dispatch_id().x;
-                Float      energy = 0.0f;
-                {
-                    const Uint4 edge = sa_edges->read(eid);
+                const Uint4 edge = sa_edges->read(eid);
 
-                    Float3 vert_pos[4] = {
-                        sa_x.read(edge[0]),
-                        sa_x.read(edge[1]),
-                        sa_x.read(edge[2]),
-                        sa_x.read(edge[3]),
-                    };
-                    Float rest_angle = sa_bending_edges_rest_angle->read(eid);
-                    Float angle =
-                        BendingEnergy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
-                    Float delta_angle = angle - rest_angle;
-                    Float area        = sa_bending_edges_rest_area->read(eid);
-                    energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
+                Float3 vert_pos[4] = {
+                    sa_x.read(edge[0]),
+                    sa_x.read(edge[1]),
+                    sa_x.read(edge[2]),
+                    sa_x.read(edge[3]),
+                };
+                Float rest_angle = sa_bending_edges_rest_angle->read(eid);
+                Float angle = BendingEnergy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
+                Float delta_angle = angle - rest_angle;
+                Float area        = sa_bending_edges_rest_area->read(eid);
+                energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
 
-                    // const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
-                    // for (uint ii = 0; ii < 4; ii++)
-                    // {
-                    //     for (uint jj = 0; jj < 4; jj++)
-                    //     {
-                    //         // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
-                    //         energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]);
-                    //     }
-                    // }
-                    // energy = 0.5f * stiffness_bending * energy;
-                };
-                energy = ParallelIntrinsic::block_intrinsic_reduce(
-                    eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-                $if(eid % 256 == 0)
-                {
-                    sa_system_energy->atomic(offset_bending).fetch_add(energy);
-                };
-            },
-            default_option);
+                // const Float4x4 m_Q = sa_bending_edges_Q->read(eid);
+                // for (uint ii = 0; ii < 4; ii++)
+                // {
+                //     for (uint jj = 0; jj < 4; jj++)
+                //     {
+                //         // E_b = 1/2 (x^T)Qx = 1/2 Sigma_ij Q_ij <x_i, x_j>
+                //         energy += m_Q[ii][jj] * dot(vert_pos[ii], vert_pos[jj]);
+                //     }
+                // }
+                // energy = 0.5f * stiffness_bending * energy;
+            };
+            energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(eid % 256 == 0)
+            {
+                sa_system_energy->atomic(offset_bending).fetch_add(energy);
+            };
+        },
+        default_option);
 
     if (host_sim_data->num_affine_bodies != 0)
     {
@@ -886,10 +884,12 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
         stream << fn_calc_energy_stretch_face(stretch_face_constitution, curr_x)
                       .dispatch(stretch_face_constitution.get_num_indices());
     }
-    if (host_sim_data->sa_bending_edges.size() != 0)
+
+    const auto& bending_edge_constitution = sim_data->get_bending_edge_data();
+    if (bending_edge_constitution.is_valid())
     {
-        stream << fn_calc_energy_bending(curr_x, get_scene_params().get_bending_stiffness_scaling())
-                      .dispatch(host_sim_data->sa_bending_edges.size());
+        stream << fn_calc_energy_bending(bending_edge_constitution, curr_x, get_scene_params().get_bending_stiffness_scaling())
+                      .dispatch(bending_edge_constitution.get_num_indices());
     }
 
     auto& host_energy = host_sim_data->sa_system_energy;

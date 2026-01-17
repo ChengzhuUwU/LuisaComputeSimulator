@@ -113,7 +113,7 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, float, bool>              fn_gound_collision_ccd;
     luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>> fn_evaluate_spring;  // Float stiffness_stretch
     luisa::compute::Shader<1, Constitutions::StretchFace<luisa::compute::Buffer>> fn_evaluate_stretch_face;
-    luisa::compute::Shader<1, float> fn_evaluate_bending;  // Float stiffness_bending
+    luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>, float> fn_evaluate_bending;  // Float stiffness_bending
 
     luisa::compute::Shader<1, float, float3> fn_abd_predict_position;
     luisa::compute::Shader<1, float, bool, float> fn_abd_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
@@ -124,7 +124,7 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1> fn_material_energy_assembly;
     luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>> fn_material_energy_assembly_stretch_spring;
     luisa::compute::Shader<1, Constitutions::StretchFace<luisa::compute::Buffer>> fn_material_energy_assembly_stretch_face;
-    luisa::compute::Shader<1>       fn_material_energy_assembly_bending;
+    luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>> fn_material_energy_assembly_bending;
     luisa::compute::Shader<1, uint> fn_material_energy_assembly_affine_body;
 
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_diag;

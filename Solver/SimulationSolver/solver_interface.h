@@ -173,12 +173,14 @@ class SolverInterface
                            >
         fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,
+                           // Constitutions::AffineBody<luisa::compute::Buffer>,  // abd_constitution
                            luisa::compute::BufferView<float3>  // sa_q
                            >
         fn_calc_energy_abd_ortho;
     luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,  // sa_x
-                           float                                // stiffness_bending
+                           Constitutions::BendingEdge<luisa::compute::Buffer>,  // bending_edge_constitution
+                           luisa::compute::BufferView<float3>,                  // sa_x
+                           float                                                // stiffness_bending
                            >
         fn_calc_energy_bending;
     luisa::compute::Shader<1,
