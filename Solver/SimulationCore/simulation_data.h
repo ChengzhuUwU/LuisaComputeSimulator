@@ -42,6 +42,9 @@ struct ColoredData : SimulationType
     BufferType<uint> prefix_per_vertex_with_material_constraints;
     BufferType<uint> clusterd_per_vertex_with_material_constraints;
     BufferType<uint> per_vertex_bending_cluster_id;  // ubyte
+
+    BufferType<float>    sa_Hf;
+    BufferType<float4x3> sa_Hf1;
 };
 
 
@@ -233,14 +236,51 @@ struct SimulationData : SimulationType
     BufferType<uint>  sa_num_dof;
     BufferType<float> sa_system_energy;
 
-  private:
-    Constitutions::StretchSpring<BufferType> stretch_spring_constitution;
-    Constitutions::StretchFace<BufferType>   stretch_face_constitution;
-    Constitutions::BendingEdge<BufferType>   bending_edge_constitution;
-    Constitutions::AbdKinematics<BufferType> affine_body_constitution;
-    Constitutions::StressTet<BufferType>     stress_tet_constitution;
-    Constitutions::ElasticRod<BufferType>    elastic_rod_constitution;
+    BufferType<uint> sa_vert_affine_bodies_id;
+    BufferType<uint> sa_affine_bodies_mesh_id;
+    BufferType<uint> sa_affine_bodies_is_fixed;
 
+    BufferType<float3> sa_affine_bodies_rest_q;
+    BufferType<float3> sa_affine_bodies_rest_q_v;
+    BufferType<float3> sa_affine_bodies_gravity;
+    BufferType<float3> sa_affine_bodies_q;
+    BufferType<float3> sa_affine_bodies_q_v;
+    BufferType<float3> sa_affine_bodies_q_tilde;
+    BufferType<float3> sa_affine_bodies_q_iter_start;
+    BufferType<float3> sa_affine_bodies_q_step_start;
+
+    BufferType<uint>  sa_contact_active_verts;
+    BufferType<uint>  sa_contact_active_edges;
+    BufferType<uint>  sa_contact_active_faces;
+    BufferType<float> sa_contact_active_verts_d_hat;
+    BufferType<float> sa_contact_active_verts_offset;
+    BufferType<float> sa_contact_active_verts_friction_coeff;
+
+
+    BufferType<float3> sa_affine_bodies_q_outer;
+    BufferType<float3> sa_affine_bodies_q_v_outer;
+
+    ColoredData<BufferType> colored_data;
+
+
+    // PCG
+    BufferType<float3>           sa_cgX;
+    BufferType<float3>           sa_cgB;
+    BufferType<float3x3>         sa_cgA_diag;
+    BufferType<MatrixTriplet3x3> sa_cgA_fixtopo_offdiag_triplet;
+    BufferType<uint3>            sa_cgA_fixtopo_offdiag_triplet_info;
+
+    BufferType<float3x3> sa_cgMinv;
+    BufferType<float3>   sa_cgP;
+    BufferType<float3>   sa_cgQ;
+    BufferType<float3>   sa_cgR;
+    BufferType<float3>   sa_cgZ;
+    BufferType<float>    sa_block_result;
+    BufferType<float>    sa_convergence;
+
+
+    std::vector<std::vector<uint>> vert_adj_material_force_verts;
+    BufferType<uint>               sa_vert_adj_material_force_verts_csr;
 
   public:
     Constitutions::StretchFace<BufferType>& get_stretch_face_data() { return stretch_face_constitution; }
@@ -278,64 +318,13 @@ struct SimulationData : SimulationType
         return elastic_rod_constitution;
     }
 
-
-    BufferType<uint> sa_vert_affine_bodies_id;
-    BufferType<uint> sa_affine_bodies_mesh_id;
-    BufferType<uint> sa_affine_bodies_is_fixed;
-
-    BufferType<float3> sa_affine_bodies_rest_q;
-    BufferType<float3> sa_affine_bodies_rest_q_v;
-    BufferType<float3> sa_affine_bodies_gravity;
-    BufferType<float3> sa_affine_bodies_q;
-    BufferType<float3> sa_affine_bodies_q_v;
-    BufferType<float3> sa_affine_bodies_q_tilde;
-    BufferType<float3> sa_affine_bodies_q_iter_start;
-    BufferType<float3> sa_affine_bodies_q_step_start;
-
-    // std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
-    //
-    // BufferType<uint4>    sa_affine_bodies;
-    // BufferType<float>    sa_affine_bodies_kappa;
-    // BufferType<float>    sa_affine_bodies_volume;
-    // BufferType<float4x4> sa_affine_bodies_mass_matrix;
-    // BufferType<float3>   sa_affine_bodies_gradients;
-    // BufferType<float3x3> sa_affine_bodies_hessians;
-    // BufferType<ushort>   sa_affine_bodies_offsets_in_adjlist;
-
-    BufferType<uint>  sa_contact_active_verts;
-    BufferType<uint>  sa_contact_active_edges;
-    BufferType<uint>  sa_contact_active_faces;
-    BufferType<float> sa_contact_active_verts_d_hat;
-    BufferType<float> sa_contact_active_verts_offset;
-    BufferType<float> sa_contact_active_verts_friction_coeff;
-
-
-    BufferType<float3> sa_affine_bodies_q_outer;
-    BufferType<float3> sa_affine_bodies_q_v_outer;
-
-    ColoredData<BufferType> colored_data;
-
-    BufferType<float>    sa_Hf;
-    BufferType<float4x3> sa_Hf1;
-
-    // PCG
-    BufferType<float3>           sa_cgX;
-    BufferType<float3>           sa_cgB;
-    BufferType<float3x3>         sa_cgA_diag;
-    BufferType<MatrixTriplet3x3> sa_cgA_fixtopo_offdiag_triplet;
-    BufferType<uint3>            sa_cgA_fixtopo_offdiag_triplet_info;
-
-    BufferType<float3x3> sa_cgMinv;
-    BufferType<float3>   sa_cgP;
-    BufferType<float3>   sa_cgQ;
-    BufferType<float3>   sa_cgR;
-    BufferType<float3>   sa_cgZ;
-    BufferType<float>    sa_block_result;
-    BufferType<float>    sa_convergence;
-
-
-    std::vector<std::vector<uint>> vert_adj_material_force_verts;
-    BufferType<uint>               sa_vert_adj_material_force_verts_csr;
+  private:
+    Constitutions::StretchSpring<BufferType> stretch_spring_constitution;
+    Constitutions::StretchFace<BufferType>   stretch_face_constitution;
+    Constitutions::BendingEdge<BufferType>   bending_edge_constitution;
+    Constitutions::AbdKinematics<BufferType> affine_body_constitution;
+    Constitutions::StressTet<BufferType>     stress_tet_constitution;
+    Constitutions::ElasticRod<BufferType>    elastic_rod_constitution;
 };
 
 }  // namespace lcs

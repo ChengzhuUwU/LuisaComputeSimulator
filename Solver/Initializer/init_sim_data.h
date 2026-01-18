@@ -23,4 +23,10 @@ void resize_pcg_data(luisa::compute::Device&                      device,
                      lcs::SimulationData<std::vector>*            host_data,
                      lcs::SimulationData<luisa::compute::Buffer>* device_data);
 
+void init_colored_data(lcs::SimulationData<std::vector>* sim_data);
+void upload_colored_data(luisa::compute::Device&                      device,
+                         luisa::compute::Stream&                      stream,
+                         lcs::SimulationData<std::vector>*            input_data,
+                         lcs::SimulationData<luisa::compute::Buffer>* output_data);
+
 }  // namespace lcs::Initializer

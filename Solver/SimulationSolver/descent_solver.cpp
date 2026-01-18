@@ -187,8 +187,8 @@ void DescentSolver::compile(luisa::compute::Device& device)
         });
 
     fn_evaluate_inertia = device.compile<1>(
-        [sa_Hf        = sim_data->sa_Hf.view(),
-         sa_Hf1       = sim_data->sa_Hf1.view(),
+        [sa_Hf        = sim_data->colored_data.sa_Hf.view(),
+         sa_Hf1       = sim_data->colored_data.sa_Hf1.view(),
          sa_x         = sim_data->sa_x.view(),
          sa_x_tilde   = sim_data->sa_x_tilde.view(),
          sa_x_start   = sim_data->sa_x_step_start.view(),
@@ -246,8 +246,8 @@ void DescentSolver::compile(luisa::compute::Device& device)
     const auto& stretch_springs = sim_data->get_stretch_spring_data();
 
     fn_evaluate_stretch_spring = device.compile<1>(
-        [sa_Hf                 = sim_data->sa_Hf.view(),
-         sa_Hf1                = sim_data->sa_Hf1.view(),
+        [sa_Hf                 = sim_data->colored_data.sa_Hf.view(),
+         sa_Hf1                = sim_data->colored_data.sa_Hf1.view(),
          sa_iter_position      = sim_data->sa_x.view(),
          sa_start_position     = sim_data->sa_x_step_start.view(),
          sa_vert_adj_edges_csr = mesh_data->sa_vert_adj_edges_csr.view(),
@@ -364,8 +364,8 @@ void DescentSolver::compile(luisa::compute::Device& device)
     */
 
     fn_step = device.compile<1>(
-        [sa_Hf            = sim_data->sa_Hf.view(),
-         sa_Hf1           = sim_data->sa_Hf1.view(),
+        [sa_Hf            = sim_data->colored_data.sa_Hf.view(),
+         sa_Hf1           = sim_data->colored_data.sa_Hf1.view(),
          sa_iter_position = sim_data->sa_x.view(),
          extractHf]
         {
@@ -626,7 +626,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         auto* sa_x_start   = host_sim_data->sa_x_step_start.data();
         auto* sa_is_fixed  = host_mesh_data->sa_is_fixed.data();
         auto* sa_vert_mass = host_mesh_data->sa_vert_mass.data();
-        auto* sa_Hf1       = host_sim_data->sa_Hf1.data();
+        auto* sa_Hf1       = host_sim_data->colored_data.sa_Hf1.data();
 
         CpuParallel::parallel_for(0,
                                   host_mesh_data->num_verts,
@@ -662,7 +662,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
         auto* sa_vert_adj_edges_csr = host_mesh_data->sa_vert_adj_edges_csr.data();
         auto* sa_edges              = stretch_springs.sa_stretch_springs.data();
         auto* sa_rest_length        = stretch_springs.sa_stretch_spring_rest_state_length.data();
-        auto* sa_Hf1                = host_sim_data->sa_Hf1.data();
+        auto* sa_Hf1                = host_sim_data->colored_data.sa_Hf1.data();
 
         CpuParallel::parallel_for(0,
                                   host_mesh_data->num_verts,
@@ -726,7 +726,7 @@ void DescentSolver::physics_step_CPU(luisa::compute::Device& device, luisa::comp
                                   mesh_data->num_verts,
                                   [&](const uint vid)
                                   {
-                                      float4x3 Hf = host_sim_data->sa_Hf1[vid];
+                                      float4x3 Hf = host_sim_data->colored_data.sa_Hf1[vid];
                                       float3   f  = Hf.cols[0];
                                       float3x3 H  = make_float3x3(Hf.cols[1], Hf.cols[2], Hf.cols[3]);
 

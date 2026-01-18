@@ -1079,135 +1079,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         auto& abd_data = sim_data->get_affine_body_data();
         init_constitution_offsets_in_adjlist(adj_list, abd_data);
     }
-
-    // Constraint Graph Coloring
-    std::vector<std::vector<uint>> tmp_clusterd_constraint_stretch_mass_spring;
-    std::vector<std::vector<uint>> tmp_clusterd_constraint_bending;
-    auto*                          colored_data = &sim_data->colored_data;
-    {
-        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
-        fn_graph_coloring_per_constraint("Distance  Spring Constraint",
-                                         tmp_clusterd_constraint_stretch_mass_spring,
-                                         stretch_spring_data.vert_adj_constraints,
-                                         stretch_spring_data.sa_stretch_springs,
-                                         2);
-
-        auto& bending_edge_data = sim_data->get_bending_edge_data();
-        fn_graph_coloring_per_constraint("Bending   Angle  Constraint",
-                                         tmp_clusterd_constraint_bending,
-                                         bending_edge_data.vert_adj_constraints,
-                                         bending_edge_data.sa_bending_edges,
-                                         4);
-
-        colored_data->num_clusters_springs       = tmp_clusterd_constraint_stretch_mass_spring.size();
-        colored_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
-
-        fn_get_prefix(colored_data->sa_prefix_merged_springs, tmp_clusterd_constraint_stretch_mass_spring);
-        fn_get_prefix(colored_data->sa_prefix_merged_bending_edges, tmp_clusterd_constraint_bending);
-
-        upload_2d_csr_from(colored_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
-        upload_2d_csr_from(colored_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
-    }
-
-    // Vertex Block Descent Coloring
-    {
-        // Graph Coloring
-        const uint num_verts_total = num_dof;
-        sim_data->sa_Hf.resize(num_dof * 12);
-        sim_data->sa_Hf1.resize(num_dof);
-
-        const std::vector<std::vector<uint>>& vert_adj_verts = sim_data->vert_adj_material_force_verts;
-        std::vector<std::vector<uint>>        clusterd_vertices_bending;
-        std::vector<uint>                     prefix_vertices_bending;
-
-        fn_graph_coloring_per_vertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
-        colored_data->num_clusters_per_vertex_with_material_constraints = clusterd_vertices_bending.size();
-        upload_from(colored_data->prefix_per_vertex_with_material_constraints, prefix_vertices_bending);
-        upload_2d_csr_from(colored_data->clusterd_per_vertex_with_material_constraints, clusterd_vertices_bending);
-
-        // Reverse map
-        colored_data->per_vertex_bending_cluster_id.resize(num_dof);
-        for (uint cluster = 0; cluster < colored_data->num_clusters_per_vertex_with_material_constraints; cluster++)
-        {
-            const uint next_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
-            const uint curr_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster];
-            const uint num_verts_cluster = next_prefix - curr_prefix;
-            CpuParallel::parallel_for(0,
-                                      num_verts_cluster,
-                                      [&](const uint i)
-                                      {
-                                          const uint vid =
-                                              colored_data->clusterd_per_vertex_with_material_constraints[curr_prefix + i];
-                                          colored_data->per_vertex_bending_cluster_id[vid] = cluster;
-                                      });
-        }
-    }
-
-    // Colored contraint precomputation
-    {
-        // Spring Constraint
-        {
-            auto& stretch_spring_data = sim_data->get_stretch_spring_data();
-
-            colored_data->sa_merged_stretch_springs.resize(num_stretch_springs);
-            colored_data->sa_merged_stretch_spring_rest_length.resize(num_stretch_springs);
-            colored_data->sa_lambda_stretch_mass_spring.resize(num_stretch_springs);
-
-            uint prefix = 0;
-            for (uint cluster = 0; cluster < tmp_clusterd_constraint_stretch_mass_spring.size(); cluster++)
-            {
-                const auto& curr_cluster = tmp_clusterd_constraint_stretch_mass_spring[cluster];
-                CpuParallel::parallel_for(0,
-                                          curr_cluster.size(),
-                                          [&](const uint i)
-                                          {
-                                              const uint eid = curr_cluster[i];
-                                              {
-                                                  colored_data->sa_merged_stretch_springs[prefix + i] =
-                                                      stretch_spring_data.sa_stretch_springs[eid];
-                                                  colored_data->sa_merged_stretch_spring_rest_length[prefix + i] =
-                                                      stretch_spring_data.sa_stretch_spring_rest_state_length[eid];
-                                              }
-                                          });
-                prefix += curr_cluster.size();
-            }
-            if (prefix != stretch_spring_data.sa_stretch_springs.size())
-                LUISA_ERROR("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
-        }
-
-        // Bending Constraint
-        {
-            auto& bending_edge_data = sim_data->get_bending_edge_data();
-
-            colored_data->sa_merged_bending_edges.resize(num_bending_edges);
-            colored_data->sa_merged_bending_edges_angle.resize(num_bending_edges);
-            colored_data->sa_merged_bending_edges_Q.resize(num_bending_edges);
-            colored_data->sa_lambda_bending.resize(num_bending_edges);
-
-            uint prefix = 0;
-            for (uint cluster = 0; cluster < tmp_clusterd_constraint_bending.size(); cluster++)
-            {
-                const auto& curr_cluster = tmp_clusterd_constraint_bending[cluster];
-                CpuParallel::parallel_for(0,
-                                          curr_cluster.size(),
-                                          [&](const uint i)
-                                          {
-                                              const uint eid = curr_cluster[i];
-                                              {
-                                                  colored_data->sa_merged_bending_edges[prefix + i] =
-                                                      bending_edge_data.sa_bending_edges[eid];
-                                                  colored_data->sa_merged_bending_edges_angle[prefix + i] =
-                                                      bending_edge_data.sa_bending_edges_rest_angle[eid];
-                                                  colored_data->sa_merged_bending_edges_Q[prefix + i] =
-                                                      bending_edge_data.sa_bending_edges_Q[eid];
-                                              }
-                                          });
-                prefix += curr_cluster.size();
-            }
-            if (prefix != bending_edge_data.sa_bending_edges.size())
-                LUISA_ERROR("Sum of Bending Cluster Is Not Equal Than Orig");
-        }
-    }
 }
 
 void upload_sim_buffers(luisa::compute::Device&                      device,
@@ -1330,6 +1201,150 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                             output_data->sa_vert_affine_bodies_id,
                             input_data->sa_vert_affine_bodies_id);  // Basic information
 
+
+    stream << luisa::compute::synchronize();
+}
+
+
+void init_colored_data(lcs::SimulationData<std::vector>* sim_data)
+{
+    // Constraint Graph Coloring
+    std::vector<std::vector<uint>> tmp_clusterd_constraint_stretch_mass_spring;
+    std::vector<std::vector<uint>> tmp_clusterd_constraint_bending;
+    auto*                          colored_data = &sim_data->colored_data;
+    {
+        auto& stretch_spring_data = sim_data->get_stretch_spring_data();
+        fn_graph_coloring_per_constraint("Distance  Spring Constraint",
+                                         tmp_clusterd_constraint_stretch_mass_spring,
+                                         stretch_spring_data.vert_adj_constraints,
+                                         stretch_spring_data.sa_stretch_springs,
+                                         2);
+
+        auto& bending_edge_data = sim_data->get_bending_edge_data();
+        fn_graph_coloring_per_constraint("Bending   Angle  Constraint",
+                                         tmp_clusterd_constraint_bending,
+                                         bending_edge_data.vert_adj_constraints,
+                                         bending_edge_data.sa_bending_edges,
+                                         4);
+
+        colored_data->num_clusters_springs       = tmp_clusterd_constraint_stretch_mass_spring.size();
+        colored_data->num_clusters_bending_edges = tmp_clusterd_constraint_bending.size();
+
+        fn_get_prefix(colored_data->sa_prefix_merged_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        fn_get_prefix(colored_data->sa_prefix_merged_bending_edges, tmp_clusterd_constraint_bending);
+
+        upload_2d_csr_from(colored_data->sa_clusterd_springs, tmp_clusterd_constraint_stretch_mass_spring);
+        upload_2d_csr_from(colored_data->sa_clusterd_bending_edges, tmp_clusterd_constraint_bending);
+    }
+
+    // Vertex Block Descent Coloring
+    {
+        // Graph Coloring
+        const uint num_dof = sim_data->num_dof;
+        colored_data->sa_Hf.resize(num_dof * 12);
+        colored_data->sa_Hf1.resize(num_dof);
+
+        const std::vector<std::vector<uint>>& vert_adj_verts = sim_data->vert_adj_material_force_verts;
+        std::vector<std::vector<uint>>        clusterd_vertices_bending;
+        std::vector<uint>                     prefix_vertices_bending;
+
+        fn_graph_coloring_per_vertex(vert_adj_verts, clusterd_vertices_bending, prefix_vertices_bending);
+        colored_data->num_clusters_per_vertex_with_material_constraints = clusterd_vertices_bending.size();
+        upload_from(colored_data->prefix_per_vertex_with_material_constraints, prefix_vertices_bending);
+        upload_2d_csr_from(colored_data->clusterd_per_vertex_with_material_constraints, clusterd_vertices_bending);
+
+        // Reverse map
+        colored_data->per_vertex_bending_cluster_id.resize(num_dof);
+        for (uint cluster = 0; cluster < colored_data->num_clusters_per_vertex_with_material_constraints; cluster++)
+        {
+            const uint next_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster + 1];
+            const uint curr_prefix = colored_data->clusterd_per_vertex_with_material_constraints[cluster];
+            const uint num_verts_cluster = next_prefix - curr_prefix;
+            CpuParallel::parallel_for(0,
+                                      num_verts_cluster,
+                                      [&](const uint i)
+                                      {
+                                          const uint vid =
+                                              colored_data->clusterd_per_vertex_with_material_constraints[curr_prefix + i];
+                                          colored_data->per_vertex_bending_cluster_id[vid] = cluster;
+                                      });
+        }
+    }
+
+    // Colored contraint precomputation
+    {
+        // Spring Constraint
+        {
+            auto&      stretch_spring_data = sim_data->get_stretch_spring_data();
+            const uint num_stretch_springs = stretch_spring_data.get_num_indices();
+
+            colored_data->sa_merged_stretch_springs.resize(num_stretch_springs);
+            colored_data->sa_merged_stretch_spring_rest_length.resize(num_stretch_springs);
+            colored_data->sa_lambda_stretch_mass_spring.resize(num_stretch_springs);
+
+            uint prefix = 0;
+            for (uint cluster = 0; cluster < tmp_clusterd_constraint_stretch_mass_spring.size(); cluster++)
+            {
+                const auto& curr_cluster = tmp_clusterd_constraint_stretch_mass_spring[cluster];
+                CpuParallel::parallel_for(0,
+                                          curr_cluster.size(),
+                                          [&](const uint i)
+                                          {
+                                              const uint eid = curr_cluster[i];
+                                              {
+                                                  colored_data->sa_merged_stretch_springs[prefix + i] =
+                                                      stretch_spring_data.sa_stretch_springs[eid];
+                                                  colored_data->sa_merged_stretch_spring_rest_length[prefix + i] =
+                                                      stretch_spring_data.sa_stretch_spring_rest_state_length[eid];
+                                              }
+                                          });
+                prefix += curr_cluster.size();
+            }
+            if (prefix != stretch_spring_data.sa_stretch_springs.size())
+                LUISA_ERROR("Sum of Mass Spring Cluster Is Not Equal  Than Orig");
+        }
+
+        // Bending Constraint
+        {
+            auto&      bending_edge_data = sim_data->get_bending_edge_data();
+            const uint num_bending_edges = bending_edge_data.get_num_indices();
+
+            colored_data->sa_merged_bending_edges.resize(num_bending_edges);
+            colored_data->sa_merged_bending_edges_angle.resize(num_bending_edges);
+            colored_data->sa_merged_bending_edges_Q.resize(num_bending_edges);
+            colored_data->sa_lambda_bending.resize(num_bending_edges);
+
+            uint prefix = 0;
+            for (uint cluster = 0; cluster < tmp_clusterd_constraint_bending.size(); cluster++)
+            {
+                const auto& curr_cluster = tmp_clusterd_constraint_bending[cluster];
+                CpuParallel::parallel_for(0,
+                                          curr_cluster.size(),
+                                          [&](const uint i)
+                                          {
+                                              const uint eid = curr_cluster[i];
+                                              {
+                                                  colored_data->sa_merged_bending_edges[prefix + i] =
+                                                      bending_edge_data.sa_bending_edges[eid];
+                                                  colored_data->sa_merged_bending_edges_angle[prefix + i] =
+                                                      bending_edge_data.sa_bending_edges_rest_angle[eid];
+                                                  colored_data->sa_merged_bending_edges_Q[prefix + i] =
+                                                      bending_edge_data.sa_bending_edges_Q[eid];
+                                              }
+                                          });
+                prefix += curr_cluster.size();
+            }
+            if (prefix != bending_edge_data.sa_bending_edges.size())
+                LUISA_ERROR("Sum of Bending Cluster Is Not Equal Than Orig");
+        }
+    }
+}
+
+void upload_colored_data(luisa::compute::Device&                      device,
+                         luisa::compute::Stream&                      stream,
+                         lcs::SimulationData<std::vector>*            input_data,
+                         lcs::SimulationData<luisa::compute::Buffer>* output_data)
+{
     auto& colored_data_I = input_data->colored_data;
     auto& colored_data_O = output_data->colored_data;
     if (!colored_data_I.sa_merged_stretch_springs.empty())
@@ -1360,10 +1375,9 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
                                 colored_data_O.clusterd_per_vertex_with_material_constraints,
                                 colored_data_I.clusterd_per_vertex_with_material_constraints)
                << upload_buffer(device, colored_data_O.per_vertex_bending_cluster_id, colored_data_I.per_vertex_bending_cluster_id)
-               << upload_buffer(device, output_data->sa_Hf, input_data->sa_Hf)
-               << upload_buffer(device, output_data->sa_Hf1, input_data->sa_Hf1);
+               << upload_buffer(device, colored_data_O.sa_Hf, colored_data_I.sa_Hf)
+               << upload_buffer(device, colored_data_O.sa_Hf1, colored_data_I.sa_Hf1);
     }
-
     stream << luisa::compute::synchronize();
 }
 
