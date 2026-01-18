@@ -9,7 +9,6 @@
 #include "Energy/bending_energy.h"
 #include "Energy/stretch_energy.h"
 #include "Initializer/init_mesh_data.h"
-#include "SimulationSolver/descent_solver.h"
 #include "SimulationSolver/newton_solver.h"
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
