@@ -165,37 +165,20 @@ namespace Constitutions
     };
 
     template <template <typename...> typename BufferType>
-    struct AffineBody : ConstitutionInterface<BufferType, AffineBody<BufferType>>
+    struct AbdKinematics : ConstitutionInterface<BufferType, AbdKinematics<BufferType>>
     {
-        BufferType<uint>     sa_affine_bodies;
-        BufferType<float>    sa_affine_bodies_volume;
-        BufferType<float3x3> sa_affine_bodies_mass_matrix_diag;
-        BufferType<float3x3> sa_affine_bodies_mass_matrix_compressed_offdiag;
+        BufferType<uint4>            sa_affine_bodies;
+        BufferType<float>            sa_affine_bodies_kappa;
+        BufferType<float>            sa_affine_bodies_volume;
+        BufferType<float4x4>         sa_affine_bodies_mass_matrix;
+        std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
+
+        static constexpr ConstraintType constraint_type() { return ConstraintType::AffineBody; }
+        auto&                           get_indices_impl() const { return sa_affine_bodies; }
+        static constexpr size_t         get_num_verts_per_constaint() { return 4; }
     };
 
 }  // namespace Constitutions
-
-template <template <typename...> typename BufferType>
-struct AffineBodyData : SimulationType
-{
-    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
-    BufferType<uint>             sa_vert_affine_bodies_id;
-    BufferType<uint>             sa_affine_bodies;
-    BufferType<float>            sa_affine_bodies_volume;
-    BufferType<float3x3>         sa_affine_bodies_mass_matrix_diag;
-    BufferType<float3x3>         sa_affine_bodies_mass_matrix_compressed_offdiag;
-    BufferType<float3>           sa_affine_bodies_rest_q;
-    BufferType<float3>           sa_affine_bodies_rest_q_v;
-    BufferType<float3>           sa_affine_bodies_gravity;
-    BufferType<float3>           sa_affine_bodies_q;
-    BufferType<float3>           sa_affine_bodies_q_v;
-    BufferType<float3>           sa_affine_bodies_q_tilde;
-    BufferType<float3>           sa_affine_bodies_q_iter_start;
-    BufferType<float3>           sa_affine_bodies_q_step_start;
-
-    BufferType<float3> sa_affine_bodies_q_outer;
-    BufferType<float3> sa_affine_bodies_q_v_outer;
-};
 
 template <template <typename...> typename BufferType>
 struct PcgInterfaceData : SimulationType
@@ -221,18 +204,12 @@ struct PcgInnerData : SimulationType
     BufferType<float>    sa_convergence;
 };
 
-template <template <typename...> typename BufferType>
-struct AdjacentData : SimulationType
-{
-    // PCG
-    BufferType<float3x3> sa_cgMinv;
-    BufferType<float3>   sa_cgP;
-    BufferType<float3>   sa_cgQ;
-    BufferType<float3>   sa_cgR;
-    BufferType<float3>   sa_cgZ;
-    BufferType<float>    sa_block_result;
-    BufferType<float>    sa_convergence;
-};
+// template <template <typename...> typename BufferType>
+// struct AdjacentData : SimulationType
+// {
+//     std::vector<std::vector<uint>> vert_adj_material_force_verts;
+//     BufferType<uint>               sa_vert_adj_material_force_verts_csr;
+// };
 
 
 template <template <typename...> typename BufferType>
@@ -260,7 +237,7 @@ struct SimulationData : SimulationType
     Constitutions::StretchSpring<BufferType> stretch_spring_constitution;
     Constitutions::StretchFace<BufferType>   stretch_face_constitution;
     Constitutions::BendingEdge<BufferType>   bending_edge_constitution;
-    Constitutions::AffineBody<BufferType>    affine_body_constitution;
+    Constitutions::AbdKinematics<BufferType> affine_body_constitution;
     Constitutions::StressTet<BufferType>     stress_tet_constitution;
     Constitutions::ElasticRod<BufferType>    elastic_rod_constitution;
 
@@ -268,9 +245,9 @@ struct SimulationData : SimulationType
   public:
     Constitutions::StretchFace<BufferType>& get_stretch_face_data() { return stretch_face_constitution; }
     Constitutions::BendingEdge<BufferType>& get_bending_edge_data() { return bending_edge_constitution; }
-    Constitutions::AffineBody<BufferType>&  get_affine_body_data() { return affine_body_constitution; }
-    Constitutions::StressTet<BufferType>&   get_stress_tet_data() { return stress_tet_constitution; }
-    Constitutions::ElasticRod<BufferType>&  get_elastic_rod_data() { return elastic_rod_constitution; }
+    Constitutions::AbdKinematics<BufferType>& get_affine_body_data() { return affine_body_constitution; }
+    Constitutions::StressTet<BufferType>&     get_stress_tet_data() { return stress_tet_constitution; }
+    Constitutions::ElasticRod<BufferType>&    get_elastic_rod_data() { return elastic_rod_constitution; }
 
     const Constitutions::StretchSpring<BufferType>& get_stretch_spring_data() const
     {
@@ -288,7 +265,7 @@ struct SimulationData : SimulationType
     {
         return bending_edge_constitution;
     }
-    const Constitutions::AffineBody<BufferType>& get_affine_body_data() const
+    const Constitutions::AbdKinematics<BufferType>& get_affine_body_data() const
     {
         return affine_body_constitution;
     }
@@ -302,33 +279,9 @@ struct SimulationData : SimulationType
     }
 
 
-    // BufferType<uint4>    sa_bending_edges;
-    // BufferType<float>    sa_bending_edges_rest_angle;
-    // BufferType<float>    sa_bending_edges_stiffness;
-    // BufferType<float4x4> sa_bending_edges_Q;
-    // BufferType<float>    sa_bending_edges_rest_area;
-    // BufferType<ushort>   sa_bending_edges_offsets_in_adjlist;
-    // BufferType<float3>   sa_bending_edges_gradients;
-    // BufferType<float3x3> sa_bending_edges_hessians;
-
-    // BufferType<uint4>    sa_stress_tets;
-    // BufferType<float>    sa_stress_tets_rest_volume;
-    // BufferType<float2>   sa_stress_tets_mu_lambda;
-    // BufferType<float3x3> sa_stress_tets_Dm_inv;
-    // BufferType<ushort>   sa_stress_tets_offsets_in_adjlist;
-    // BufferType<float3>   sa_stress_tets_gradients;
-    // BufferType<float3x3> sa_stress_tets_hessians;
-
-
-    std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
-    BufferType<uint>             sa_vert_affine_bodies_id;
-    BufferType<uint>             sa_affine_bodies_mesh_id;
-    BufferType<uint>             sa_affine_bodies_is_fixed;
-
-    BufferType<uint4>    sa_affine_bodies;
-    BufferType<float>    sa_affine_bodies_kappa;
-    BufferType<float>    sa_affine_bodies_volume;
-    BufferType<float4x4> sa_affine_bodies_mass_matrix;
+    BufferType<uint> sa_vert_affine_bodies_id;
+    BufferType<uint> sa_affine_bodies_mesh_id;
+    BufferType<uint> sa_affine_bodies_is_fixed;
 
     BufferType<float3> sa_affine_bodies_rest_q;
     BufferType<float3> sa_affine_bodies_rest_q_v;
@@ -339,9 +292,15 @@ struct SimulationData : SimulationType
     BufferType<float3> sa_affine_bodies_q_iter_start;
     BufferType<float3> sa_affine_bodies_q_step_start;
 
-    BufferType<float3>   sa_affine_bodies_gradients;
-    BufferType<float3x3> sa_affine_bodies_hessians;
-    BufferType<ushort>   sa_affine_bodies_offsets_in_adjlist;
+    // std::vector<EigenFloat12x12> sa_affine_bodies_mass_matrix_full;
+    //
+    // BufferType<uint4>    sa_affine_bodies;
+    // BufferType<float>    sa_affine_bodies_kappa;
+    // BufferType<float>    sa_affine_bodies_volume;
+    // BufferType<float4x4> sa_affine_bodies_mass_matrix;
+    // BufferType<float3>   sa_affine_bodies_gradients;
+    // BufferType<float3x3> sa_affine_bodies_hessians;
+    // BufferType<ushort>   sa_affine_bodies_offsets_in_adjlist;
 
     BufferType<uint>  sa_contact_active_verts;
     BufferType<uint>  sa_contact_active_edges;
@@ -376,18 +335,7 @@ struct SimulationData : SimulationType
 
 
     std::vector<std::vector<uint>> vert_adj_material_force_verts;
-    // std::vector<std::vector<uint>> vert_adj_stretch_springs;
-    // std::vector<std::vector<uint>> vert_adj_stretch_faces;
-    std::vector<std::vector<uint>> vert_adj_bending_edges;
-    std::vector<std::vector<uint>> vert_adj_stress_tets;
-    std::vector<std::vector<uint>> vert_adj_affine_bodies;
-
-    BufferType<uint> sa_vert_adj_material_force_verts_csr;
-    // BufferType<uint> sa_vert_adj_stretch_springs_csr;
-    // BufferType<uint> sa_vert_adj_stretch_faces_csr;
-    // BufferType<uint> sa_vert_adj_bending_edges_csr;
-    // BufferType<uint> sa_vert_adj_stress_tets_csr;
-    BufferType<uint> sa_vert_adj_affine_bodies_csr;
+    BufferType<uint>               sa_vert_adj_material_force_verts_csr;
 };
 
 }  // namespace lcs
@@ -431,6 +379,16 @@ LUISA_BINDING_GROUP(lcs::Constitutions::StressTet<luisa::compute::Buffer>,
                     sa_stress_tets_rest_volume,
                     sa_stress_tets_mu_lambda,
                     sa_stress_tets_Dm_inv){};
+
+LUISA_BINDING_GROUP(lcs::Constitutions::AbdKinematics<luisa::compute::Buffer>,
+                    constraint_offsets_in_adjlist,
+                    constraint_gradients,
+                    constraint_hessians,
+                    vert_adj_constraints_csr,
+                    sa_affine_bodies,
+                    sa_affine_bodies_kappa,
+                    sa_affine_bodies_volume,
+                    sa_affine_bodies_mass_matrix){};
 
 /*
 struct BaseSimulationData

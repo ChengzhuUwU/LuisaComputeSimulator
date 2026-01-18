@@ -151,6 +151,7 @@ class SolverInterface
                            >
         fn_calc_energy_inertia;
     luisa::compute::Shader<1,
+                           Constitutions::AbdKinematics<luisa::compute::Buffer>,
                            luisa::compute::BufferView<float3>,  // sa_q
                            float,                               // substep_dt
                            float                                // stiffness_dirichlet
@@ -173,8 +174,8 @@ class SolverInterface
                            >
         fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,
-                           // Constitutions::AffineBody<luisa::compute::Buffer>,  // abd_constitution
-                           luisa::compute::BufferView<float3>  // sa_q
+                           Constitutions::AbdKinematics<luisa::compute::Buffer>,  // abd_constitution
+                           luisa::compute::BufferView<float3>                     // sa_q
                            >
         fn_calc_energy_abd_ortho;
     luisa::compute::Shader<1,

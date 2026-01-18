@@ -103,7 +103,25 @@ void atomic_buffer_add(const luisa::compute::BufferView<float3>& buffer, const V
     buffer->atomic(dest)[1].fetch_add(value[1]);
     buffer->atomic(dest)[2].fetch_add(value[2]);
 }
+void atomic_buffer_add(const luisa::compute::BufferVar<float3>& buffer, const Var<uint> dest, const Var<float3>& value)
+{
+    buffer->atomic(dest)[0].fetch_add(value[0]);
+    buffer->atomic(dest)[1].fetch_add(value[1]);
+    buffer->atomic(dest)[2].fetch_add(value[2]);
+}
 void atomic_buffer_add(const luisa::compute::BufferView<float3x3>& buffer, const Var<uint> dest, const Var<float3x3>& value)
+{
+    buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
+    buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
+    buffer->atomic(dest)[0][2].fetch_add(value[0][2]);
+    buffer->atomic(dest)[1][0].fetch_add(value[1][0]);
+    buffer->atomic(dest)[1][1].fetch_add(value[1][1]);
+    buffer->atomic(dest)[1][2].fetch_add(value[1][2]);
+    buffer->atomic(dest)[2][0].fetch_add(value[2][0]);
+    buffer->atomic(dest)[2][1].fetch_add(value[2][1]);
+    buffer->atomic(dest)[2][2].fetch_add(value[2][2]);
+}
+void atomic_buffer_add(const luisa::compute::BufferVar<float3x3>& buffer, const Var<uint> dest, const Var<float3x3>& value)
 {
     buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
     buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
@@ -805,18 +823,18 @@ void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::comput
                                            constraint.constraint_offsets_in_adjlist);
                      });
 
-    if (host_sim_data->sa_affine_bodies.size() != 0)
-        compiler.compile(fn_material_energy_assembly_affine_body,
-                         [vert_adj_constraints_csr = sim_data->sa_vert_adj_affine_bodies_csr.view(),
-                          constaints               = sim_data->sa_affine_bodies.view(),
-                          constaint_gradients      = sim_data->sa_affine_bodies_gradients.view(),
-                          constaint_hessians       = sim_data->sa_affine_bodies_hessians.view(),
-                          constaint_offsets_in_adjlist = sim_data->sa_affine_bodies_offsets_in_adjlist.view(),
-                          assembly_template](const Uint prefix)
-                         {
-                             const Uint vid = prefix + dispatch_x();
-                             assembly_template(4, vid, vert_adj_constraints_csr, constaints, constaint_gradients, constaint_hessians, constaint_offsets_in_adjlist);
-                         });
+    compiler.compile(fn_material_energy_assembly_affine_body,
+                     [assembly_template](Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint, const Uint prefix)
+                     {
+                         const Uint vid = prefix + dispatch_x();
+                         assembly_template(4,
+                                           vid,
+                                           constraint.vert_adj_constraints_csr,
+                                           constraint.sa_affine_bodies,
+                                           constraint.constraint_gradients,
+                                           constraint.constraint_hessians,
+                                           constraint.constraint_offsets_in_adjlist);
+                     });
 }
 void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
 {
@@ -1197,15 +1215,20 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
     {
         compiler.compile<1>(
             fn_evaluate_abd_inertia,
-            [affine_bodies = sim_data->sa_affine_bodies.view(),
-             abd_q         = sim_data->sa_affine_bodies_q.view(),
-             abd_q_tilde   = sim_data->sa_affine_bodies_q_tilde.view(),
-             abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
-             abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
-             abd_is_fixed  = sim_data->sa_affine_bodies_is_fixed.view(),
-             sa_affine_bodies_mass_matrix =
-                 sim_data->sa_affine_bodies_mass_matrix.view()](const Float substep_dt, const Float stiffness_dirichlet)
+            [abd_q        = sim_data->sa_affine_bodies_q.view(),
+             abd_q_tilde  = sim_data->sa_affine_bodies_q_tilde.view(),
+             abd_is_fixed = sim_data->sa_affine_bodies_is_fixed.view()
+             //  affine_bodies = sim_data->sa_affine_bodies.view(),
+             //  abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
+             //  abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
+             //  sa_affine_bodies_mass_matrix =
+             //      sim_data->sa_affine_bodies_mass_matrix.view()
+        ](Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint, const Float substep_dt, const Float stiffness_dirichlet)
             {
+                auto& abd_gradients                = constraint.constraint_gradients;
+                auto& abd_hessians                 = constraint.constraint_hessians;
+                auto& sa_affine_bodies_mass_matrix = constraint.sa_affine_bodies_mass_matrix;
+
                 const UInt  body_idx = dispatch_id().x;
                 const Float h        = substep_dt;
                 const Float h_2_inv  = 1.0f / (h * h);
@@ -1266,14 +1289,15 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
         compiler.compile<1>(
             fn_evaluate_abd_orthogonality,
-            [affine_bodies = sim_data->sa_affine_bodies.view(),
-             abd_q         = sim_data->sa_affine_bodies_q.view(),
-             abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
-             abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
-             abd_is_fixed  = sim_data->sa_affine_bodies_is_fixed.view(),
-             abd_volume    = sim_data->sa_affine_bodies_volume.view(),
-             abd_kappa     = sim_data->sa_affine_bodies_kappa.view()]()
+            [abd_q        = sim_data->sa_affine_bodies_q.view(),
+             abd_is_fixed = sim_data->sa_affine_bodies_is_fixed.view()](
+                Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint)
             {
+                auto& abd_gradients = constraint.constraint_gradients;
+                auto& abd_hessians  = constraint.constraint_hessians;
+                auto& abd_volume    = constraint.sa_affine_bodies_volume;
+                auto& abd_kappa     = constraint.sa_affine_bodies_kappa;
+
                 const UInt body_idx = dispatch_id().x;
 
                 Float3   ortho_gradient[3] = {Zero3};
@@ -1365,11 +1389,18 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
              sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
              sa_contact_active_verts_d_hat  = sim_data->sa_contact_active_verts_d_hat.view(),
              sa_contact_active_verts_friction_coeff = sim_data->sa_contact_active_verts_friction_coeff.view(),
-             abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
-             abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
-             sa_is_fixed   = mesh_data->sa_is_fixed.view()](
-                Float floor_y, Bool use_ground_collision, Float stiffness, Uint vid_start, Uint collision_type)
+             //  abd_gradients = sim_data->sa_affine_bodies_gradients.view(),
+             //  abd_hessians  = sim_data->sa_affine_bodies_hessians.view(),
+             sa_is_fixed = mesh_data->sa_is_fixed.view()](Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint,
+                                                          Float floor_y,
+                                                          Bool  use_ground_collision,
+                                                          Float stiffness,
+                                                          Uint  vid_start,
+                                                          Uint  collision_type)
             {
+                auto& abd_gradients = constraint.constraint_gradients;
+                auto& abd_hessians  = constraint.constraint_hessians;
+
                 const UInt vid = vid_start + dispatch_id().x;
 
                 $if(use_ground_collision)
@@ -1500,7 +1531,7 @@ void NewtonSolver::host_predict_position()
 
     // Vectorization
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies.size() * 4,
+                              host_sim_data->num_affine_bodies * 4,
                               [&](const uint block_idx)
                               {
                                   float3 q_prev = host_sim_data->sa_affine_bodies_q_step_start[block_idx];
@@ -1560,7 +1591,7 @@ void NewtonSolver::host_update_velocity()
 
     // Vectorization
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies.size() * 4,
+                              host_sim_data->num_affine_bodies * 4,
                               [&](const uint block_idx)
                               {
                                   const float substep_dt = get_scene_params().get_substep_dt();
@@ -1648,15 +1679,16 @@ void NewtonSolver::host_evaluate_inertia()
                                   }
                               });
 
-    float3*   abd_gradients = host_sim_data->sa_affine_bodies_gradients.data();
-    float3x3* abd_hessians  = host_sim_data->sa_affine_bodies_hessians.data();
+    auto& abd_data = host_sim_data->get_affine_body_data();
 
-    const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
-    const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
+    auto abd_gradients = std::span(abd_data.constraint_gradients);
+    auto abd_hessians  = std::span(abd_data.constraint_hessians);
+    auto abd_q         = std::span(host_sim_data->sa_affine_bodies_q);
+    auto abd_q_tilde   = std::span(host_sim_data->sa_affine_bodies_q_tilde);
 
     CpuParallel::parallel_for(
         0,
-        host_sim_data->sa_affine_bodies.size(),
+        abd_data.get_num_indices(),
         [&](const uint body_idx)
         {
             const float substep_dt = get_scene_params().get_substep_dt();
@@ -1667,7 +1699,7 @@ void NewtonSolver::host_evaluate_inertia()
                                     abd_q[4 * body_idx + 1] - abd_q_tilde[4 * body_idx + 1],
                                     abd_q[4 * body_idx + 2] - abd_q_tilde[4 * body_idx + 2],
                                     abd_q[4 * body_idx + 3] - abd_q_tilde[4 * body_idx + 3]};
-            float4x4 mass_matrix = host_sim_data->sa_affine_bodies_mass_matrix[body_idx];
+            float4x4 mass_matrix = abd_data.sa_affine_bodies_mass_matrix[body_idx];
             float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
 
             for (uint ii = 0; ii < 4; ii++)
@@ -1704,12 +1736,17 @@ void NewtonSolver::host_evaluate_inertia()
 }
 void NewtonSolver::host_evaluate_orthogonality()
 {
-    float3*   abd_gradients = host_sim_data->sa_affine_bodies_gradients.data();
-    float3x3* abd_hessians  = host_sim_data->sa_affine_bodies_hessians.data();
+    auto& abd_data = host_sim_data->get_affine_body_data();
+
+    auto abd_gradients           = std::span(abd_data.constraint_gradients);
+    auto abd_hessians            = std::span(abd_data.constraint_hessians);
+    auto abd_q                   = std::span(host_sim_data->sa_affine_bodies_q);
+    auto sa_affine_bodies_kappa  = std::span(abd_data.sa_affine_bodies_kappa);
+    auto sa_affine_bodies_volume = std::span(abd_data.sa_affine_bodies_volume);
 
     CpuParallel::parallel_for(
         0,
-        host_sim_data->sa_affine_bodies.size(),
+        abd_data.get_num_indices(),
         [&](const uint body_idx)
         {
             float3   ortho_gradient[3] = {Zero3};
@@ -1723,8 +1760,8 @@ void NewtonSolver::host_evaluate_orthogonality()
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 2],
                                               host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
 
-            const float kappa = host_sim_data->sa_affine_bodies_kappa[body_idx];
-            const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
+            const float kappa = sa_affine_bodies_kappa[body_idx];
+            const float V     = sa_affine_bodies_volume[body_idx];
 
             float stiff = kappa * V;
             for (uint ii = 0; ii < 3; ii++)
@@ -1916,14 +1953,16 @@ void NewtonSolver::host_evaluate_ground_collision()
             }
         });
 
-    float3*    abd_gradients  = host_sim_data->sa_affine_bodies_gradients.data();
-    float3x3*  abd_hessians   = host_sim_data->sa_affine_bodies_hessians.data();
-    const uint num_bodies     = host_sim_data->sa_affine_bodies.size();
+    auto& abd_data = host_sim_data->get_affine_body_data();
+
+    auto abd_gradients = std::span(abd_data.constraint_gradients);
+    auto abd_hessians  = std::span(abd_data.constraint_hessians);
+
     const uint collision_type = get_scene_params().contact_energy_type;
 
     CpuParallel::single_thread_for(
         0,
-        host_sim_data->sa_affine_bodies.size(),
+        abd_data.get_num_indices(),
         [&](const uint body_idx)
         {
             if (get_scene_params().use_floor)
@@ -2018,7 +2057,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     stream << luisa::compute::synchronize();
 
     const uint                 num_dof    = host_sim_data->num_dof;
-    const uint                 num_bodies = host_sim_data->sa_affine_bodies.size();
+    const uint                 num_bodies = host_sim_data->num_affine_bodies;
     Eigen::SparseMatrix<float> cgA(3 * num_dof, 3 * num_dof);
     Eigen::MatrixXf            cgB(3 * num_dof, 1);
     cgA.setZero();
@@ -2315,8 +2354,10 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // if constexpr (false)
     if (get_scene_params().use_floor)
     {
-        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
-        for (uint body_idx = 0; body_idx < host_sim_data->sa_affine_bodies.size(); body_idx++)
+        const auto& abd_data = host_sim_data->get_affine_body_data();
+
+        std::vector<EigenTripletBlock<4>> hessian_blocks(abd_data.get_num_indices());
+        for (uint body_idx = 0; body_idx < abd_data.get_num_indices(); body_idx++)
         {
             hessian_blocks[body_idx] = {.indices =
                                             {
@@ -2332,7 +2373,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         // const float thickness = get_scene_params().thickness;
         CpuParallel::single_thread_for(
             0,
-            host_sim_data->sa_affine_bodies.size(),
+            abd_data.get_num_indices(),
             [&](const uint body_idx)
             {
                 if (get_scene_params().use_floor)
@@ -2393,18 +2434,20 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         const auto& abd_q       = host_sim_data->sa_affine_bodies_q;
         const auto& abd_q_tilde = host_sim_data->sa_affine_bodies_q_tilde;
 
-        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
+        const auto& abd_data = host_sim_data->get_affine_body_data();
+
+        std::vector<EigenTripletBlock<4>> hessian_blocks(abd_data.get_num_indices());
 
         CpuParallel::single_thread_for(
             0,
-            host_sim_data->sa_affine_bodies.size(),
+            abd_data.get_num_indices(),
             [&](const uint body_idx)
             {
                 const float substep_dt = get_scene_params().get_substep_dt();
                 const float h          = substep_dt;
                 const float h_2_inv    = 1.f / (h * h);
 
-                auto         M     = host_sim_data->sa_affine_bodies_mass_matrix_full[body_idx];
+                auto         M     = abd_data.sa_affine_bodies_mass_matrix_full[body_idx];
                 EigenFloat12 delta = EigenFloat12::Zero();
 
                 delta.block<3, 1>(0, 0) =
@@ -2439,11 +2482,13 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
     // Orthogonality
     // if constexpr (false)
     {
-        std::vector<EigenTripletBlock<4>> hessian_blocks(num_bodies);
+        const auto& abd_data = host_sim_data->get_affine_body_data();
+
+        std::vector<EigenTripletBlock<4>> hessian_blocks(abd_data.get_num_indices());
 
         CpuParallel::single_thread_for(
             0,
-            host_sim_data->sa_affine_bodies.size(),
+            abd_data.get_num_indices(),
             [&](const uint body_idx)
             {
                 // Orthogonality potential
@@ -2454,8 +2499,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                                                       host_sim_data->sa_affine_bodies_q[4 * body_idx + 3]);
                     // A          = luisa::transpose(A);
 
-                    const float kappa = host_sim_data->sa_affine_bodies_kappa[body_idx];
-                    const float V     = host_sim_data->sa_affine_bodies_volume[body_idx];
+                    const float kappa = abd_data.sa_affine_bodies_kappa[body_idx];
+                    const float V     = abd_data.sa_affine_bodies_volume[body_idx];
 
                     float stiff = kappa * V;
                     for (uint ii = 0; ii < 3; ii++)
@@ -3289,26 +3334,15 @@ void NewtonSolver::host_material_energy_assembly()
                                           assembly_template2(vid, bending_edges, adj_verts, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
                                       });
 
-        if (host_sim_data->sa_affine_bodies.size() != 0)
-            CpuParallel::parallel_for(
-                0,
-                host_sim_data->sa_affine_bodies.size() * 4,
-                [vert_adj_constraints_csr = host_sim_data->sa_vert_adj_affine_bodies_csr.data(),
-                 constaints               = host_sim_data->sa_affine_bodies.data(),
-                 constaint_gradients      = host_sim_data->sa_affine_bodies_gradients.data(),
-                 constaint_hessians       = host_sim_data->sa_affine_bodies_hessians.data(),
-                 constaint_offsets_in_adjlist = host_sim_data->sa_affine_bodies_offsets_in_adjlist.data(),
-                 prefix = host_sim_data->num_verts_soft,
-                 assembly_template](const uint block_idx)
-                {
-                    assembly_template(4,
-                                      prefix + block_idx,
-                                      vert_adj_constraints_csr,
-                                      constaints,
-                                      constaint_gradients,
-                                      constaint_hessians,
-                                      constaint_offsets_in_adjlist);
-                });
+        auto& abd_data = host_sim_data->get_affine_body_data();
+        if (abd_data.is_valid())
+            CpuParallel::parallel_for(0,
+                                      abd_data.get_num_indices() * 4,
+                                      [&](const uint block_idx)
+                                      {
+                                          const uint vid = host_sim_data->num_verts_soft + block_idx;
+                                          assembly_template2(vid, abd_data, adj_verts, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
+                                      });
     }
 }
 
@@ -3750,7 +3784,7 @@ void NewtonSolver::host_apply_dx(const float alpha)
     // Update affine-body q
     float3* affine_body_cgX = &host_sim_data->sa_cgX[host_sim_data->num_verts_soft];
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies.size() * 4,
+                              host_sim_data->num_affine_bodies * 4,
                               [&](const uint block_idx)
                               {
                                   host_sim_data->sa_affine_bodies_q[block_idx] =
@@ -4394,21 +4428,23 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
                     stream << fn_material_energy_assembly_bending(bending_data).dispatch(host_sim_data->num_verts_soft);
                 }
 
-                if (host_sim_data->num_affine_bodies != 0)
+                const auto& abd_data = sim_data->get_affine_body_data();
+                if (abd_data.is_valid())
                 {
-                    stream << fn_evaluate_abd_inertia(substep_dt, get_scene_params().stiffness_dirichlet)
-                                  .dispatch(host_sim_data->num_affine_bodies);
+                    stream << fn_evaluate_abd_inertia(abd_data, substep_dt, get_scene_params().stiffness_dirichlet)
+                                  .dispatch(abd_data.get_num_indices());
 
-                    stream << fn_evaluate_abd_orthogonality().dispatch(host_sim_data->num_affine_bodies);
+                    stream << fn_evaluate_abd_orthogonality(abd_data).dispatch(abd_data.get_num_indices());
 
-                    stream << fn_evaluate_abd_ground_collision(get_scene_params().floor.y,
+                    stream << fn_evaluate_abd_ground_collision(abd_data,
+                                                               get_scene_params().floor.y,
                                                                get_scene_params().use_floor,
                                                                get_scene_params().stiffness_collision,
                                                                host_sim_data->num_verts_soft,
                                                                get_scene_params().contact_energy_type)
                                   .dispatch(host_sim_data->num_verts_rigid);
 
-                    stream << fn_material_energy_assembly_affine_body(host_sim_data->num_verts_soft)
+                    stream << fn_material_energy_assembly_affine_body(abd_data, host_sim_data->num_verts_soft)
                                   .dispatch(host_sim_data->num_affine_bodies * 4);
                 }
 

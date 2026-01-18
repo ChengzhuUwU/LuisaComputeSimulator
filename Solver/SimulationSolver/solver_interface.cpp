@@ -195,7 +195,7 @@ void SolverInterface::restart_system()
                                   host_mesh_data->sa_v_frame_outer[vid] = rest_vel;
                               });
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies.size() * 4,
+                              host_sim_data->num_affine_bodies * 4,
                               [&](const uint bid)
                               {
                                   host_sim_data->sa_affine_bodies_q_outer[bid] =
@@ -402,7 +402,7 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
                                   host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
                               });
     CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies.size() * 4,
+                              host_sim_data->num_affine_bodies * 4,
                               [&](const uint vid)
                               {
                                   host_sim_data->sa_affine_bodies_q_outer[vid] = sa_q_frame_saved[vid];
@@ -758,11 +758,16 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
     {
         compiler.compile<1>(
             fn_calc_energy_abd_inertia,
-            [sa_q_tilde   = sim_data->sa_affine_bodies_q_tilde.view(),
-             sa_vert_mass = sim_data->sa_affine_bodies_mass_matrix.view(),
-             sa_is_fixed  = sim_data->sa_affine_bodies_is_fixed.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_q, Float substep_dt, Float stiffness_dirichlet)
+            [sa_q_tilde       = sim_data->sa_affine_bodies_q_tilde.view(),
+             sa_is_fixed      = sim_data->sa_affine_bodies_is_fixed.view(),
+             sa_system_energy = sim_data->sa_system_energy.view()](
+                Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint,
+                Var<BufferView<float3>>                                   sa_q,
+                Float                                                     substep_dt,
+                Float                                                     stiffness_dirichlet)
             {
+                auto& sa_vert_mass = constraint->sa_affine_bodies_mass_matrix;
+
                 const Uint body_idx = dispatch_id().x;
 
                 Float energy = 0.0f;
@@ -805,10 +810,12 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
         compiler.compile<1>(
             fn_calc_energy_abd_ortho,
-            [sa_system_energy = sim_data->sa_system_energy.view(),
-             abd_volume       = sim_data->sa_affine_bodies_volume.view(),
-             abd_kappa        = sim_data->sa_affine_bodies_kappa.view()](Var<BufferView<float3>> sa_q)
+            [sa_system_energy = sim_data->sa_system_energy.view()](
+                Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q)
             {
+                auto& abd_kappa  = constraint->sa_affine_bodies_kappa;
+                auto& abd_volume = constraint->sa_affine_bodies_volume;
+
                 const Uint body_idx = dispatch_id().x;
 
                 Float energy = 0.0f;
@@ -852,13 +859,14 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
         stream << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
                       .dispatch(host_sim_data->num_verts_soft);
     }
-    if (host_sim_data->num_affine_bodies != 0)
+
+    const auto& abd_data = sim_data->get_affine_body_data();
+    if (abd_data.is_valid())
     {
-        stream << fn_calc_energy_abd_inertia(sim_data->sa_affine_bodies_q,
-                                             get_scene_params().get_substep_dt(),
-                                             get_scene_params().stiffness_dirichlet)
-                      .dispatch(host_sim_data->num_affine_bodies);
-        stream << fn_calc_energy_abd_ortho(sim_data->sa_affine_bodies_q).dispatch(host_sim_data->num_affine_bodies);
+        stream << fn_calc_energy_abd_inertia(
+                      abd_data, curr_q, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
+                      .dispatch(abd_data.get_num_indices());
+        stream << fn_calc_energy_abd_ortho(abd_data, curr_q).dispatch(abd_data.get_num_indices());
     }
 
     if (get_scene_params().use_floor)

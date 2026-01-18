@@ -591,7 +591,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         // Rest affine body info
         const uint num_blocks_affine_body = num_affine_bodies * 4;
         sim_data->sa_affine_bodies_mesh_id.resize(num_affine_bodies);
-        sim_data->sa_affine_bodies.resize(num_affine_bodies);
+        sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
         sim_data->sa_affine_bodies_is_fixed.resize(num_affine_bodies);
 
         sim_data->sa_affine_bodies_rest_q.resize(num_blocks_affine_body);
@@ -604,16 +604,16 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->sa_affine_bodies_q_step_start.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_q_outer.resize(num_blocks_affine_body);
         sim_data->sa_affine_bodies_q_v_outer.resize(num_blocks_affine_body);
-        sim_data->sa_affine_bodies_volume.resize(num_blocks_affine_body);
-        sim_data->sa_affine_bodies_kappa.resize(num_blocks_affine_body);
 
-        sim_data->sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
-        sim_data->sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
+        auto& abd_data = sim_data->get_affine_body_data();
+        abd_data.sa_affine_bodies.resize(num_affine_bodies);
+        abd_data.sa_affine_bodies_volume.resize(num_blocks_affine_body);
+        abd_data.sa_affine_bodies_kappa.resize(num_blocks_affine_body);
+        abd_data.sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
+        abd_data.sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
+        abd_data.constraint_gradients.resize(num_affine_bodies * 4);
+        abd_data.constraint_hessians.resize(num_affine_bodies * 16);
 
-        sim_data->sa_affine_bodies_gradients.resize(num_affine_bodies * 4);
-        sim_data->sa_affine_bodies_hessians.resize(num_affine_bodies * 16);
-
-        sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
 
         CpuParallel::single_thread_for(
             0,
@@ -624,10 +624,12 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 const auto& mesh_info = world_data[meshIdx];
 
                 sim_data->sa_affine_bodies_mesh_id[body_idx] = meshIdx;
-                sim_data->sa_affine_bodies[body_idx] = luisa::make_uint4(num_verts_soft + 4 * body_idx + 0,
-                                                                         num_verts_soft + 4 * body_idx + 1,
-                                                                         num_verts_soft + 4 * body_idx + 2,
-                                                                         num_verts_soft + 4 * body_idx + 3);
+
+                const uint prefix_dof               = num_verts_soft;
+                abd_data.sa_affine_bodies[body_idx] = luisa::make_uint4(prefix_dof + 4 * body_idx + 0,
+                                                                        prefix_dof + 4 * body_idx + 1,
+                                                                        prefix_dof + 4 * body_idx + 2,
+                                                                        prefix_dof + 4 * body_idx + 3);
 
                 {
                     float3 init_translation = mesh_data->sa_rest_translate[meshIdx];
@@ -771,8 +773,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                         compressed_mass_matrix[j][i] = body_mass(i * 3 + 0, j * 3 + 0);
                     }
                 }
-                sim_data->sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
-                sim_data->sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
+                abd_data.sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
+                abd_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
                 if (num_affine_bodies < 20)
                 {
@@ -794,8 +796,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                          mesh_data->sa_rest_vert_area.begin() + next_prefix_verts,
                                          0.0f);
 
-                sim_data->sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
-                sim_data->sa_affine_bodies_kappa[body_idx] = mesh_info.get_material<RigidMaterial>().stiffness;
+                abd_data.sa_affine_bodies_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
+                abd_data.sa_affine_bodies_kappa[body_idx] = mesh_info.get_material<RigidMaterial>().stiffness;
 
                 EigenFloat12 gravity_sum = EigenFloat12::Zero();
                 CpuParallel::single_thread_for(curr_prefix_verts,
@@ -832,10 +834,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         // num_variables_in_system
         sim_data->vert_adj_material_force_verts.resize(num_dof);
 
-        sim_data->vert_adj_bending_edges.resize(num_dof);
-        sim_data->vert_adj_stress_tets.resize(num_dof);
-        sim_data->vert_adj_affine_bodies.resize(num_dof);
-
         auto& adj_map         = sim_data->vert_adj_material_force_verts;
         auto  insert_adj_vert = [&adj_map](const uint& vid1, const uint& vid2)
         {
@@ -865,27 +863,9 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         auto& stress_tet_data = sim_data->get_stress_tet_data();
         traverse_constitution_elements(adj_map, stress_tet_data);
 
-        // Vert adj orthogonality energy
-        for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
-        {
-            auto body = sim_data->sa_affine_bodies[body_idx];
-            for (uint j = 0; j < 4; j++)
-            {
-                sim_data->vert_adj_affine_bodies[body[j]].push_back(body_idx);
-            }
-
-            for (uint ii = 0; ii < 4; ii++)
-            {
-                for (uint jj = 0; jj < 4; jj++)
-                {
-                    if (ii != jj)
-                    {
-                        insert_adj_vert(body[ii], body[jj]);
-                    }
-                }
-            }
-        }
-        upload_2d_csr_from(sim_data->sa_vert_adj_affine_bodies_csr, sim_data->vert_adj_affine_bodies);
+        // Vert adj affine-body constraints
+        auto& abd_data = sim_data->get_affine_body_data();
+        traverse_constitution_elements(adj_map, abd_data);
 
         // Sort adjacents
         CpuParallel::parallel_for(0,
@@ -1095,18 +1075,9 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         auto& stress_tet_data = sim_data->get_stress_tet_data();
         init_constitution_offsets_in_adjlist(adj_list, stress_tet_data);
 
-        // Affine body inertia and orthogonality energy
-        sim_data->sa_affine_bodies_offsets_in_adjlist.resize(num_affine_bodies * 12);
-        CpuParallel::parallel_for(0,
-                                  sim_data->sa_affine_bodies.size(),
-                                  [&](const uint body_idx)
-                                  {
-                                      auto body = sim_data->sa_affine_bodies[body_idx];
-                                      auto mask = get_offsets_in_adjlist_from_adjacent_list(adj_list, body);  // size = 12
-                                      std::memcpy(sim_data->sa_affine_bodies_offsets_in_adjlist.data() + body_idx * 12,
-                                                  mask.data(),
-                                                  sizeof(ushort) * 12);
-                                  });
+        // Affine body inertia, orthogonality, ground collision energy
+        auto& abd_data = sim_data->get_affine_body_data();
+        init_constitution_offsets_in_adjlist(adj_list, abd_data);
     }
 
     // Constraint Graph Coloring
@@ -1124,7 +1095,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         auto& bending_edge_data = sim_data->get_bending_edge_data();
         fn_graph_coloring_per_constraint("Bending   Angle  Constraint",
                                          tmp_clusterd_constraint_bending,
-                                         sim_data->vert_adj_bending_edges,
+                                         bending_edge_data.vert_adj_constraints,
                                          bending_edge_data.sa_bending_edges,
                                          4);
 
@@ -1264,15 +1235,16 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
 
     stream << upload_buffer(device, output_data->sa_target_positions, input_data->sa_target_positions);
 
-    stream
-        << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet, input_data->sa_cgA_fixtopo_offdiag_triplet)
-        << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet_info, input_data->sa_cgA_fixtopo_offdiag_triplet_info)
-        << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr)
-        << upload_buffer(device, output_data->sa_vert_adj_affine_bodies_csr, input_data->sa_vert_adj_affine_bodies_csr);
+    stream << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet, input_data->sa_cgA_fixtopo_offdiag_triplet)
+           << upload_buffer(device, output_data->sa_cgA_fixtopo_offdiag_triplet_info, input_data->sa_cgA_fixtopo_offdiag_triplet_info)
+           << upload_buffer(device, output_data->sa_vert_adj_material_force_verts_csr, input_data->sa_vert_adj_material_force_verts_csr);
 
+    //
+    // Constitution Data
+    //
     auto& stretch_spring_I = input_data->get_stretch_spring_data();
     auto& stretch_spring_O = output_data->get_stretch_spring_data();
-    if (stretch_spring_I.get_indices().size() > 0)
+    if (stretch_spring_I.is_valid())
     {
         stream
             << upload_buffer(device, stretch_spring_O.sa_stretch_springs, stretch_spring_I.sa_stretch_springs)
@@ -1288,7 +1260,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
 
     auto& stretch_face_I = input_data->get_stretch_face_data();
     auto& stretch_face_O = output_data->get_stretch_face_data();
-    if (stretch_face_I.get_indices().size() > 0)
+    if (stretch_face_I.is_valid())
     {
         stream
             << upload_buffer(device, stretch_face_O.sa_stretch_faces, stretch_face_I.sa_stretch_faces)
@@ -1303,7 +1275,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
 
     auto& bending_edge_I = input_data->get_bending_edge_data();
     auto& bending_edge_O = output_data->get_bending_edge_data();
-    if (bending_edge_I.get_indices().size() > 0)
+    if (bending_edge_I.is_valid())
     {
         stream
             << upload_buffer(device, bending_edge_O.sa_bending_edges, bending_edge_I.sa_bending_edges)
@@ -1318,7 +1290,7 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
     }
     auto& stress_tet_I = input_data->get_stress_tet_data();
     auto& stress_tet_O = output_data->get_stress_tet_data();
-    if (stress_tet_I.get_indices().size() > 0)
+    if (stress_tet_I.is_valid())
     {
         stream
             << upload_buffer(device, stress_tet_O.sa_stress_tets, stress_tet_I.sa_stress_tets)
@@ -1331,10 +1303,11 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, stress_tet_O.vert_adj_constraints_csr, stress_tet_I.vert_adj_constraints_csr);
     }
 
-    if (input_data->sa_affine_bodies.size() > 0)
+    auto& abd_I = input_data->get_affine_body_data();
+    auto& abd_O = output_data->get_affine_body_data();
+    if (abd_I.is_valid())
     {
         stream
-            << upload_buffer(device, output_data->sa_affine_bodies, input_data->sa_affine_bodies)
             << upload_buffer(device, output_data->sa_affine_bodies_mesh_id, input_data->sa_affine_bodies_mesh_id)
             << upload_buffer(device, output_data->sa_affine_bodies_is_fixed, input_data->sa_affine_bodies_is_fixed)
             << upload_buffer(device, output_data->sa_affine_bodies_rest_q, input_data->sa_affine_bodies_rest_q)
@@ -1344,12 +1317,14 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
             << upload_buffer(device, output_data->sa_affine_bodies_q_tilde, input_data->sa_affine_bodies_q_tilde)
             << upload_buffer(device, output_data->sa_affine_bodies_q_iter_start, input_data->sa_affine_bodies_q_iter_start)
             << upload_buffer(device, output_data->sa_affine_bodies_q_step_start, input_data->sa_affine_bodies_q_step_start)
-            << upload_buffer(device, output_data->sa_affine_bodies_volume, input_data->sa_affine_bodies_volume)
-            << upload_buffer(device, output_data->sa_affine_bodies_kappa, input_data->sa_affine_bodies_kappa)
-            << upload_buffer(device, output_data->sa_affine_bodies_mass_matrix, input_data->sa_affine_bodies_mass_matrix)
-            << upload_buffer(device, output_data->sa_affine_bodies_gradients, input_data->sa_affine_bodies_gradients)
-            << upload_buffer(device, output_data->sa_affine_bodies_hessians, input_data->sa_affine_bodies_hessians)
-            << upload_buffer(device, output_data->sa_affine_bodies_offsets_in_adjlist, input_data->sa_affine_bodies_offsets_in_adjlist);
+            << upload_buffer(device, abd_O.sa_affine_bodies, abd_I.sa_affine_bodies)
+            << upload_buffer(device, abd_O.sa_affine_bodies_volume, abd_I.sa_affine_bodies_volume)
+            << upload_buffer(device, abd_O.sa_affine_bodies_kappa, abd_I.sa_affine_bodies_kappa)
+            << upload_buffer(device, abd_O.sa_affine_bodies_mass_matrix, abd_I.sa_affine_bodies_mass_matrix)
+            << upload_buffer(device, abd_O.constraint_offsets_in_adjlist, abd_I.constraint_offsets_in_adjlist)
+            << upload_buffer(device, abd_O.constraint_gradients, abd_I.constraint_gradients)
+            << upload_buffer(device, abd_O.constraint_hessians, abd_I.constraint_hessians)
+            << upload_buffer(device, abd_O.vert_adj_constraints_csr, abd_I.vert_adj_constraints_csr);
     }
     stream << upload_buffer(device,
                             output_data->sa_vert_affine_bodies_id,
