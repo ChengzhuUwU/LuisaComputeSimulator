@@ -997,22 +997,20 @@ namespace Initializer
                                       });
         }
 
-        // Init vert status
-        {
-            mesh_data->sa_x_frame_outer.resize(num_verts);
-            mesh_data->sa_v_frame_outer.resize(num_verts);
-
-            CpuParallel::parallel_for(0,
-                                      num_verts,
-                                      [&](const uint vid)
-                                      {
-                                          const float3 rest_x = mesh_data->sa_rest_x[vid];
-                                          const float3 rest_v = mesh_data->sa_rest_v[vid];
-
-                                          mesh_data->sa_x_frame_outer[vid] = rest_x;
-                                          mesh_data->sa_v_frame_outer[vid] = rest_v;
-                                      });
-        }
+        // // Init vert status
+        // {
+        //     mesh_data->sa_x_frame_outer.resize(num_verts);
+        //     mesh_data->sa_v_frame_outer.resize(num_verts);
+        //     CpuParallel::parallel_for(0,
+        //                               num_verts,
+        //                               [&](const uint vid)
+        //                               {
+        //                                   const float3 rest_x = mesh_data->sa_rest_x[vid];
+        //                                   const float3 rest_v = mesh_data->sa_rest_v[vid];
+        //                                   mesh_data->sa_x_frame_outer[vid] = rest_x;
+        //                                   mesh_data->sa_v_frame_outer[vid] = rest_v;
+        //                               });
+        // }
     }
 
 

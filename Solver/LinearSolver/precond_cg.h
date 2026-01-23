@@ -35,9 +35,11 @@ class ConjugateGradientSolver
     void compile(AsyncCompiler& compiler);
 
   public:
+    // Return host cgX
     void host_solve(luisa::compute::Stream&                                               stream,
                     std::function<void(const std::vector<float3>&, std::vector<float3>&)> func_spmv,
                     std::function<double()> func_compute_energy);
+    // Return device cgX and host cgX
     void device_solve(luisa::compute::Stream& stream,
                       std::function<void(const luisa::compute::Buffer<float3>&, luisa::compute::Buffer<float3>&)> func_spmv,
                       std::function<double()> func_compute_energy);

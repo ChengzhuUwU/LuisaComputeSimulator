@@ -51,7 +51,7 @@ struct MeshData : SimulationType
     BufferType<float3> sa_rest_x;
     BufferType<float3> sa_rest_v;
     BufferType<float3> sa_model_x;
-    BufferType<float3> sa_scaled_model_x;
+    BufferType<float3> sa_scaled_model_x;  // TODO: Move to SimData
 
     BufferType<uint3> sa_faces;
     BufferType<uint2> sa_edges;
@@ -102,8 +102,8 @@ struct MeshData : SimulationType
     // Other
 
     // Host only
-    std::vector<float3> sa_x_frame_outer;
-    std::vector<float3> sa_v_frame_outer;
+    // std::vector<float3> sa_x_frame_outer;
+    // std::vector<float3> sa_v_frame_outer;
 
     std::vector<uint> prefix_num_verts;
     std::vector<uint> prefix_num_faces;

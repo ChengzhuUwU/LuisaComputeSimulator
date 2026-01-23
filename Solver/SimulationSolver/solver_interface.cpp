@@ -130,87 +130,44 @@ void SolverInterface::compile(AsyncCompiler& compiler)
 }
 void SolverInterface::physics_step_prev_operation()
 {
+    // Set target position velocity for fixed verts
     CpuParallel::parallel_for(0,
                               host_mesh_data->fixed_verts.size(),
                               [&](const uint index)
                               {
                                   const uint   vid        = host_mesh_data->fixed_verts[index];
-                                  const float3 curr_pos   = host_mesh_data->sa_x_frame_outer[vid];
+                                  const float3 curr_pos   = host_sim_data->sa_q_outer[vid];
                                   const float3 target_pos = host_sim_data->sa_target_positions[vid];
                                   const float3 desire_vel =
                                       (target_pos - curr_pos) / lcs::get_scene_params().implicit_dt;
-                                  host_mesh_data->sa_v_frame_outer[vid] = desire_vel;
+                                  host_sim_data->sa_q_v_outer[vid] = desire_vel;
                               });
 
-    CpuParallel::parallel_for(0,
-                              host_sim_data->sa_x.size(),
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_x_step_start[vid] = host_mesh_data->sa_x_frame_outer[vid];
-                                  host_sim_data->sa_x[vid] = host_mesh_data->sa_x_frame_outer[vid];
-                                  host_sim_data->sa_v[vid] = host_mesh_data->sa_v_frame_outer[vid];
-                              });
-
-    CpuParallel::parallel_for(
-        0,
-        host_sim_data->sa_affine_bodies_q.size(),
-        [&](const uint vid)
-        {
-            host_sim_data->sa_affine_bodies_q_step_start[vid] = host_sim_data->sa_affine_bodies_q_outer[vid];
-            host_sim_data->sa_affine_bodies_q[vid]   = host_sim_data->sa_affine_bodies_q_outer[vid];
-            host_sim_data->sa_affine_bodies_q_v[vid] = host_sim_data->sa_affine_bodies_q_v_outer[vid];
-        });
+    // Position and velocity can not be directly transferred, need to go through q and q_v
+    CpuParallel::parallel_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q);  // ??? Do we need this?
+    CpuParallel::parallel_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q_step_start);
+    CpuParallel::parallel_copy(host_sim_data->sa_q_v_outer, host_sim_data->sa_q_v);
 }
 void SolverInterface::physics_step_post_operation()
 {
-    CpuParallel::parallel_for(0,
-                              host_sim_data->sa_x.size(),
-                              [&](const uint vid)
-                              {
-                                  host_mesh_data->sa_x_frame_outer[vid] = host_sim_data->sa_x[vid];
-                                  host_mesh_data->sa_v_frame_outer[vid] = host_sim_data->sa_v[vid];
-                              });
-
-    CpuParallel::parallel_for(0,
-                              host_sim_data->sa_affine_bodies_q.size(),
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_affine_bodies_q_outer[vid] =
-                                      host_sim_data->sa_affine_bodies_q[vid];
-                                  host_sim_data->sa_affine_bodies_q_v_outer[vid] =
-                                      host_sim_data->sa_affine_bodies_q_v[vid];
-                              });
+    CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_v, host_sim_data->sa_x_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
 }
 
 void SolverInterface::restart_system()
 {
-    CpuParallel::parallel_for(0,
-                              host_mesh_data->num_verts,
-                              [&](uint vid)
-                              {
-                                  auto rest_pos                         = host_mesh_data->sa_rest_x[vid];
-                                  host_mesh_data->sa_x_frame_outer[vid] = rest_pos;
-
-                                  auto rest_vel                         = host_mesh_data->sa_rest_v[vid];
-                                  host_mesh_data->sa_v_frame_outer[vid] = rest_vel;
-                              });
-    CpuParallel::parallel_for(0,
-                              host_sim_data->num_affine_bodies * 4,
-                              [&](const uint bid)
-                              {
-                                  host_sim_data->sa_affine_bodies_q_outer[bid] =
-                                      host_sim_data->sa_affine_bodies_rest_q[bid];
-                                  host_sim_data->sa_affine_bodies_q_v_outer[bid] =
-                                      host_sim_data->sa_affine_bodies_rest_q_v[bid];
-                              });
+    CpuParallel::parallel_copy(host_sim_data->sa_rest_x, host_sim_data->sa_x_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_rest_v, host_sim_data->sa_v_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_rest_q, host_sim_data->sa_q_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_rest_q_v, host_sim_data->sa_q_v_outer);
 }
 void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
 {
     // save_current_frame_state();
-    std::vector<float3> sa_x_frame_saved(host_mesh_data->sa_x_frame_outer);
-    std::vector<float3> sa_v_frame_saved(host_mesh_data->sa_v_frame_outer);
-    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer);
-    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer);
+    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_q_outer);
+    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_q_v_outer);
 
     const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
 
@@ -240,26 +197,26 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
 
     if (file.is_open())
     {
-        file << "o position" << std::endl;
-        for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
-        {
-            const auto vertex = sa_x_frame_saved[vid];
-            file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
-        }
-        file << "o velocity" << std::endl;
-        for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
-        {
-            const auto vel = sa_v_frame_saved[vid];
-            file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
-        }
+        // file << "o position" << std::endl;
+        // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
+        // {
+        //     const auto vertex = sa_x_frame_saved[vid];
+        //     file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
+        // }
+        // file << "o velocity" << std::endl;
+        // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
+        // {
+        //     const auto vel = sa_v_frame_saved[vid];
+        //     file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
+        // }
         file << "o q" << std::endl;
-        for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+        for (uint vid = 0; vid < host_sim_data->num_dof; vid++)
         {
             const auto vertex = sa_q_frame_saved[vid];
             file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
         }
         file << "o qv" << std::endl;
-        for (uint vid = 0; vid < host_sim_data->num_affine_bodies * 4; vid++)
+        for (uint vid = 0; vid < host_sim_data->num_dof; vid++)
         {
             const auto vel = sa_qv_frame_saved[vid];
             file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
@@ -288,10 +245,10 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
         return;
     }
 
-    std::vector<float3> sa_x_frame_saved(host_mesh_data->sa_x_frame_outer.size());
-    std::vector<float3> sa_v_frame_saved(host_mesh_data->sa_v_frame_outer.size());
-    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_affine_bodies_q_outer.size());
-    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_affine_bodies_q_v_outer.size());
+    // std::vector<float3> sa_x_frame_saved(host_mesh_data->sa_x_frame_outer.size());
+    // std::vector<float3> sa_v_frame_saved(host_mesh_data->sa_v_frame_outer.size());
+    std::vector<float3> sa_q_frame_saved(host_sim_data->sa_q_outer.size());
+    std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_q_v_outer.size());
 
     std::string line;
     enum Section
@@ -338,37 +295,38 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             std::istringstream iss(line.substr(1));
             float              x, y, z;
             iss >> x >> y >> z;
-            if (current_section == Position)
+            // if (current_section == Position)
+            // {
+            //     if (index < host_mesh_data->num_verts)
+            //         sa_x_frame_saved[index] = {x, y, z};
+            //     else
+            //     {
+            //         LUISA_INFO("Count of loaded position vertices exceeds the number of verts in the mesh data, stopping load.");
+            //         file.close();
+            //         return;
+            //     }
+            //     index++;
+            // }
+            // else if (current_section == Velocity)
+            // {
+            //     if (index < host_mesh_data->num_verts)
+            //         sa_v_frame_saved[index] = {x, y, z};
+            //     else
+            //     {
+            //         LUISA_INFO("Count of loaded velocity vertices exceeds the number of verts in the mesh data, stopping load.");
+            //         file.close();
+            //         return;
+            //     }
+            //     index++;
+            // }
+            // else
+            if (current_section == Q)
             {
-                if (index < host_mesh_data->num_verts)
-                    sa_x_frame_saved[index] = {x, y, z};
-                else
-                {
-                    LUISA_INFO("Count of loaded position vertices exceeds the number of verts in the mesh data, stopping load.");
-                    file.close();
-                    return;
-                }
-                index++;
-            }
-            else if (current_section == Velocity)
-            {
-                if (index < host_mesh_data->num_verts)
-                    sa_v_frame_saved[index] = {x, y, z};
-                else
-                {
-                    LUISA_INFO("Count of loaded velocity vertices exceeds the number of verts in the mesh data, stopping load.");
-                    file.close();
-                    return;
-                }
-                index++;
-            }
-            else if (current_section == Q)
-            {
-                if (index < host_sim_data->num_affine_bodies * 4)
+                if (index < host_sim_data->num_dof)
                     sa_q_frame_saved[index] = {x, y, z};
                 else
                 {
-                    LUISA_INFO("Count of loaded q vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    LUISA_INFO("Count of loaded q vertices exceeds the number of state q in the sim data, stopping load.");
                     file.close();
                     return;
                 }
@@ -376,11 +334,11 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
             }
             else if (current_section == Qv)
             {
-                if (index < host_sim_data->num_affine_bodies * 4)
+                if (index < host_sim_data->num_dof)
                     sa_qv_frame_saved[index] = {x, y, z};
                 else
                 {
-                    LUISA_INFO("Count of loaded qv vertices exceeds the number of affine bodies in the sim data, stopping load.");
+                    LUISA_INFO("Count of loaded qv vertices exceeds the number of state q_v in the sim data, stopping load.");
                     file.close();
                     return;
                 }
@@ -390,29 +348,34 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
     }
     file.close();
 
-    // load_saved_state();
-    CpuParallel::parallel_for(0,
-                              host_mesh_data->num_verts,
-                              [&](uint vid)
-                              {
-                                  auto saved_pos                        = sa_x_frame_saved[vid];
-                                  host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
+    CpuParallel::parallel_copy(sa_q_frame_saved, host_sim_data->sa_q_outer);
+    CpuParallel::parallel_copy(sa_qv_frame_saved, host_sim_data->sa_q_v_outer);
 
-                                  auto saved_vel                        = sa_v_frame_saved[vid];
-                                  host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
-                              });
-    CpuParallel::parallel_for(0,
-                              host_sim_data->num_affine_bodies * 4,
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_affine_bodies_q_outer[vid] = sa_q_frame_saved[vid];
-                                  host_sim_data->sa_affine_bodies_q_v_outer[vid] = sa_qv_frame_saved[vid];
-                              });
+    // load_saved_state();
+    // CpuParallel::parallel_for(0,
+    //                           host_mesh_data->num_verts,
+    //                           [&](uint vid)
+    //                           {
+    //                               auto saved_pos                        = sa_x_frame_saved[vid];
+    //                               host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
+
+    //                               auto saved_vel                        = sa_v_frame_saved[vid];
+    //                               host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
+    //                           });
+    // CpuParallel::parallel_for(0,
+    //                           host_sim_data->num_affine_bodies * 4,
+    //                           [&](const uint vid)
+    //                           {
+    //                               host_sim_data->sa_affine_bodies_q_outer[vid] = sa_q_frame_saved[vid];
+    //                               host_sim_data->sa_affine_bodies_q_v_outer[vid] = sa_qv_frame_saved[vid];
+    //                           });
 
     LUISA_INFO("State file loaded: {}", full_path);
 }
 void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
 {
+    const auto& position_buffer = host_sim_data->sa_x_outer;
+
     // , lcs::get_scene_params().current_frame
     const auto filename = luisa::format("frame_{}{}.obj", frame, addition_str);
 
@@ -461,7 +424,7 @@ void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addi
                     file << "o mesh_" << (glocal_mesh_id_prefix + clothIdx) << std::endl;
                     for (uint vid = 0; vid < next_prefix_num_verts - curr_prefix_num_verts; vid++)
                     {
-                        const auto vertex = host_mesh_data->sa_x_frame_outer[curr_prefix_num_verts + vid];
+                        const auto vertex = position_buffer[curr_prefix_num_verts + vid];
                         file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
                     }
 
@@ -508,28 +471,32 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_calc_energy_inertia,
-        [sa_x_tilde   = sim_data->sa_x_tilde.view(),
-         sa_vert_mass = mesh_data->sa_vert_mass.view(),
-         sa_is_fixed  = mesh_data->sa_is_fixed.view(),
-         sa_system_energy = sim_data->sa_system_energy.view()](Var<BufferView<float3>> sa_x, Float substep_dt, Float stiffness_dirichlet)
+        [sa_q_tilde = sim_data->sa_q_tilde.view(), sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::SoftInertia<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q, Float substep_dt)
         {
-            const Uint vid = dispatch_id().x;
+            auto& soft_inertia_indices = constraint.constraint_indices;
+            // auto& sa_x_tilde             = constraint->sa_x_tilde;
+            auto& sa_vert_mass           = constraint->sa_soft_vert_mass;
+            auto& sa_stiffness_dirichlet = constraint->sa_stiffness_dirichlet;
+
+            const Uint index = dispatch_id().x;
+            const Uint vid   = soft_inertia_indices.read(index);
 
             Float energy = 0.0f;
 
             {
-                Float3      x_new          = sa_x->read(vid);
-                Float3      x_tilde        = sa_x_tilde->read(vid);
-                Float       mass           = sa_vert_mass->read(vid);
-                Bool        is_fixed       = sa_is_fixed->read(vid);
+                Float3 x_new   = sa_q->read(vid);
+                Float3 x_tilde = sa_q_tilde->read(vid);
+                Float  mass    = sa_vert_mass->read(vid);
+                // Bool        is_fixed       = sa_is_fixed->read(vid);
                 const Float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
                 energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-                $if(is_fixed)
+                // $if(is_fixed)
                 {
                     // Dirichlet boundary energy
-                    energy = stiffness_dirichlet * energy;
-                }
-                $else{};
+                    Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
+                    energy                    = stiffness_dirichlet * energy;
+                };
                 if constexpr (print_detail)
                     device_log("vid {}, inertia energy {} (invdt2 = {}, |dx|2 = {}, diff = {}) mass = {}",
                                vid,
@@ -640,7 +607,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         [sa_system_energy = sim_data->sa_system_energy.view()](
             Var<Constitutions::StretchSpring<Buffer>> constraint, Var<BufferView<float3>> sa_x, Float stiffness_spring)
         {
-            auto& sa_edges                    = constraint->sa_stretch_springs;
+            auto& sa_edges                    = constraint->constraint_indices;
             auto& sa_edge_rest_state_length   = constraint->sa_stretch_spring_rest_state_length;
             auto& sa_stretch_spring_stiffness = constraint->sa_stretch_spring_stiffness;
 
@@ -671,7 +638,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         [sa_system_energy = sim_data->sa_system_energy.view()](Var<Constitutions::StretchFace<Buffer>> constraint,
                                                                Var<BufferView<float3>> sa_x)
         {
-            auto& sa_faces                   = constraint->sa_stretch_faces;
+            auto& sa_faces                   = constraint->constraint_indices;
             auto& sa_stretch_faces_rest_area = constraint->sa_stretch_faces_rest_area;
             auto& sa_stretch_faces_Dm_inv    = constraint->sa_stretch_faces_Dm_inv;
             auto& sa_stretch_faces_mu_lambda = constraint->sa_stretch_faces_mu_lambda;
@@ -703,16 +670,10 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
     compiler.compile<1>(
         fn_calc_energy_bending,
-        [
-            //     sa_edges                    = sim_data->sa_bending_edges.view(),
-            //  sa_bending_edges_Q          = sim_data->sa_bending_edges_Q.view(),
-            //  sa_bending_edges_rest_angle = sim_data->sa_bending_edges_rest_angle.view(),
-            //  sa_bending_edges_rest_area  = sim_data->sa_bending_edges_rest_area.view(),
-            //  sa_bending_edges_stiffness  = sim_data->sa_bending_edges_stiffness.view(),
-            sa_system_energy = sim_data->sa_system_energy.view()](
+        [sa_system_energy = sim_data->sa_system_energy.view()](
             Var<Constitutions::BendingEdge<Buffer>> constraint, Var<BufferView<float3>> sa_x, Float scaling)
         {
-            auto& sa_edges                    = constraint->sa_bending_edges;
+            auto& sa_edges                    = constraint->constraint_indices;
             auto& sa_bending_edges_rest_angle = constraint->sa_bending_edges_rest_angle;
             auto& sa_bending_edges_rest_area  = constraint->sa_bending_edges_rest_area;
             auto& sa_bending_edges_stiffness  = constraint->sa_bending_edges_stiffness;
@@ -754,120 +715,131 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         },
         default_option);
 
-    if (host_sim_data->num_affine_bodies != 0)
-    {
-        compiler.compile<1>(
-            fn_calc_energy_abd_inertia,
-            [sa_q_tilde       = sim_data->sa_affine_bodies_q_tilde.view(),
-             sa_is_fixed      = sim_data->sa_affine_bodies_is_fixed.view(),
-             sa_system_energy = sim_data->sa_system_energy.view()](
-                Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint,
-                Var<BufferView<float3>>                                   sa_q,
-                Float                                                     substep_dt,
-                Float                                                     stiffness_dirichlet)
+
+    compiler.compile<1>(
+        fn_calc_energy_abd_inertia,
+        [sa_q_tilde = sim_data->sa_q_tilde.view(), sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q, Float substep_dt)
+        {
+            auto& sa_affine_bodies       = constraint.constraint_indices;
+            auto& sa_vert_mass           = constraint.sa_affine_bodies_mass_matrix;
+            auto& sa_stiffness_dirichlet = constraint.sa_stiffness_dirichlet;
+
+            const Uint  body_idx    = dispatch_id().x;
+            const Uint4 affine_body = sa_affine_bodies->read(body_idx);
+
+            Float energy = 0.0f;
             {
-                auto& sa_vert_mass = constraint->sa_affine_bodies_mass_matrix;
+                const Float h              = substep_dt;
+                const Float squared_inv_dt = 1.0f / (h * h);
+                // Bool        is_fixed       = sa_is_fixed->read(body_idx);
+                Float stiffness_dirichlet = sa_stiffness_dirichlet->read(body_idx);
 
-                const Uint body_idx = dispatch_id().x;
+                auto   mass_matrix = sa_vert_mass->read(body_idx);
+                Float3 delta[4]    = {
+                    sa_q.read(affine_body[0]) - sa_q_tilde->read(affine_body[0]),
+                    sa_q.read(affine_body[1]) - sa_q_tilde->read(affine_body[1]),
+                    sa_q.read(affine_body[2]) - sa_q_tilde->read(affine_body[2]),
+                    sa_q.read(affine_body[3]) - sa_q_tilde->read(affine_body[3]),
+                };
 
-                Float energy = 0.0f;
+                for (uint ii = 0; ii < 4; ii++)
                 {
-                    const Float h              = substep_dt;
-                    const Float squared_inv_dt = 1.0f / (h * h);
-                    Bool        is_fixed       = sa_is_fixed->read(body_idx);
-
-                    auto   mass_matrix = sa_vert_mass->read(body_idx);
-                    Float3 delta[4]    = {
-                        sa_q.read(body_idx * 4 + 0) - sa_q_tilde->read(body_idx * 4 + 0),
-                        sa_q.read(body_idx * 4 + 1) - sa_q_tilde->read(body_idx * 4 + 1),
-                        sa_q.read(body_idx * 4 + 2) - sa_q_tilde->read(body_idx * 4 + 2),
-                        sa_q.read(body_idx * 4 + 3) - sa_q_tilde->read(body_idx * 4 + 3),
-                    };
-
-                    for (uint ii = 0; ii < 4; ii++)
+                    for (uint jj = 0; jj < 4; jj++)
                     {
-                        for (uint jj = 0; jj < 4; jj++)
-                        {
-                            Float mass = mass_matrix[ii][jj];
-                            energy += squared_inv_dt * dot(delta[ii], delta[jj]) * mass / (2.0f);
-                        }
+                        Float mass = mass_matrix[ii][jj];
+                        energy += squared_inv_dt * dot(delta[ii], delta[jj]) * mass / (2.0f);
                     }
+                }
 
-                    $if(is_fixed)
-                    {
-                        energy *= stiffness_dirichlet;
-                    };
-                };
-
-                energy = ParallelIntrinsic::block_intrinsic_reduce(
-                    body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-                $if(body_idx % 256 == 0)
+                // $if(is_fixed)
                 {
-                    sa_system_energy->atomic(offset_abd_inertia).fetch_add(energy);
+                    energy *= stiffness_dirichlet;
                 };
-            },
-            default_option);
+            };
 
-        compiler.compile<1>(
-            fn_calc_energy_abd_ortho,
-            [sa_system_energy = sim_data->sa_system_energy.view()](
-                Var<Constitutions::AbdKinematics<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q)
+            energy = ParallelIntrinsic::block_intrinsic_reduce(
+                body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(body_idx % 256 == 0)
             {
-                auto& abd_kappa  = constraint->sa_affine_bodies_kappa;
-                auto& abd_volume = constraint->sa_affine_bodies_volume;
+                sa_system_energy->atomic(offset_abd_inertia).fetch_add(energy);
+            };
+        },
+        default_option);
 
-                const Uint body_idx = dispatch_id().x;
+    compiler.compile<1>(
+        fn_calc_energy_abd_ortho,
+        [sa_system_energy = sim_data->sa_system_energy.view()](
+            Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q)
+        {
+            auto& abd_ortho_indices = constraint.constraint_indices;
+            auto& abd_kappa         = constraint->abd_kappa;
+            auto& abd_volume        = constraint->abd_volume;
 
-                Float energy = 0.0f;
+            const Uint body_idx = dispatch_id().x;
+
+            const Uint3 indices = abd_ortho_indices->read(body_idx);
+
+            Float energy = 0.0f;
+            {
+                Float3x3 A;
+                A[0] = sa_q->read(indices[0]);
+                A[1] = sa_q->read(indices[1]);
+                A[2] = sa_q->read(indices[2]);
+                // Float3   p;
+                // AffineBodyDynamics::extract_Ap_from_q(sa_q, body_idx, A, p);
+                // device_log("A = {}, AAT = {}", A, A * transpose(A));
+                for (uint ii = 0; ii < 3; ii++)
                 {
-                    Float3x3 A;
-                    Float3   p;
-                    AffineBodyDynamics::extract_Ap_from_q(sa_q, body_idx, A, p);
-                    // device_log("A = {}, AAT = {}", A, A * transpose(A));
-                    for (uint ii = 0; ii < 3; ii++)
+                    for (uint jj = 0; jj < 3; jj++)
                     {
-                        for (uint jj = 0; jj < 3; jj++)
-                        {
-                            Float term = dot(A[ii], A[jj]) - (ii == jj ? 1.0f : 0.0f);
-                            energy += term * term;
-                        }
+                        Float term = dot(A[ii], A[jj]) - (ii == jj ? 1.0f : 0.0f);
+                        energy += term * term;
                     }
-                    Float stiffness_ortho = abd_kappa->read(body_idx);
-                    Float volume          = abd_volume->read(body_idx);
-                    energy *= stiffness_ortho * volume;
-                };
+                }
+                Float stiffness_ortho = abd_kappa->read(body_idx);
+                Float volume          = abd_volume->read(body_idx);
+                energy *= stiffness_ortho * volume;
+            };
 
-                energy = ParallelIntrinsic::block_intrinsic_reduce(
-                    body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-                $if(body_idx % 256 == 0)
-                {
-                    sa_system_energy->atomic(offset_abd_ortho).fetch_add(energy);
-                };
-            },
-            default_option);
-    }
+            energy = ParallelIntrinsic::block_intrinsic_reduce(
+                body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            $if(body_idx % 256 == 0)
+            {
+                sa_system_energy->atomic(offset_abd_ortho).fetch_add(energy);
+            };
+        },
+        default_option);
 }
 void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&        stream,
                                                     std::map<std::string, double>& energy_list)
 {
     const luisa::compute::Buffer<float3>& curr_x = sim_data->sa_x;
-    const luisa::compute::Buffer<float3>& curr_q = sim_data->sa_affine_bodies_q;
+    const luisa::compute::Buffer<float3>& curr_q = sim_data->sa_q;
 
     stream << fn_reset_float(sim_data->sa_system_energy).dispatch(8);
-    if (host_sim_data->num_verts_soft != 0)
+
+    const auto& soft_inertia_constitution = sim_data->get_soft_inertia_data();
+    if (soft_inertia_constitution.is_valid())
     {
-        stream << fn_calc_energy_inertia(curr_x, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
+        stream << fn_calc_energy_inertia(soft_inertia_constitution, curr_x, get_scene_params().get_substep_dt())
                       .dispatch(host_sim_data->num_verts_soft);
     }
 
-    const auto& abd_data = sim_data->get_affine_body_data();
-    if (abd_data.is_valid())
+    const auto& abd_inertia_data = sim_data->get_abd_inertia_data();
+    if (abd_inertia_data.is_valid())
     {
-        stream << fn_calc_energy_abd_inertia(
-                      abd_data, curr_q, get_scene_params().get_substep_dt(), get_scene_params().stiffness_dirichlet)
-                      .dispatch(abd_data.get_num_indices());
-        stream << fn_calc_energy_abd_ortho(abd_data, curr_q).dispatch(abd_data.get_num_indices());
+        // const auto abd_q_span = curr_q.view(host_sim_data->num_verts_soft, host_sim_data->num_affine_bodies * 4);
+        stream << fn_calc_energy_abd_inertia(abd_inertia_data, curr_q, get_scene_params().get_substep_dt())
+                      .dispatch(abd_inertia_data.get_num_indices());
     }
+
+    const auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
+    if (abd_ortho_data.is_valid())
+    {
+        stream << fn_calc_energy_abd_ortho(abd_ortho_data, curr_q).dispatch(abd_ortho_data.get_num_indices());
+    }
+
 
     if (get_scene_params().use_floor)
     {

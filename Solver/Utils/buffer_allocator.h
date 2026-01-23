@@ -10,7 +10,10 @@ static inline auto upload_buffer(luisa::compute::Device&    device,
                                  luisa::compute::Buffer<T>& dest,
                                  const std::vector<T>&      src)
 {
-    dest = device.create_buffer<T>(src.size());
+    if (!dest.valid())
+    {
+        dest = device.create_buffer<T>(src.size());
+    }
     return dest.copy_from(src.data());
 };
 

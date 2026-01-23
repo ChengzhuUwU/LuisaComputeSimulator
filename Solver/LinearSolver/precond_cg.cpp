@@ -365,10 +365,6 @@ void ConjugateGradientSolver::host_solve(luisa::compute::Stream& stream,
     std::vector<float3>&   sa_cgR    = host_sim_data->sa_cgR;
     std::vector<float3>&   sa_cgZ    = host_sim_data->sa_cgZ;
 
-    std::vector<float3>& sa_x            = host_sim_data->sa_x;
-    std::vector<float3>& sa_x_iter_start = host_sim_data->sa_x_iter_start;
-    std::vector<float3>& sa_x_tilde      = host_sim_data->sa_x_tilde;
-
     const uint num_verts = sa_cgX.size();
 
     auto get_dot_rz_rr = [&]() -> float2  // [0] = r^T z, [1] = r^T r

@@ -79,6 +79,7 @@ class SolverInterface
     template <typename T>
     void get_simulation_results_to_host(std::vector<std::vector<T>>& output_positions)
     {
+        const auto& sim_result_positions = host_sim_data->sa_x_outer;
         for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
         {
             CpuParallel::parallel_for(
@@ -86,7 +87,7 @@ class SolverInterface
                 host_mesh_data->prefix_num_verts[meshIdx + 1] - host_mesh_data->prefix_num_verts[meshIdx],
                 [&](const uint vid)
                 {
-                    auto pos = host_mesh_data->sa_x_frame_outer[vid + host_mesh_data->prefix_num_verts[meshIdx]];
+                    auto pos = sim_result_positions[vid + host_mesh_data->prefix_num_verts[meshIdx]];
                     output_positions[meshIdx][vid] = {pos.x, pos.y, pos.z};
                 });
         }
@@ -145,23 +146,18 @@ class SolverInterface
   private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
     luisa::compute::Shader<1,
+                           Constitutions::SoftInertia<luisa::compute::Buffer>,
                            luisa::compute::BufferView<float3>,  // sa_x
-                           float,                               // substep_dt
-                           float                                // stiffness_dirichlet
+                           float                                // substep_dt
                            >
         fn_calc_energy_inertia;
     luisa::compute::Shader<1,
-                           Constitutions::AbdKinematics<luisa::compute::Buffer>,
+                           Constitutions::AbdInertia<luisa::compute::Buffer>,
                            luisa::compute::BufferView<float3>,  // sa_q
-                           float,                               // substep_dt
-                           float                                // stiffness_dirichlet
+                           float                                // substep_dt
                            >
         fn_calc_energy_abd_inertia;
-    // luisa::compute::Shader<1,
-    //     luisa::compute::BufferView<float3>, // sa_x
-    //     float, // substep_dt
-    //     float // stiffness_dirichlet
-    //     > fn_calc_energy_dirichlet;
+
     luisa::compute::Shader<1,
                            Constitutions::StretchSpring<luisa::compute::Buffer>,  // stretch_spring_constitution
                            luisa::compute::BufferView<float3>,                    // sa_x
@@ -174,8 +170,8 @@ class SolverInterface
                            >
         fn_calc_energy_stretch_face;
     luisa::compute::Shader<1,
-                           Constitutions::AbdKinematics<luisa::compute::Buffer>,  // abd_constitution
-                           luisa::compute::BufferView<float3>                     // sa_q
+                           Constitutions::AbdOrthogonality<luisa::compute::Buffer>,  // abd_ortho_constitution
+                           luisa::compute::BufferView<float3>                        // sa_q
                            >
         fn_calc_energy_abd_ortho;
     luisa::compute::Shader<1,

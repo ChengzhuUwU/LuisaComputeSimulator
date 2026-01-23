@@ -58,8 +58,23 @@ class NewtonSolver : public lcs::SolverInterface
 
   private:
     // Host functions
-    void host_apply_dx(const float alpha);
-    void device_apply_dx(luisa::compute::Stream& stream, const float alpha);
+
+    // luisa::compute::Shader<1>        fn_apply_dq_to_dx;
+    // luisa::compute::Shader<1>        fn_apply_q_to_x;
+    // luisa::compute::Shader<1, float> fn_apply_dx;
+    // luisa::compute::Shader<1, float> fn_apply_dq;
+    // luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_apply_x_from_q_template;
+
+    void host_apply_dq_dx(const float alpha);
+    void device_apply_dq_dx(luisa::compute::Stream& stream, const float alpha);
+
+    void device_apply_q_to_x(luisa::compute::Stream& stream);
+    void device_apply_q_to_x(luisa::compute::Stream&               stream,
+                             luisa::compute::Buffer<float3>&       output_x,
+                             const luisa::compute::Buffer<float3>& input_q);
+    void host_apply_q_to_x();
+    void host_apply_q_to_x(std::vector<float3>& output_x, const std::vector<float3>& input_q);
+
     void host_predict_position();
     void host_update_velocity();
     void host_evaluate_inertia();
@@ -107,37 +122,34 @@ class NewtonSolver : public lcs::SolverInterface
 
     luisa::compute::Shader<1, float, float3> fn_predict_position;  // const Float substep_dt
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
-    luisa::compute::Shader<1, float, float> fn_evaluate_inertia;  // Float substep_dt, Float stiffness_dirichlet
-    luisa::compute::Shader<1, float, float> fn_evaluate_dirichlet;  // Float substep_dt, stiffness_dirichlet
-    luisa::compute::Shader<1, float, bool, float, uint> fn_evaluate_ground_collision;
-    luisa::compute::Shader<1, float, bool>              fn_gound_collision_ccd;
+    luisa::compute::Shader<1, float, bool> fn_gound_collision_ccd;
+    luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>, float> fn_evaluate_inertia;  // Float substep_dt
+    luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>, float, bool, float, uint> fn_evaluate_ground_collision;
     luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>> fn_evaluate_spring;  // Float stiffness_stretch
     luisa::compute::Shader<1, Constitutions::StretchFace<luisa::compute::Buffer>> fn_evaluate_stretch_face;
     luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>, float> fn_evaluate_bending;  // Float stiffness_bending
 
-    luisa::compute::Shader<1, float, float3> fn_abd_predict_position;
-    luisa::compute::Shader<1, float, bool, float> fn_abd_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping
-    luisa::compute::Shader<1, Constitutions::AbdKinematics<luisa::compute::Buffer>, float, float> fn_evaluate_abd_inertia;  // Float substep_dt, Float stiffness_dirichlet
-    luisa::compute::Shader<1, Constitutions::AbdKinematics<luisa::compute::Buffer>> fn_evaluate_abd_orthogonality;
-    luisa::compute::Shader<1, Constitutions::AbdKinematics<luisa::compute::Buffer>, float, bool, float, uint, uint> fn_evaluate_abd_ground_collision;
+    luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, float> fn_evaluate_abd_inertia;  // Float substep_dt
+    luisa::compute::Shader<1, Constitutions::AbdOrthogonality<luisa::compute::Buffer>> fn_evaluate_abd_orthogonality;
+    luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, float, bool, float, uint, uint> fn_evaluate_abd_ground_collision;
 
-    luisa::compute::Shader<1> fn_material_energy_assembly;
     luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>> fn_material_energy_assembly_stretch_spring;
     luisa::compute::Shader<1, Constitutions::StretchFace<luisa::compute::Buffer>> fn_material_energy_assembly_stretch_face;
     luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>> fn_material_energy_assembly_bending;
-    luisa::compute::Shader<1, Constitutions::AbdKinematics<luisa::compute::Buffer>, uint> fn_material_energy_assembly_affine_body;
+    luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>> fn_material_energy_assembly_soft_inertia;
+    luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, uint> fn_material_energy_assembly_abd_inertia;
+    luisa::compute::Shader<1, Constitutions::AbdOrthogonality<luisa::compute::Buffer>, uint> fn_material_energy_assembly_abd_ortho;
 
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_diag;
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_perVert;
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_warp_rbk;
     luisa::compute::Shader<1, luisa::compute::Buffer<MatrixTriplet3x3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_block_rbk;
 
-    luisa::compute::Shader<1, float>                                   fn_apply_dx;
-    luisa::compute::Shader<1, float, uint>                             fn_apply_dx_affine_bodies;
-    luisa::compute::Shader<1, float, uint>                             fn_apply_dq;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>>       fn_apply_dx_non_constant;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>, uint> fn_apply_dq_non_constant;
-    ;
+    luisa::compute::Shader<1>        fn_apply_dq_to_dx;
+    luisa::compute::Shader<1>        fn_apply_q_to_x;
+    luisa::compute::Shader<1, float> fn_apply_dx;
+    luisa::compute::Shader<1, float> fn_apply_dq;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_apply_q_to_x_template;
 };
 
 
