@@ -1,84 +1,33 @@
 {
-    "scene_id": 18,
-    "contact_energy_type": 1,
-    "nonlinear_iter_count": 20,
-    "use_energy_linesearch": true,
+    "scene_id": 2,
+    "use_floor": false,
     "shells": [
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.0,
-                1.0,
-                0.0
-            ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.1
-            }
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.2,
-                1.0,
-                0.0
-            ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.1
-            }
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.4,
-                1.0,
-                0.0
-            ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.1
-            }
-        },
         {
             "model_name": "square2K.obj",
             "translation": [
                 0.0,
-                0.8,
+                0.2,
                 0.0
             ],
-            "scale": 2.0,
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
+            "scale": [
+                0.4,
+                0.4,
+                0.4
             ],
-            "material": {
-                "friction_mu": 0.0
-            },
             "fixed_points": [
                 {
-                    "method": "All"
+                    "method": "LeftBack",
+                    "range": [
+                        0.001
+                    ]
                 }
-            ]
+            ],
+            "shell_type": "Cloth",
+            "material": {
+                "stretch_model": "Spring",
+                "youngs_modulus": 1e5,
+                "poisson_ratio": 0.3
+            }
         }
     ]
 }
