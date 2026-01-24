@@ -67,6 +67,30 @@ namespace Constitutions
         SoftInertia,
         AbdInertia
     };
+    static inline std::string_view to_string(ConstraintType type)
+    {
+        switch (type)
+        {
+            case ConstraintType::StretchSpring:
+                return "Stretch Spring";
+            case ConstraintType::StretchFace:
+                return "Stretch Face";
+            case ConstraintType::BendingEdge:
+                return "Bending Edge";
+            case ConstraintType::StressTet:
+                return "Stress Tet";
+            case ConstraintType::ElasticRod:
+                return "Elastic Rod";
+            case ConstraintType::Orthogonality:
+                return "Affine Body Orthogonality";
+            case ConstraintType::SoftInertia:
+                return "Soft Body Inertia";
+            case ConstraintType::AbdInertia:
+                return "Affine Body Inertia";
+            default:
+                return "Unknown";
+        }
+    }
 
     template <template <typename...> typename BufferType, typename Derived>
     struct ConstitutionInterface : SimulationType
@@ -82,13 +106,24 @@ namespace Constitutions
         {
             return Derived::get_num_verts_per_constaint();
         }
-        static constexpr ConstraintType constraint_type() { return Derived::constraint_type(); }
+        static constexpr ConstraintType   constraint_type() { return Derived::constraint_type(); }
+        static constexpr std::string_view get_constitution_name()
+        {
+            return to_string(constraint_type());
+        }
         auto& get_indices() const { return static_cast<const Derived*>(this)->get_indices_impl(); }
         auto& get_constraint_offsets_in_adjlist() const { return constraint_offsets_in_adjlist; }
         auto& get_constraint_gradients() const { return constraint_gradients; }
         auto& get_constraint_hessians() const { return constraint_hessians; }
         auto& get_vert_adj_constraints() const { return vert_adj_constraints; }
         auto& get_vert_adj_constraints_csr() const { return vert_adj_constraints_csr; }
+
+        auto& get_indices() { return static_cast<Derived*>(this)->get_indices_impl(); }
+        auto& get_constraint_offsets_in_adjlist() { return constraint_offsets_in_adjlist; }
+        auto& get_constraint_gradients() { return constraint_gradients; }
+        auto& get_constraint_hessians() { return constraint_hessians; }
+        auto& get_vert_adj_constraints() { return vert_adj_constraints; }
+        auto& get_vert_adj_constraints_csr() { return vert_adj_constraints_csr; }
 
 
         template <typename T>

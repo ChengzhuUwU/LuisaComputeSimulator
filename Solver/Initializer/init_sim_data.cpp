@@ -199,42 +199,65 @@ static void insert_adj_vert(std::vector<std::vector<uint>>& adj_map, const uint&
 
 
 template <typename Derived>
-static void traverse_constitution_elements(std::vector<std::vector<uint>>& adj_map,
-                                           Constitutions::ConstitutionInterface<std::vector, Derived>& constitution_template)
+static void build_adj_list_and_init_grad_hess(std::vector<std::vector<uint>>& adj_map,
+                                              Constitutions::ConstitutionInterface<std::vector, Derived>& constitution_template)
 {
-    constexpr size_t N                        = Derived::get_num_verts_per_constaint();
-    const uint       num_dof                  = adj_map.size();
-    const auto&      sa_constitution_elements = constitution_template.get_indices();
-    constitution_template.vert_adj_constraints.resize(num_dof);
-    for (uint eid = 0; eid < sa_constitution_elements.size(); eid++)
+    constexpr size_t N         = Derived::get_num_verts_per_constaint();
+    constexpr size_t grad_size = N;
+    constexpr size_t hess_size = N * N;
+
+    if (!constitution_template.is_valid())
     {
-        auto element = sa_constitution_elements[eid];
-        for (uint j = 0; j < N; j++)
+        // LUISA_INFO("Init constraint {:12}: numElement = {}, stride = {}", Derived::get_constitution_name(), 0, N);
+    }
+    else
+    {
+        const uint num_dof        = adj_map.size();
+        const uint num_constraint = constitution_template.get_num_indices();
+
+        LUISA_INFO("Init constraint {:12}: numElement = {}, stride = {}", Derived::get_constitution_name(), num_constraint, N);
+
+        const auto& sa_constitution_elements = constitution_template.get_indices();
+        auto&       gradient                 = constitution_template.get_constraint_gradients();
+        auto&       hessian                  = constitution_template.get_constraint_hessians();
+        auto&       vert_adj_constraints     = constitution_template.get_vert_adj_constraints();
+        auto&       vert_adj_constraints_csr = constitution_template.get_vert_adj_constraints_csr();
+
+
+        gradient.resize(num_constraint * grad_size);
+        hessian.resize(num_constraint * hess_size);
+
+        vert_adj_constraints.resize(num_dof);
+        for (uint eid = 0; eid < num_constraint; eid++)
         {
-            if constexpr (N == 1)
+            auto element = sa_constitution_elements[eid];
+            for (uint j = 0; j < N; j++)
             {
-                constitution_template.vert_adj_constraints[element].push_back(eid);
-            }
-            else
-            {
-                constitution_template.vert_adj_constraints[element[j]].push_back(eid);
-            }
-        }
-        if constexpr (N != 1)
-        {
-            for (uint ii = 0; ii < N; ii++)
-            {
-                for (uint jj = 0; jj < N; jj++)
+                if constexpr (N == 1)
                 {
-                    if (ii != jj)
+                    vert_adj_constraints[element].push_back(eid);
+                }
+                else
+                {
+                    vert_adj_constraints[element[j]].push_back(eid);
+                }
+            }
+            if constexpr (N != 1)
+            {
+                for (uint ii = 0; ii < N; ii++)
+                {
+                    for (uint jj = 0; jj < N; jj++)
                     {
-                        insert_adj_vert(adj_map, element[ii], element[jj]);
+                        if (ii != jj)
+                        {
+                            insert_adj_vert(adj_map, element[ii], element[jj]);
+                        }
                     }
                 }
             }
         }
+        upload_2d_csr_from(vert_adj_constraints_csr, vert_adj_constraints);
     }
-    upload_2d_csr_from(constitution_template.vert_adj_constraints_csr, constitution_template.vert_adj_constraints);
 };
 
 template <typename Derived>
@@ -244,11 +267,11 @@ static void init_constitution_offsets_in_adjlist(const std::vector<std::vector<u
     constexpr size_t N           = Derived::get_num_verts_per_constaint();
     constexpr size_t num_offdiag = N * (N - 1);
 
+    const auto& sa_constitution_elements           = constitution_template.get_indices();
+    auto&       sa_constitution_offsets_in_adjlist = constitution_template.constraint_offsets_in_adjlist;
+
     if constexpr (N != 1)
     {
-        const auto& sa_constitution_elements     = constitution_template.get_indices();
-        auto& sa_constitution_offsets_in_adjlist = constitution_template.constraint_offsets_in_adjlist;
-
         sa_constitution_offsets_in_adjlist.resize(sa_constitution_elements.size() * num_offdiag);
         CpuParallel::parallel_for(0,
                                   sa_constitution_elements.size(),
@@ -260,6 +283,10 @@ static void init_constitution_offsets_in_adjlist(const std::vector<std::vector<u
                                                   mask.data(),
                                                   sizeof(ushort) * num_offdiag);
                                   });
+    }
+    else
+    {
+        sa_constitution_offsets_in_adjlist.resize(1, 0);
     }
 }
 
@@ -528,8 +555,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         stretch_spring_data.constraint_indices.resize(num_stretch_springs);
         stretch_spring_data.sa_stretch_spring_rest_state_length.resize(num_stretch_springs);
         stretch_spring_data.sa_stretch_spring_stiffness.resize(num_stretch_springs);
-        stretch_spring_data.constraint_gradients.resize(num_stretch_springs * 2);
-        stretch_spring_data.constraint_hessians.resize(num_stretch_springs * 4);
 
         CpuParallel::parallel_for(0,
                                   num_stretch_springs,
@@ -559,8 +584,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         stretch_face_data.sa_stretch_faces_mu_lambda.resize(num_stretch_faces);
         stretch_face_data.sa_stretch_faces_rest_area.resize(num_stretch_faces);
         stretch_face_data.sa_stretch_faces_Dm_inv.resize(num_stretch_faces);
-        stretch_face_data.constraint_gradients.resize(num_stretch_faces * 3);
-        stretch_face_data.constraint_hessians.resize(num_stretch_faces * 9);
         CpuParallel::parallel_for(0,
                                   num_stretch_faces,
                                   [&](const uint fid)
@@ -600,8 +623,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         bending_edge_data.sa_bending_edges_rest_angle.resize(num_bending_edges);
         bending_edge_data.sa_bending_edges_stiffness.resize(num_bending_edges);
         bending_edge_data.sa_bending_edges_Q.resize(num_bending_edges);
-        bending_edge_data.constraint_gradients.resize(num_bending_edges * 4);
-        bending_edge_data.constraint_hessians.resize(num_bending_edges * 16);
         CpuParallel::parallel_for(
             0,
             num_bending_edges,
@@ -678,8 +699,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         stress_tet_data.sa_stress_tets_rest_volume.resize(num_stress_tets);
         stress_tet_data.sa_stress_tets_mu_lambda.resize(num_stress_tets);
         stress_tet_data.sa_stress_tets_Dm_inv.resize(num_stress_tets);
-        stress_tet_data.constraint_gradients.resize(num_stress_tets * 4);
-        stress_tet_data.constraint_hessians.resize(num_stress_tets * 16);
         CpuParallel::parallel_for(0,
                                   num_stress_tets,
                                   [&](const uint tid)
@@ -714,6 +733,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         auto& soft_inertia_data = sim_data->get_soft_inertia_data();
         soft_inertia_data.constraint_indices.resize(num_verts_soft);
         soft_inertia_data.sa_soft_vert_mass.resize(num_verts_soft);
+        soft_inertia_data.sa_stiffness_dirichlet.resize(num_verts_soft);
         CpuParallel::parallel_for(0,
                                   num_verts_soft,
                                   [&](const uint vid)
@@ -735,16 +755,12 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         abd_ortho_data.abd_kappa.resize(num_affine_bodies);
         abd_ortho_data.abd_volume.resize(num_affine_bodies);
         abd_ortho_data.constraint_indices.resize(num_affine_bodies);
-        abd_ortho_data.constraint_gradients.resize(num_affine_bodies * 3);
-        abd_ortho_data.constraint_hessians.resize(num_affine_bodies * 9);
 
         auto& abd_inertia_data = sim_data->get_abd_inertia_data();
         abd_inertia_data.constraint_indices.resize(num_affine_bodies);
         abd_inertia_data.sa_stiffness_dirichlet.resize(num_affine_bodies);
         abd_inertia_data.sa_affine_bodies_mass_matrix.resize(num_affine_bodies);
         abd_inertia_data.sa_affine_bodies_mass_matrix_full.resize(num_affine_bodies);
-        abd_inertia_data.constraint_gradients.resize(num_affine_bodies * 4);
-        abd_inertia_data.constraint_hessians.resize(num_affine_bodies * 16);
 
         for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
         {
@@ -952,31 +968,31 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
         // Vert adj stretch springs
         auto& stretch_spring_data = sim_data->get_stretch_spring_data();
-        traverse_constitution_elements(adj_map, stretch_spring_data);
+        build_adj_list_and_init_grad_hess(adj_map, stretch_spring_data);
 
         // Vert adj stretch faces
         auto& stretch_face_data = sim_data->get_stretch_face_data();
-        traverse_constitution_elements(adj_map, stretch_face_data);
+        build_adj_list_and_init_grad_hess(adj_map, stretch_face_data);
 
         // Vert adj bending edges
         auto& bending_edge_data = sim_data->get_bending_edge_data();
-        traverse_constitution_elements(adj_map, bending_edge_data);
+        build_adj_list_and_init_grad_hess(adj_map, bending_edge_data);
 
         // Vert adj stress tets
         auto& stress_tet_data = sim_data->get_stress_tet_data();
-        traverse_constitution_elements(adj_map, stress_tet_data);
+        build_adj_list_and_init_grad_hess(adj_map, stress_tet_data);
 
         // Vert adj affine-body inertia
         auto& abd_inertia_data = sim_data->get_abd_inertia_data();
-        traverse_constitution_elements(adj_map, abd_inertia_data);
+        build_adj_list_and_init_grad_hess(adj_map, abd_inertia_data);
 
         // Vert adj affine-body orthogonality
         auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
-        traverse_constitution_elements(adj_map, abd_ortho_data);
+        build_adj_list_and_init_grad_hess(adj_map, abd_ortho_data);
 
         // Vert adj soft-body fixed constraints
         auto& soft_inertia_data = sim_data->get_soft_inertia_data();
-        traverse_constitution_elements(adj_map, soft_inertia_data);
+        build_adj_list_and_init_grad_hess(adj_map, soft_inertia_data);
 
         // Sort adjacents
         CpuParallel::parallel_for(0,
