@@ -70,10 +70,10 @@ class NewtonSolver : public lcs::SolverInterface
 
     void device_apply_q_to_x(luisa::compute::Stream& stream);
     void device_apply_q_to_x(luisa::compute::Stream&               stream,
-                             luisa::compute::Buffer<float3>&       output_x,
-                             const luisa::compute::Buffer<float3>& input_q);
+                             const luisa::compute::Buffer<float3>& input_q,
+                             luisa::compute::Buffer<float3>&       output_x);
     void host_apply_q_to_x();
-    void host_apply_q_to_x(std::vector<float3>& output_x, const std::vector<float3>& input_q);
+    void host_apply_q_to_x(const std::vector<float3>& input_q, std::vector<float3>& output_x);
 
     void host_predict_position();
     void host_update_velocity();
@@ -149,6 +149,7 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1>        fn_apply_q_to_x;
     luisa::compute::Shader<1, float> fn_apply_dx;
     luisa::compute::Shader<1, float> fn_apply_dq;
+    luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, float> fn_interpolate_template;
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_apply_q_to_x_template;
 };
 

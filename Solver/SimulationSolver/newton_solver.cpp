@@ -556,6 +556,26 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
 
     // Linear interpolation
     compiler.compile<1>(
+        fn_interpolate_template,
+        [](BufferVar<float3> output_buffer, BufferVar<float3> input_start, BufferVar<float3> input_delta, Float alpha)
+        {
+            const UInt   vid     = dispatch_id().x;
+            const Float3 init_q  = input_start->read(vid);
+            const Float3 delta_q = input_delta->read(vid);
+            const Float3 new_q   = init_q + alpha * delta_q;
+            output_buffer->write(vid, new_q);
+        },
+        default_option);
+
+    // Why this failed?????
+    LUISA_INFO("Compiling apply dq/dx kernels...");
+    LUISA_INFO("Size of sa_q: {}", sim_data->sa_q.size());
+    LUISA_INFO("Size of sa_dq: {}", sim_data->sa_dq.size());
+    LUISA_INFO("Size of sa_q_iter_start: {}", sim_data->sa_q_iter_start.size());
+    LUISA_INFO("Size of sa_x: {}", sim_data->sa_x.size());
+    LUISA_INFO("Size of sa_dx: {}", sim_data->sa_dx.size());
+    LUISA_INFO("Size of sa_x_iter_start: {}", sim_data->sa_x_iter_start.size());
+    compiler.compile<1>(
         fn_apply_dq,
         [sa_q            = sim_data->sa_q.view(),
          sa_dq           = sim_data->sa_dq.view(),
@@ -1409,7 +1429,6 @@ void NewtonSolver::host_predict_position()
                               [sa_q            = host_sim_data->sa_q.data(),
                                sa_q_v          = host_sim_data->sa_q_v.data(),
                                sa_q_tilde      = host_sim_data->sa_q_tilde.data(),
-                               sa_cgX          = host_sim_data->sa_cgX.data(),
                                sa_q_step_start = host_sim_data->sa_q_step_start.data(),
                                sa_q_iter_start = host_sim_data->sa_q_iter_start.data(),
                                sa_is_fixed     = host_mesh_data->sa_is_fixed.data(),
@@ -1570,9 +1589,6 @@ void NewtonSolver::host_evaluate_inertia()
                                   {
                                       output_gradient[vid] = gradient;
                                       output_hessian[vid]  = hessian;
-                                      // sa_cgX[vid] = dx_0;
-                                      //   sa_cgB[vid]      = -gradient;
-                                      //   sa_cgA_diag[vid] = hessian;
                                   }
                               });
 
@@ -3591,7 +3607,7 @@ void NewtonSolver::host_apply_dq_dx(const float alpha)
                               [&](const uint dof_idx)
                               {
                                   host_sim_data->sa_q[dof_idx] = host_sim_data->sa_q_iter_start[dof_idx]
-                                                                 + alpha * host_sim_data->sa_cgX[dof_idx];
+                                                                 + alpha * host_sim_data->sa_dq[dof_idx];
                               });
     CpuParallel::parallel_for(0,
                               num_verts_total,
@@ -3610,7 +3626,10 @@ void NewtonSolver::device_apply_dq_dx(luisa::compute::Stream& stream, const floa
     const uint num_dof         = host_sim_data->num_dof;
     const uint num_verts_total = host_sim_data->num_verts_total;
 
-    stream << fn_apply_dq(alpha).dispatch(num_dof) << fn_apply_dx(alpha).dispatch(num_verts_total);
+    stream
+        << fn_interpolate_template(sim_data->sa_q, sim_data->sa_q_iter_start, sim_data->sa_dq, alpha).dispatch(num_dof)
+        << fn_interpolate_template(sim_data->sa_x, sim_data->sa_x_iter_start, sim_data->sa_dx, alpha).dispatch(num_verts_total);
+    // stream << fn_apply_dq(alpha).dispatch(num_dof) << fn_apply_dx(alpha).dispatch(num_verts_total);
 }
 
 // void host_apply_dq_dx(const float alpha);
@@ -3631,8 +3650,8 @@ void NewtonSolver::device_apply_q_to_x(luisa::compute::Stream& stream)
     stream << fn_apply_q_to_x().dispatch(num_verts_total);
 }
 void NewtonSolver::device_apply_q_to_x(luisa::compute::Stream&               stream,
-                                       luisa::compute::Buffer<float3>&       output_x,
-                                       const luisa::compute::Buffer<float3>& input_q)
+                                       const luisa::compute::Buffer<float3>& input_q,
+                                       luisa::compute::Buffer<float3>&       output_x)
 {
     stream << fn_apply_q_to_x_template(output_x, input_q).dispatch(output_x.size());
 }
@@ -3674,7 +3693,7 @@ void NewtonSolver::host_apply_q_to_x()
                                                     vid);
                               });
 }
-void NewtonSolver::host_apply_q_to_x(std::vector<float3>& output_x, const std::vector<float3>& input_q)
+void NewtonSolver::host_apply_q_to_x(const std::vector<float3>& input_q, std::vector<float3>& output_x)
 {
     const uint num_verts_total = host_sim_data->num_verts_total;
     CpuParallel::parallel_for(0,
@@ -3694,7 +3713,6 @@ void NewtonSolver::host_apply_q_to_x(std::vector<float3>& output_x, const std::v
 //          device_dx, device_x_iter_start
 //          device_dq, device_q_iter_start
 //          device_q_tilde
-//      sa_x/q_iter_start, sa_x/q_tilde, sa_cgX
 void NewtonSolver::line_search(luisa::compute::Device& device,
                                luisa::compute::Stream& stream,
                                bool&                   dirichlet_converged,
@@ -3797,7 +3815,7 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
     // Non-linear iteration break condition
     {
         float max_move      = 1e-2;
-        float curr_max_step = fast_infinity_norm(host_sim_data->sa_cgX);
+        float curr_max_step = fast_infinity_norm(host_sim_data->sa_dq);
         if (curr_max_step < max_move * get_scene_params().implicit_dt)
         {
             LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
@@ -3976,6 +3994,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     const bool  use_ccd_linesearch    = get_scene_params().use_ccd_linesearch;
 
     host_apply_q_to_x(host_sim_data->sa_q_step_start, host_sim_data->sa_x_step_start);
+    CpuParallel::parallel_copy(host_sim_data->sa_q_step_start, host_sim_data->sa_q);
+    CpuParallel::parallel_copy(host_sim_data->sa_x_step_start, host_sim_data->sa_x);
 
     // Init LBVH
     {
@@ -4088,7 +4108,12 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     // Read frame start position and velocity
     lcs::SolverInterface::physics_step_prev_operation();  // => sa_q_step_start, sa_q_v
 
-    host_apply_q_to_x(host_sim_data->sa_q_step_start, host_sim_data->sa_x_step_start);
+    stream << sim_data->sa_q_step_start.copy_from(host_sim_data->sa_q_step_start.data())
+           << sim_data->sa_q_v.copy_from(host_sim_data->sa_q_v.data());
+
+    device_apply_q_to_x(stream, sim_data->sa_q_step_start, sim_data->sa_x_step_start);
+    stream << sim_data->sa_x.copy_from(sim_data->sa_x_step_start);
+    stream << sim_data->sa_q.copy_from(sim_data->sa_q_step_start);
 
     const uint  num_substep          = lcs::get_scene_params().num_substep;
     const uint  nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
@@ -4174,11 +4199,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
         {
-            // sa_q_step_start = sim_data->sa_q_step_start.view(),  // Input
-            // sa_q_v          = sim_data->sa_q_v.view(),           // Input
-            stream << sim_data->sa_q_step_start.copy_from(host_sim_data->sa_q_step_start.data())
-                   << sim_data->sa_q_v.copy_from(host_sim_data->sa_q_v.data())
-                   << fn_predict_position(substep_dt, get_scene_params().gravity).dispatch(host_sim_data->num_dof)
+            stream << fn_predict_position(substep_dt, get_scene_params().gravity).dispatch(host_sim_data->num_dof)
                    << sim_data->sa_q_tilde.copy_to(host_sim_data->sa_q_tilde.data())
                    << luisa::compute::synchronize();
         }
