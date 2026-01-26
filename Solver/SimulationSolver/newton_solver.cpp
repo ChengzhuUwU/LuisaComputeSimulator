@@ -3624,20 +3624,21 @@ float3 fn_apply_template(const std::vector<uint>&   sa_x_to_dof_map,
 {
 
     float3     new_dx;
-    const uint mapped_dof = sa_x_to_dof_map[vid];
-    if ((mapped_dof & Attributions::RIGID_BODY_FLAG) == 0)  // Soft body
+    const uint map_info = sa_x_to_dof_map[vid];
+    const uint dof_idx  = map_info & (~Attributions::RIGID_BODY_FLAG);
+    if ((map_info & Attributions::RIGID_BODY_FLAG) == 0)  // Soft body
     {
-        new_dx = input_q[mapped_dof];
+        new_dx = input_q[dof_idx];
     }
     else  // Rigid body
     {
         const float3 rest_x = sa_scaled_model_x[vid];
         float3       p;
         float3x3     A;
-        p      = input_q[mapped_dof + 0];
-        A[0]   = input_q[mapped_dof + 1];
-        A[1]   = input_q[mapped_dof + 2];
-        A[2]   = input_q[mapped_dof + 3];
+        p      = input_q[dof_idx + 0];
+        A[0]   = input_q[dof_idx + 1];
+        A[1]   = input_q[dof_idx + 2];
+        A[2]   = input_q[dof_idx + 3];
         new_dx = A * rest_x + p;  // Affine position
     };
     return new_dx;

@@ -281,8 +281,9 @@ struct PcgInnerData : SimulationType
 namespace Attributions
 {
     static constexpr uint32_t RIGID_BODY_FLAG = 1u << 31;
+    static constexpr uint32_t RIGID_BODY_MASK = ~RIGID_BODY_FLAG;
 
-}
+}  // namespace Attributions
 
 
 template <template <typename...> typename BufferType>

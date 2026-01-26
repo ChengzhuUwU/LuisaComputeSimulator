@@ -1,33 +1,53 @@
 {
-    "scene_id": 2,
-    "use_floor": false,
+    "scene_id": 16,
+    "nonlinear_iter_count": 2,
+    "use_self_collision": false,
+    "use_ccd_linesearch": false,
     "shells": [
         {
-            "model_name": "square2K.obj",
+            "model_name": "cube.obj",
             "translation": [
                 0.0,
                 0.2,
                 0.0
             ],
-            "scale": [
-                0.4,
-                0.4,
-                0.4
+            "rotation": [
+                0.5235988,
+                0.0,
+                0.5235988
             ],
-            "fixed_points": [
-                {
-                    "method": "LeftBack",
-                    "range": [
-                        0.001
-                    ]
-                }
+            "scale": 0.1,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.6,
+                0.4,
+                0.0
             ],
-            "shell_type": "Cloth",
-            "material": {
-                "stretch_model": "Spring",
-                "youngs_modulus": 1e5,
-                "poisson_ratio": 0.3
-            }
+            "rotation": [
+                0.5235988,
+                0.0,
+                1.0471976
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "cube.obj",
+            "translation": [
+                0.9,
+                0.6,
+                0.0
+            ],
+            "rotation": [
+                1.0471976,
+                0.5235988,
+                0.0
+            ],
+            "scale": 0.5,
+            "shell_type": "Rigid"
         }
     ]
 }

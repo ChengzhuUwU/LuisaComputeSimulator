@@ -533,16 +533,16 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             // Rigid body vertices map to dof
             for (uint body_idx = 0; body_idx < num_affine_bodies; body_idx++)
             {
-                const uint dof_idx           = num_verts_soft + body_idx * 4;
-                const uint meshIdx           = affine_body_indices[body_idx];
-                const uint curr_prefix_verts = mesh_data->prefix_num_verts[meshIdx];
-                const uint next_prefix_verts = mesh_data->prefix_num_verts[meshIdx + 1];
-                for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                const uint dof_idx    = num_verts_soft + body_idx * 4;
+                const uint meshIdx    = affine_body_indices[body_idx];
+                const uint prefix_vid = mesh_data->prefix_num_verts[meshIdx];
+                const uint suffix_vid = mesh_data->prefix_num_verts[meshIdx + 1];
+                for (uint vid = prefix_vid; vid < suffix_vid; vid++)
                 {
                     sim_data->sa_x_to_dof_map[vid] = dof_idx | (Attributions::RIGID_BODY_FLAG);
                 }
-                bool has_fixed_vert = std::any_of(mesh_data->sa_is_fixed.begin() + curr_prefix_verts,
-                                                  mesh_data->sa_is_fixed.begin() + next_prefix_verts,
+                bool has_fixed_vert = std::any_of(mesh_data->sa_is_fixed.begin() + prefix_vid,
+                                                  mesh_data->sa_is_fixed.begin() + suffix_vid,
                                                   [](const bool is_fixed) { return is_fixed; });
                 sim_data->sa_q_is_fixed[dof_idx + 0] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
