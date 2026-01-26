@@ -450,7 +450,7 @@ struct LargeMatrix
         {
             for (size_t j = 0; j < N; j++)
             {
-                output.scalar(i, j) = output(j, i);
+                output.scalar(i, j) = mat(j, i);
             }
         }
         return output;
