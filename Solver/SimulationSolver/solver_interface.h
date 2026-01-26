@@ -89,7 +89,8 @@ class SolverInterface
                 {
                     auto pos = sim_result_positions[vid + host_mesh_data->prefix_num_verts[meshIdx]];
                     output_positions[meshIdx][vid] = {pos.x, pos.y, pos.z};
-                });
+                },
+                32);
         }
     }
     template <typename T>

@@ -568,34 +568,27 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
         default_option);
 
     // Why this failed?????
-    LUISA_INFO("Compiling apply dq/dx kernels...");
-    LUISA_INFO("Size of sa_q: {}", sim_data->sa_q.size());
-    LUISA_INFO("Size of sa_dq: {}", sim_data->sa_dq.size());
-    LUISA_INFO("Size of sa_q_iter_start: {}", sim_data->sa_q_iter_start.size());
-    LUISA_INFO("Size of sa_x: {}", sim_data->sa_x.size());
-    LUISA_INFO("Size of sa_dx: {}", sim_data->sa_dx.size());
-    LUISA_INFO("Size of sa_x_iter_start: {}", sim_data->sa_x_iter_start.size());
-    compiler.compile<1>(
-        fn_apply_dq,
-        [sa_q            = sim_data->sa_q.view(),
-         sa_dq           = sim_data->sa_dq.view(),
-         sa_q_iter_start = sim_data->sa_q_iter_start.view()](const Float alpha)
-        {
-            const UInt vid = dispatch_id().x;
-            sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_dq->read(vid));
-        },
-        default_option);
+    // compiler.compile<1>(
+    //     fn_apply_dq,
+    //     [sa_q            = sim_data->sa_q.view(),
+    //      sa_dq           = sim_data->sa_dq.view(),
+    //      sa_q_iter_start = sim_data->sa_q_iter_start.view()](const Float alpha)
+    //     {
+    //         const UInt vid = dispatch_id().x;
+    //         sa_q->write(vid, sa_q_iter_start->read(vid) + alpha * sa_dq->read(vid));
+    //     },
+    //     default_option);
 
-    compiler.compile<1>(
-        fn_apply_dx,
-        [sa_x            = sim_data->sa_x.view(),
-         sa_dx           = sim_data->sa_dx.view(),
-         sa_x_iter_start = sim_data->sa_x_iter_start.view()](const Float alpha)
-        {
-            const UInt vid = dispatch_id().x;
-            sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_dx->read(vid));
-        },
-        default_option);
+    // compiler.compile<1>(
+    //     fn_apply_dx,
+    //     [sa_x            = sim_data->sa_x.view(),
+    //      sa_dx           = sim_data->sa_dx.view(),
+    //      sa_x_iter_start = sim_data->sa_x_iter_start.view()](const Float alpha)
+    //     {
+    //         const UInt vid = dispatch_id().x;
+    //         sa_x->write(vid, sa_x_iter_start->read(vid) + alpha * sa_dx->read(vid));
+    //     },
+    //     default_option);
 }
 
 void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
@@ -609,14 +602,15 @@ void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compu
             [sa_q_step_start = sim_data->sa_q_step_start.view(),  // Input
              sa_q_v          = sim_data->sa_q_v.view(),           // Input
              sa_q            = sim_data->sa_q.view(),             // Output
-             sa_q_iter_start = sim_data->sa_q_iter_start.view(),  // Output
-             sa_q_tilde      = sim_data->sa_q_tilde.view(),       // Output
-             sa_x_to_dof_map = sim_data->sa_x_to_dof_map.view(),  // Constant
-             sa_is_fixed     = sim_data->sa_q_is_fixed.view()     // Constant
+             //  sa_q_iter_start = sim_data->sa_q_iter_start.view(),  // Output
+             sa_q_tilde    = sim_data->sa_q_tilde.view(),     // Output
+             sa_is_fixed   = sim_data->sa_q_is_fixed.view(),  // Constant
+             sa_q_property = sim_data->sa_q_property.view()   // Constant
         ](const Float substep_dt, const Float3 gravity)
             {
                 const UInt vid      = dispatch_id().x;
-                const Bool is_rigid = (vid & Attributions::RIGID_BODY_FLAG) != 0;
+                const UInt property = sa_q_property->read(vid);
+                const Bool is_rigid = (property & Attributions::RIGID_BODY_FLAG) != 0;
                 const Bool is_fixed = sa_is_fixed->read(vid);
 
                 Float3 x_prev = sa_q_step_start->read(vid);
@@ -628,11 +622,11 @@ void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compu
                 {
                     v_pred += substep_dt * gravity;
                 };
-
-                sa_q_iter_start->write(vid, x_prev);
                 Float3 x_pred = x_prev + substep_dt * v_pred;
+
+                // sa_q->write(vid, x_prev);
+                // sa_q_iter_start->write(vid, x_prev);
                 sa_q_tilde->write(vid, x_pred);
-                sa_q->write(vid, x_prev);
             },
             default_option);
 
@@ -1418,25 +1412,24 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
 // Host functions
 // Outputs:
-//          sa_x_iter_start
-//          sa_x_tilde
-//          sa_x
-//          sa_cgX
+//          sa_q_tilde => predicted position
 void NewtonSolver::host_predict_position()
 {
     CpuParallel::parallel_for(0,
                               host_sim_data->num_dof,
-                              [sa_q            = host_sim_data->sa_q.data(),
-                               sa_q_v          = host_sim_data->sa_q_v.data(),
-                               sa_q_tilde      = host_sim_data->sa_q_tilde.data(),
-                               sa_q_step_start = host_sim_data->sa_q_step_start.data(),
-                               sa_q_iter_start = host_sim_data->sa_q_iter_start.data(),
-                               sa_is_fixed     = host_mesh_data->sa_is_fixed.data(),
-                               substep_dt      = get_scene_params().get_substep_dt(),
-                               gravity         = get_scene_params().gravity](const uint vid)
+                              [sa_q_v          = std::span(host_sim_data->sa_q_v),
+                               sa_q_tilde      = std::span(host_sim_data->sa_q_tilde),
+                               sa_q_step_start = std::span(host_sim_data->sa_q_step_start),
+                               //   sa_q            = std::span(host_sim_data->sa_q),
+                               //   sa_q_iter_start = std::span(host_sim_data->sa_q_iter_start),
+                               sa_q_property = std::span(host_sim_data->sa_q_property),
+                               sa_q_is_fixed = std::span(host_sim_data->sa_q_is_fixed),
+                               substep_dt    = get_scene_params().get_substep_dt(),
+                               gravity       = get_scene_params().gravity](const uint vid)
                               {
-                                  const bool is_rigid = (vid & Attributions::RIGID_BODY_FLAG) != 0;
-                                  const bool is_fixed = sa_is_fixed[vid];
+                                  const uint dof_property = sa_q_property[vid];
+                                  const bool is_rigid = (dof_property & Attributions::RIGID_BODY_FLAG) != 0;
+                                  const bool is_fixed = sa_q_is_fixed[vid];
 
                                   float3 x_prev = sa_q_step_start[vid];
                                   float3 v_prev = sa_q_v[vid];
@@ -1447,27 +1440,27 @@ void NewtonSolver::host_predict_position()
                                   {
                                       v_pred += substep_dt * gravity;
                                   };
+                                  float3 x_pred = x_prev + substep_dt * v_pred;
 
-                                  sa_q_iter_start[vid] = x_prev;
-                                  float3 x_pred        = x_prev + substep_dt * v_pred;
-                                  sa_q_tilde[vid]      = x_pred;
-                                  sa_q[vid]            = x_pred;
+                                  //   sa_q_iter_start[vid] = x_prev;
+                                  //   sa_q[vid]       = x_prev;
+                                  sa_q_tilde[vid] = x_pred;
                               });
 }
 void NewtonSolver::host_update_velocity()
 {
     CpuParallel::parallel_for(0,
                               host_sim_data->num_dof,
-                              [sa_x            = host_sim_data->sa_q.data(),
-                               sa_v            = host_sim_data->sa_q_v.data(),
-                               sa_x_step_start = host_sim_data->sa_q_step_start.data(),
-                               sa_is_fixed     = host_sim_data->sa_q_is_fixed.data(),
+                              [sa_q            = std::span(host_sim_data->sa_q),
+                               sa_qv           = std::span(host_sim_data->sa_q_v),
+                               sa_q_step_start = std::span(host_sim_data->sa_q_step_start),
+                               sa_is_fixed     = std::span(host_sim_data->sa_q_is_fixed),
                                substep_dt      = get_scene_params().get_substep_dt(),
                                fix_scene       = get_scene_params().fix_scene,
                                damping         = get_scene_params().damping_cloth](const uint vid)
                               {
-                                  float3 x_step_begin = sa_x_step_start[vid];
-                                  float3 x_step_end   = sa_x[vid];
+                                  float3 x_step_begin = sa_q_step_start[vid];
+                                  float3 x_step_end   = sa_q[vid];
 
                                   float3 dx  = x_step_end - x_step_begin;
                                   float3 vel = dx / substep_dt;
@@ -1476,45 +1469,14 @@ void NewtonSolver::host_update_velocity()
                                   {
                                       dx        = Zero3;
                                       vel       = Zero3;
-                                      sa_x[vid] = x_step_begin;
+                                      sa_q[vid] = x_step_begin;
                                       return;
                                   };
 
                                   vel *= luisa::exp(-damping * substep_dt);
 
-                                  sa_v[vid]            = vel;
-                                  sa_x_step_start[vid] = x_step_end;
-                              });
-
-    // Just a feedback, we don't use it for updating status
-    CpuParallel::parallel_for(0,
-                              host_sim_data->num_verts_total,
-                              [sa_x            = host_sim_data->sa_x.data(),
-                               sa_v            = host_sim_data->sa_v.data(),
-                               sa_x_step_start = host_sim_data->sa_x_step_start.data(),
-                               sa_is_fixed     = host_mesh_data->sa_is_fixed.data(),
-                               substep_dt      = get_scene_params().get_substep_dt(),
-                               fix_scene       = get_scene_params().fix_scene,
-                               damping         = get_scene_params().damping_cloth](const uint vid)
-                              {
-                                  float3 x_step_begin = sa_x_step_start[vid];
-                                  float3 x_step_end   = sa_x[vid];
-
-                                  float3 dx  = x_step_end - x_step_begin;
-                                  float3 vel = dx / substep_dt;
-
-                                  if (fix_scene)
-                                  {
-                                      dx        = Zero3;
-                                      vel       = Zero3;
-                                      sa_x[vid] = x_step_begin;
-                                      return;
-                                  };
-
-                                  vel *= luisa::exp(-damping * substep_dt);
-
-                                  sa_v[vid]            = vel;
-                                  sa_x_step_start[vid] = x_step_end;
+                                  sa_qv[vid]           = vel;
+                                  sa_q_step_start[vid] = x_step_end;
                               });
 }
 void NewtonSolver::host_reset_off_diag()
@@ -3687,21 +3649,25 @@ void NewtonSolver::host_apply_q_to_x()
                               num_verts_total,
                               [&](const uint vid)
                               {
-                                  fn_apply_template(host_sim_data->sa_x_to_dof_map,
-                                                    host_mesh_data->sa_scaled_model_x,
-                                                    host_sim_data->sa_q,
-                                                    vid);
+                                  host_sim_data->sa_x[vid] = fn_apply_template(host_sim_data->sa_x_to_dof_map,
+                                                                               host_sim_data->sa_scaled_model_x,
+                                                                               host_sim_data->sa_q,
+                                                                               vid);
                               });
 }
 void NewtonSolver::host_apply_q_to_x(const std::vector<float3>& input_q, std::vector<float3>& output_x)
 {
     const uint num_verts_total = host_sim_data->num_verts_total;
+    if (output_x.size() != num_verts_total)
+    {
+        LUISA_ERROR("Output x size mismatch {} != {}", output_x.size(), num_verts_total);
+    }
     CpuParallel::parallel_for(0,
                               num_verts_total,
                               [&](const uint vid)
                               {
                                   output_x[vid] = fn_apply_template(host_sim_data->sa_x_to_dof_map,
-                                                                    host_mesh_data->sa_scaled_model_x,
+                                                                    host_sim_data->sa_scaled_model_x,
                                                                     input_q,
                                                                     vid);
                               });
@@ -3995,7 +3961,9 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     host_apply_q_to_x(host_sim_data->sa_q_step_start, host_sim_data->sa_x_step_start);
     CpuParallel::parallel_copy(host_sim_data->sa_q_step_start, host_sim_data->sa_q);
+    CpuParallel::parallel_copy(host_sim_data->sa_q_step_start, host_sim_data->sa_q_iter_start);
     CpuParallel::parallel_copy(host_sim_data->sa_x_step_start, host_sim_data->sa_x);
+    CpuParallel::parallel_copy(host_sim_data->sa_x_step_start, host_sim_data->sa_x_iter_start);
 
     // Init LBVH
     {
@@ -4010,7 +3978,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     {
         LUISA_INFO("=== In frame {} ===", get_scene_params().current_frame);
 
-        host_predict_position();  // sa_q_step_start -> sa_q, sa_q_iter_start
+        host_predict_position();  // => q_tilde
 
         if (get_scene_params().use_energy_linesearch)
         {
@@ -4021,7 +3989,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         uint iter                = 0;
         bool global_converged    = false;
         bool dirichlet_converged = false;
-        for (iter = 0; iter < 100; iter++)
+        for (iter = 0; iter < 1; iter++)
         {
             if (global_converged || (iter >= get_scene_params().nonlinear_iter_count && dirichlet_converged))
             {
@@ -4080,6 +4048,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 LUISA_ERROR("Solver is not converged in 100 iters");
         }
         host_update_velocity();
+        host_apply_q_to_x(host_sim_data->sa_q_v, host_sim_data->sa_v);
     }
 
     // Output
@@ -4087,37 +4056,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 }
 void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    constexpr bool profile_time = false;
-    using SystemClock           = std::chrono::high_resolution_clock;
-    using Tick                  = std::chrono::high_resolution_clock::time_point;
-    std::vector<std::pair<std::string, Tick>> time_stamps;
-
-    auto ADD_DEVICE_TIME_STAMP = [&](const std::string& task_name)
-    {
-        if constexpr (profile_time)
-            stream << [&] { time_stamps.emplace_back(std::make_pair(task_name, SystemClock::now())); };
-    };
-    auto ADD_HOST_TIME_STAMP = [&](const std::string& task_name)
-    {
-        if constexpr (profile_time)
-            time_stamps.emplace_back(std::make_pair(task_name, SystemClock::now()));
-    };
-
-    ADD_HOST_TIME_STAMP("Init");
-
     // Read frame start position and velocity
     lcs::SolverInterface::physics_step_prev_operation();  // => sa_q_step_start, sa_q_v
-
-    stream << sim_data->sa_q_step_start.copy_from(host_sim_data->sa_q_step_start.data())
-           << sim_data->sa_q_v.copy_from(host_sim_data->sa_q_v.data());
-
-    device_apply_q_to_x(stream, sim_data->sa_q_step_start, sim_data->sa_x_step_start);
-    stream << sim_data->sa_x.copy_from(sim_data->sa_x_step_start);
-    stream << sim_data->sa_q.copy_from(sim_data->sa_q_step_start);
-
-    const uint  num_substep          = lcs::get_scene_params().num_substep;
-    const uint  nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
-    const float substep_dt           = lcs::get_scene_params().get_substep_dt();
 
     auto update_contact_set = [&]()
     {
@@ -4151,9 +4091,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             stream, mesh_data->sa_scaled_model_x, host_sim_data->num_verts_soft);
     };
 
-    auto       post_intersection_check = [&]() { device_post_dist_check(stream); };
-    const uint num_verts               = host_mesh_data->num_verts;
-
     auto pcg_spmv_interface = [&](const luisa::compute::Buffer<float3>& input_ptr,
                                   luisa::compute::Buffer<float3>&       output_ptr) -> void
     {
@@ -4186,9 +4123,21 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         // pcg_solver->device_solve(stream, pcg_spmv_interface, compute_energy_interface);
     };
 
+    stream << sim_data->sa_q_step_start.copy_from(host_sim_data->sa_q_step_start.data())
+           << sim_data->sa_q_v.copy_from(host_sim_data->sa_q_v.data());
+
+    device_apply_q_to_x(stream, sim_data->sa_q_step_start, sim_data->sa_x_step_start);
+    stream << sim_data->sa_q.copy_from(sim_data->sa_q_step_start);
+    stream << sim_data->sa_x.copy_from(sim_data->sa_x_step_start);
+    stream << sim_data->sa_q_iter_start.copy_from(sim_data->sa_q_step_start);
+    stream << sim_data->sa_x_iter_start.copy_from(sim_data->sa_x_step_start);
+
+    const uint  num_substep          = lcs::get_scene_params().num_substep;
+    const uint  nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
+    const float substep_dt           = lcs::get_scene_params().get_substep_dt();
+
     // Init LBVH
     {
-        ADD_HOST_TIME_STAMP("Init LBVH");
         stream << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data());
         lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
         lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
@@ -4196,6 +4145,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         lbvh_edge->construct_tree(stream);
         stream << luisa::compute::synchronize();
     }
+
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
         {
@@ -4217,7 +4167,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             {
                 break;
             }
-            ADD_HOST_TIME_STAMP("Calc Force");
             get_scene_params().current_nonlinear_iter = iter;
 
             // TODO: If we use predict position, the start position may not in safe region
@@ -4308,15 +4257,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             }
 
             stream << luisa::compute::synchronize();
-            ADD_HOST_TIME_STAMP("PCG");
 
             linear_solver_interface();
 
-            ADD_HOST_TIME_STAMP("LineSearch");
-
             line_search(device, stream, dirichlet_converged, global_converged);
-
-            ADD_HOST_TIME_STAMP("End");
 
             narrow_phase_detector->resize_buffers(device, stream);  // Pre-allocatation
 
@@ -4342,35 +4286,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     // Return frame end position and velocity
     lcs::SolverInterface::physics_step_post_operation();
-
-    {
-        if constexpr (profile_time)
-        {
-            if (!time_stamps.empty())
-            {
-                // Aggregate durations (ms) per task name
-                std::unordered_map<std::string, double> agg;
-                double                                  total_ms = 0.0;
-                for (size_t i = 0; i + 1 < time_stamps.size(); ++i)
-                {
-                    const auto& curr = time_stamps[i];
-                    const auto& next = time_stamps[i + 1];
-                    double delta = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
-                                       next.second - curr.second)
-                                       .count();
-                    agg[curr.first] += delta;
-                    total_ms += delta;
-                }
-
-                LUISA_INFO("Profiling merged timestamps (sum of deltas per task):");
-                for (const auto& p : agg)
-                {
-                    LUISA_INFO("  {:<30} : {:8.3f} ms", p.first, p.second);
-                }
-                LUISA_INFO("  {:<30} : {:8.3f} ms (total)", "TOTAL", total_ms);
-            }
-        }
-    }
 }
 
 }  // namespace lcs

@@ -437,8 +437,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->sa_q_step_start.resize(num_dof);  // Re-calculate every frame
         sim_data->sa_q_outer.resize(num_dof);       // Input from outer, or reset by rest state
         sim_data->sa_q_v_outer.resize(num_dof);     // Input from outer, or reset by rest state
-        sim_data->sa_x_to_dof_map.resize(num_verts_total);
         sim_data->sa_q_is_fixed.resize(num_dof);
+        sim_data->sa_q_property.resize(num_dof);
         sim_data->sa_q_tilde.resize(num_dof);
 
         sim_data->sa_target_states.resize(num_dof);
@@ -469,8 +469,14 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             const uint num_dofs_soft   = num_verts_soft;
             auto soft_rest_q = std::span(sim_data->sa_rest_q).subspan(prefix_vid_soft, num_dofs_soft);
             auto soft_rest_q_v = std::span(sim_data->sa_rest_q_v).subspan(prefix_vid_soft, num_dofs_soft);
-            soft_rest_q   = std::span(mesh_data->sa_rest_x).subspan(prefix_vid_soft, num_dofs_soft);
-            soft_rest_q_v = std::span(mesh_data->sa_rest_v).subspan(prefix_vid_soft, num_dofs_soft);
+            CpuParallel::parallel_for(0,
+                                      num_dofs_soft,
+                                      [&](const uint vid)
+                                      {
+                                          const uint dof_vid = soft_vert_indices[vid];
+                                          soft_rest_q[vid]   = mesh_data->sa_rest_x[dof_vid];
+                                          soft_rest_q_v[vid] = mesh_data->sa_rest_v[dof_vid];
+                                      });
         }
 
         // Rigid body rest q
@@ -521,6 +527,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                       {
                                           sim_data->sa_x_to_dof_map[vid] = vid;
                                           sim_data->sa_q_is_fixed[vid]   = mesh_data->sa_is_fixed[vid];
+                                          sim_data->sa_q_property[vid]   = 0;
                                       });
 
             // Rigid body vertices map to dof
@@ -541,6 +548,10 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 2] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 3] = has_fixed_vert;
+                sim_data->sa_q_property[dof_idx + 0] = Attributions::RIGID_BODY_FLAG;
+                sim_data->sa_q_property[dof_idx + 1] = Attributions::RIGID_BODY_FLAG;
+                sim_data->sa_q_property[dof_idx + 2] = Attributions::RIGID_BODY_FLAG;
+                sim_data->sa_q_property[dof_idx + 3] = Attributions::RIGID_BODY_FLAG;
             }
         }
     }
@@ -841,7 +852,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
                 {
                     float  vert_mass = mesh_data->sa_vert_mass[vid];
-                    float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
+                    float3 vert_pos  = sim_data->sa_scaled_model_x[vid];
 
                     M_body += vert_mass;
                     MI_body += vert_mass * vert_pos;
@@ -856,7 +867,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                     for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
                     {
                         float  vert_mass = mesh_data->sa_vert_mass[vid];
-                        float3 vert_pos  = mesh_data->sa_scaled_model_x[vid];
+                        float3 vert_pos  = sim_data->sa_scaled_model_x[vid];
 
                         M_body += vert_mass;
                         MI_body += vert_mass * vert_pos;
@@ -865,7 +876,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 }
                 else  // If we only have surface mesh: integrate from surface triangles
                 {
-                    compute_trimesh_dyadic_mass(mesh_data->sa_scaled_model_x,
+                    compute_trimesh_dyadic_mass(sim_data->sa_scaled_model_x,
                                                 mesh_data->sa_faces,
                                                 mesh_data->prefix_num_faces[meshIdx],
                                                 mesh_data->prefix_num_faces[meshIdx + 1],
@@ -1234,7 +1245,8 @@ void upload_sim_buffers(luisa::compute::Device&                      device,
         stream << upload_buffer(device, output_data->sa_num_dof, input_data->sa_num_dof)
                << upload_buffer(device, output_data->sa_rest_q, input_data->sa_rest_q)
                << upload_buffer(device, output_data->sa_rest_q_v, input_data->sa_rest_q_v)
-               << upload_buffer(device, output_data->sa_q_is_fixed, input_data->sa_q_is_fixed);
+               << upload_buffer(device, output_data->sa_q_is_fixed, input_data->sa_q_is_fixed)
+               << upload_buffer(device, output_data->sa_q_property, input_data->sa_q_property);
         resize_buffer(device, output_data->sa_q, num_dof);
         resize_buffer(device, output_data->sa_q_v, num_dof);
         resize_buffer(device, output_data->sa_q_iter_start, num_dof);

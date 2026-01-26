@@ -315,6 +315,7 @@ struct SimulationData : SimulationType
     //                 else it's a rigid body vert, map to dof by affine body id
     BufferType<uint> sa_x_to_dof_map;
     BufferType<uint> sa_q_is_fixed;
+    BufferType<uint> sa_q_property;  // Constant
 
     std::vector<float3> sa_x_outer;
     std::vector<float3> sa_v_outer;

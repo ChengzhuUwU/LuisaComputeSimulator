@@ -143,15 +143,13 @@ void SolverInterface::physics_step_prev_operation()
                                   host_sim_data->sa_q_v_outer[vid] = desire_vel;
                               });
 
-    // Position and velocity can not be directly transferred, need to go through q and q_v
-    CpuParallel::parallel_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q);  // ??? Do we need this?
     CpuParallel::parallel_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q_step_start);
     CpuParallel::parallel_copy(host_sim_data->sa_q_v_outer, host_sim_data->sa_q_v);
 }
 void SolverInterface::physics_step_post_operation()
 {
     CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_v, host_sim_data->sa_x_outer);
+    CpuParallel::parallel_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
     CpuParallel::parallel_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
     CpuParallel::parallel_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
 }
