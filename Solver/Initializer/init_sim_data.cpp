@@ -757,10 +757,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   });
 
         // Rest affine body info
-        const uint num_blocks_affine_body = num_affine_bodies * 4;
         sim_data->sa_affine_bodies_mesh_id.resize(num_affine_bodies);
         sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
-        // sim_data->sa_affine_bodies_is_fixed.resize(num_affine_bodies);
 
         auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
         abd_ortho_data.abd_kappa.resize(num_affine_bodies);
@@ -791,80 +789,66 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   prefix_dof_abd + 4 * body_idx + 2,  //
                                   prefix_dof_abd + 4 * body_idx + 3);
 
-            const uint curr_prefix_verts = mesh_data->prefix_num_verts[meshIdx];
-            const uint next_prefix_verts = mesh_data->prefix_num_verts[meshIdx + 1];
-            const uint curr_prefix_faces = mesh_data->prefix_num_faces[meshIdx];
-            const uint next_prefix_faces = mesh_data->prefix_num_faces[meshIdx + 1];
-            const uint curr_prefix_edges = mesh_data->prefix_num_edges[meshIdx];
-            const uint next_prefix_edges = mesh_data->prefix_num_edges[meshIdx + 1];
-            const uint num_verts_body    = next_prefix_verts - curr_prefix_verts;
+            const uint prefix_vid = mesh_data->prefix_num_verts[meshIdx];
+            const uint suffix_vid = mesh_data->prefix_num_verts[meshIdx + 1];
+            const uint prefix_fid = mesh_data->prefix_num_faces[meshIdx];
+            const uint suffix_fid = mesh_data->prefix_num_faces[meshIdx + 1];
+            const uint prefix_eid = mesh_data->prefix_num_edges[meshIdx];
+            const uint suffix_eid = mesh_data->prefix_num_edges[meshIdx + 1];
 
-            EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
-            float4x4        compressed_mass_matrix;
-
-            float    M_body  = 0.0f;
-            float3   MI_body = luisa::make_float3(0.0f);
-            float3x3 I_body  = luisa::make_float3x3(0.0f);
-            if (mesh_info.get_is_shell())
+            // Init ABD mass matrix
             {
-                // std::vector<float3> virtual_solid_verts((next_prefix_verts - curr_prefix_verts) * 2);
-                // std::vector<uint3>  virtual_solid_faces(
-                //     (mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx]) * 2);
-                // for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
-                // {
-                //     float3 vert_pos       = mesh_data->sa_scaled_model_x[vid];
-                //     float  half_thickness = 0.5f * mesh_info.get_thickness();
-                //     float3 normal         = luisa::make_float3(0, 0, 0);
-                //     for (const uint adj_fid : mesh_data->vert_adj_faces[vid])
-                //     {
-                //         uint3  face = mesh_data->sa_faces[adj_fid];
-                //         float3 p0   = mesh_data->sa_scaled_model_x[face.x];
-                //         float3 p1   = mesh_data->sa_scaled_model_x[face.y];
-                //         float3 p2   = mesh_data->sa_scaled_model_x[face.z];
-                //         float  area = compute_face_area(p0, p1, p2);
-                //         normal += area * luisa::normalize(luisa::cross(p1 - p0, p2 - p0));
-                //     }
-                //     normal = luisa::normalize(normal);
-                //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 0] = vert_pos + half_thickness * normal;
-                //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 1] = vert_pos - half_thickness * normal;
-                // }
-                // for (uint fid = curr_prefix_faces; fid < next_prefix_faces; fid++)
-                // {
-                //     uint3 face = mesh_data->sa_faces[fid];
-                //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 0] =
-                //         luisa::make_uint3(2 * (face.x - curr_prefix_verts) + 0,
-                //                           2 * (face.y - curr_prefix_verts) + 0,
-                //                           2 * (face.z - curr_prefix_verts) + 0);
-                //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 1] =
-                //         luisa::make_uint3(2 * (face.z - curr_prefix_verts) + 1,
-                //                           2 * (face.y - curr_prefix_verts) + 1,
-                //                           2 * (face.x - curr_prefix_verts) + 1);
-                // }
-                // compute_trimesh_dyadic_mass(virtual_solid_verts,
-                //                             virtual_solid_faces,
-                //                             0,
-                //                             static_cast<uint>(virtual_solid_faces.size()),
-                //                             mesh_info.get_density(),
-                //                             M_body,
-                //                             MI_body,
-                //                             I_body);
+                EigenFloat12x12 body_mass = EigenFloat12x12::Zero();
+                float4x4        compressed_mass_matrix;
 
-                for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                float    M_body  = 0.0f;
+                float3   MI_body = luisa::make_float3(0.0f);
+                float3x3 I_body  = luisa::make_float3x3(0.0f);
+                if (mesh_info.get_is_shell())
                 {
-                    float  vert_mass = mesh_data->sa_vert_mass[vid];
-                    float3 vert_pos  = sim_data->sa_scaled_model_x[vid];
+                    // std::vector<float3> virtual_solid_verts((next_prefix_verts - curr_prefix_verts) * 2);
+                    // std::vector<uint3>  virtual_solid_faces(
+                    //     (mesh_data->prefix_num_faces[meshIdx + 1] - mesh_data->prefix_num_faces[meshIdx]) * 2);
+                    // for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                    // {
+                    //     float3 vert_pos       = mesh_data->sa_scaled_model_x[vid];
+                    //     float  half_thickness = 0.5f * mesh_info.get_thickness();
+                    //     float3 normal         = luisa::make_float3(0, 0, 0);
+                    //     for (const uint adj_fid : mesh_data->vert_adj_faces[vid])
+                    //     {
+                    //         uint3  face = mesh_data->sa_faces[adj_fid];
+                    //         float3 p0   = mesh_data->sa_scaled_model_x[face.x];
+                    //         float3 p1   = mesh_data->sa_scaled_model_x[face.y];
+                    //         float3 p2   = mesh_data->sa_scaled_model_x[face.z];
+                    //         float  area = compute_face_area(p0, p1, p2);
+                    //         normal += area * luisa::normalize(luisa::cross(p1 - p0, p2 - p0));
+                    //     }
+                    //     normal = luisa::normalize(normal);
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 0] = vert_pos + half_thickness * normal;
+                    //     virtual_solid_verts[2 * (vid - curr_prefix_verts) + 1] = vert_pos - half_thickness * normal;
+                    // }
+                    // for (uint fid = curr_prefix_faces; fid < next_prefix_faces; fid++)
+                    // {
+                    //     uint3 face = mesh_data->sa_faces[fid];
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 0] =
+                    //         luisa::make_uint3(2 * (face.x - curr_prefix_verts) + 0,
+                    //                           2 * (face.y - curr_prefix_verts) + 0,
+                    //                           2 * (face.z - curr_prefix_verts) + 0);
+                    //     virtual_solid_faces[2 * (fid - curr_prefix_faces) + 1] =
+                    //         luisa::make_uint3(2 * (face.z - curr_prefix_verts) + 1,
+                    //                           2 * (face.y - curr_prefix_verts) + 1,
+                    //                           2 * (face.x - curr_prefix_verts) + 1);
+                    // }
+                    // compute_trimesh_dyadic_mass(virtual_solid_verts,
+                    //                             virtual_solid_faces,
+                    //                             0,
+                    //                             static_cast<uint>(virtual_solid_faces.size()),
+                    //                             mesh_info.get_density(),
+                    //                             M_body,
+                    //                             MI_body,
+                    //                             I_body);
 
-                    M_body += vert_mass;
-                    MI_body += vert_mass * vert_pos;
-                    I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
-                }
-            }
-            else  // Solid body
-            {
-                // If provided tetrahedron mesh for solid part
-                if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
-                {
-                    for (uint vid = curr_prefix_verts; vid < next_prefix_verts; vid++)
+                    for (uint vid = prefix_vid; vid < suffix_vid; vid++)
                     {
                         float  vert_mass = mesh_data->sa_vert_mass[vid];
                         float3 vert_pos  = sim_data->sa_scaled_model_x[vid];
@@ -874,59 +858,74 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                         I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
                     }
                 }
-                else  // If we only have surface mesh: integrate from surface triangles
+                else  // Solid body
                 {
-                    compute_trimesh_dyadic_mass(sim_data->sa_scaled_model_x,
-                                                mesh_data->sa_faces,
-                                                mesh_data->prefix_num_faces[meshIdx],
-                                                mesh_data->prefix_num_faces[meshIdx + 1],
-                                                mesh_info.get_density(),
-                                                M_body,
-                                                MI_body,
-                                                I_body);
+                    // If provided tetrahedron mesh for solid part
+                    if ((mesh_data->prefix_num_tets[meshIdx + 1] - mesh_data->prefix_num_tets[meshIdx]) > 0)
+                    {
+                        for (uint vid = prefix_vid; vid < suffix_vid; vid++)
+                        {
+                            float  vert_mass = mesh_data->sa_vert_mass[vid];
+                            float3 vert_pos  = sim_data->sa_scaled_model_x[vid];
+
+                            M_body += vert_mass;
+                            MI_body += vert_mass * vert_pos;
+                            I_body = I_body + vert_mass * outer_product(vert_pos, vert_pos);
+                        }
+                    }
+                    else  // If we only have surface mesh: integrate from surface triangles
+                    {
+                        compute_trimesh_dyadic_mass(sim_data->sa_scaled_model_x,
+                                                    mesh_data->sa_faces,
+                                                    mesh_data->prefix_num_faces[meshIdx],
+                                                    mesh_data->prefix_num_faces[meshIdx + 1],
+                                                    mesh_info.get_density(),
+                                                    M_body,
+                                                    MI_body,
+                                                    I_body);
+                    }
                 }
-            }
 
-            body_mass.block<3, 3>(0, 0) = M_body * EigenFloat3x3::Identity();
+                body_mass.block<3, 3>(0, 0) = M_body * EigenFloat3x3::Identity();
 
-            for (uint i = 0; i < 3; i++)
-                body_mass.block<3, 3>(3 + i * 3, 0) = MI_body[i] * EigenFloat3x3::Identity();
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(3 + i * 3, 0) = MI_body[i] * EigenFloat3x3::Identity();
 
-            for (uint i = 0; i < 3; i++)
-                body_mass.block<3, 3>(0, 3 + i * 3) = MI_body[i] * EigenFloat3x3::Identity();
+                for (uint i = 0; i < 3; i++)
+                    body_mass.block<3, 3>(0, 3 + i * 3) = MI_body[i] * EigenFloat3x3::Identity();
 
-            for (uint i = 0; i < 3; i++)
-                for (uint j = 0; j < 3; j++)
-                    body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = I_body[i][j] * EigenFloat3x3::Identity();
+                for (uint i = 0; i < 3; i++)
+                    for (uint j = 0; j < 3; j++)
+                        body_mass.block<3, 3>(3 + i * 3, 3 + j * 3) = I_body[i][j] * EigenFloat3x3::Identity();
 
-            body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
+                body_mass.diagonal() = body_mass.diagonal().cwiseMax(Epsilon);
 
-            for (uint i = 0; i < 4; i++)
-            {
-                for (uint j = 0; j < 4; j++)
+                for (uint i = 0; i < 4; i++)
                 {
-                    compressed_mass_matrix[j][i] = body_mass(i * 3 + 0, j * 3 + 0);
+                    for (uint j = 0; j < 4; j++)
+                    {
+                        compressed_mass_matrix[j][i] = body_mass(i * 3 + 0, j * 3 + 0);
+                    }
                 }
-            }
-            abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
-            abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
+                abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
+                abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
-            if (num_affine_bodies < 20)
-            {
-                // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-                LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
-                LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                if (num_affine_bodies < 20)
+                {
+                    // std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+                    LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+                    LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+                }
             }
 
             const bool has_fixed_vert = sim_data->sa_q_is_fixed[prefix_dof_abd + 4 * body_idx];
-            // sim_data->sa_affine_bodies_is_fixed[body_idx]     = has_fixed_vert;
             abd_inertia_data.sa_stiffness_dirichlet[body_idx] = has_fixed_vert ? 1e9f : 1.0f;
 
-            float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + curr_prefix_verts,
-                                     mesh_data->sa_rest_vert_area.begin() + next_prefix_verts,
+            float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + prefix_vid,
+                                     mesh_data->sa_rest_vert_area.begin() + suffix_vid,
                                      0.0f);
 
             abd_ortho_data.abd_volume[body_idx] = mesh_data->sa_rest_body_volume[meshIdx];
@@ -977,6 +976,10 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
             }
         };
 
+        // Vert adj soft-body fixed constraints
+        auto& soft_inertia_data = sim_data->get_soft_inertia_data();
+        build_adj_list_and_init_grad_hess(adj_map, soft_inertia_data);
+
         // Vert adj stretch springs
         auto& stretch_spring_data = sim_data->get_stretch_spring_data();
         build_adj_list_and_init_grad_hess(adj_map, stretch_spring_data);
@@ -1000,10 +1003,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         // Vert adj affine-body orthogonality
         auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
         build_adj_list_and_init_grad_hess(adj_map, abd_ortho_data);
-
-        // Vert adj soft-body fixed constraints
-        auto& soft_inertia_data = sim_data->get_soft_inertia_data();
-        build_adj_list_and_init_grad_hess(adj_map, soft_inertia_data);
 
         // Sort adjacents
         CpuParallel::parallel_for(0,
