@@ -283,6 +283,8 @@ namespace Attributions
     static constexpr uint32_t RIGID_BODY_FLAG = 1u << 31;
     static constexpr uint32_t RIGID_BODY_MASK = ~RIGID_BODY_FLAG;
 
+    static constexpr uint32_t ABD_Is_Translation_DOF = 1u << 30;
+
 }  // namespace Attributions
 
 

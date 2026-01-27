@@ -548,7 +548,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 2] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 3] = has_fixed_vert;
-                sim_data->sa_q_property[dof_idx + 0] = Attributions::RIGID_BODY_FLAG;
+                sim_data->sa_q_property[dof_idx + 0] = Attributions::RIGID_BODY_FLAG | Attributions::ABD_Is_Translation_DOF;
                 sim_data->sa_q_property[dof_idx + 1] = Attributions::RIGID_BODY_FLAG;
                 sim_data->sa_q_property[dof_idx + 2] = Attributions::RIGID_BODY_FLAG;
                 sim_data->sa_q_property[dof_idx + 3] = Attributions::RIGID_BODY_FLAG;
