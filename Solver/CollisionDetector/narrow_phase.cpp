@@ -2471,19 +2471,18 @@ void NarrowPhasesDetector::compile_assemble_atomic(AsyncCompiler& compiler)
                 hess += friction_hess;
             }
 
-            $if(is_nan_vec(k1 * k2 * normal))
+            $if(is_nan_vec(k1 * k2 * normal) | is_inf_vec(k1 * k2 * normal))
             {
                 Float3 delta =
                     weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
                     + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
-                // device_log("Assemble NaN/INF force in contact pair {}: dist {}, gap = {}, index {}, weight {}, normal {}, k1 {}",
-                //            pair_idx,
-                //            length(delta),
-                //            length(delta) - thickness - d_hat,
-                //            indices,
-                //            weight,
-                //            normal,
-                //            k1);
+                device_log("Pair {} has NaN/Inf gradient: k1/k2 = {}/ {}, normal = {}, dist = {}, delta = {}",
+                           pair_idx,
+                           k1,
+                           k2,
+                           normal,
+                           length(delta),
+                           delta);
             };
 
             auto add_to_soft_body = [&](const uint start, const uint end)

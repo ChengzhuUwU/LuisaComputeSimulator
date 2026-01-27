@@ -860,8 +860,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             {
                 const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
 
-                gradient = gradient + stiffness_dirichlet * gradient;
-                hessian  = hessian + stiffness_dirichlet * hessian;
+                gradient = stiffness_dirichlet * gradient;
+                hessian  = stiffness_dirichlet * hessian;
                 // hessian = make_float3x3(1.0f) * 1e9f;
                 // gradient = make_float3(0.0f);
             };
@@ -911,7 +911,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             {
                 const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(body_idx);
 
-                alpha = (1.0f + stiffness_dirichlet);
+                // alpha = (1.0f + stiffness_dirichlet);
+                alpha = stiffness_dirichlet;
             };
 
             abd_gradients->write(4 * body_idx + 0, alpha * h_2_inv * gradient[0]);
@@ -1400,38 +1401,35 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 //          sa_q_tilde => predicted position
 void NewtonSolver::host_predict_position()
 {
-    CpuParallel::parallel_for(
-        0,
-        host_sim_data->num_dof,
-        [sa_q_v          = std::span(host_sim_data->sa_q_v),
-         sa_q_tilde      = std::span(host_sim_data->sa_q_tilde),
-         sa_q_step_start = std::span(host_sim_data->sa_q_step_start),
-         //   sa_q            = std::span(host_sim_data->sa_q),
-         //   sa_q_iter_start = std::span(host_sim_data->sa_q_iter_start),
-         sa_q_property = std::span(host_sim_data->sa_q_property),
-         sa_q_is_fixed = std::span(host_sim_data->sa_q_is_fixed),
-         substep_dt    = get_scene_params().get_substep_dt(),
-         gravity       = get_scene_params().gravity](const uint vid)
-        {
-            const uint dof_property = sa_q_property[vid];
-            const bool is_rigid     = (dof_property & Attributions::RIGID_BODY_FLAG) != 0;
-            const bool is_fixed     = sa_q_is_fixed[vid];
+    CpuParallel::parallel_for(0,
+                              host_sim_data->num_dof,
+                              [sa_q_v          = std::span(host_sim_data->sa_q_v),
+                               sa_q_tilde      = std::span(host_sim_data->sa_q_tilde),
+                               sa_q_step_start = std::span(host_sim_data->sa_q_step_start),
+                               sa_q_property   = std::span(host_sim_data->sa_q_property),
+                               sa_q_is_fixed   = std::span(host_sim_data->sa_q_is_fixed),
+                               substep_dt      = get_scene_params().get_substep_dt(),
+                               gravity         = get_scene_params().gravity](const uint vid)
+                              {
+                                  const uint dof_property = sa_q_property[vid];
+                                  const bool is_fixed     = sa_q_is_fixed[vid];
+                                  const bool is_rigid = (dof_property & Attributions::RIGID_BODY_FLAG) != 0;
+                                  const bool is_translation_dof =
+                                      (dof_property & Attributions::ABD_Is_Translation_DOF) != 0;
 
-            float3 x_prev = sa_q_step_start[vid];
-            float3 v_prev = sa_q_v[vid];
-            float3 v_pred = v_prev;
+                                  float3 x_prev = sa_q_step_start[vid];
+                                  float3 v_prev = sa_q_v[vid];
+                                  float3 v_pred = v_prev;
 
-            // Only apply gravity to the translation part of rigid body
-            if ((!is_fixed) & ((!is_rigid) | (is_rigid & (dof_property & Attributions::ABD_Is_Translation_DOF))))
-            {
-                v_pred += substep_dt * gravity;
-            };
-            float3 x_pred = x_prev + substep_dt * v_pred;
 
-            //   sa_q_iter_start[vid] = x_prev;
-            //   sa_q[vid]       = x_prev;
-            sa_q_tilde[vid] = x_pred;
-        });
+                                  // Only apply gravity to the translation part of rigid body
+                                  if ((!is_fixed) & ((!is_rigid) | (is_rigid & is_translation_dof)))
+                                  {
+                                      v_pred += substep_dt * gravity;
+                                  };
+                                  float3 x_pred   = x_prev + substep_dt * v_pred;
+                                  sa_q_tilde[vid] = x_pred;
+                              });
 }
 void NewtonSolver::host_update_velocity()
 {
@@ -1501,21 +1499,19 @@ void NewtonSolver::host_reset_cgB_cgX_diagA()
 }
 void NewtonSolver::host_evaluate_inertia()
 {
-    const float stiffness_dirichlet = get_scene_params().stiffness_dirichlet;
-
     auto& inertia_data = host_sim_data->get_soft_inertia_data();
     if (inertia_data.is_valid())
     {
         CpuParallel::parallel_for(0,
                                   host_sim_data->num_verts_soft,
-                                  [sa_x            = std::span(host_sim_data->sa_x),
-                                   sa_x_tilde      = std::span(host_sim_data->sa_q_tilde),
-                                   sa_is_fixed     = std::span(host_sim_data->sa_q_is_fixed),
-                                   sa_vert_mass    = std::span(inertia_data.sa_soft_vert_mass),
+                                  [sa_x          = std::span(host_sim_data->sa_x),
+                                   sa_x_tilde    = std::span(host_sim_data->sa_q_tilde),
+                                   sa_q_is_fixed = std::span(host_sim_data->sa_q_is_fixed),
+                                   sa_vert_mass  = std::span(inertia_data.sa_soft_vert_mass),
+                                   sa_stiffness_dirichlet = std::span(inertia_data.sa_stiffness_dirichlet),
                                    output_gradient = std::span(inertia_data.constraint_gradients),
                                    output_hessian  = std::span(inertia_data.constraint_hessians),
-                                   substep_dt      = get_scene_params().get_substep_dt(),
-                                   stiffness_dirichlet](const uint vid)
+                                   substep_dt      = get_scene_params().get_substep_dt()](const uint vid)
                                   {
                                       const float h       = substep_dt;
                                       const float h_2_inv = 1.f / (h * h);
@@ -1528,8 +1524,10 @@ void NewtonSolver::host_evaluate_inertia()
                                       float3   gradient = mass * h_2_inv * (x_k - x_tilde);
                                       float3x3 hessian  = luisa::make_float3x3(1.0f) * mass * h_2_inv;
 
-                                      if (sa_is_fixed[vid])
+
+                                      if (sa_q_is_fixed[vid])
                                       {
+                                          const float stiffness_dirichlet = sa_stiffness_dirichlet[vid];
                                           gradient = stiffness_dirichlet * gradient;
                                           hessian  = stiffness_dirichlet * hessian;
                                       }
@@ -1547,19 +1545,19 @@ void NewtonSolver::host_evaluate_inertia()
     const auto& abd_q       = host_sim_data->sa_q;
     const auto& abd_q_tilde = host_sim_data->sa_q_tilde;
 
-    std::vector<EigenTripletBlock<4>> hessian_blocks(abd_data.get_num_indices());
-
     if (abd_data.is_valid())
     {
         CpuParallel::parallel_for(
             0,
             abd_data.get_num_indices(),
-            [abd_gradients   = std::span(abd_data.constraint_gradients),
-             abd_hessians    = std::span(abd_data.constraint_hessians),
-             abd_indices     = std::span(abd_data.constraint_indices),
-             abd_mass_matrix = std::span(abd_data.sa_affine_bodies_mass_matrix),
-             abd_q           = std::span(host_sim_data->sa_q),
-             abd_q_tilde     = std::span(host_sim_data->sa_q_tilde)](const uint body_idx)
+            [abd_gradients           = std::span(abd_data.constraint_gradients),
+             abd_hessians            = std::span(abd_data.constraint_hessians),
+             abd_indices             = std::span(abd_data.constraint_indices),
+             abd_mass_matrix         = std::span(abd_data.sa_affine_bodies_mass_matrix),
+             abd_stiffness_dirichlet = std::span(abd_data.sa_stiffness_dirichlet),
+             abd_q                   = std::span(host_sim_data->sa_q),
+             sa_q_is_fixed           = std::span(host_sim_data->sa_q_is_fixed),
+             abd_q_tilde             = std::span(host_sim_data->sa_q_tilde)](const uint body_idx)
             {
                 const float substep_dt = get_scene_params().get_substep_dt();
                 const float h          = substep_dt;
@@ -1573,6 +1571,11 @@ void NewtonSolver::host_evaluate_inertia()
                                         abd_q[indices[3]] - abd_q_tilde[indices[3]]};
                 float4x4 mass_matrix = abd_mass_matrix[body_idx];
                 float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
+
+                if (sa_q_is_fixed[body_idx])
+                {
+                    mass_matrix = abd_stiffness_dirichlet[body_idx] * mass_matrix;
+                }
 
                 for (uint ii = 0; ii < 4; ii++)
                 {
@@ -2364,7 +2367,7 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
         narrow_phase_detector->download_narrowphase_list(stream);
 
         // Host collision detection
-        if (true && host_sim_data->num_dof < 32)
+        if (false && host_sim_data->num_dof < 32)
         {
             uint               num_pairs   = 0;
             std::atomic<uint>* atomic_view = (std::atomic<uint>*)&num_pairs;
@@ -3053,6 +3056,15 @@ void assembly_template2(const uint                                              
 
         const float3&   grad      = constaint_gradients[adj_eid * N + offset];
         const float3x3& diag_hess = constaint_hessians[adj_eid * (N * N) + offset];
+
+        if (is_nan_vec(grad) || is_inf_vec(grad))
+        {
+            LUISA_ERROR("NaN/INF detected in assembly: grad of constraint {} (eid = {}, vertex = {}) is {}",
+                        constaints.get_constitution_name(),
+                        adj_eid,
+                        vid,
+                        grad);
+        }
 
         buffer_add(sa_cgB, vid, -grad);
         buffer_add(sa_cgA_diag, vid, diag_hess);
@@ -3963,14 +3975,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         {
             pcg_solver->host_solve(stream, pcg_spmv_interface, []() { return 0.0; });
         }
-        // host_dx, host_x_iter_start
-        // host_dq, host_q_iter_start
-        // device_dx, device_x_iter_start
-        // device_dq, device_q_iter_start
-        buffer_copy(host_sim_data->sa_cgX, host_sim_data->sa_dq);  // dq = cgX
-        host_apply_q_to_x(host_sim_data->sa_dq, host_sim_data->sa_dx);
-        buffer_upload(stream, host_sim_data->sa_dq, sim_data->sa_dq);
-        buffer_upload(stream, host_sim_data->sa_dx, sim_data->sa_dx);
     };
 
     const float substep_dt            = lcs::get_scene_params().get_substep_dt();
@@ -3985,7 +3989,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     // Init LBVH
     {
-        buffer_upload(stream, host_sim_data->sa_x_iter_start, sim_data->sa_x_iter_start);
+        buffer_upload(stream, host_sim_data->sa_x_step_start, sim_data->sa_x_step_start);
         lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
         lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
         lbvh_face->construct_tree(stream);
@@ -4015,14 +4019,13 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
             }
             get_scene_params().current_nonlinear_iter = iter;
 
-            buffer_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);
-            buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_iter_start);
-
-            // Upload to GPU, for line-search
+            // Record position at iteration start, for linear interpolation: x = x_iter_start + alpha * dx
             {
-                stream << buffer_upload(host_sim_data->sa_x_iter_start, sim_data->sa_x_iter_start)
-                       << buffer_upload(host_sim_data->sa_q_iter_start, sim_data->sa_q_iter_start)
-                       << luisa::compute::synchronize();
+                buffer_copy(host_sim_data->sa_x, host_sim_data->sa_x_iter_start);
+                buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_iter_start);
+                buffer_upload(stream, host_sim_data->sa_x_iter_start, sim_data->sa_x_iter_start);
+                buffer_upload(stream, host_sim_data->sa_q_iter_start, sim_data->sa_q_iter_start);
+                buffer_upload(stream, host_sim_data->sa_x, sim_data->sa_x);
             }
 
             host_reset_cgB_cgX_diagA();
@@ -4051,12 +4054,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
                 // host_evaluate_dirichlet();
 
-                linear_solver_interface();  // Solve Ax=b
+                linear_solver_interface();  // Solve Ax=b => cgX
             }
             else
             {
                 host_test_dynamics(stream);
+            }
 
+            {
                 buffer_copy(host_sim_data->sa_cgX, host_sim_data->sa_dq);  // dq = cgX
                 host_apply_q_to_x(host_sim_data->sa_dq, host_sim_data->sa_dx);
                 buffer_upload(stream, host_sim_data->sa_dq, sim_data->sa_dq);

@@ -457,6 +457,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->sa_x_outer.resize(num_verts_total);
         sim_data->sa_v_outer.resize(num_verts_total);
         sim_data->sa_x_to_dof_map.resize(num_verts_total);
+        sim_data->sa_vert_affine_bodies_id.resize(num_verts_total, -1u);
 
         sim_data->sa_target_positions.resize(num_verts_total);
     }
@@ -539,11 +540,12 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                 const uint suffix_vid = mesh_data->prefix_num_verts[meshIdx + 1];
                 for (uint vid = prefix_vid; vid < suffix_vid; vid++)
                 {
-                    sim_data->sa_x_to_dof_map[vid] = dof_idx | (Attributions::RIGID_BODY_FLAG);
+                    sim_data->sa_x_to_dof_map[vid]          = dof_idx | (Attributions::RIGID_BODY_FLAG);
+                    sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
                 }
                 bool has_fixed_vert = std::any_of(mesh_data->sa_is_fixed.begin() + prefix_vid,
                                                   mesh_data->sa_is_fixed.begin() + suffix_vid,
-                                                  [](const bool is_fixed) { return is_fixed; });
+                                                  [](const uint is_fixed) { return is_fixed; });
                 sim_data->sa_q_is_fixed[dof_idx + 0] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
                 sim_data->sa_q_is_fixed[dof_idx + 2] = has_fixed_vert;
@@ -758,7 +760,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
         // Rest affine body info
         sim_data->sa_affine_bodies_mesh_id.resize(num_affine_bodies);
-        sim_data->sa_vert_affine_bodies_id.resize(mesh_data->num_verts, -1u);
 
         auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
         abd_ortho_data.abd_kappa.resize(num_affine_bodies);
