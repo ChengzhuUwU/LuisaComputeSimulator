@@ -1636,56 +1636,6 @@ void NewtonSolver::host_evaluate_inertia()
 
     std::vector<EigenTripletBlock<4>> hessian_blocks(abd_data.get_num_indices());
 
-    CpuParallel::single_thread_for(
-        0,
-        abd_data.get_num_indices(),
-        [&](const uint body_idx)
-        {
-            const float substep_dt = get_scene_params().get_substep_dt();
-            const float h          = substep_dt;
-            const float h_2_inv    = 1.f / (h * h);
-
-            auto         M     = abd_data.sa_affine_bodies_mass_matrix_full[body_idx];
-            EigenFloat12 delta = EigenFloat12::Zero();
-
-            const uint4 indices     = abd_data.constraint_indices[body_idx];
-            delta.block<3, 1>(0, 0) = float3_to_eigen3(abd_q[indices[0]] - abd_q_tilde[indices[0]]);
-            delta.block<3, 1>(3, 0) = float3_to_eigen3(abd_q[indices[1]] - abd_q_tilde[indices[1]]);
-            delta.block<3, 1>(6, 0) = float3_to_eigen3(abd_q[indices[2]] - abd_q_tilde[indices[2]]);
-            delta.block<3, 1>(9, 0) = float3_to_eigen3(abd_q[indices[3]] - abd_q_tilde[indices[3]]);
-
-            EigenFloat12    gradient = h_2_inv * M * delta;
-            EigenFloat12x12 hessian  = h_2_inv * M;
-            auto            grads    = float12::from_eigen_matrix(gradient);
-            auto            hesss    = float12x12::from_eigen_matrix(hessian);
-
-            auto abd_gradients              = std::span(abd_data.constraint_gradients);
-            auto abd_hessians               = std::span(abd_data.constraint_hessians);
-            abd_gradients[4 * body_idx + 0] = grads.block(0);
-            abd_gradients[4 * body_idx + 1] = grads.block(1);
-            abd_gradients[4 * body_idx + 2] = grads.block(2);
-            abd_gradients[4 * body_idx + 3] = grads.block(3);
-
-            abd_hessians[16 * body_idx + 0] = hesss.block(0, 0);
-            abd_hessians[16 * body_idx + 1] = hesss.block(1, 1);
-            abd_hessians[16 * body_idx + 2] = hesss.block(2, 2);
-            abd_hessians[16 * body_idx + 3] = hesss.block(3, 3);
-
-            uint idx = 4;
-            for (uint ii = 0; ii < 4; ii++)
-            {
-                for (uint jj = 0; jj < 4; jj++)
-                {
-                    if (ii != jj)
-                    {
-                        abd_hessians[body_idx * 16 + idx] = hesss.block(ii, jj);
-                        idx += 1;
-                    }
-                }
-            }
-        });
-
-    return;
     if (abd_data.is_valid())
     {
         CpuParallel::parallel_for(
@@ -1741,7 +1691,8 @@ void NewtonSolver::host_evaluate_inertia()
                         }
                     }
                 }
-            });
+            },
+            32);
     }
 }
 void NewtonSolver::host_evaluate_orthogonality()
@@ -1760,11 +1711,11 @@ void NewtonSolver::host_evaluate_orthogonality()
              sa_affine_bodies_volume = std::span(abd_data.abd_volume),
              abd_ortho_indices       = std::span(abd_data.constraint_indices)](const uint body_idx)
             {
-                float3 ortho_gradient[3] = {Zero3};
-                // float3x3 ortho_hessian[6]  = {Zero3x3};
-                float3x3 ortho_hessian[3][3] = {{Zero3x3, Zero3x3, Zero3x3},
-                                                {Zero3x3, Zero3x3, Zero3x3},
-                                                {Zero3x3, Zero3x3, Zero3x3}};
+                float3   ortho_gradient[3] = {Zero3};
+                float3x3 ortho_hessian[6]  = {Zero3x3};
+                // float3x3 ortho_hessian[3][3] = {{Zero3x3, Zero3x3, Zero3x3},
+                //                                 {Zero3x3, Zero3x3, Zero3x3},
+                //                                 {Zero3x3, Zero3x3, Zero3x3}};
 
                 const float substep_dt = get_scene_params().get_substep_dt();
                 const float h          = substep_dt;
@@ -1790,7 +1741,7 @@ void NewtonSolver::host_evaluate_orthogonality()
                 uint idx = 0;
                 for (uint ii = 0; ii < 3; ii++)
                 {
-                    for (uint jj = 0; jj < 3; jj++)
+                    for (uint jj = ii; jj < 3; jj++)
                     {
                         float3x3 hessian = Zero3x3;
                         if (ii == jj)
@@ -1809,8 +1760,8 @@ void NewtonSolver::host_evaluate_orthogonality()
                         }
                         // LUISA_INFO("hess of {} adj {} = {}", ii, jj, hessian);
                         // cgA.block<3, 3>(3 + 3 * ii, 3 + 3 * jj) += 4.0f * stiff * float3x3_to_eigen3x3(hessian);
-                        // ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
-                        ortho_hessian[ii][jj] = 4.0f * stiff * hessian;
+                        ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
+                        // ortho_hessian[ii][jj] = 4.0f * stiff * hessian;
                         idx += 1;
                     }
                 }
@@ -1819,28 +1770,21 @@ void NewtonSolver::host_evaluate_orthogonality()
                 //   0   1   2  |  0   3   4
                 //  t1   3   4  |  5   1   6
                 //  t2  t4   5  |  7   8   2
-
                 auto* body_grad_ptr = &abd_gradients[3 * body_idx];
                 auto* body_hess_ptr = &abd_hessians[9 * body_idx];
                 body_grad_ptr[0]    = ortho_gradient[0];
                 body_grad_ptr[1]    = ortho_gradient[1];
                 body_grad_ptr[2]    = ortho_gradient[2];
 
-                idx = 3;
-                for (uint i = 0; i < 3; i++)
-                {
-                    for (uint j = 0; j < 3; j++)
-                    {
-                        if (i != j)
-                        {
-                            body_hess_ptr[idx++] = ortho_hessian[i][j];
-                        }
-                        else
-                        {
-                            body_hess_ptr[i] = ortho_hessian[i][j];
-                        }
-                    }
-                }
+                body_hess_ptr[0] = ortho_hessian[0];
+                body_hess_ptr[1] = ortho_hessian[3];
+                body_hess_ptr[2] = ortho_hessian[5];
+                body_hess_ptr[3] = ortho_hessian[1];
+                body_hess_ptr[4] = ortho_hessian[2];
+                body_hess_ptr[5] = transpose(ortho_hessian[1]);
+                body_hess_ptr[6] = ortho_hessian[4];
+                body_hess_ptr[7] = transpose(ortho_hessian[2]);
+                body_hess_ptr[8] = transpose(ortho_hessian[4]);
             },
             32);
     }
@@ -1953,75 +1897,6 @@ void NewtonSolver::host_evaluate_ground_collision()
     const uint prefix   = host_sim_data->num_verts_soft;
     auto&      abd_data = host_sim_data->get_abd_inertia_data();
 
-    CpuParallel::single_thread_for(
-        0,
-        abd_data.get_num_indices(),
-        [&](const uint body_idx)
-        {
-            if (get_scene_params().use_floor)
-            {
-                const uint mesh_idx    = host_sim_data->sa_affine_bodies_mesh_id[body_idx];
-                const uint curr_prefix = host_mesh_data->prefix_num_verts[mesh_idx];
-                const uint next_prefix = host_mesh_data->prefix_num_verts[mesh_idx + 1];
-
-                for (uint vid = curr_prefix; vid < next_prefix; vid++)
-                {
-                    float3      x_k       = host_sim_data->sa_x[vid];
-                    float       dist      = x_k.y - get_scene_params().floor.y;
-                    const float d_hat     = host_sim_data->sa_contact_active_verts_d_hat[vid];
-                    const float thickness = host_sim_data->sa_contact_active_verts_offset[vid];
-
-                    if (dist - thickness < d_hat)
-                    {
-                        const float stiffness_ground = get_scene_params().stiffness_collision;
-                        const uint  collision_type   = get_scene_params().contact_energy_type;
-
-                        float3 normal  = luisa::make_float3(0, 1, 0);
-                        float  area    = host_mesh_data->sa_rest_vert_area[vid];
-                        float  stiff   = stiffness_ground * area;
-                        float3 model_x = host_mesh_data->sa_scaled_model_x[vid];
-
-                        float k1;
-                        float k2;
-                        if (collision_type == 0)
-                        {
-                            k1 = stiff * (dist - thickness - d_hat);
-                            k2 = stiff;
-                        }
-                        else
-                        {
-                            k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
-                            k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
-                        }
-                        float3   gradient = k1 * normal;
-                        float3x3 hessian  = k2 * outer_product(normal, normal);
-
-                        auto J          = AffineBodyDynamics::get_jacobian_dxdq(model_x);
-                        auto gradient_q = J.transpose() * float3_to_eigen3(gradient);
-                        auto hessian_q  = J.transpose() * float3x3_to_eigen3x3(hessian) * J;
-                        for (uint i = 0; i < 4; i++)
-                        {
-                            CpuParallel::spin_atomic<float3>::fetch_add(
-                                abd_data.constraint_gradients[4 * body_idx + i],
-                                eigen3_to_float3(gradient_q.block<3, 1>(3 * i, 0)));
-                        }
-                        uint idx = 4;
-                        for (uint i = 0; i < 4; i++)
-                        {
-                            for (uint j = 0; j < 4; j++)
-                            {
-                                uint target_idx = (i == j) ? i : idx++;
-                                CpuParallel::spin_atomic<float3x3>::fetch_add(
-                                    abd_data.constraint_hessians[16 * body_idx + target_idx],
-                                    eigen3x3_to_float3x3(hessian_q.block<3, 3>(3 * i, 3 * j)));
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-    return;
     // auto& abd_data = host_sim_data->get_abd_inertia_data();
     if (abd_data.is_valid())
     {

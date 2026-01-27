@@ -907,7 +907,8 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                         compressed_mass_matrix[j][i] = body_mass(i * 3 + 0, j * 3 + 0);
                     }
                 }
-                abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
+
+                abd_inertia_data.sa_affine_bodies_mass_matrix[body_idx]      = compressed_mass_matrix;
                 abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
                 if (num_affine_bodies < 20)
