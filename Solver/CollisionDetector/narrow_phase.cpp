@@ -3241,20 +3241,20 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
     // VF CCD Test
     if constexpr (false)
     {
-        const float desire_toi = 0.6930697;
+        const float desire_toi = 0.5;
         LUISA_INFO("VF Test, desire for toi {}", desire_toi);
 
         const uint  vid        = 1;
         const uint  fid        = 2;
         const uint3 face       = uint3(4, 7, 5);
-        float3      case_t0_p  = luisa::make_float3(0.48159984, -0.26639974, -0.48159984);
-        float3      case_t1_p  = luisa::make_float3(0.47421163, -0.3129394, -0.47421163);
-        float3      case_t0_f0 = luisa::make_float3(-0.4, -0.3, -0.5);
-        float3      case_t0_f1 = luisa::make_float3(0.6, -0.3, 0.5);
-        float3      case_t0_f2 = luisa::make_float3(0.6, -0.3, -0.5);
-        float3      case_t1_f0 = luisa::make_float3(-0.4, -0.3, -0.5);
-        float3      case_t1_f1 = luisa::make_float3(0.6, -0.3, 0.5);
-        float3      case_t1_f2 = luisa::make_float3(0.6, -0.3, -0.5);
+        float3      case_t0_p  = luisa::make_float3(0.1, 1, 0.1);
+        float3      case_t1_p  = luisa::make_float3(0.1, -1, 0.1);
+        float3      case_t0_f0 = luisa::make_float3(0, 0, 0);
+        float3      case_t0_f1 = luisa::make_float3(0, 0, 1);
+        float3      case_t0_f2 = luisa::make_float3(1, 0, 0);
+        float3      case_t1_f0 = luisa::make_float3(0, 0, 0);
+        float3      case_t1_f1 = luisa::make_float3(0, 0, 1);
+        float3      case_t1_f2 = luisa::make_float3(1, 0, 0);
 
         {
             const auto t0_p  = float3_to_eigen3(case_t0_p);
@@ -3294,7 +3294,7 @@ void NarrowPhasesDetector::unit_test(luisa::compute::Device& device, luisa::comp
                     // toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
                 });
 
-            stream << fn_test_ccd_vf(1e-3).dispatch(1) << synchronize();
+            stream << fn_test_ccd_vf(0.0f).dispatch(1) << synchronize();
         }
     }
 

@@ -43,7 +43,7 @@ namespace accd
     }
 
     constexpr float ccd_reduction        = 0.01f;
-    constexpr float line_search_max_t    = 1.25f;
+    constexpr float line_search_max_t    = 1.0f;
     constexpr bool  print_ccd_iter_count = false;
 
     template <typename F>
@@ -226,7 +226,7 @@ namespace host_accd
     // Such a small gap can cause the solver to diverge, so we extend the time to the TOI by this
     // factor, and the actual TOI is recaled by dividing by this factor.
     // For example, if the actual TOI is 1.0 and this value is 1.25, the actual TOI is 1.0/1.25.
-    constexpr float line_search_max_t = 1.25f;
+    constexpr float line_search_max_t = 1.0f;
 
     template <class T>
     inline void centerize(SMat<T, 3, 4>& x)

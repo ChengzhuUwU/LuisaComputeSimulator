@@ -3622,7 +3622,7 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
                << luisa::compute::synchronize();
 
         float toi = host_collision_data->toi_per_vert.front();
-        return toi;  // 0.9f * toi
+        return toi == 1.0f ? 1.0f : 0.9f * toi;  // 0.9f * toi
     };
 
     auto compute_energy_interface = [&]()
@@ -3794,7 +3794,14 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
                     // Converged condition: ||x - x_tilde|| < tol, or ||x - x_iter_start|| < tol
                     float3 delta1 = host_sim_data->sa_q[vid] - host_sim_data->sa_q_tilde[vid];
                     float3 delta2 = host_sim_data->sa_q[vid] - host_sim_data->sa_q_iter_start[vid];
-                    float  delta  = luisa::min(luisa::length(delta1), luisa::length(delta2));
+                    // LUISA_INFO("     Dirichlet vertex {} : current pos {}, target pos {}, start pos {}, delta1 {}, delta2 {}",
+                    //            vid,
+                    //            host_sim_data->sa_q[vid],
+                    //            host_sim_data->sa_q_tilde[vid],
+                    //            host_sim_data->sa_q_iter_start[vid],
+                    //            delta1,
+                    //            delta2);
+                    float delta = luisa::min(luisa::length(delta1), luisa::length(delta2));
                     return delta;
                 }
                 return 0.0f;  // Non-fixed point
@@ -4079,7 +4086,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         {
             stream << fn_predict_position(substep_dt, get_scene_params().gravity).dispatch(host_sim_data->num_dof);
-            // buffer_download(stream, sim_data->sa_q_tilde, host_sim_data->sa_q_tilde, /*wait=*/true);
+            buffer_download(stream, sim_data->sa_q_tilde, host_sim_data->sa_q_tilde, /*wait=*/false);
         }
 
         double prev_state_energy = Float_max;
