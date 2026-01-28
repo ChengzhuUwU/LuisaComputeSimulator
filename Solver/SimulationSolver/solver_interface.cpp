@@ -541,11 +541,15 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
                     // Friction Part
                     {
-                        Float3 normal       = make_float3(0.0f, 1.0f, 0.0f);
-                        Float3 x_0          = sa_x_step_start->read(vid);
-                        Float3 rel_dx       = x_k - x_0;
-                        Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
-                        Float  friction_eps = Friction::ando_barrier::friction_eps;
+                        Float3 normal = make_float3(0.0f, 1.0f, 0.0f);
+
+                        Float3 x_0    = sa_x_step_start->read(vid);
+                        Float3 dx     = make_float3(0.0f, x_k.y - floor_y, 0.0f);
+                        Float3 dx0    = make_float3(0.0f, x_0.y - floor_y, 0.0f);
+                        Float3 rel_dx = dx - dx0;
+
+                        Float friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                        Float friction_eps = Friction::ando_barrier::friction_eps;
 
                         auto lambda = -k1 * friction_mu;
                         auto energy_friction =

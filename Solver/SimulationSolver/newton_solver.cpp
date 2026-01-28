@@ -973,16 +973,14 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
                 // Friction
                 {
                     Float3 x_0          = sa_x_step_start->read(vid);
-                    Float3 dv           = x_k - x_0;
+                    Float3 dx           = make_float3(0.0f, x_k.y - floor_y, 0.0f);
+                    Float3 dx0          = make_float3(0.0f, x_0.y - floor_y, 0.0f);
+                    Float3 rel_dx       = dx - dx0;
                     Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
                     Float  friction_eps = Friction::ando_barrier::friction_eps;
-                    // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                    //     k1 * normal, dv, normal, friction_mu, friction_eps);
-                    // auto friction_grad_hess =
-                    //     Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
-                    auto lambda_mu = -k1 * friction_mu;
-                    auto friction_grad_hess =
-                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, dv, friction_eps);
+                    auto   lambda_mu    = -k1 * friction_mu;
+                    auto   friction_grad_hess =
+                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
                     out_gradient += friction_grad_hess.first;
                     out_hessian += friction_grad_hess.second;
                 }
@@ -1733,7 +1731,7 @@ void NewtonSolver::host_evaluate_ground_collision()
                     k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
                     k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
                 }
-                if (luisa::isnan(k1) || luisa::isnan(k2))
+                if (luisa::isnan(k1 * k2) || luisa::isinf(k1 * k2))
                 {
                     LUISA_ERROR("NaN detected in ground collision computation: dist = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
                                 dist,
@@ -1748,15 +1746,14 @@ void NewtonSolver::host_evaluate_ground_collision()
                 // Friction
                 {
                     float3 x_0          = sa_x_step_start[vid];
-                    float3 dv           = x_k - x_0;
+                    float3 dx           = luisa::make_float3(0.0f, x_k.y - floor_y, 0.0f);
+                    float3 dx0          = luisa::make_float3(0.0f, x_0.y - floor_y, 0.0f);
+                    float3 rel_dx       = dx - dx0;
                     float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
                     float  friction_eps = Friction::ando_barrier::friction_eps;
-                    // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                    //     k1 * normal, dv, normal, friction_mu, friction_eps);
-                    // auto friction_grad_hess = Friction::ando_barrier::compute_gradient_hessian(lambda_P, dv);
-                    auto lambda_mu = -k1 * friction_mu;
-                    auto friction_grad_hess =
-                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, dv, friction_eps);
+                    auto   lambda_mu    = -k1 * friction_mu;
+                    auto   friction_grad_hess =
+                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
                     out_gradient += friction_grad_hess.first;
                     out_hessian = out_hessian + friction_grad_hess.second;
                 }
@@ -1769,7 +1766,7 @@ void NewtonSolver::host_evaluate_ground_collision()
         return collide;
     };
 
-    // Shared the computed gradients and hessians
+    // Shared the gradient and hessian buffer with inertia: using the same per-dof constitution
     auto& inertia_data = host_sim_data->get_soft_inertia_data();
     if (inertia_data.is_valid())
     {
