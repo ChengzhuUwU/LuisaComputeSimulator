@@ -55,16 +55,27 @@ static void buffer_copy(const std::vector<T>& src, std::vector<T>& dst)
     // CpuParallel::parallel_copy(src, dst);
 }
 template <typename T>
-[[nodiscard]] static auto buffer_copy(const luisa::compute::Buffer<T>& src, luisa::compute::Buffer<T>& dst)
-{
-    return src.copy_to(dst);
-}
-template <typename T>
 static void buffer_copy(luisa::compute::Stream&          stream,
                         const luisa::compute::Buffer<T>& src,
                         luisa::compute::Buffer<T>&       dst)
 {
     stream << src.copy_to(dst);
+}
+template <typename T>
+static void buffer_upload(luisa::compute::Stream& stream, const std::vector<T>& src, luisa::compute::Buffer<T>& dst)
+{
+    stream << dst.copy_from(src.data());
+}
+
+template <typename T>
+static void buffer_download(luisa::compute::Stream&          stream,
+                            const luisa::compute::Buffer<T>& src,
+                            std::vector<T>&                  dst,
+                            const bool                       wait = false)
+{
+    stream << src.copy_to(dst.data());
+    if (wait)
+        stream << luisa::compute::synchronize();
 }
 // template <typename T>
 // [[nodiscard]] static auto buffer_download(const luisa::compute::Buffer<T>& src, std::vector<T>& dst, const bool wait = false)
@@ -74,120 +85,48 @@ static void buffer_copy(luisa::compute::Stream&          stream,
 //     else
 //         return src.copy_to(dst.data());
 // }
-template <typename T>
-[[nodiscard]] static auto buffer_upload(const std::vector<T>& src, luisa::compute::Buffer<T>& dst)
-{
-    return dst.copy_from(src.data());
-}
-template <typename T>
-void buffer_download(luisa::compute::Stream&          stream,
-                     const luisa::compute::Buffer<T>& src,
-                     std::vector<T>&                  dst,
-                     const bool                       wait = false)
-{
-    stream << src.copy_to(dst.data());
-    if (wait)
-        stream << luisa::compute::synchronize();
-}
-template <typename T>
-void buffer_upload(luisa::compute::Stream& stream, const std::vector<T>& src, luisa::compute::Buffer<T>& dst)
-{
-    stream << dst.copy_from(src.data());
-}
 
-// template<typename T>
-// void buffer_add(luisa::compute::BufferView<T> buffer, const Var<uint> dest, const Var<T>& value)
-// {
-//     buffer->write(dest, buffer->read(dest) + value);
-// }
 template <typename T>
-void buffer_add(const Var<luisa::compute::BufferView<T>>& buffer, const Var<uint> dest, const Var<T>& value)
+static void buffer_add(const luisa::compute::BufferView<T>& buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
 template <typename T>
-void buffer_add(const luisa::compute::BufferView<T>& buffer, const Var<uint> dest, const Var<T>& value)
-{
-    buffer->write(dest, buffer->read(dest) + value);
-}
-template <typename T>
-void buffer_add(const luisa::compute::BufferVar<T>& buffer, const Var<uint> dest, const Var<T>& value)
+static void buffer_add(const luisa::compute::BufferVar<T>& buffer, const Var<uint> dest, const Var<T>& value)
 {
     buffer->write(dest, buffer->read(dest) + value);
 }
 
 template <typename T>
-void buffer_add(T* buffer, const uint dest, const T& value)
+static void buffer_add(std::vector<T>& buffer, const uint dest, const T& value)
 {
     buffer[dest] = buffer[dest] + value;
 }
 template <typename T>
-void buffer_add(std::vector<T>& buffer, const uint dest, const T& value)
+static void buffer_add(const std::span<T>& buffer, const uint dest, const T& value)
 {
     buffer[dest] = buffer[dest] + value;
 }
 template <typename T>
-void buffer_add(const std::span<T>& buffer, const uint dest, const T& value)
-{
-    buffer[dest] = buffer[dest] + value;
-}
-template <typename T>
-void atomic_buffer_add(const std::vector<T>& buffer, const uint dest, const T& value)
+static void atomic_buffer_add(const std::vector<T>& buffer, const uint dest, const T& value)
 {
     CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
 }
 template <typename T>
-void atomic_buffer_add(const std::span<T>& buffer, const uint dest, const T& value)
+static void atomic_buffer_add(const std::span<T>& buffer, const uint dest, const T& value)
 {
     CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
 }
 
-void atomic_buffer_add(const Var<luisa::compute::BufferView<float3>>& buffer, const Var<uint> dest, const Var<float3>& value)
+static void atomic_buffer_add(const luisa::compute::BufferVar<float3>& buffer, const Var<uint> dest, const Var<float3>& value)
 {
     buffer->atomic(dest)[0].fetch_add(value[0]);
     buffer->atomic(dest)[1].fetch_add(value[1]);
     buffer->atomic(dest)[2].fetch_add(value[2]);
 }
-void atomic_buffer_add(const Var<luisa::compute::BufferView<float3x3>>& buffer,
-                       const Var<uint>                                  dest,
-                       const Var<float3x3>&                             value)
-{
-    buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
-    buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
-    buffer->atomic(dest)[0][2].fetch_add(value[0][2]);
-    buffer->atomic(dest)[1][0].fetch_add(value[1][0]);
-    buffer->atomic(dest)[1][1].fetch_add(value[1][1]);
-    buffer->atomic(dest)[1][2].fetch_add(value[1][2]);
-    buffer->atomic(dest)[2][0].fetch_add(value[2][0]);
-    buffer->atomic(dest)[2][1].fetch_add(value[2][1]);
-    buffer->atomic(dest)[2][2].fetch_add(value[2][2]);
-}
-
-void atomic_buffer_add(const luisa::compute::BufferView<float3>& buffer, const Var<uint> dest, const Var<float3>& value)
-{
-    buffer->atomic(dest)[0].fetch_add(value[0]);
-    buffer->atomic(dest)[1].fetch_add(value[1]);
-    buffer->atomic(dest)[2].fetch_add(value[2]);
-}
-void atomic_buffer_add(const luisa::compute::BufferVar<float3>& buffer, const Var<uint> dest, const Var<float3>& value)
-{
-    buffer->atomic(dest)[0].fetch_add(value[0]);
-    buffer->atomic(dest)[1].fetch_add(value[1]);
-    buffer->atomic(dest)[2].fetch_add(value[2]);
-}
-void atomic_buffer_add(const luisa::compute::BufferView<float3x3>& buffer, const Var<uint> dest, const Var<float3x3>& value)
-{
-    buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
-    buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
-    buffer->atomic(dest)[0][2].fetch_add(value[0][2]);
-    buffer->atomic(dest)[1][0].fetch_add(value[1][0]);
-    buffer->atomic(dest)[1][1].fetch_add(value[1][1]);
-    buffer->atomic(dest)[1][2].fetch_add(value[1][2]);
-    buffer->atomic(dest)[2][0].fetch_add(value[2][0]);
-    buffer->atomic(dest)[2][1].fetch_add(value[2][1]);
-    buffer->atomic(dest)[2][2].fetch_add(value[2][2]);
-}
-void atomic_buffer_add(const luisa::compute::BufferVar<float3x3>& buffer, const Var<uint> dest, const Var<float3x3>& value)
+static void atomic_buffer_add(const luisa::compute::BufferVar<float3x3>& buffer,
+                              const Var<uint>                            dest,
+                              const Var<float3x3>&                       value)
 {
     buffer->atomic(dest)[0][0].fetch_add(value[0][0]);
     buffer->atomic(dest)[0][1].fetch_add(value[0][1]);
