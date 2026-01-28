@@ -68,11 +68,9 @@ class NewtonSolver : public lcs::SolverInterface
     void host_apply_dq_dx(const float alpha);
     void device_apply_dq_dx(luisa::compute::Stream& stream, const float alpha);
 
-    void device_apply_q_to_x(luisa::compute::Stream& stream);
     void device_apply_q_to_x(luisa::compute::Stream&               stream,
                              const luisa::compute::Buffer<float3>& input_q,
                              luisa::compute::Buffer<float3>&       output_x);
-    void host_apply_q_to_x();
     void host_apply_q_to_x(const std::vector<float3>& input_q, std::vector<float3>& output_x);
 
     void host_predict_position();
@@ -145,10 +143,6 @@ class NewtonSolver : public lcs::SolverInterface
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_warp_rbk;
     luisa::compute::Shader<1, luisa::compute::Buffer<MatrixTriplet3x3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_block_rbk;
 
-    luisa::compute::Shader<1> fn_apply_dq_to_dx;
-    luisa::compute::Shader<1> fn_apply_q_to_x;
-    // luisa::compute::Shader<1, float> fn_apply_dx;
-    // luisa::compute::Shader<1, float> fn_apply_dq;
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, float> fn_interpolate_template;
     luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_apply_q_to_x_template;
 };

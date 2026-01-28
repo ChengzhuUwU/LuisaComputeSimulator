@@ -1,6 +1,7 @@
 {
     "scene_id": 13,
     "use_gpu": false,
+    "nonlinear_iter_count": 5,
     "shells": [
         {
             "model_name": "cube.obj",

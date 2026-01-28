@@ -128,6 +128,17 @@ void SolverInterface::compile(AsyncCompiler& compiler)
         pcg_solver->compile(compiler);
     }
 }
+
+
+template <typename T>
+static void buffer_copy(const std::vector<T>& src, std::vector<T>& dst)
+{
+    if (src.size() != dst.size())
+    {
+        LUISA_ERROR("Buffer size mismatch {} != {}", src.size(), dst.size());
+    }
+    std::memcpy(dst.data(), src.data(), sizeof(T) * src.size());
+}
 void SolverInterface::physics_step_prev_operation()
 {
     // Set target position velocity for fixed verts
@@ -143,23 +154,23 @@ void SolverInterface::physics_step_prev_operation()
                                   host_sim_data->sa_q_v_outer[vid] = desire_vel;
                               });
 
-    CpuParallel::parallel_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q_step_start);
-    CpuParallel::parallel_copy(host_sim_data->sa_q_v_outer, host_sim_data->sa_q_v);
+    buffer_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q_step_start);
+    buffer_copy(host_sim_data->sa_q_v_outer, host_sim_data->sa_q_v);
 }
 void SolverInterface::physics_step_post_operation()
 {
-    CpuParallel::parallel_copy(host_sim_data->sa_x, host_sim_data->sa_x_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
+    buffer_copy(host_sim_data->sa_x, host_sim_data->sa_x_outer);
+    buffer_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
+    buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
+    buffer_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
 }
 
 void SolverInterface::restart_system()
 {
-    CpuParallel::parallel_copy(host_sim_data->sa_rest_x, host_sim_data->sa_x_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_rest_v, host_sim_data->sa_v_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_rest_q, host_sim_data->sa_q_outer);
-    CpuParallel::parallel_copy(host_sim_data->sa_rest_q_v, host_sim_data->sa_q_v_outer);
+    buffer_copy(host_sim_data->sa_rest_x, host_sim_data->sa_x_outer);
+    buffer_copy(host_sim_data->sa_rest_v, host_sim_data->sa_v_outer);
+    buffer_copy(host_sim_data->sa_rest_q, host_sim_data->sa_q_outer);
+    buffer_copy(host_sim_data->sa_rest_q_v, host_sim_data->sa_q_v_outer);
 }
 void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
 {
@@ -195,25 +206,13 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
 
     if (file.is_open())
     {
-        // file << "o position" << std::endl;
-        // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
-        // {
-        //     const auto vertex = sa_x_frame_saved[vid];
-        //     file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
-        // }
-        // file << "o velocity" << std::endl;
-        // for (uint vid = 0; vid < host_mesh_data->num_verts; vid++)
-        // {
-        //     const auto vel = sa_v_frame_saved[vid];
-        //     file << "v " << vel.x << " " << vel.y << " " << vel.z << std::endl;
-        // }
-        file << "o q" << std::endl;
+        file << "o State" << std::endl;
         for (uint vid = 0; vid < host_sim_data->num_dof; vid++)
         {
             const auto vertex = sa_q_frame_saved[vid];
             file << "v " << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
         }
-        file << "o qv" << std::endl;
+        file << "o Velocity" << std::endl;
         for (uint vid = 0; vid < host_sim_data->num_dof; vid++)
         {
             const auto vel = sa_qv_frame_saved[vid];
@@ -228,6 +227,32 @@ void SolverInterface::save_current_frame_state_to_host(const uint frame, const s
         LUISA_ERROR("Unable to open file: {}", full_path);
     }
 }
+static float3 fn_apply_template(const std::vector<uint>&   sa_x_to_dof_map,
+                                const std::vector<float3>& sa_scaled_model_x,
+                                const std::vector<float3>& input_q,
+                                const uint                 vid)
+{
+
+    float3     new_dx;
+    const uint map_info = sa_x_to_dof_map[vid];
+    const uint dof_idx  = map_info & (~Attributions::RIGID_BODY_FLAG);
+    if ((map_info & Attributions::RIGID_BODY_FLAG) == 0)  // Soft body
+    {
+        new_dx = input_q[dof_idx];
+    }
+    else  // Rigid body
+    {
+        const float3 rest_x = sa_scaled_model_x[vid];
+        float3       p;
+        float3x3     A;
+        p      = input_q[dof_idx + 0];
+        A[0]   = input_q[dof_idx + 1];
+        A[1]   = input_q[dof_idx + 2];
+        A[2]   = input_q[dof_idx + 3];
+        new_dx = A * rest_x + p;  // Affine position
+    };
+    return new_dx;
+};
 void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
 {
     const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
@@ -252,8 +277,6 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
     enum Section
     {
         None,
-        Position,
-        Velocity,
         Q,
         Qv,
     };
@@ -262,62 +285,26 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
 
     while (std::getline(file, line))
     {
+        // LUISA_INFO("Reading line: {}", line);
         if (line.empty())
             continue;
-        if (line.rfind("o position", 0) == 0)
-        {
-            current_section = Position;
-            index           = 0;
-            continue;
-        }
-        if (line.rfind("o velocity", 0) == 0)
-        {
-            current_section = Velocity;
-            index           = 0;
-            continue;
-        }
-        if (line.rfind("o q", 0) == 0)
+        if (line.rfind("o State", 0) == 0)
         {
             current_section = Q;
             index           = 0;
             continue;
         }
-        if (line.rfind("o qv", 0) == 0)
+        if (line.rfind("o Velocity", 0) == 0)
         {
             current_section = Qv;
             index           = 0;
             continue;
         }
-        if (line[0] == 'v' && (current_section == Position || current_section == Velocity))
+        if (line[0] == 'v' && (current_section == Q || current_section == Qv))
         {
             std::istringstream iss(line.substr(1));
             float              x, y, z;
             iss >> x >> y >> z;
-            // if (current_section == Position)
-            // {
-            //     if (index < host_mesh_data->num_verts)
-            //         sa_x_frame_saved[index] = {x, y, z};
-            //     else
-            //     {
-            //         LUISA_INFO("Count of loaded position vertices exceeds the number of verts in the mesh data, stopping load.");
-            //         file.close();
-            //         return;
-            //     }
-            //     index++;
-            // }
-            // else if (current_section == Velocity)
-            // {
-            //     if (index < host_mesh_data->num_verts)
-            //         sa_v_frame_saved[index] = {x, y, z};
-            //     else
-            //     {
-            //         LUISA_INFO("Count of loaded velocity vertices exceeds the number of verts in the mesh data, stopping load.");
-            //         file.close();
-            //         return;
-            //     }
-            //     index++;
-            // }
-            // else
             if (current_section == Q)
             {
                 if (index < host_sim_data->num_dof)
@@ -346,27 +333,24 @@ void SolverInterface::load_saved_state_from_host(const uint frame, const std::st
     }
     file.close();
 
-    CpuParallel::parallel_copy(sa_q_frame_saved, host_sim_data->sa_q_outer);
-    CpuParallel::parallel_copy(sa_qv_frame_saved, host_sim_data->sa_q_v_outer);
+    buffer_copy(sa_q_frame_saved, host_sim_data->sa_q_outer);
+    buffer_copy(sa_qv_frame_saved, host_sim_data->sa_q_v_outer);
 
-    // load_saved_state();
-    // CpuParallel::parallel_for(0,
-    //                           host_mesh_data->num_verts,
-    //                           [&](uint vid)
-    //                           {
-    //                               auto saved_pos                        = sa_x_frame_saved[vid];
-    //                               host_mesh_data->sa_x_frame_outer[vid] = saved_pos;
-
-    //                               auto saved_vel                        = sa_v_frame_saved[vid];
-    //                               host_mesh_data->sa_v_frame_outer[vid] = saved_vel;
-    //                           });
-    // CpuParallel::parallel_for(0,
-    //                           host_sim_data->num_affine_bodies * 4,
-    //                           [&](const uint vid)
-    //                           {
-    //                               host_sim_data->sa_affine_bodies_q_outer[vid] = sa_q_frame_saved[vid];
-    //                               host_sim_data->sa_affine_bodies_q_v_outer[vid] = sa_qv_frame_saved[vid];
-    //                           });
+    CpuParallel::parallel_for(0,
+                              host_sim_data->num_verts_total,
+                              [&](uint vid)
+                              {
+                                  float3 saved_x = fn_apply_template(host_sim_data->sa_x_to_dof_map,
+                                                                     host_sim_data->sa_scaled_model_x,
+                                                                     sa_q_frame_saved,
+                                                                     vid);
+                                  float3 saved_v = fn_apply_template(host_sim_data->sa_x_to_dof_map,
+                                                                     host_sim_data->sa_scaled_model_x,
+                                                                     sa_qv_frame_saved,
+                                                                     vid);
+                                  host_sim_data->sa_x_outer[vid] = saved_x;
+                                  host_sim_data->sa_v_outer[vid] = saved_v;
+                              });
 
     LUISA_INFO("State file loaded: {}", full_path);
 }

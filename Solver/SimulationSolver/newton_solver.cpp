@@ -588,28 +588,8 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
 
     // Map from status `q` to position `x`
     compiler.compile<1>(
-        fn_apply_dq_to_dx,
-        [input_q = sim_data->sa_dq.view(), out_x = sim_data->sa_dx.view(), fn_apply_template]()
-        {
-            const Uint vid    = dispatch_id().x;
-            Float3     new_dx = fn_apply_template(input_q);
-            out_x->write(vid, new_dx);
-        },
-        default_option);
-
-    compiler.compile<1>(
-        fn_apply_q_to_x,
-        [input_q = sim_data->sa_q.view(), out_x = sim_data->sa_x.view(), fn_apply_template]()
-        {
-            const Uint vid   = dispatch_id().x;
-            Float3     new_x = fn_apply_template(input_q);
-            out_x->write(vid, new_x);
-        },
-        default_option);
-
-    compiler.compile<1>(
         fn_apply_q_to_x_template,
-        [fn_apply_template](BufferVar<float3> out_x, BufferVar<float3> input_q)
+        [fn_apply_template](BufferVar<float3> input_q, BufferVar<float3> out_x)
         {
             const Uint vid   = dispatch_id().x;
             Float3     new_x = fn_apply_template(input_q);
@@ -3637,16 +3617,11 @@ void NewtonSolver::device_apply_dq_dx(luisa::compute::Stream& stream, const floa
 //                             const std::vector<float3>& input_q,
 //                             std::vector<float3>&       output_x);
 
-void NewtonSolver::device_apply_q_to_x(luisa::compute::Stream& stream)
-{
-    const uint num_verts_total = host_sim_data->num_verts_total;
-    stream << fn_apply_q_to_x().dispatch(num_verts_total);
-}
 void NewtonSolver::device_apply_q_to_x(luisa::compute::Stream&               stream,
                                        const luisa::compute::Buffer<float3>& input_q,
                                        luisa::compute::Buffer<float3>&       output_x)
 {
-    stream << fn_apply_q_to_x_template(output_x, input_q).dispatch(output_x.size());
+    stream << fn_apply_q_to_x_template(input_q, output_x).dispatch(output_x.size());
 }
 float3 fn_apply_template(const std::vector<uint>&   sa_x_to_dof_map,
                          const std::vector<float3>& sa_scaled_model_x,
@@ -3674,19 +3649,6 @@ float3 fn_apply_template(const std::vector<uint>&   sa_x_to_dof_map,
     };
     return new_dx;
 };
-void NewtonSolver::host_apply_q_to_x()
-{
-    const uint num_verts_total = host_sim_data->num_verts_total;
-    CpuParallel::parallel_for(0,
-                              num_verts_total,
-                              [&](const uint vid)
-                              {
-                                  host_sim_data->sa_x[vid] = fn_apply_template(host_sim_data->sa_x_to_dof_map,
-                                                                               host_sim_data->sa_scaled_model_x,
-                                                                               host_sim_data->sa_q,
-                                                                               vid);
-                              });
-}
 void NewtonSolver::host_apply_q_to_x(const std::vector<float3>& input_q, std::vector<float3>& output_x)
 {
     const uint num_verts_total = host_sim_data->num_verts_total;
@@ -4011,7 +3973,7 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
         uint iter                = 0;
         bool global_converged    = false;
         bool dirichlet_converged = false;
-        for (iter = 0; iter < 1; iter++)
+        for (iter = 0; iter < 100; iter++)
         {
             if (global_converged || (iter >= get_scene_params().nonlinear_iter_count && dirichlet_converged))
             {
@@ -4144,7 +4106,7 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
         {
             pcg_solver->device_solve(stream, pcg_spmv_interface, []() { return 0.0; });
             buffer_copy(stream, sim_data->sa_cgX, sim_data->sa_dq);  // dq = cgX
-            stream << fn_apply_dq_to_dx().dispatch(sim_data->sa_dx.size());
+            stream << fn_apply_q_to_x_template(sim_data->sa_dq, sim_data->sa_dx).dispatch(sim_data->sa_dx.size());
             buffer_download(stream, sim_data->sa_dq, host_sim_data->sa_dq);
             buffer_download(stream, sim_data->sa_dx, host_sim_data->sa_dx);
             stream << luisa::compute::synchronize();
