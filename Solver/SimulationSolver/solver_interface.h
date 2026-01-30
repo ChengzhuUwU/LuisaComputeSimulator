@@ -76,38 +76,13 @@ class SolverInterface
     void compile_compute_energy(AsyncCompiler& compiler);
 
   public:
-    template <typename T>
-    void get_simulation_results_to_host(std::vector<std::vector<T>>& output_positions)
-    {
-        const auto& sim_result_positions = host_sim_data->sa_x_outer;
-        for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
-        {
-            CpuParallel::parallel_for(
-                0,
-                host_mesh_data->prefix_num_verts[meshIdx + 1] - host_mesh_data->prefix_num_verts[meshIdx],
-                [&](const uint vid)
-                {
-                    auto pos = sim_result_positions[vid + host_mesh_data->prefix_num_verts[meshIdx]];
-                    output_positions[meshIdx][vid] = {pos.x, pos.y, pos.z};
-                },
-                32);
-        }
-    }
-    template <typename T>
-    void update_pinned_verts_information(const uint meshIdx, const std::vector<T>& pinned_verts_target_position)
-    {
-        const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
-        CpuParallel::parallel_for(0,
-                                  pinned_verts_target_position.size(),
-                                  [&](const uint index)
-                                  {
-                                      const auto target = pinned_verts_target_position[index];
-                                      const uint vid = host_mesh_data->fixed_verts_map[meshIdx][index];
-                                      // LUISA_INFO("Fixed id {} : vid = {}, try to move to {}", index, vid, target);
-                                      host_sim_data->sa_target_positions[vid] =
-                                          luisa::make_float3(target[0], target[1], target[2]);
-                                  });
-    }
+    void get_simulation_results_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
+    void update_pinned_verts_position(const uint                  meshIdx,
+                                      const uint                  local_vid,
+                                      const std::array<float, 3>& pinned_verts_target_position);
+    void update_pinned_body_state(const uint                  body_id,
+                                  const std::array<float, 3>& translation = {0.0f, 0.0f, 0.0f},
+                                  const std::array<float, 4>& rotation    = {0.0f, 0.0f, 0.0f, 0.0f});
 
   protected:
     void physics_step_prev_operation();
@@ -116,6 +91,9 @@ class SolverInterface
   private:
     SolverData   solver_data;
     SolverHelper solver_helper;
+
+    std::vector<Animation::PerVertexAnimation> per_vertex_animations;
+    std::vector<Animation::PerBodyAnimation>   per_body_animations;
 
   protected:
     MeshData<std::vector>*            host_mesh_data;

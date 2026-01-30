@@ -107,8 +107,14 @@ int main(int argc, char** argv)
         for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
         {
             const float curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
-            solver.update_pinned_verts_information(
-                mesh_idx, world_data[mesh_idx].get_fixed_point_target_positions(curr_time));
+            std::vector<lcs::Animation::PerVertexAnimation> per_vertex_animations;
+            std::vector<lcs::Animation::PerBodyAnimation>   per_body_animations;
+            world_data[mesh_idx].get_vertex_animations(curr_time, per_vertex_animations);
+            for (const auto& animate : per_vertex_animations)
+            {
+                solver.update_pinned_verts_position(mesh_idx, animate.vertex_id, animate.translation);
+            }
+            // solver.update_pinned_body_state(mesh_idx);  // TODO: Fixed only
         }
     };
 

@@ -121,7 +121,6 @@ namespace Initializer
         std::vector<MakeFixedPointsInterface> fixed_point_range_info;
         std::vector<uint>                     fixed_point_indices;
         std::vector<FixedPointAnimationInfo>  fixed_point_animations;
-        std::vector<float3>                   fixed_point_target_positions;
 
         SimulationType            simulation_type = SimulationTypeCloth;
         SimMesh::TriangleMeshData input_mesh;
@@ -281,10 +280,10 @@ namespace Initializer
         void set_pinned_verts_from_indices(const std::vector<uint>& indices,
                                            const FixedPointAnimationInfo& info = FixedPointAnimationInfo());
         void set_pinned_vert_fixed_info(const uint vid, const FixedPointAnimationInfo& info);
-        void update_pinned_verts(const std::vector<float3>& new_positions);
 
-        std::vector<float3> get_fixed_point_target_positions(const float time);
-        void                get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
+        void get_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
+        // void get_body_animation(const float time, Animation::PerBodyAnimation& body_animation);
+        void get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
     };
 
     void init_mesh_data(std::vector<lcs::Initializer::WorldData>& shell_list, lcs::MeshData<std::vector>* mesh_data);

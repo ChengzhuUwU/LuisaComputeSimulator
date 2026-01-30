@@ -440,8 +440,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->sa_q_is_fixed.resize(num_dof);
         sim_data->sa_q_property.resize(num_dof);
         sim_data->sa_q_tilde.resize(num_dof);
-
-        sim_data->sa_target_states.resize(num_dof);
     }
 
     // Resize position/velocity buffer
@@ -458,8 +456,6 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         sim_data->sa_v_outer.resize(num_verts_total);
         sim_data->sa_x_to_dof_map.resize(num_verts_total);
         sim_data->sa_vert_affine_bodies_id.resize(num_verts_total, -1u);
-
-        sim_data->sa_target_positions.resize(num_verts_total);
     }
 
     // Init state buffers

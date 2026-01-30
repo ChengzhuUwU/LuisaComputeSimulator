@@ -10,31 +10,68 @@
 namespace lcs
 {
 
-struct BaseClothMeshData
+
+namespace Animation
 {
-    using uint  = unsigned int;
-    using uchar = unsigned char;
+    struct PerVertexAnimation
+    {
+        uint                 vertex_id;
+        std::array<float, 3> translation;
+    };
+    struct PerBodyAnimation
+    {
+        uint                 body_id;
+        std::array<float, 3> translation;
+        std::array<float, 4> rotation;
 
-  public:
-    std::string mesh_name;
-    uint        num_verts         = 0;
-    uint        num_faces         = 0;
-    uint        num_edges         = 0;
-    uint        num_bending_edges = 0;
+        void set_translation(const float x, const float y, const float z)
+        {
+            translation[0] = x;
+            translation[1] = y;
+            translation[2] = z;
+        }
+        void set_rotation(const float axis_x, const float axis_y, const float axis_z, const float angle_w)
+        {
+            rotation[0] = axis_x;
+            rotation[1] = axis_y;
+            rotation[2] = axis_z;
+            rotation[3] = angle_w;
+        }
+        float4x4 to_transform_matrix() const
+        {
+            auto trans = luisa::translation(translation[0], translation[1], translation[2]);
+            auto rot   = luisa::rotation(rotation[0], rotation[1], rotation[2], rotation[3]);
+            // auto scale = identity();
+            return trans * rot;
+        }
+        // std::array<float, 4> rotation;  // quaternion
+        // std::array<float, 3> scale;
+        // float4x4 to_transform_matrix() const
+        // {
+        //     float4x4 T = float4x4::eye(1.0f);
+        //     T[3].xyz() = luisa::make_float3(translation[0], translation[1], translation[2]);
+        //     float qw = rotation[3];
+        //     float qx = rotation[0];
+        //     float qy = rotation[1];
+        //     float qz = rotation[2];
+        //     float3x3 R;
+        //     R[0][0] = 1 - 2 * (qy * qy + qz * qz);
+        //     R[0][1] = 2 * (qx * qy - qz * qw);
+        //     R[0][2] = 2 * (qx * qz + qy * qw);
+        //     R[1][0] = 2 * (qx * qy + qz * qw);
+        //     R[1][1] = 1 - 2 * (qx * qx + qz * qz);
+        //     R[1][2] = 2 * (qy * qz - qx * qw);
+        //     R[2][0] = 2 * (qx * qz - qy * qw);
+        //     R[2][1] = 2 * (qy * qz + qx * qw);
+        //     R[2][2] = 1 - 2 * (qx * qx + qy * qy);
+        //     T[0].xyz() = R[0];
+        //     T[1].xyz() = R[1];
+        //     T[2].xyz() = R[2];
+        //     return T;
+        // }
+    };
+}  // namespace Animation
 
-  public:
-    std::vector<luisa::float3> rest_x;
-    std::vector<luisa::float3> rest_v;
-    std::vector<luisa::float2> rest_uv;
-
-    std::vector<luisa::uint3> faces;
-    std::vector<luisa::uint2> edges;
-    std::vector<luisa::uint4> bending_edges;
-
-    std::vector<float> vert_mass;
-    std::vector<float> vert_mass_inv;
-    std::vector<uchar> is_fixed;
-};
 
 template <template <typename...> typename BufferType>
 struct MeshData : SimulationType

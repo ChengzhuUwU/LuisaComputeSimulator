@@ -142,17 +142,45 @@ static void buffer_copy(const std::vector<T>& src, std::vector<T>& dst)
 void SolverInterface::physics_step_prev_operation()
 {
     // Set target position velocity for fixed verts
-    CpuParallel::parallel_for(0,
-                              host_mesh_data->fixed_verts.size(),
-                              [&](const uint index)
-                              {
-                                  const uint   vid        = host_mesh_data->fixed_verts[index];
-                                  const float3 curr_pos   = host_sim_data->sa_q_outer[vid];
-                                  const float3 target_pos = host_sim_data->sa_target_positions[vid];
-                                  const float3 desire_vel =
-                                      (target_pos - curr_pos) / lcs::get_scene_params().implicit_dt;
-                                  host_sim_data->sa_q_v_outer[vid] = desire_vel;
-                              });
+    for (uint index = 0; index < per_vertex_animations.size(); index++)
+    {
+        const auto&  animate  = per_vertex_animations[index];
+        const uint   vid      = animate.vertex_id;
+        const float3 curr_pos = host_sim_data->sa_q_outer[vid];
+        const float3 target_pos =
+            luisa::make_float3(animate.translation[0], animate.translation[1], animate.translation[2]);
+        const float3 desire_vel          = (target_pos - curr_pos) / lcs::get_scene_params().implicit_dt;
+        host_sim_data->sa_q_v_outer[vid] = desire_vel;
+    }
+
+    // Now we only have fixed animation
+    const uint prefix_dof_abd = host_sim_data->num_verts_soft;
+    for (uint body_idx = 0; body_idx < host_sim_data->num_affine_bodies; body_idx++)
+    {
+        const bool is_fixed = host_sim_data->sa_q_is_fixed[prefix_dof_abd + 4 * body_idx] != 0;
+        if (is_fixed)
+        {
+            const uint dof_idx = prefix_dof_abd + body_idx * 4;
+
+            float4x3 rest_q;
+            rest_q[0] = host_sim_data->sa_rest_q[dof_idx + 0];
+            rest_q[1] = host_sim_data->sa_rest_q[dof_idx + 1];
+            rest_q[2] = host_sim_data->sa_rest_q[dof_idx + 2];
+            rest_q[3] = host_sim_data->sa_rest_q[dof_idx + 3];
+
+            float4x3 curr_q;
+            curr_q[0] = host_sim_data->sa_q_outer[dof_idx + 0];
+            curr_q[1] = host_sim_data->sa_q_outer[dof_idx + 1];
+            curr_q[2] = host_sim_data->sa_q_outer[dof_idx + 2];
+            curr_q[3] = host_sim_data->sa_q_outer[dof_idx + 3];
+
+            auto desire_vel = (rest_q - curr_q) / lcs::get_scene_params().implicit_dt;
+            host_sim_data->sa_q_v_outer[dof_idx + 0] = desire_vel[0];
+            host_sim_data->sa_q_v_outer[dof_idx + 1] = desire_vel[1];
+            host_sim_data->sa_q_v_outer[dof_idx + 2] = desire_vel[2];
+            host_sim_data->sa_q_v_outer[dof_idx + 3] = desire_vel[3];
+        }
+    }
 
     buffer_copy(host_sim_data->sa_q_outer, host_sim_data->sa_q_step_start);
     buffer_copy(host_sim_data->sa_q_v_outer, host_sim_data->sa_q_v);
@@ -163,6 +191,8 @@ void SolverInterface::physics_step_post_operation()
     buffer_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
     buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
     buffer_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
+    per_vertex_animations.clear();
+    per_body_animations.clear();
 }
 
 void SolverInterface::restart_system()
@@ -172,6 +202,43 @@ void SolverInterface::restart_system()
     buffer_copy(host_sim_data->sa_rest_q, host_sim_data->sa_q_outer);
     buffer_copy(host_sim_data->sa_rest_q_v, host_sim_data->sa_q_v_outer);
 }
+
+void SolverInterface::get_simulation_results_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions)
+{
+    const auto& sim_result_positions = host_sim_data->sa_x_outer;
+    for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
+    {
+        CpuParallel::parallel_for(
+            0,
+            host_mesh_data->prefix_num_verts[meshIdx + 1] - host_mesh_data->prefix_num_verts[meshIdx],
+            [&](const uint vid)
+            {
+                auto pos = sim_result_positions[vid + host_mesh_data->prefix_num_verts[meshIdx]];
+                output_positions[meshIdx][vid] = {pos.x, pos.y, pos.z};
+            },
+            32);
+    }
+}
+void SolverInterface::update_pinned_verts_position(const uint meshIdx,
+                                                   const uint local_vid,
+                                                   const std::array<float, 3>& pinned_verts_target_position)
+{
+    const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
+    const uint vid    = prefix + local_vid;
+    per_vertex_animations.push_back(
+        {vid, {pinned_verts_target_position[0], pinned_verts_target_position[1], pinned_verts_target_position[2]}});
+}
+void SolverInterface::update_pinned_body_state(const uint                  body_id,
+                                               const std::array<float, 3>& translation,
+                                               const std::array<float, 4>& rotation)
+{
+    Animation::PerBodyAnimation tmp;
+    tmp.set_translation(translation[0], translation[1], translation[2]);
+    tmp.set_rotation(rotation[0], rotation[1], rotation[2], rotation[3]);
+    per_body_animations.push_back(tmp);
+}
+
+
 void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
 {
     // save_current_frame_state();

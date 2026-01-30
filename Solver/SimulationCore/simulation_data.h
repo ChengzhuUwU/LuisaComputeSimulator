@@ -322,9 +322,6 @@ struct SimulationData : SimulationType
 
     std::vector<float3> sa_x_outer;
     std::vector<float3> sa_v_outer;
-    std::vector<float3> sa_target_positions;
-    std::vector<float3> sa_target_states;
-
 
     // Energy
     uint              num_verts_total   = 0;

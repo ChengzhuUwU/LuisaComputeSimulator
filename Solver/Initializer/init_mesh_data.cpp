@@ -47,12 +47,7 @@ namespace Initializer  // WorldData
         {
             if (func(vid))
             {
-                auto   read_pos = input_mesh.model_positions[vid];
-                float3 pos      = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
-                // LUISA_INFO("Found fixed point vert : local_vid {}, pos {}", vid, pos);
-                auto affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
                 fixed_point_indices.emplace_back(vid);
-                fixed_point_target_positions.emplace_back(affine_pos);
                 fixed_point_animations.push_back(fixed_info);
             }
         }
@@ -87,10 +82,7 @@ namespace Initializer  // WorldData
 
             if (func(norm_pos))
             {
-                // LUISA_INFO("Found fixed point vert : local_vid {}, pos {}", vid, pos);
-                auto affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
                 fixed_point_indices.emplace_back(vid);
-                fixed_point_target_positions.emplace_back(affine_pos);
                 fixed_point_animations.push_back(fixed_info);
             }
         }
@@ -110,7 +102,6 @@ namespace Initializer  // WorldData
             auto   affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
 
             fixed_point_indices.emplace_back(vid);
-            fixed_point_target_positions.emplace_back(affine_pos);
             fixed_point_animations.push_back(fixed_info);
         }
     }
@@ -258,68 +249,46 @@ namespace Initializer  // WorldData
         }
 
         return *this;
-
-        // fixed_point_list.insert(
-        //     fixed_point_list.end(), curr_fixed_point_verts.begin(), curr_fixed_point_verts.end());
-        // fixed_point_target_positions.insert(fixed_point_target_positions.end(),
-        //                                     curr_fixed_point_target_positions.begin(),
-        //                                     curr_fixed_point_target_positions.end());
-        // fixed_point_info.insert(
-        //     fixed_point_info.end(), curr_fixed_point_info.begin(), curr_fixed_point_info.end());
-        // return curr_fixed_point_verts;
     }
-
-    std::vector<float3> WorldData::get_fixed_point_target_positions(const float time)
+    void WorldData::get_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& fixed_point_target_positions)
     {
-        CpuParallel::parallel_for(
-            0,
-            fixed_point_indices.size(),
-            [&](const uint index)
-            {
-                const uint  local_vid        = fixed_point_indices[index];
-                const auto& fixed_info       = fixed_point_animations[index];
-                const auto  model_pos        = input_mesh.model_positions[local_vid];
-                auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
-                const auto  rest_pos =
-                    (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
-                        .xyz();
+        fixed_point_target_positions.resize(fixed_point_indices.size());
+        for (uint index = 0; index < fixed_point_indices.size(); index++)
+        {
+            const uint  local_vid        = fixed_point_indices[index];
+            const auto& fixed_info       = fixed_point_animations[index];
+            const auto  model_pos        = input_mesh.model_positions[local_vid];
+            auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+            const auto  rest_pos =
+                (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f)).xyz();
 
-                auto target = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
-                auto orig   = fixed_point_target_positions[index];
-                fixed_point_target_positions[index] = target;
-                // LUISA_INFO("For FixedVert {}: local vid = {} try to push delta {} : from {} to {}",
-                //            index,
-                //            local_vid,
-                //            target - orig,
-                //            rest_pos,
-                //            target);
-            });
-        return fixed_point_target_positions;
+            auto target = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
+            fixed_point_target_positions[index] = {local_vid, {target.x, target.y, target.z}};
+        }
     }
-    void WorldData::update_pinned_verts(const std::vector<float3>& new_positions)
-    {
-        CpuParallel::parallel_copy(new_positions, fixed_point_target_positions);
-    }
-    // template <typename T>
+    // void WorldData::get_body_animation(const float time, Animation::PerBodyAnimation& body_animation)
+    // {
+    //     const auto& fixed_info       = fixed_point_animations.front();
+    //     auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+    //     auto        rest_pos = (transform_matrix * luisa::make_float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz();
+    //     auto        target   = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
+    //     body_animation.set_translation(target.x, target.y, target.z);
+    // }
     void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
     {
         rest_positions.resize(input_mesh.model_positions.size());
         auto transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
-        CpuParallel::parallel_for(0,
-                                  input_mesh.model_positions.size(),
-                                  [&](const uint vid)
-                                  {
-                                      const auto model_pos = input_mesh.model_positions[vid];
-                                      auto       rest_pos =
-                                          (transform_matrix
-                                           * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f))
-                                              .xyz();
-                                      std::array<float, 3> output;
-                                      output[0]           = rest_pos.x;
-                                      output[1]           = rest_pos.y;
-                                      output[2]           = rest_pos.z;
-                                      rest_positions[vid] = output;
-                                  });
+        for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
+        {
+            const auto model_pos = input_mesh.model_positions[vid];
+            auto       rest_pos =
+                (transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f)).xyz();
+            std::array<float, 3> output;
+            output[0]           = rest_pos.x;
+            output[1]           = rest_pos.y;
+            output[2]           = rest_pos.z;
+            rest_positions[vid] = output;
+        }
     }
     WorldData& WorldData::load_mesh_data()
     {
