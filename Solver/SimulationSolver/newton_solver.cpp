@@ -792,9 +792,9 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
 
     compiler.compile<1>(
         fn_evaluate_abd_inertia,
-        [abd_q        = sim_data->sa_q.view(),
-         abd_q_tilde  = sim_data->sa_q_tilde.view(),
-         abd_is_fixed = sim_data->sa_q_is_fixed.view()](
+        [abd_q         = sim_data->sa_q.view(),
+         abd_q_tilde   = sim_data->sa_q_tilde.view(),
+         sa_q_is_fixed = sim_data->sa_q_is_fixed.view()](
             Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint, const Float substep_dt)
         {
             auto& abd_indices                  = constraint.constraint_indices;
@@ -826,7 +826,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             }
 
             Float alpha = 1.0f;
-            $if(abd_is_fixed->read(body_idx) != 0)
+            // $if(sa_q_is_fixed->read(indices[0]) != 0)
             {
                 const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(body_idx);
 
@@ -1489,7 +1489,7 @@ void NewtonSolver::host_evaluate_inertia()
                 float4x4 mass_matrix = abd_mass_matrix[body_idx];
                 float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
 
-                if (sa_q_is_fixed[body_idx])
+                // if (sa_q_is_fixed[indices[0]])
                 {
                     mass_matrix = abd_stiffness_dirichlet[body_idx] * mass_matrix;
                 }
@@ -3284,7 +3284,8 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
                                                                        kappa);
 
     auto contact_energy = narrow_phase_detector->download_energy(stream);
-    energy_list.insert(std::make_pair("Contact", contact_energy));
+    energy_list.insert(std::make_pair("Contact", contact_energy.x));
+    energy_list.insert(std::make_pair("Friction", contact_energy.y));
 }
 void NewtonSolver::device_SpMV(luisa::compute::Stream&               stream,
                                const luisa::compute::Buffer<float3>& input_ptr,

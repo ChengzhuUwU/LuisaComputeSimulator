@@ -51,8 +51,8 @@ class NarrowPhasesDetector
     }
 
   public:
-    void  reset_energy(Stream& stream);
-    float download_energy(Stream& stream);
+    void   reset_energy(Stream& stream);
+    float2 download_energy(Stream& stream);
 
     void  reset_toi(Stream& stream);
     void  host_reset_toi(Stream& stream);
@@ -267,7 +267,7 @@ class NarrowPhasesDetector
                            luisa::compute::BufferView<float>,
                            float>
         fn_compute_repulsion_energy;
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, float> fn_process_collision_pair_friction;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float> fn_process_collision_pair_friction;
 
     // Scan
     luisa::compute::Shader<1, CDBG>                           fn_preprocess_for_affine_bodies;

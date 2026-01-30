@@ -115,12 +115,13 @@ void NarrowPhasesDetector::reset_energy(Stream& stream)
     auto& contact_energy = collision_data->contact_energy;
     stream << fn_reset_energy(contact_energy).dispatch(contact_energy.size());
 }
-float NarrowPhasesDetector::download_energy(Stream& stream)
+float2 NarrowPhasesDetector::download_energy(Stream& stream)
 {
     auto& contact_energy      = collision_data->contact_energy;
     auto& host_contact_energy = host_collision_data->contact_energy;
     stream << contact_energy.copy_to(host_contact_energy.data()) << luisa::compute::synchronize();
-    return std::accumulate(host_contact_energy.begin(), host_contact_energy.end(), 0.0f);
+    return luisa::make_float2(host_contact_energy[0], host_contact_energy[1]);
+    // return std::accumulate(host_contact_energy.begin(), host_contact_energy.end(), 0.0f);
     // return kappa * (host_contact_energy[2] + host_contact_energy[3]);
 }
 void NarrowPhasesDetector::host_reset_toi(Stream& stream)
@@ -879,6 +880,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                 Var<CollisionPair::CollisionPairTemplate> vf_pair;
                                 vf_pair->make_vf_pair(
                                     make_uint4(vid, face[0], face[1], face[2]), normal, k1, k2, avg_area, bary);
+                                vf_pair->set_friction_values(x, 0.0f);
                                 narrowphase_list->write(idx, vf_pair);
                                 // device_log("Make VF Pair {} : {}, indices = {}", idx, vf_pair, vf_pair->get_indices());
                                 if constexpr (print_dcd_detail)
@@ -1047,6 +1049,7 @@ void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEne
                                     avg_area,
                                     bary.xy(),
                                     bary.zw());
+                                ee_pair->set_friction_values(x, 0.0f);
                                 narrowphase_list->write(idx, ee_pair);
 
                                 if constexpr (print_dcd_detail)
@@ -1159,7 +1162,14 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
 
     compiler.compile<1>(
         fn_process_collision_pair_friction,
-        [](Var<CDBG> collision_data, BufferVar<float3> sa_x, BufferVar<float3> sa_x_step_start, BufferVar<float> sa_vert_friction_mu, Float min_dx)
+        [contact_energy_type](Var<CDBG>         collision_data,
+                              BufferVar<float3> sa_x,
+                              BufferVar<float3> sa_x_step_start,
+                              BufferVar<float>  sa_vert_friction_mu,
+                              BufferVar<float>  per_vert_d_hat,
+                              BufferVar<float>  per_vert_offset,
+                              Float             min_dx,
+                              Float             kappa)
         {
             auto&      narrowphase_list = collision_data->narrow_phase_list;
             const Uint pair_idx         = dispatch_x();
@@ -1168,54 +1178,69 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             const Uint4  indices = pair->get_indices();
             const Float4 weight  = pair->get_weight();
             const Float3 normal  = pair->get_normal();
-            const Float  k1      = pair->get_k1();
 
-            const Float3 dx = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
-                              + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
+            Float d_hat     = 0.5f * (per_vert_d_hat.read(indices[0]) + per_vert_d_hat.read(indices[2]));
+            Float thickness = (per_vert_offset.read(indices[0]) + per_vert_offset.read(indices[2]));
+            Float stiff     = kappa * pair->get_area();
 
-            // We can not use current barycentric coords to compute relative tangential displacement
-            //      since they are changing over iterations
-            // const Float3 dx0 =
-            //     weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
-            //     + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
-            const auto collision_type = pair->get_collision_type();
-            Float3     dx0;
-            $if(collision_type == CollisionPair::type_vf())
+            Float3 diff0 =
+                weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
+                + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
+
+            Float d2 = length_squared_vec(diff0);
+            Float d  = sqrt_scalar(d2);
+            $if(d2 < square_scalar(thickness + d_hat))
             {
-                Float3 bary =
-                    distance::point_triangle_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
-                                                                         sa_x_step_start.read(indices[1]),
-                                                                         sa_x_step_start.read(indices[2]),
-                                                                         sa_x_step_start.read(indices[3]));
-                dx0 = sa_x_step_start.read(indices[0])
-                      - (bary[0] * sa_x_step_start.read(indices[1]) + bary[1] * sa_x_step_start.read(indices[2])
-                         + bary[2] * sa_x_step_start.read(indices[3]));
+                Float k1;
+                if (contact_energy_type == ContactEnergyType::Quadratic)
+                {
+                    Float C = d - thickness - d_hat;
+                    k1      = stiff * C;
+                }
+                else if (contact_energy_type == ContactEnergyType::Barrier)
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(d - thickness, d_hat);
+                }
+
+                Float3 dx     = pair->get_friction_rel_dx();
+                Float3 dx0    = diff0;
+                Float3 rel_dx = dx - dx0;
+
+                Float friction_mu =
+                    0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
+
+                Float lambda = -friction_mu * k1;
+                pair->set_friction_values(rel_dx, lambda);
             }
-            $elif(collision_type == CollisionPair::type_ee())
+            $else
             {
-                Float4 bary =
-                    distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
-                                                                    sa_x_step_start.read(indices[1]),
-                                                                    sa_x_step_start.read(indices[2]),
-                                                                    sa_x_step_start.read(indices[3]));
-                dx0 = (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
-                      - (bary[2] * sa_x_step_start.read(indices[2]) + bary[3] * sa_x_step_start.read(indices[3]));
+                pair->set_friction_values(Float3{0.0f, 0.0f, 0.0f}, 0.0f);
             };
-            const Float3 rel_dx = dx - dx0;
 
-            // Note: Friction should not be affected by contact area
-            Float friction_mu =
-                0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
-            // Float friction_eps = Friction::ando_barrier::friction_eps;
-            // const Float3 gradient     = k1 * normal;
-            // Float3       force        = -luisa::compute::dot(gradient, normal);
-            // Float        lambda       = friction_mu * force;
-            Float lambda = -friction_mu * k1;
-            pair->set_friction_values(rel_dx, lambda);
-
-            // auto         lambda_P =
-            //     Friction::ando_barrier::get_friction_lambda_P(gradient, rel_dx, normal, friction_mu, friction_eps);
-            // pair->set_friction_values(rel_dx, lambda_P.first);
+            // Use the same barycentric coordinates to compute dx0 for friction
+            // const auto collision_type = pair->get_collision_type();
+            // Float3     dx0;
+            // $if(collision_type == CollisionPair::type_vf())
+            // {
+            //     Float3 bary =
+            //         distance::point_triangle_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+            //                                                              sa_x_step_start.read(indices[1]),
+            //                                                              sa_x_step_start.read(indices[2]),
+            //                                                              sa_x_step_start.read(indices[3]));
+            //     dx0 = sa_x_step_start.read(indices[0])
+            //           - (bary[0] * sa_x_step_start.read(indices[1]) + bary[1] * sa_x_step_start.read(indices[2])
+            //              + bary[2] * sa_x_step_start.read(indices[3]));
+            // }
+            // $elif(collision_type == CollisionPair::type_ee())
+            // {
+            //     Float4 bary =
+            //         distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+            //                                                         sa_x_step_start.read(indices[1]),
+            //                                                         sa_x_step_start.read(indices[2]),
+            //                                                         sa_x_step_start.read(indices[3]));
+            //     dx0 = (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
+            //           - (bary[2] * sa_x_step_start.read(indices[2]) + bary[3] * sa_x_step_start.read(indices[3]));
+            // };
 
             narrowphase_list.write(pair_idx, pair);
         },
@@ -2779,8 +2804,14 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
     const float epsilon_h = epsilon_v * get_scene_params().get_substep_dt();
     if (num_pairs != 0)
     {
-        stream << fn_process_collision_pair_friction(
-                      get_collision_data(), sa_x_left, sa_x_step_start_left, sa_vert_friction_coeff, epsilon_h)
+        stream << fn_process_collision_pair_friction(get_collision_data(),
+                                                     sa_x_left,
+                                                     sa_x_step_start_left,
+                                                     sa_vert_friction_coeff,
+                                                     d_hat,
+                                                     thickness,
+                                                     epsilon_h,
+                                                     get_scene_params().stiffness_collision)
                       .dispatch(num_pairs);
         stream << fn_perPair_assemble_gradient_hessian(get_collision_data(),
                                                        sa_x_left,
@@ -2900,104 +2931,104 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
             {
                 diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
                        + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
-            }
-            $elif(collision_type == CollisionPair::type_vv())
-            {
-                diff = weight[0] * sa_x_left.read(indices[0]) + weight[2] * sa_x_right.read(indices[2]);
-            }
-            $elif(collision_type == CollisionPair::type_ve())
-            {
-                diff = weight[0] * sa_x_left.read(indices[0]) + weight[2] * sa_x_right.read(indices[2])
-                       + weight[3] * sa_x_right.read(indices[3]);
             };
 
-            const Float d2 = length_squared_vec(diff);
-            const Float d  = sqrt_scalar(d2);
-            // const Float d = dot_vec(diff, normal);
-
-            Float energy = 0.0f;
+            Float energy_repulsion = 0.0f;
+            Float energy_friction  = 0.0f;
 
             Float d_hat     = 0.5f * (per_vert_d_hat.read(indices[0]) + per_vert_d_hat.read(indices[2]));
             Float thickness = (per_vert_offset.read(indices[0]) + per_vert_offset.read(indices[2]));
             Float friction_mu =
                 0.5f * (sa_vert_friction_mu.read(indices[0]) + sa_vert_friction_mu.read(indices[2]));
 
-            $if(d < thickness + d_hat)
-            {
-                const Float stiff = pair->get_area() * kappa;
-                Float       k1;
-                if (contact_energy_type == ContactEnergyType::Quadratic)
-                {
-                    Float C = d - thickness - d_hat;
-                    energy  = 0.5f * stiff * C * C;
-                    k1      = stiff * C;
-                }
-                else if (contact_energy_type == ContactEnergyType::Barrier)
-                {
-                    energy = stiff * ipc::barrier(d - thickness, d_hat);
-                    k1     = stiff * ipc::barrier_first_derivative(d - thickness, d_hat);
-                    // cipc::KappaBarrier(energy, stiff, d2, d_hat, thickness);
-                }
+            const Float stiff = pair->get_area() * kappa;
 
-                // Friction Part
+            // Repulsion Part
+            {
+                const Float d2 = length_squared_vec(diff);
+                const Float d  = sqrt_scalar(d2);
+                $if(d2 < square_scalar(thickness + d_hat))
                 {
+                    if (contact_energy_type == ContactEnergyType::Quadratic)
+                    {
+                        Float C          = d - thickness - d_hat;
+                        energy_repulsion = 0.5f * stiff * C * C;
+                    }
+                    else if (contact_energy_type == ContactEnergyType::Barrier)
+                    {
+                        energy_repulsion = stiff * ipc::barrier(d - thickness, d_hat);
+                    }
+                };
+            }
+
+            // Friction Part
+            {
+                Float3 diff0;
+                $if(collision_type == CollisionPair::type_vf())
+                {
+                    Float3 bary = distance::point_triangle_distance_coeff_unclassified(
+                        sa_x_step_start.read(indices[0]),
+                        sa_x_step_start.read(indices[1]),
+                        sa_x_step_start.read(indices[2]),
+                        sa_x_step_start.read(indices[3]));
+                    diff0 = sa_x_step_start.read(indices[0])
+                            - (bary[0] * sa_x_step_start.read(indices[1])
+                               + bary[1] * sa_x_step_start.read(indices[2])
+                               + bary[2] * sa_x_step_start.read(indices[3]));
+                }
+                $elif(collision_type == CollisionPair::type_ee())
+                {
+                    Float4 bary =
+                        distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                        sa_x_step_start.read(indices[1]),
+                                                                        sa_x_step_start.read(indices[2]),
+                                                                        sa_x_step_start.read(indices[3]));
+                    diff0 = (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
+                            - (bary[2] * sa_x_step_start.read(indices[2])
+                               + bary[3] * sa_x_step_start.read(indices[3]));
+                };
+                // Float3 diff0  = weight[0] * sa_x_step_start.read(indices[0])
+                //                + weight[1] * sa_x_step_start.read(indices[1])
+                //                + weight[2] * sa_x_step_start.read(indices[2])
+                //                + weight[3] * sa_x_step_start.read(indices[3]);
+
+                Float d2 = length_squared_vec(diff0);
+                Float d  = sqrt_scalar(d2);
+                $if(d2 < square_scalar(thickness + d_hat))
+                {
+                    Float k1;
+                    if (contact_energy_type == ContactEnergyType::Quadratic)
+                    {
+                        Float C = d - thickness - d_hat;
+                        k1      = stiff * C;
+                    }
+                    else if (contact_energy_type == ContactEnergyType::Barrier)
+                    {
+                        k1 = stiff * ipc::barrier_first_derivative(d - thickness, d_hat);
+                    }
+
                     Float mu           = friction_mu;
                     Float lambda_mu    = -k1 * friction_mu;
                     Float friction_eps = Friction::ando_barrier::friction_eps;
 
-                    Float3 normal = pair->get_normal();
-                    Float3 diff0;
-                    $if(collision_type == CollisionPair::type_vf())
-                    {
-                        Float3 bary = distance::point_triangle_distance_coeff_unclassified(
-                            sa_x_step_start.read(indices[0]),
-                            sa_x_step_start.read(indices[1]),
-                            sa_x_step_start.read(indices[2]),
-                            sa_x_step_start.read(indices[3]));
-                        diff0 = sa_x_step_start.read(indices[0])
-                                - (bary[0] * sa_x_step_start.read(indices[1])
-                                   + bary[1] * sa_x_step_start.read(indices[2])
-                                   + bary[2] * sa_x_step_start.read(indices[3]));
-                    }
-                    $elif(collision_type == CollisionPair::type_ee())
-                    {
-                        Float4 bary =
-                            distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
-                                                                            sa_x_step_start.read(indices[1]),
-                                                                            sa_x_step_start.read(indices[2]),
-                                                                            sa_x_step_start.read(indices[3]));
-                        diff0 = (bary[0] * sa_x_step_start.read(indices[0])
-                                 + bary[1] * sa_x_step_start.read(indices[1]))
-                                - (bary[2] * sa_x_step_start.read(indices[2])
-                                   + bary[3] * sa_x_step_start.read(indices[3]));
-                    };
-                    // Float3 diff0  = weight[0] * sa_x_step_start.read(indices[0])
-                    //                + weight[1] * sa_x_step_start.read(indices[1])
-                    //                + weight[2] * sa_x_step_start.read(indices[2])
-                    //                + weight[3] * sa_x_step_start.read(indices[3]);
                     Float3 rel_dx = diff - diff0;
                     auto   energy_contrib =
                         Friction::ipc_barrier::compute_friction_energy(lambda_mu, normal, rel_dx, friction_eps);
-                    energy += energy_contrib;
+                    energy_friction = energy_contrib;
+                };
+            }
 
-                    // Float3 rel_dx   = diff - diff0;
-                    // auto   lambda_P = Friction::ando_barrier::get_friction_lambda_P(
-                    //     gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
-                    // Float    friction_lambda = lambda_P.first;
-                    // Float3x3 friction_P      = lambda_P.second;
-                    // Float3 tan_rel_dx = friction_P * rel_dx;  // dv_proj = dv - dot(dv, normal) * normal;
-                    // energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
-                }
-            };
-
-            energy = ParallelIntrinsic::block_intrinsic_reduce(
-                pair_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            Float2 energy =
+                ParallelIntrinsic::block_intrinsic_reduce(pair_idx,
+                                                          make_float2(energy_repulsion, energy_friction),
+                                                          ParallelIntrinsic::warp_reduce_op_sum<float2>);
 
             $if(pair_idx % 256 == 0)
             {
-                $if(energy != 0.0f)
+                // $if(energy != 0.0f)
                 {
-                    contact_energy->atomic(0).fetch_add(energy);
+                    contact_energy->atomic(0).fetch_add(energy.x);
+                    contact_energy->atomic(1).fetch_add(energy.y);
                 };
             };
         });
