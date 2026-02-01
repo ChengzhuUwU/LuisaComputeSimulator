@@ -2652,8 +2652,6 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                << fn_reset_float3x3(sim_data->sa_cgA_diag).dispatch(num_dof);
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
-                                                                        sim_data->sa_x,
-                                                                        sim_data->sa_x_step_start,
                                                                         sim_data->sa_x_step_start,
                                                                         sim_data->sa_contact_active_verts_friction_coeff,
                                                                         sim_data->sa_contact_active_verts_d_hat,
@@ -3290,9 +3288,7 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
     narrow_phase_detector->reset_energy(stream);
     narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
                                                                        sim_data->sa_x,
-                                                                       sim_data->sa_x,
                                                                        sim_data->sa_x_step_start,
-                                                                       mesh_data->sa_rest_x,
                                                                        mesh_data->sa_rest_x,
                                                                        mesh_data->sa_rest_vert_area,
                                                                        mesh_data->sa_rest_face_area,
@@ -3866,8 +3862,6 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
-                                                                        sim_data->sa_x,
-                                                                        sim_data->sa_x_step_start,
                                                                         sim_data->sa_x_step_start,
                                                                         sim_data->sa_contact_active_verts_friction_coeff,
                                                                         sim_data->sa_contact_active_verts_d_hat,
@@ -4028,8 +4022,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     {
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
-                                                                        sim_data->sa_x,
-                                                                        sim_data->sa_x_step_start,
                                                                         sim_data->sa_x_step_start,
                                                                         sim_data->sa_contact_active_verts_friction_coeff,
                                                                         sim_data->sa_contact_active_verts_d_hat,

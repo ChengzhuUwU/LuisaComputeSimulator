@@ -1,5 +1,6 @@
 #include "Utils/cpu_parallel.h"
 #include "luisa/core/fiber.h"
+#include <cstdint>
 #include <iostream>
 #include <atomic>
 #include <luisa/core/basic_types.h>
@@ -64,7 +65,7 @@ int main()
     atomic_float af(0.0f);
     auto         fn_test_atomic_add = [](atomic_float* af)
     {
-        CpuParallel::parallel_for(0, 100000, [&](const uint i) { af->fetch_add(1.0f); });
+        CpuParallel::parallel_for(0, 100000, [&](const uint32_t i) { af->fetch_add(1.0f); });
         printf("Result = %f\n", af->load());
     };
 
@@ -78,10 +79,10 @@ int main()
     {
         CpuParallel::parallel_for(0,
                                   100000,
-                                  [&](const uint i)
+                                  [&](const uint32_t i)
                                   {
-                                      const uint target_index   = i % 10;
-                                      auto       af_atomic_view = (atomic_float3*)(&af[target_index]);
+                                      const uint32_t target_index = i % 10;
+                                      auto af_atomic_view         = (atomic_float3*)(&af[target_index]);
                                       af_atomic_view->fetch_add(luisa::make_float3(1, 2, 3));
                                       //   auto       af_atomic_view = (atomic_float*)(&af[target_index]);
                                       //   af_atomic_view[0].fetch_add(1.0f);

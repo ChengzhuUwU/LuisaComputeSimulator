@@ -153,10 +153,8 @@ class NarrowPhasesDetector
                                 const float           kappa);
 
     void device_perPair_evaluate_gradient_hessian(Stream&               stream,
-                                                  const Buffer<float3>& sa_x_left,
-                                                  const Buffer<float3>& sa_x_right,
-                                                  const Buffer<float3>& sa_x_step_start_left,
-                                                  const Buffer<float3>& sa_x_step_start_right,
+                                                  const Buffer<float3>& sa_x,
+                                                  const Buffer<float3>& sa_x_step_start,
                                                   const Buffer<float>&  sa_vert_friction_coeff,
                                                   const Buffer<float>&  d_hat,
                                                   const Buffer<float>&  thickness,
@@ -177,13 +175,11 @@ class NarrowPhasesDetector
   public:
     // Compute barrier energy
     void compute_contact_energy_from_iter_start_list(Stream&               stream,
-                                                     const Buffer<float3>& sa_x_left,
-                                                     const Buffer<float3>& sa_x_right,
+                                                     const Buffer<float3>& sa_x,
                                                      const Buffer<float3>& sa_x_step_start,
-                                                     const Buffer<float3>& sa_rest_x_left,
-                                                     const Buffer<float3>& sa_rest_x_right,
-                                                     const Buffer<float>&  sa_rest_area_left,
-                                                     const Buffer<float>&  sa_rest_area_right,
+                                                     const Buffer<float3>& sa_rest_x,
+                                                     const Buffer<float>&  sa_rest_vert_area,
+                                                     const Buffer<float>&  sa_rest_face_area,
                                                      const Buffer<uint3>&  sa_faces_right,
                                                      const Buffer<float>&  d_hat,
                                                      const Buffer<float>&  thickness,
@@ -257,15 +253,7 @@ class NarrowPhasesDetector
                            uint>
         fn_narrow_phase_ee_dcd_query;
 
-    luisa::compute::Shader<1,
-                           CDBG,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float3>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<float>,
-                           luisa::compute::BufferView<float>,
-                           float>
+    luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float>
         fn_compute_repulsion_energy;
     luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float> fn_process_collision_pair_friction;
 
@@ -284,7 +272,7 @@ class NarrowPhasesDetector
     luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
 
     // Assemble
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
 
     // SpMV
     luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
