@@ -1,15 +1,20 @@
 {
-    "scene_id": 12,
-    "use_floor": true,
-    "use_gpu": false,
-    "contact_energy_type": 1,
+    "scene_id": 16,
+    "nonlinear_iter_count": 2,
+    "use_self_collision": false,
+    "use_ccd_linesearch": false,
     "shells": [
         {
             "model_name": "cube.obj",
             "translation": [
                 0.0,
-                1.0,
+                0.2,
                 0.0
+            ],
+            "rotation": [
+                0.5235988,
+                0.0,
+                0.5235988
             ],
             "scale": 0.1,
             "shell_type": "Rigid"
@@ -17,9 +22,14 @@
         {
             "model_name": "cube.obj",
             "translation": [
-                0.0,
-                0.7,
+                0.6,
+                0.4,
                 0.0
+            ],
+            "rotation": [
+                0.5235988,
+                0.0,
+                1.0471976
             ],
             "scale": 0.2,
             "shell_type": "Rigid"
@@ -27,17 +37,17 @@
         {
             "model_name": "cube.obj",
             "translation": [
-                0.0,
-                0.1,
+                0.9,
+                0.6,
+                0.0
+            ],
+            "rotation": [
+                1.0471976,
+                0.5235988,
                 0.0
             ],
             "scale": 0.5,
-            "shell_type": "Rigid",
-            "fixed_points": [
-                {
-                    "method": "All"
-                }
-            ]
+            "shell_type": "Rigid"
         }
     ]
 }

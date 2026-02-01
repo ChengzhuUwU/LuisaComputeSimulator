@@ -503,6 +503,7 @@ constexpr bool print_detail = false;
 
 constexpr uint offset_inertia          = 0;
 constexpr uint offset_ground_collision = 1;
+constexpr uint offset_ground_friction  = 7;
 constexpr uint offset_stretch_spring   = 2;
 constexpr uint offset_stretch_face     = 3;
 constexpr uint offset_bending          = 4;
@@ -579,78 +580,78 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
         {
             const Uint vid = dispatch_id().x;
 
-            Float energy   = 0.0f;
-            Bool  is_fixed = sa_is_fixed->read(vid) != 0;
+            Float energy_repulsive = 0.0f;
+            Float energy_friction  = 0.0f;
+            Bool  is_fixed         = sa_is_fixed->read(vid) != 0;
 
             $if(use_ground_collision & !is_fixed)
             {
-                Float3 x_k       = sa_x->read(vid);
-                Float  dist      = x_k.y - floor_y;
-                Float  d_hat     = sa_contact_active_verts_d_hat->read(vid);
-                Float  thickness = sa_contact_active_verts_offset->read(vid);
-                $if(dist - thickness < d_hat)
+                Float d_hat     = sa_contact_active_verts_d_hat->read(vid);
+                Float thickness = sa_contact_active_verts_offset->read(vid);
+                Float area      = sa_rest_vert_area->read(vid);
+                Float stiff     = stiffness * area;
+
+                Float3 normal = make_float3(0.0f, 1.0f, 0.0f);
+
+                Float3 x_k = sa_x->read(vid);
+                Float3 x_0 = sa_x_step_start->read(vid);
+
+                // Repulsion Part
+                Float curr_dist = x_k.y - floor_y;
+                $if(curr_dist - thickness < d_hat)
                 {
-                    Float area  = sa_rest_vert_area->read(vid);
-                    Float stiff = stiffness * area;
-                    Float k1    = 0.0f;
+                    Float k1 = 0.0f;
 
                     $if(collision_type == 0)
                     {
-                        Float C = d_hat + thickness - dist;
-                        energy  = 0.5f * stiff * C * C;
+                        Float C          = d_hat + thickness - curr_dist;
+                        energy_repulsive = 0.5f * stiff * C * C;
+                        k1               = stiff * C;
+                    }
+                    $else
+                    {
+                        energy_repulsive = stiff * ipc::barrier(curr_dist - thickness, d_hat);
+                        k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
+                    };
+                };
+
+                // Friction Part
+                Float init_dist = x_0.y - floor_y;
+                $if(init_dist - thickness < d_hat)
+                {
+                    // Float3 dx     = make_float3(0.0f, x_k.y - floor_y, 0.0f);
+                    // Float3 dx0    = make_float3(0.0f, x_0.y - floor_y, 0.0f);
+                    // Float3 rel_dx = dx - dx0;
+                    Float3 rel_dx = x_k - x_0;
+
+                    Float k1 = 0.0f;
+                    $if(collision_type == 0)
+                    {
+                        Float C = d_hat + thickness - init_dist;
                         k1      = stiff * C;
                     }
                     $else
                     {
-                        energy = stiff * ipc::barrier(dist - thickness, d_hat);
-                        k1     = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
+                        k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
                     };
 
-                    // Friction Part
-                    {
-                        Float3 normal = make_float3(0.0f, 1.0f, 0.0f);
+                    Float friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                    Float friction_eps = Friction::ando_barrier::friction_eps;
 
-                        Float3 x_0    = sa_x_step_start->read(vid);
-                        Float3 dx     = make_float3(0.0f, x_k.y - floor_y, 0.0f);
-                        Float3 dx0    = make_float3(0.0f, x_0.y - floor_y, 0.0f);
-                        Float3 rel_dx = dx - dx0;
-
-                        Float friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
-                        Float friction_eps = Friction::ando_barrier::friction_eps;
-
-                        auto lambda = -k1 * friction_mu;
-                        auto energy_friction =
-                            Friction::ipc_barrier::compute_friction_energy(lambda, normal, rel_dx, friction_eps);
-                        energy += energy_friction;
-                        // device_log("vid {}, friction energy {} (lambda = {}, rel_dx = {}, normal = {}, mu = {})",
-                        //            vid,
-                        //            energy_friction,
-                        //            lambda,
-                        //            rel_dx,
-                        //            normal,
-                        //            friction_mu);
-                        // Float3 gradient     = k1 * normal;
-                        // auto   lambda_P     = Friction::ando_barrier::get_friction_lambda_P(
-                        //     gradient, rel_dx, normal, friction_mu, Friction::ando_barrier::friction_eps);
-                        // Float    friction_lambda = lambda_P.first;
-                        // Float3x3 friction_P      = lambda_P.second;
-                        // Float3   tan_rel_dx      = friction_P * rel_dx;
-                        // energy += 0.5f * friction_lambda * dot(tan_rel_dx, tan_rel_dx);
-                    }
-
-                    // Float C    = d_hat + thickness - dist;
-                    // Float area = sa_rest_vert_area->read(vid);
-                    // Float stiff = stiffness * area;
-                    // energy      = 0.5f * stiff * C * C;
-                    // device_log("For vert {}, pen = {}, E = {}", vid, C, energy);
+                    auto lambda = -k1 * friction_mu;
+                    energy_friction =
+                        Friction::ipc_barrier::compute_friction_energy(lambda, normal, rel_dx, friction_eps);
                 };
             };
 
-            energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+            Float2 energy =
+                ParallelIntrinsic::block_intrinsic_reduce(vid,
+                                                          make_float2(energy_repulsive, energy_friction),
+                                                          ParallelIntrinsic::warp_reduce_op_sum<float2>);
             $if(vid % 256 == 0)
             {
-                // sa_system_energy->write(vid / 256, energy);
-                sa_system_energy->atomic(offset_ground_collision).fetch_add(energy);
+                sa_system_energy->atomic(offset_ground_collision).fetch_add(energy.x);
+                sa_system_energy->atomic(offset_ground_friction).fetch_add(energy.y);
             };
         },
         default_option);
@@ -941,6 +942,7 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     energy_list.insert(std::make_pair("Inertia Soft Body", host_energy[offset_inertia]));
     energy_list.insert(std::make_pair("Inertia Rigid Body", host_energy[offset_abd_inertia]));
     energy_list.insert(std::make_pair("Ground Collision", host_energy[offset_ground_collision]));
+    energy_list.insert(std::make_pair("Ground Friction", host_energy[offset_ground_friction]));
     energy_list.insert(std::make_pair("Stretch Spring", host_energy[offset_stretch_spring]));
     energy_list.insert(std::make_pair("Stretch Face", host_energy[offset_stretch_face]));
     energy_list.insert(std::make_pair("Cloth Bending", host_energy[offset_bending]));

@@ -879,50 +879,60 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
         Bool collide = false;
         $if(!sa_is_fixed->read(vid) & use_ground_collision)
         {
-            Float3 x_k  = sa_x->read(vid);
-            Float  diff = x_k.y - floor_y;
+            Float3 x_k = sa_x->read(vid);
+            Float3 x_0 = sa_x_step_start->read(vid);
 
             Float d_hat     = sa_contact_active_verts_d_hat->read(vid);
             Float thickness = sa_contact_active_verts_offset->read(vid);
-            Float dist      = x_k.y - floor_y;
 
-            $if(dist - thickness < d_hat)
+            float3 normal = luisa::make_float3(0, 1, 0);
+            Float  area   = sa_rest_vert_area->read(vid);
+            Float  stiff  = stiffness * area;
+
+            Float curr_dist = x_k.y - floor_y;
+
+            $if(curr_dist - thickness < d_hat)
             {
-                // Float  C      = d_hat + thickness - diff;
-                float3 normal = luisa::make_float3(0, 1, 0);
-                Float  area   = sa_rest_vert_area->read(vid);
-                Float  stiff  = stiffness * area;
-
                 Float k1;
                 Float k2;
                 $if(collision_type == 0)
                 {
-                    k1 = stiff * (dist - thickness - d_hat);
+                    k1 = stiff * (curr_dist - thickness - d_hat);
                     k2 = stiff;
                 }
                 $else
                 {
-                    k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
-                    k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                    k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
+                    k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
                 };
 
                 out_gradient = k1 * normal;
                 out_hessian  = k2 * outer_product(normal, normal);
+                collide      = true;
+            };
 
-                // Friction
+            // Friction
+            Float init_dist = x_0.y - floor_y;
+            $if(init_dist - thickness < d_hat)
+            {
+                Float k1;
+                $if(collision_type == 0)
                 {
-                    Float3 x_0          = sa_x_step_start->read(vid);
-                    Float3 dx           = make_float3(0.0f, x_k.y - floor_y, 0.0f);
-                    Float3 dx0          = make_float3(0.0f, x_0.y - floor_y, 0.0f);
-                    Float3 rel_dx       = dx - dx0;
-                    Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
-                    Float  friction_eps = Friction::ando_barrier::friction_eps;
-                    auto   lambda_mu    = -k1 * friction_mu;
-                    auto   friction_grad_hess =
-                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
-                    out_gradient += friction_grad_hess.first;
-                    out_hessian += friction_grad_hess.second;
+                    k1 = stiff * (init_dist - thickness - d_hat);
                 }
+                $else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+                };
+
+                Float3 rel_dx       = x_k - x_0;
+                Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                Float  friction_eps = Friction::ando_barrier::friction_eps;
+                auto   lambda_mu    = -k1 * friction_mu;
+                auto   friction_grad_hess =
+                    Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+                out_gradient += friction_grad_hess.first;
+                out_hessian += friction_grad_hess.second;
                 collide = true;
             };
         };
@@ -1647,33 +1657,38 @@ void NewtonSolver::host_evaluate_ground_collision()
         bool collide = false;
         if (!sa_is_fixed[vid] && get_scene_params().use_floor)
         {
-            float3 x_k       = sa_x[vid];
-            float  thickness = sa_contact_active_verts_offset[vid];
-            float  d_hat     = sa_contact_active_verts_d_hat[vid];
-            float  dist      = x_k.y - floor_y;
+            float3 x_k = sa_x[vid];
+            float3 x_0 = sa_x_step_start[vid];
 
-            if (dist - thickness < d_hat)
+            float thickness = sa_contact_active_verts_offset[vid];
+            float d_hat     = sa_contact_active_verts_d_hat[vid];
+            float curr_dist = x_k.y - floor_y;
+            float init_dist = x_k.y - floor_y;
+
+            float3 normal = luisa::make_float3(0, 1, 0);
+            float  area   = sa_rest_vert_area[vid];
+            float  stiff  = stiffness_ground * area;
+
+            // Repulsion
+            if (curr_dist - thickness < d_hat)
             {
-                float3 normal = luisa::make_float3(0, 1, 0);
-                float  area   = sa_rest_vert_area[vid];
-                float  stiff  = stiffness_ground * area;
 
                 float k1;
                 float k2;
                 if (collision_type == 0)
                 {
-                    k1 = stiff * (dist - thickness - d_hat);
+                    k1 = stiff * (curr_dist - thickness - d_hat);
                     k2 = stiff;
                 }
                 else
                 {
-                    k1 = stiff * ipc::barrier_first_derivative(dist - thickness, d_hat);
-                    k2 = stiff * ipc::barrier_second_derivative(dist - thickness, d_hat);
+                    k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
+                    k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
                 }
                 if (luisa::isnan(k1 * k2) || luisa::isinf(k1 * k2))
                 {
                     LUISA_ERROR("NaN detected in ground collision computation: dist = {}, thickness = {}, d_hat = {}, k1 = {}, k2 = {}",
-                                dist,
+                                curr_dist,
                                 thickness,
                                 d_hat,
                                 k1,
@@ -1681,25 +1696,29 @@ void NewtonSolver::host_evaluate_ground_collision()
                 }
                 out_gradient = k1 * normal;
                 out_hessian  = k2 * outer_product(normal, normal);
-
-                // Friction
+                collide      = true;
+            }
+            // Friction
+            if (init_dist - thickness < d_hat)
+            {
+                float k1;
+                if (collision_type == 0)
                 {
-                    float3 x_0          = sa_x_step_start[vid];
-                    float3 dx           = luisa::make_float3(0.0f, x_k.y - floor_y, 0.0f);
-                    float3 dx0          = luisa::make_float3(0.0f, x_0.y - floor_y, 0.0f);
-                    float3 rel_dx       = dx - dx0;
-                    float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
-                    float  friction_eps = Friction::ando_barrier::friction_eps;
-                    auto   lambda_mu    = -k1 * friction_mu;
-                    auto   friction_grad_hess =
-                        Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
-                    out_gradient += friction_grad_hess.first;
-                    out_hessian = out_hessian + friction_grad_hess.second;
+                    k1 = stiff * (init_dist - thickness - d_hat);
                 }
-                collide = true;
-                // func_assembly(vid, gradient, hessian);
-                // sa_cgB[vid]      = sa_cgB[vid] - gradient;
-                // sa_cgA_diag[vid] = sa_cgA_diag[vid] + hessian;
+                else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+                }
+                float3 rel_dx       = x_k - x_0;
+                float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
+                float  friction_eps = Friction::ando_barrier::friction_eps;
+                auto   lambda_mu    = -k1 * friction_mu;
+                auto   friction_grad_hess =
+                    Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+                out_gradient += friction_grad_hess.first;
+                out_hessian = out_hessian + friction_grad_hess.second;
+                collide     = true;
             }
         }
         return collide;

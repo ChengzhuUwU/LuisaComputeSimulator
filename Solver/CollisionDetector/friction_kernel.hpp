@@ -16,7 +16,7 @@ namespace Friction
         //
         // Modified from [https://github.com/st-tech/ppf-contact-solver/blob/main/src/cpp/energy/model/friction.hpp]
         //
-        constexpr float friction_eps = 1e-4f;
+        constexpr float friction_eps = 1e-4f;  // minVelocity = 0.1mm/s, need to be multiplied by h (time step)
 
         template <typename T>
         inline auto get_projection(const T& normal)
