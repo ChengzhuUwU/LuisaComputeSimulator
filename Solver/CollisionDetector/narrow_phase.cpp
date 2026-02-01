@@ -1174,18 +1174,67 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             auto&      narrowphase_list = collision_data->narrow_phase_list;
             const Uint pair_idx         = dispatch_x();
 
-            auto         pair    = narrowphase_list->read(pair_idx);
-            const Uint4  indices = pair->get_indices();
-            const Float4 weight  = pair->get_weight();
-            const Float3 normal  = pair->get_normal();
+            auto         pair           = narrowphase_list->read(pair_idx);
+            const Uint4  indices        = pair->get_indices();
+            const Float4 weight         = pair->get_weight();
+            const Float3 normal         = pair->get_normal();
+            const auto   collision_type = pair->get_collision_type();
 
             Float d_hat     = 0.5f * (per_vert_d_hat.read(indices[0]) + per_vert_d_hat.read(indices[2]));
             Float thickness = (per_vert_offset.read(indices[0]) + per_vert_offset.read(indices[2]));
             Float stiff     = kappa * pair->get_area();
 
-            Float3 diff0 =
-                weight[0] * sa_x_step_start.read(indices[0]) + weight[1] * sa_x_step_start.read(indices[1])
-                + weight[2] * sa_x_step_start.read(indices[2]) + weight[3] * sa_x_step_start.read(indices[3]);
+            Float3 diff;
+            Float3 diff0;
+            // Use init barycentric coordinates
+            // !!!!! Note: Actually we are using current barycentric for optimization !!!!!
+            // !!!!! Note: So we need to store friction pairs saperately, and using friction bary !!!!!
+            $if(collision_type == CollisionPair::type_vf())
+            {
+                Float3 bary =
+                    distance::point_triangle_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                         sa_x_step_start.read(indices[1]),
+                                                                         sa_x_step_start.read(indices[2]),
+                                                                         sa_x_step_start.read(indices[3]));
+                diff0 = sa_x_step_start.read(indices[0])
+                        - (bary[0] * sa_x_step_start.read(indices[1]) + bary[1] * sa_x_step_start.read(indices[2])
+                           + bary[2] * sa_x_step_start.read(indices[3]));
+                diff = sa_x.read(indices[0])
+                       - (bary[0] * sa_x.read(indices[1]) + bary[1] * sa_x.read(indices[2])
+                          + bary[2] * sa_x.read(indices[3]));
+            }
+            $elif(collision_type == CollisionPair::type_ee())
+            {
+                Float4 bary =
+                    distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                    sa_x_step_start.read(indices[1]),
+                                                                    sa_x_step_start.read(indices[2]),
+                                                                    sa_x_step_start.read(indices[3]));
+                diff0 =
+                    (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
+                    - (bary[2] * sa_x_step_start.read(indices[2]) + bary[3] * sa_x_step_start.read(indices[3]));
+                diff = (bary[0] * sa_x.read(indices[0]) + bary[1] * sa_x.read(indices[1]))
+                       - (bary[2] * sa_x.read(indices[2]) + bary[3] * sa_x.read(indices[3]));
+            };
+            // Use current barycentric coordinates
+            // $if(collision_type == CollisionPair::type_vf())
+            // {
+            //     diff = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
+            //            + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
+            //     diff0 = weight[0] * sa_x_step_start.read(indices[0])
+            //             + weight[1] * sa_x_step_start.read(indices[1])
+            //             + weight[2] * sa_x_step_start.read(indices[2])
+            //             + weight[3] * sa_x_step_start.read(indices[3]);
+            // }
+            // $elif(collision_type == CollisionPair::type_ee())
+            // {
+            //     diff = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
+            //            + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
+            //     diff0 = weight[0] * sa_x_step_start.read(indices[0])
+            //             + weight[1] * sa_x_step_start.read(indices[1])
+            //             + weight[2] * sa_x_step_start.read(indices[2])
+            //             + weight[3] * sa_x_step_start.read(indices[3]);
+            // };
 
             Float d2 = length_squared_vec(diff0);
             Float d  = sqrt_scalar(d2);
@@ -1202,7 +1251,7 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
                     k1 = stiff * ipc::barrier_first_derivative(d - thickness, d_hat);
                 }
 
-                Float3 dx     = pair->get_friction_rel_dx();
+                Float3 dx     = diff;
                 Float3 dx0    = diff0;
                 Float3 rel_dx = dx - dx0;
 
@@ -2914,17 +2963,6 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             const auto collision_type = pair->get_collision_type();
 
-            Float3 diff = make_float3(0.0f);
-            $if(collision_type == CollisionPair::type_vf())
-            {
-                diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_right.read(indices[1])
-                       + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
-            }
-            $elif(collision_type == CollisionPair::type_ee())
-            {
-                diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
-                       + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
-            };
 
             Float energy_repulsion = 0.0f;
             Float energy_friction  = 0.0f;
@@ -2938,6 +2976,18 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             // Repulsion Part
             {
+                Float3 diff = make_float3(0.0f);
+                $if(collision_type == CollisionPair::type_vf())
+                {
+                    diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_right.read(indices[1])
+                           + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
+                }
+                $elif(collision_type == CollisionPair::type_ee())
+                {
+                    diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
+                           + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
+                };
+
                 const Float d2 = length_squared_vec(diff);
                 const Float d  = sqrt_scalar(d2);
                 $if(d2 < square_scalar(thickness + d_hat))
@@ -2956,10 +3006,57 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
             // Friction Part
             {
-                Float3 diff0 = weight[0] * sa_x_step_start.read(indices[0])
-                               + weight[1] * sa_x_step_start.read(indices[1])
-                               + weight[2] * sa_x_step_start.read(indices[2])
-                               + weight[3] * sa_x_step_start.read(indices[3]);
+                Float3 diff;
+                Float3 diff0;
+                // Use init barycentric coordinates
+                $if(collision_type == CollisionPair::type_vf())
+                {
+                    Float3 bary = distance::point_triangle_distance_coeff_unclassified(
+                        sa_x_step_start.read(indices[0]),
+                        sa_x_step_start.read(indices[1]),
+                        sa_x_step_start.read(indices[2]),
+                        sa_x_step_start.read(indices[3]));
+                    diff0 = sa_x_step_start.read(indices[0])
+                            - (bary[0] * sa_x_step_start.read(indices[1])
+                               + bary[1] * sa_x_step_start.read(indices[2])
+                               + bary[2] * sa_x_step_start.read(indices[3]));
+                    diff = sa_x_left.read(indices[0])
+                           - (bary[0] * sa_x_right.read(indices[1]) + bary[1] * sa_x_right.read(indices[2])
+                              + bary[2] * sa_x_right.read(indices[3]));
+                }
+                $elif(collision_type == CollisionPair::type_ee())
+                {
+                    Float4 bary =
+                        distance::edge_edge_distance_coeff_unclassified(sa_x_step_start.read(indices[0]),
+                                                                        sa_x_step_start.read(indices[1]),
+                                                                        sa_x_step_start.read(indices[2]),
+                                                                        sa_x_step_start.read(indices[3]));
+                    diff0 = (bary[0] * sa_x_step_start.read(indices[0]) + bary[1] * sa_x_step_start.read(indices[1]))
+                            - (bary[2] * sa_x_step_start.read(indices[2])
+                               + bary[3] * sa_x_step_start.read(indices[3]));
+                    diff = (bary[0] * sa_x_left.read(indices[0]) + bary[1] * sa_x_left.read(indices[1]))
+                           - (bary[2] * sa_x_right.read(indices[2]) + bary[3] * sa_x_right.read(indices[3]));
+                };
+                // Use current barycentric coordinates
+                // $if(collision_type == CollisionPair::type_vf())
+                // {
+                //     diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_right.read(indices[1])
+                //            + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
+                //     diff0 = weight[0] * sa_x_step_start.read(indices[0])
+                //             + weight[1] * sa_x_step_start.read(indices[1])
+                //             + weight[2] * sa_x_step_start.read(indices[2])
+                //             + weight[3] * sa_x_step_start.read(indices[3]);
+                // }
+                // $elif(collision_type == CollisionPair::type_ee())
+                // {
+                //     diff = weight[0] * sa_x_left.read(indices[0]) + weight[1] * sa_x_left.read(indices[1])
+                //            + weight[2] * sa_x_right.read(indices[2]) + weight[3] * sa_x_right.read(indices[3]);
+                //     diff0 = weight[0] * sa_x_step_start.read(indices[0])
+                //             + weight[1] * sa_x_step_start.read(indices[1])
+                //             + weight[2] * sa_x_step_start.read(indices[2])
+                //             + weight[3] * sa_x_step_start.read(indices[3]);
+                // };
+
 
                 Float d2 = length_squared_vec(diff0);
                 Float d  = sqrt_scalar(d2);
