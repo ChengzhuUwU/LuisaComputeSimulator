@@ -117,6 +117,11 @@ namespace CollisionPair
         {
             vec3 = luisa::make_float4(dv, lambda);
         }
+        void disable_repulsion_part()
+        {
+            vec2[0] = 0.0f; // repulsion stiffness
+            vec2[1] = 0.0f;
+        }
         
         [[nodiscard]] float4 get_vv_weight() const { return luisa::make_float4(1.0f, 0.0f, -1.0f, 0.0f); }
         [[nodiscard]] float4 get_ve_weight() const { return luisa::make_float4(1.0f, 0.0f, -vec2[2], -vec2[3]); }
@@ -210,6 +215,11 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2, vec
                              const luisa::compute::Float  lambda)
     {
         vec3 = luisa::compute::make_float4(dv, lambda);
+    }
+    void disable_repulsion_part()
+    {
+        vec2[0] = 0.0f; // repulsion stiffness
+        vec2[1] = 0.0f;
     }
 
     luisa::compute::UInt get_index(const uint i) const { return indices[i] & lcs::mask_get_index; }
@@ -402,9 +412,8 @@ template <template <typename...> typename BufferType>
 struct CollisionData : SimulationType
 {
     BufferType<uint> broad_phase_collision_count;   // 0: VV, 1: VE, 2: VF, 3: EE
-    BufferType<uint> narrow_phase_collision_count;  // 0: VV, 1: VE, 2: VF, 3: EE
-                                                    // 4: PerVertVV, 5: PerVertVE,
-                                                    // 6: PerVertVF, 6: PervertEE
+    BufferType<uint> narrow_phase_collision_count;  // 0: VF&EE narrow phase count
+                                                    // 4: vertAdjPairs, 5: vertAdjCollideVerts
 
     BufferType<uint>  broad_phase_list_vf;
     BufferType<uint>  broad_phase_list_ee;
@@ -427,9 +436,10 @@ struct CollisionData : SimulationType
     BufferType<uint> per_vert_prefix_adj_pairs;
     BufferType<uint> per_vert_prefix_adj_verts;
 
+    BufferType<uint> num_pairs_in_first_iter;
+
     // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
     // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
-
 
     const uint get_vv_count_offset() { return 0; }
     const uint get_ve_count_offset() { return 1; }
@@ -446,6 +456,7 @@ struct CollisionData : SimulationType
         constexpr bool use_vv_ve = false;
         lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
         lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 8);
+        lcs::Initializer::resize_buffer(device, this->num_pairs_in_first_iter, 1);
         lcs::Initializer::resize_buffer(device, this->contact_energy, 4);
         lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts);
 
@@ -462,6 +473,7 @@ struct CollisionData : SimulationType
         const size_t collision_pair_bytes =
             sizeof(uint) * this->broad_phase_collision_count.size()
             + sizeof(uint) * this->narrow_phase_collision_count.size()
+            + sizeof(uint) * this->num_pairs_in_first_iter.size()
             + sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
             + sizeof(float) * this->toi_per_vert.size() + sizeof(float) * this->contact_energy.size()
             + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
@@ -536,6 +548,7 @@ struct CollisionData : SimulationType
 LUISA_BINDING_GROUP(lcs::CollisionData<luisa::compute::Buffer>,
                     broad_phase_collision_count,
                     narrow_phase_collision_count,
+                    num_pairs_in_first_iter,
                     broad_phase_list_vf,
                     broad_phase_list_ee,
                     toi_per_vert,

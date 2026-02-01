@@ -255,7 +255,7 @@ class NarrowPhasesDetector
 
     luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float>
         fn_compute_repulsion_energy;
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float> fn_process_collision_pair_friction;
+    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float, bool> fn_process_collision_pair_friction;
 
     // Scan
     luisa::compute::Shader<1, CDBG>                           fn_preprocess_for_affine_bodies;
