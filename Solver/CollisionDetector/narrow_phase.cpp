@@ -1268,6 +1268,16 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
                 pair->disable_repulsion_part();
             };
             pair->set_friction_values(rel_dx, lambda_mu);
+            // $if(pair_idx < 20u)
+            // {
+            //     device_log("Is first iter: {}, Process friction for pair {}: indices = {}, rel_dx = {}, lambda_mu = {}, k1 = {}",
+            //                is_first_iter,
+            //                pair_idx,
+            //                indices,
+            //                rel_dx,
+            //                lambda_mu,
+            //                pair->get_k1());
+            // };
             narrowphase_list.write(pair_idx, pair);
         },
         option);
@@ -2730,6 +2740,9 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
 
     if (num_frictions != 0)
     {
+        // LUISA_INFO("  Dispatch per-pair friction gradient/hessian evaluation: {} pairs, total pairs = {}",
+        //            num_frictions,
+        //            num_pairs);
         const float epsilon_v = 1e-3f;
         const float epsilon_h = epsilon_v * get_scene_params().get_substep_dt();
         stream << fn_process_collision_pair_friction(get_collision_data(),
@@ -2888,6 +2901,8 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
                 };
             };
 
+            // TODO: Not converged in frame 28!!!!!!!
+
             // Friction Part
             $if(pair->get_friction_mu_lambda() != 0.0f)
             {
@@ -2900,12 +2915,22 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
                               + weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
                 Float3 rel_dx = diff - diff0;
 
-
                 Float lambda_mu    = pair->get_friction_mu_lambda();
                 Float friction_eps = Friction::ando_barrier::friction_eps;
 
                 auto energy_contrib =
                     Friction::ipc_barrier::compute_friction_energy(lambda_mu, normal, rel_dx, friction_eps);
+
+                // $if(pair_idx < 10)
+                // {
+                //     device_log("Pair {} friction : lambda_mu = {}, rel_dx = {}, energy = {}, x0 = {}, x = {}",
+                //                pair_idx,
+                //                lambda_mu,
+                //                length(rel_dx),
+                //                energy_contrib,
+                //                sa_x_step_start.read(indices[0]),
+                //                sa_x.read(indices[0]));
+                // };
                 energy_friction = energy_contrib;
             };
 
@@ -2927,7 +2952,6 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
 
 void NarrowPhasesDetector::compute_contact_energy_from_iter_start_list(Stream&               stream,
                                                                        const Buffer<float3>& sa_x,
-                                                                       const Buffer<float3>& sa_rest_x,
                                                                        const Buffer<float3>& sa_x_step_start,
                                                                        const Buffer<float>& sa_rest_vert_area,
                                                                        const Buffer<float>& sa_rest_face_area,

@@ -1,84 +1,73 @@
 {
-    "scene_id": 18,
-    "contact_energy_type": 1,
-    "nonlinear_iter_count": 20,
-    "use_energy_linesearch": true,
+    "scene_id": 4,
+    "nonlinear_iter_count": 8,
     "shells": [
         {
-            "model_name": "cube.obj",
+            "model_name": "square8K.obj",
             "translation": [
                 0.0,
-                1.0,
+                0.52,
                 0.0
             ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.0
-            }
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.2,
-                1.0,
-                0.0
-            ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.1
-            }
-        },
-        {
-            "model_name": "cube.obj",
-            "translation": [
-                0.4,
-                1.0,
-                0.0
-            ],
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "scale": 0.1,
-            "shell_type": "Rigid",
-            "material": {
-                "friction_mu": 0.5
-            }
-        },
-        {
-            "model_name": "square2K.obj",
-            "translation": [
-                0.0,
-                0.8,
-                0.0
-            ],
-            "scale": 2.0,
-            "rotation": [
-                -0.618,
-                0.0,
-                0.0
-            ],
-            "material": {
-                "friction_mu": 0.0
-            },
+            "scale": 1,
             "fixed_points": [
                 {
-                    "method": "All"
+                    "method": "Left"
+                },
+                {
+                    "method": "Right"
                 }
             ]
+        },
+        {
+            "model_name": "Extreme/arm_thicker.obj",
+            "translation": [
+                0.0,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                0.5,
+                0.0,
+                0.0
+            ],
+            "scale": 1.0,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "bowl/bottle4.obj",
+            "translation": [
+                0.2,
+                1.4,
+                0.1
+            ],
+            "rotation": [
+                3.14,
+                0.0,
+                0.0
+            ],
+            "scale": 0.5,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "sphere1K.obj",
+            "translation": [
+                -0.2,
+                0.8,
+                0.2
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
+        },
+        {
+            "model_name": "sphere63.obj",
+            "translation": [
+                0.1,
+                0.7,
+                0.2
+            ],
+            "scale": 0.2,
+            "shell_type": "Rigid"
         }
     ]
 }

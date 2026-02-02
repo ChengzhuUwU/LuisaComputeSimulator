@@ -177,7 +177,6 @@ class NarrowPhasesDetector
     void compute_contact_energy_from_iter_start_list(Stream&               stream,
                                                      const Buffer<float3>& sa_x,
                                                      const Buffer<float3>& sa_x_step_start,
-                                                     const Buffer<float3>& sa_rest_x,
                                                      const Buffer<float>&  sa_rest_vert_area,
                                                      const Buffer<float>&  sa_rest_face_area,
                                                      const Buffer<uint3>&  sa_faces_right,

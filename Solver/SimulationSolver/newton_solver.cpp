@@ -3288,7 +3288,6 @@ void NewtonSolver::device_compute_contact_energy(luisa::compute::Stream& stream,
     narrow_phase_detector->compute_contact_energy_from_iter_start_list(stream,
                                                                        sim_data->sa_x,
                                                                        sim_data->sa_x_step_start,
-                                                                       mesh_data->sa_rest_x,
                                                                        mesh_data->sa_rest_vert_area,
                                                                        mesh_data->sa_rest_face_area,
                                                                        mesh_data->sa_faces,
@@ -3716,12 +3715,13 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
             LUISA_ERROR("Invalid Toi {}", ccd_toi);
         }
         LUISA_INFO(
-            "  In newton iter {:2}: CCD toi = {:6.5f}, BroadPhase VF/EE = {} / {}, NarrowPhase = {}, assembledTriplet = {}",
+            "  In newton iter {:2}: CCD toi = {:6.5f}, BroadPhase VF/EE = {} / {}, NarrowPhase = {} (Friction = {}), HessTriplet = {}",
             iter,
             ccd_toi,
             host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
             host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
             host_collision_data->narrow_phase_collision_count.front(),
+            host_collision_data->num_pairs_in_first_iter.front(),
             host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
     }
 
