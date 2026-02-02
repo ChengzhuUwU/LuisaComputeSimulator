@@ -602,7 +602,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 {
                     $if(collision_type == 0)
                     {
-                        Float C          = d_hat + thickness - curr_dist;
+                        Float C          = curr_dist - d_hat - thickness;
                         energy_repulsive = 0.5f * stiff * C * C;
                     }
                     $else

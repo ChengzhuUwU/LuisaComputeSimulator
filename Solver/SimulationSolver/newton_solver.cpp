@@ -839,6 +839,10 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             abd_gradients->write(4 * body_idx + 2, alpha * h_2_inv * gradient[2]);
             abd_gradients->write(4 * body_idx + 3, alpha * h_2_inv * gradient[3]);
 
+            // Float3 max_grad     = max(max(gradient[0], gradient[1]), max(gradient[2], gradient[3]));
+            // Float  max_grad_val = alpha * h_2_inv * max(max_grad.x, max(max_grad.y, max_grad.z));
+            // device_log("Body {}, max force = {}", body_idx, -max_grad_val);
+
             abd_hessians->write(16 * body_idx + 0, make_eye3x3(alpha * h_2_inv * mass_matrix[0][0]));
             abd_hessians->write(16 * body_idx + 1, make_eye3x3(alpha * h_2_inv * mass_matrix[1][1]));
             abd_hessians->write(16 * body_idx + 2, make_eye3x3(alpha * h_2_inv * mass_matrix[2][2]));
@@ -3247,6 +3251,32 @@ void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, lu
         device_narrowphase_dcd(stream);
         narrow_phase_detector->download_narrowphase_collision_count(stream);
     }
+
+    // narrow_phase_detector->download_narrowphase_list(stream);
+    // auto&      host_count        = host_collision_data->narrow_phase_collision_count;
+    // auto&      narrow_phase_list = host_collision_data->narrow_phase_list;
+    // const uint num_pairs         = host_count.front();
+    // float      min_dist          = CpuParallel::parallel_for_and_reduce(
+    //     0,
+    //     num_pairs,
+    //     [&](const uint pair_idx)
+    //     {
+    //         const auto& pair    = narrow_phase_list[pair_idx];
+    //         float4      weight  = pair.get_weight();
+    //         uint4       indices = pair.get_indices();
+    //         float3      diff =
+    //             weight[0] * host_sim_data->sa_x[indices[0]] + weight[1] * host_sim_data->sa_x[indices[1]]
+    //             + weight[2] * host_sim_data->sa_x[indices[2]] + weight[3] * host_sim_data->sa_x[indices[3]];
+    //         return length_vec(diff);
+    //     },
+    //     [](float a, float b) { return min_scalar(a, b); },
+    //     std::numeric_limits<float>::max());
+    // LUISA_INFO("    Narrowphase collision pairs: {}, min_dist = {:7.6f}", num_pairs, min_dist);
+    // float max_k1 = std::min_element(host_collision_data->narrow_phase_list.begin(),
+    //                                 host_collision_data->narrow_phase_list.begin() + num_pairs,
+    //                                 [](const auto& a, const auto& b) { return a.get_k1() < b.get_k1(); })
+    //                    ->get_k1();
+    // LUISA_INFO("    Narrowphase collision pairs: {}, max_k1 = {:7.6f}", num_pairs, max_k1);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {

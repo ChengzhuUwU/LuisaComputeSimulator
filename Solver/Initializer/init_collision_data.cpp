@@ -1,5 +1,7 @@
 #include "Initializer/init_collision_data.h"
+#include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/distance.hpp"
+#include "SimulationCore/scene_params.h"
 #include <algorithm>
 
 namespace lcs::Initializer
@@ -172,6 +174,30 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
                                   //              sim_data->sa_contact_active_verts_d_hat[vid],
                                   //              sim_data->sa_contact_active_verts_offset[vid]);
                               });
+
+    // Init stiffness
+    {
+        const float default_stiffness = get_scene_params().stiffness_collision;
+        float       min_dist          = 1e-5f;
+        float       d_hat             = 1e-3f;
+        float       max_k1 = -default_stiffness * ipc::barrier_first_derivative(min_dist, d_hat);
+        float avg_area = std::reduce(mesh_data->sa_rest_vert_area.begin(), mesh_data->sa_rest_vert_area.end())
+                         / static_cast<float>(mesh_data->num_verts);
+        // In contact, we need to multiply contact stiffness by element area, about 5e-5
+        LUISA_INFO("Max force per area can provided by kappa {:1.2e} in d_hat {:1.2e}m and min_dist {:1.2e}m = {:1.2e}N (Multiplied by avgArea {:6.5f} = {}N) ",
+                   default_stiffness,
+                   d_hat,
+                   min_dist,
+                   max_k1,
+                   avg_area,
+                   avg_area * max_k1);
+
+        // const float max_mass = *std::min_element(mesh_data->sa_vert_mass.begin(), mesh_data->sa_vert_mass.end());
+        // const float max_body_mass =
+        //     *std::min_element(mesh_data->sa_body_mass.begin(), mesh_data->sa_body_mass.end());
+        // float h2_inv = 1.0f / (get_scene_params().get_substep_dt() * get_scene_params().get_substep_dt());
+        // float max_delta = max_k1 / (max_body_mass * h2_inv);
+    }
 }
 void upload_collision_buffers(luisa::compute::Device&                      device,
                               luisa::compute::Stream&                      stream,

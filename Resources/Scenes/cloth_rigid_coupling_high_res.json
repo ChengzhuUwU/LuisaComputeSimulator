@@ -12,10 +12,10 @@
             "scale": 1,
             "fixed_points": [
                 {
-                    "method": "Left"
+                    "method": "Front"
                 },
                 {
-                    "method": "Right"
+                    "method": "Back"
                 }
             ]
         },
