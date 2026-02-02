@@ -18,7 +18,7 @@ int main(int argc, char** argv)
     luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
     if (device_names.empty())
     {
-        LUISA_WARNING("No haredware device found.");
+        LUISA_WARNING("No hardware device found.");
         exit(1);
     }
     if (argc >= 2)
