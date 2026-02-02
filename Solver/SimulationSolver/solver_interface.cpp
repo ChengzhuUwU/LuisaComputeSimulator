@@ -600,18 +600,14 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 Float curr_dist = x_k.y - floor_y;
                 $if(curr_dist - thickness < d_hat)
                 {
-                    Float k1 = 0.0f;
-
                     $if(collision_type == 0)
                     {
                         Float C          = d_hat + thickness - curr_dist;
                         energy_repulsive = 0.5f * stiff * C * C;
-                        k1               = stiff * C;
                     }
                     $else
                     {
                         energy_repulsive = stiff * ipc::barrier(curr_dist - thickness, d_hat);
-                        k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
                     };
                 };
 
@@ -619,15 +615,12 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                 Float init_dist = x_0.y - floor_y;
                 $if(init_dist - thickness < d_hat)
                 {
-                    // Float3 dx     = make_float3(0.0f, x_k.y - floor_y, 0.0f);
-                    // Float3 dx0    = make_float3(0.0f, x_0.y - floor_y, 0.0f);
-                    // Float3 rel_dx = dx - dx0;
                     Float3 rel_dx = x_k - x_0;
 
                     Float k1 = 0.0f;
                     $if(collision_type == 0)
                     {
-                        Float C = d_hat + thickness - init_dist;
+                        Float C = init_dist - thickness - d_hat;
                         k1      = stiff * C;
                     }
                     $else

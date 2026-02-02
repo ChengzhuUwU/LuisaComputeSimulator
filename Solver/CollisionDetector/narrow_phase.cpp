@@ -132,7 +132,7 @@ void NarrowPhasesDetector::reset_narrowphase_count(Stream& stream)
 {
     stream << fn_reset_uint(collision_data->narrow_phase_collision_count)
                   .dispatch(collision_data->narrow_phase_collision_count.size());
-    if (get_scene_params().current_nonlinear_iter == 0)  // Friction pairs
+    if (get_scene_params().current_nonlinear_iter != 0)  // Friction pairs
     {
         stream << collision_data->narrow_phase_collision_count.view(0, 1).copy_from(collision_data->num_pairs_in_first_iter);
     }
@@ -1240,7 +1240,7 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
             Float  lambda_mu;
             Float3 rel_dx;
 
-            $if(is_first_iter)  // => Init friction mu
+            $if(is_first_iter)  // In first iteration => Init friction mu
             {
                 // Init friction mu
                 Float d_hat       = get_d_hat(indices[0], indices[2], per_vert_d_hat);
@@ -1253,8 +1253,9 @@ void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const Conta
                 // x_step_start == x_iter_0
                 rel_dx = make_float3(0.0f);
             }
-            $else  // => Update relative dx
+            $else  // In other iterations => Update relative dx
             {
+                // We must use the initial barycentric coordinates to compute relative delta
                 Float3 diff0 = weight[0] * sa_x_step_start.read(indices[0])
                                + weight[1] * sa_x_step_start.read(indices[1])
                                + weight[2] * sa_x_step_start.read(indices[2])
@@ -2744,7 +2745,6 @@ void NarrowPhasesDetector::device_perPair_evaluate_gradient_hessian(luisa::compu
     }
     if (num_pairs != 0)
     {
-
         stream << fn_perPair_assemble_gradient_hessian(
                       get_collision_data(), sa_x, d_hat, thickness, sa_vert_affine_bodies_id, sa_scaled_model_x, prefix_abd, sa_cgB, sa_cgA_diag)
                       .dispatch(num_pairs);
@@ -2871,7 +2871,7 @@ void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const Contact
                 const Float d  = sqrt_scalar(d2);
 
                 Float d_hat     = get_d_hat(indices[0], indices[2], per_vert_d_hat);
-                Float thickness = get_thickness(indices[0], indices[2], per_vert_d_hat);
+                Float thickness = get_thickness(indices[0], indices[2], per_vert_offset);
 
                 $if(d2 < square_scalar(thickness + d_hat))
                 {

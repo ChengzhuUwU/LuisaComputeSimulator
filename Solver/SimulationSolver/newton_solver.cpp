@@ -775,7 +775,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             Float3   gradient = mass * h_2_inv * (x_k - x_tilde);
             Float3x3 hessian  = make_float3x3(1.0f) * mass * h_2_inv;
 
-            $if(sa_is_fixed->read(vid) != 0)
+            // $if(sa_is_fixed->read(vid) != 0)
             {
                 const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
 
@@ -889,8 +889,8 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             Float  area   = sa_rest_vert_area->read(vid);
             Float  stiff  = stiffness * area;
 
+            // Repulsion
             Float curr_dist = x_k.y - floor_y;
-
             $if(curr_dist - thickness < d_hat)
             {
                 Float k1;
@@ -1449,10 +1449,10 @@ void NewtonSolver::host_evaluate_inertia()
 
                                       float    mass     = sa_vert_mass[vid];
                                       float3   gradient = mass * h_2_inv * (x_k - x_tilde);
-                                      float3x3 hessian  = luisa::make_float3x3(1.0f) * mass * h_2_inv;
+                                      float3x3 hessian  = mass * h_2_inv * luisa::float3x3::eye(1.0f);
 
 
-                                      if (sa_q_is_fixed[vid])
+                                      //   if (sa_q_is_fixed[vid])
                                       {
                                           const float stiffness_dirichlet = sa_stiffness_dirichlet[vid];
                                           gradient = stiffness_dirichlet * gradient;
@@ -1663,7 +1663,7 @@ void NewtonSolver::host_evaluate_ground_collision()
             float thickness = sa_contact_active_verts_offset[vid];
             float d_hat     = sa_contact_active_verts_d_hat[vid];
             float curr_dist = x_k.y - floor_y;
-            float init_dist = x_k.y - floor_y;
+            float init_dist = x_0.y - floor_y;
 
             float3 normal = luisa::make_float3(0, 1, 0);
             float  area   = sa_rest_vert_area[vid];
@@ -1672,7 +1672,6 @@ void NewtonSolver::host_evaluate_ground_collision()
             // Repulsion
             if (curr_dist - thickness < d_hat)
             {
-
                 float k1;
                 float k2;
                 if (collision_type == 0)
@@ -3641,7 +3640,7 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
         return toi == 1.0f ? 1.0f : 0.9f * toi;  // 0.9f * toi
     };
 
-    auto compute_energy_interface = [&]()
+    auto compute_energy_interface = [&](const float alpha)
     {
         // stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
         // if (host_sim_data->num_verts_soft != 0)
@@ -3664,10 +3663,14 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
                                             [](double sum, const auto& pair) { return sum + pair.second; });
         if (get_scene_params().print_system_energy)
         {
+            LUISA_INFO("  +----------------------+----------------------+");
+            LUISA_INFO("  | {:<20} | {:>20} |", luisa::format("Energy in step {:4.3f}", alpha), "Value");
+            LUISA_INFO("  +----------------------+----------------------+");
             for (const auto& pair : energy_list)
             {
-                LUISA_INFO("Energy {} = {}", pair.first, pair.second);
+                LUISA_INFO("  | {:<20} | {:>20.10f} |", pair.first, pair.second);
             }
+            LUISA_INFO("  +----------------------+----------------------+");
         }
         for (const auto& pair : energy_list)
         {
@@ -3744,12 +3747,12 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
     if (get_scene_params().use_energy_linesearch)
     {
         device_apply_dq_dx(stream, 0.0f);
-        float prev_state_energy = compute_energy_interface();
+        float prev_state_energy = compute_energy_interface(0.0f);
 
         device_apply_dq_dx(stream, alpha);
 
         // Energy after CCD or just solving Axb
-        auto curr_energy = compute_energy_interface();
+        auto curr_energy = compute_energy_interface(alpha);
         if (is_nan_scalar(curr_energy) || is_inf_scalar(curr_energy))
         {
             LUISA_ERROR("Energy is not valid : {}", curr_energy);
@@ -3784,7 +3787,7 @@ void NewtonSolver::line_search(luisa::compute::Device& device,
 
             device_apply_dq_dx(stream, alpha);
 
-            curr_energy = compute_energy_interface();
+            curr_energy = compute_energy_interface(alpha);
             LUISA_INFO("     Line search {} : alpha = {:6.5f}, energy = {:12.10f}", line_search_count, alpha, curr_energy);
 
             if (alpha < 1e-4)
@@ -4066,8 +4069,6 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
             buffer_download(stream, sim_data->sa_dx, host_sim_data->sa_dx);
             stream << luisa::compute::synchronize();
         }
-
-        // pcg_solver->device_solve(stream, pcg_spmv_interface, compute_energy_interface);
     };
 
     // Upload frame start information
