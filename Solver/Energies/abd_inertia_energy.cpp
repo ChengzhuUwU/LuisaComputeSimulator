@@ -63,6 +63,68 @@ void AbdInertiaEnergy::compile(AsyncCompiler& compiler)
             };
         },
         default_option);
+
+    // gradient/hessian evaluate shader for ABD inertia
+    compiler.compile<1>(
+        _eval_shader,
+        [sa_q_tilde = _sa_q_tilde](Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint,
+                                   Var<BufferView<float3>>                                sa_q,
+                                   Float                                                  substep_dt)
+        {
+            auto& sa_affine_bodies       = constraint.constraint_indices;
+            auto& sa_vert_mass           = constraint.sa_affine_bodies_mass_matrix;
+            auto& sa_stiffness_dirichlet = constraint.sa_stiffness_dirichlet;
+
+            const UInt  body_idx    = dispatch_id().x;
+            const UInt4 affine_body = sa_affine_bodies->read(body_idx);
+
+            const Float h       = substep_dt;
+            const Float h_2_inv = 1.0f / (h * h);
+
+            Float3 delta[4] = {sa_q->read(affine_body[0]) - sa_q_tilde->read(affine_body[0]),
+                               sa_q->read(affine_body[1]) - sa_q_tilde->read(affine_body[1]),
+                               sa_q->read(affine_body[2]) - sa_q_tilde->read(affine_body[2]),
+                               sa_q->read(affine_body[3]) - sa_q_tilde->read(affine_body[3])};
+
+            Float4x4 mass_matrix = sa_vert_mass->read(body_idx);
+            Float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
+
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    gradient[ii] += mass_matrix[ii][jj] * delta[jj];
+                }
+            }
+
+            auto& abd_gradients = constraint.constraint_gradients;
+            auto& abd_hessians  = constraint.constraint_hessians;
+
+            abd_gradients->write(4 * body_idx + 0, h_2_inv * gradient[0]);
+            abd_gradients->write(4 * body_idx + 1, h_2_inv * gradient[1]);
+            abd_gradients->write(4 * body_idx + 2, h_2_inv * gradient[2]);
+            abd_gradients->write(4 * body_idx + 3, h_2_inv * gradient[3]);
+
+            abd_hessians->write(16 * body_idx + 0, h_2_inv * mass_matrix[0][0] * make_float3x3(1.0f));
+            abd_hessians->write(16 * body_idx + 1, h_2_inv * mass_matrix[1][1] * make_float3x3(1.0f));
+            abd_hessians->write(16 * body_idx + 2, h_2_inv * mass_matrix[2][2] * make_float3x3(1.0f));
+            abd_hessians->write(16 * body_idx + 3, h_2_inv * mass_matrix[3][3] * make_float3x3(1.0f));
+
+            uint idx = 4;
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj)
+                    {
+                        abd_hessians->write(body_idx * 16 + idx,
+                                            h_2_inv * mass_matrix[ii][jj] * make_float3x3(1.0f));
+                        idx += 1;
+                    }
+                }
+            }
+        },
+        default_option);
 }
 
 void AbdInertiaEnergy::device_compute_energy(luisa::compute::Stream& stream)
@@ -77,6 +139,15 @@ void AbdInertiaEnergy::device_compute_energy(luisa::compute::Stream& stream,
                                              size_t                                dispatch_count)
 {
     stream << _shader(constraint, sa_q.view(), substep_dt).dispatch(dispatch_count);
+}
+
+void AbdInertiaEnergy::device_evaluate(luisa::compute::Stream& stream,
+                                       const Constitutions::AbdInertia<luisa::compute::Buffer>& constraint,
+                                       const luisa::compute::Buffer<float3>& sa_q,
+                                       float                                 substep_dt,
+                                       size_t                                dispatch_count)
+{
+    stream << _eval_shader(constraint, sa_q.view(), substep_dt).dispatch(dispatch_count);
 }
 
 double AbdInertiaEnergy::host_evaluate(const std::vector<float>& host_energy)

@@ -18,7 +18,7 @@
 #include "luisa/runtime/stream.h"
 #include <Utils/async_compiler.h>
 #include <memory>
-#include "Energies/inertia_energy.h"
+#include "Energies/soft_inertia_energy.h"
 #include "Energies/ground_collision_energy.h"
 #include "Energies/spring_energy.h"
 #include "Energies/stretch_face_energy.h"
@@ -132,7 +132,7 @@ class SolverInterface
 
   protected:
     // Accessors for energy objects for derived solvers
-    InertiaEnergy*         get_inertia_energy() const { return inertia_energy.get(); }
+    SoftInertiaEnergy*     get_inertia_energy() const { return inertia_energy.get(); }
     AbdInertiaEnergy*      get_abd_inertia_energy() const { return abd_inertia_energy.get(); }
     GroundCollisionEnergy* get_ground_collision_energy() const { return ground_collision_energy.get(); }
     SpringEnergy*          get_spring_energy() const { return spring_energy.get(); }
@@ -143,7 +143,7 @@ class SolverInterface
   private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
 
-    std::unique_ptr<InertiaEnergy>         inertia_energy;
+    std::unique_ptr<SoftInertiaEnergy>     inertia_energy;
     std::unique_ptr<AbdInertiaEnergy>      abd_inertia_energy;
     std::unique_ptr<GroundCollisionEnergy> ground_collision_energy;
     std::unique_ptr<SpringEnergy>          spring_energy;

@@ -20,6 +20,11 @@ class BendingEnergy : public Energy
                                  const luisa::compute::Buffer<float3>&                     sa_x,
                                  float                                                     scaling,
                                  size_t                                                    dispatch_count);
+    void   device_evaluate(luisa::compute::Stream&                                   stream,
+                           const Constitutions::BendingEdge<luisa::compute::Buffer>& constraint,
+                           const luisa::compute::Buffer<float3>&                     sa_x,
+                           float                                                     scaling,
+                           size_t                                                    dispatch_count);
     double host_evaluate(const std::vector<float>& host_energy) override;
     // Host-side bending evaluation
     void host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data);
@@ -27,6 +32,7 @@ class BendingEnergy : public Energy
   private:
     luisa::compute::BufferView<float> _sa_system_energy;
     luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>, luisa::compute::BufferView<float3>, float> _shader;
+    luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>, luisa::compute::BufferView<float3>, float> _eval_shader;
 };
 
 }  // namespace lcs

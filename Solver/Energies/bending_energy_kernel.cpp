@@ -47,6 +47,71 @@ void BendingEnergy::compile(AsyncCompiler& compiler)
             };
         },
         default_option);
+
+    // evaluate gradient/hessian shader
+    compiler.compile<1>(
+        _eval_shader,
+        [](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_x, Float scaling)
+        {
+            auto& sa_edges                    = constraint.constraint_indices;
+            auto& sa_bending_edges_rest_angle = constraint.sa_bending_edges_rest_angle;
+            auto& sa_bending_edges_rest_area  = constraint.sa_bending_edges_rest_area;
+            auto& sa_bending_edges_stiffness  = constraint.sa_bending_edges_stiffness;
+            auto& output_gradient_ptr         = constraint.constraint_gradients;
+            auto& output_hessian_ptr          = constraint.constraint_hessians;
+
+            const UInt  eid  = dispatch_id().x;
+            const UInt4 edge = sa_edges->read(eid);
+
+            Float3 vert_pos[4] = {
+                sa_x->read(edge[0]),
+                sa_x->read(edge[1]),
+                sa_x->read(edge[2]),
+                sa_x->read(edge[3]),
+            };
+            Float3 gradients[4] = {
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+            };
+
+            const Float rest_angle = sa_bending_edges_rest_angle->read(eid);
+            const Float angle =
+                BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+            const Float delta_angle = angle - rest_angle;
+
+            const Float area  = sa_bending_edges_rest_area->read(eid);
+            const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
+
+            {
+                output_gradient_ptr->write(eid * 4 + 0, stiff * delta_angle * gradients[0]);
+                output_gradient_ptr->write(eid * 4 + 1, stiff * delta_angle * gradients[1]);
+                output_gradient_ptr->write(eid * 4 + 2, stiff * delta_angle * gradients[2]);
+                output_gradient_ptr->write(eid * 4 + 3, stiff * delta_angle * gradients[3]);
+
+                auto outer = [&](const uint ii, const uint jj) -> Float3x3
+                { return stiff * outer_product(gradients[ii], gradients[jj]); };
+                output_hessian_ptr->write(eid * 16 + 0, outer(0, 0));
+                output_hessian_ptr->write(eid * 16 + 1, outer(1, 1));
+                output_hessian_ptr->write(eid * 16 + 2, outer(2, 2));
+                output_hessian_ptr->write(eid * 16 + 3, outer(3, 3));
+
+                uint idx = 4;
+                for (uint ii = 0; ii < 4; ii++)
+                {
+                    for (uint jj = 0; jj < 4; jj++)
+                    {
+                        if (ii != jj)
+                        {
+                            output_hessian_ptr->write(eid * 16 + idx, outer(ii, jj));
+                            idx += 1;
+                        }
+                    }
+                }
+            }
+        },
+        default_option);
 }
 
 void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream)
@@ -60,6 +125,15 @@ void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream,
                                           size_t                                dispatch_count)
 {
     stream << _shader(constraint, sa_x, scaling).dispatch(dispatch_count);
+}
+
+void BendingEnergy::device_evaluate(luisa::compute::Stream&                                   stream,
+                                    const Constitutions::BendingEdge<luisa::compute::Buffer>& constraint,
+                                    const luisa::compute::Buffer<float3>&                     sa_x,
+                                    float                                                     scaling,
+                                    size_t dispatch_count)
+{
+    stream << _eval_shader(constraint, sa_x.view(), scaling).dispatch(dispatch_count);
 }
 
 double BendingEnergy::host_evaluate(const std::vector<float>& host_energy)

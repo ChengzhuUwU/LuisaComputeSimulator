@@ -18,8 +18,8 @@ void AbdOrthoEnergy::compile(AsyncCompiler& compiler)
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
     compiler.compile<1>(
         _shader,
-        [sa_system_energy = _sa_system_energy, sa_q = _sa_q](
-            Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_q_view)
+        [sa_system_energy = _sa_system_energy,
+         sa_q = _sa_q](Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint)
         {
             using namespace luisa::compute;
             auto& abd_ortho_indices = constraint.constraint_indices;
@@ -33,9 +33,9 @@ void AbdOrthoEnergy::compile(AsyncCompiler& compiler)
             Float energy = 0.0f;
             {
                 Float3x3 A;
-                A[0] = sa_q_view->read(indices[0]);
-                A[1] = sa_q_view->read(indices[1]);
-                A[2] = sa_q_view->read(indices[2]);
+                A[0] = sa_q->read(indices[0]);
+                A[1] = sa_q->read(indices[1]);
+                A[2] = sa_q->read(indices[2]);
                 for (uint ii = 0; ii < 3; ii++)
                 {
                     for (uint jj = 0; jj < 3; jj++)
@@ -57,6 +57,88 @@ void AbdOrthoEnergy::compile(AsyncCompiler& compiler)
             };
         },
         default_option);
+
+    // evaluate orthogonality gradient/hessian shader
+    compiler.compile<1>(
+        _eval_shader,
+        [sa_q = _sa_q](Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint)
+        {
+            auto& abd_indices   = constraint.constraint_indices;
+            auto& abd_gradients = constraint.constraint_gradients;
+            auto& abd_hessians  = constraint.constraint_hessians;
+            auto& abd_volume    = constraint.abd_volume;
+            auto& abd_kappa     = constraint.abd_kappa;
+
+            const UInt body_idx = dispatch_id().x;
+
+            Float3   ortho_gradient[3] = {Zero3};
+            Float3x3 ortho_hessian[6]  = {Zero3x3};
+
+            const Uint3 indices = abd_indices->read(body_idx);
+
+            Float3x3 A = make_float3x3(sa_q->read(indices[0]), sa_q->read(indices[1]), sa_q->read(indices[2]));
+
+            const Float kappa = abd_kappa->read(body_idx);
+            const Float V     = abd_volume->read(body_idx);
+
+            Float stiff = kappa * V;
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                Float3 grad = (-1.0f) * A[ii];
+                for (uint jj = 0; jj < 3; jj++)
+                {
+                    grad += dot_vec(A[ii], A[jj]) * A[jj];
+                }
+                ortho_gradient[ii] += 4.0f * stiff * grad;
+            }
+            uint idx = 0;
+            for (uint ii = 0; ii < 3; ii++)
+            {
+                for (uint jj = ii; jj < 3; jj++)
+                {
+                    Float3x3 hessian = Zero3x3;
+                    if (ii == jj)
+                    {
+                        Float3x3 qiqiT = outer_product(A[ii], A[ii]);
+                        Float3x3 qiTqi = (dot_vec(A[ii], A[ii]) - 1.0f) * Identity3x3;
+                        hessian        = qiqiT + qiTqi;
+                        for (uint kk = 0; kk < 3; kk++)
+                        {
+                            hessian = hessian + outer_product(A[kk], A[kk]);
+                        }
+                    }
+                    else
+                    {
+                        hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
+                    }
+                    ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
+                    idx += 1;
+                }
+            }
+
+            auto write_to_grad = [&](const uint i)
+            { abd_gradients->write(3 * body_idx + i, ortho_gradient[i]); };
+            auto write_to_hess = [&](const uint i, const uint j, const bool use_transpose)
+            {
+                Float3x3 ortho_hess = use_transpose ? transpose(ortho_hessian[j]) : ortho_hessian[j];
+                abd_hessians->write(9 * body_idx + i, ortho_hess);
+            };
+
+            write_to_grad(0);
+            write_to_grad(1);
+            write_to_grad(2);
+
+            write_to_hess(0, 0, false);
+            write_to_hess(1, 3, false);
+            write_to_hess(2, 5, false);
+            write_to_hess(3, 1, false);
+            write_to_hess(4, 2, false);
+            write_to_hess(5, 1, true);
+            write_to_hess(6, 4, false);
+            write_to_hess(7, 2, true);
+            write_to_hess(8, 4, true);
+        },
+        default_option);
 }
 
 void AbdOrthoEnergy::device_compute_energy(luisa::compute::Stream& stream)
@@ -69,7 +151,15 @@ void AbdOrthoEnergy::device_compute_energy(luisa::compute::Stream& stream,
                                            const luisa::compute::Buffer<float3>& sa_q,
                                            size_t                                dispatch_count)
 {
-    stream << _shader(constraint, sa_q.view()).dispatch(dispatch_count);
+    stream << _shader(constraint).dispatch(dispatch_count);
+}
+
+void AbdOrthoEnergy::device_evaluate(luisa::compute::Stream& stream,
+                                     const Constitutions::AbdOrthogonality<luisa::compute::Buffer>& constraint,
+                                     const luisa::compute::Buffer<float3>& sa_q,
+                                     size_t                                dispatch_count)
+{
+    stream << _eval_shader(constraint).dispatch(dispatch_count);
 }
 
 double AbdOrthoEnergy::host_evaluate(const std::vector<float>& host_energy)

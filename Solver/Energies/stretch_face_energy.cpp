@@ -49,6 +49,56 @@ void StretchFaceEnergy::compile(AsyncCompiler& compiler)
             };
         },
         default_option);
+
+    // gradient/hessian evaluate shader
+    compiler.compile<1>(
+        _eval_shader,
+        [](Var<Constitutions::StretchFace<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_x)
+        {
+            auto& sa_faces                   = constraint.constraint_indices;
+            auto& sa_stretch_faces_Dm_inv    = constraint.sa_stretch_faces_Dm_inv;
+            auto& sa_stretch_faces_rest_area = constraint.sa_stretch_faces_rest_area;
+            auto& sa_stretch_faces_mu_lambda = constraint.sa_stretch_faces_mu_lambda;
+            auto& output_gradient_ptr        = constraint.constraint_gradients;
+            auto& output_hessian_ptr         = constraint.constraint_hessians;
+
+            const UInt  fid  = dispatch_id().x;
+            const UInt3 face = sa_faces->read(fid);
+
+            Float3   vert_pos[3] = {sa_x->read(face[0]), sa_x->read(face[1]), sa_x->read(face[2])};
+            Float3x3 gradients;
+            Float9x9 hessians;
+
+            Float2x2 Dm_inv = sa_stretch_faces_Dm_inv->read(fid);
+            Float    area   = sa_stretch_faces_rest_area->read(fid);
+
+            Float2 mu_lambda    = sa_stretch_faces_mu_lambda->read(fid);
+            Float  mu_cloth     = mu_lambda[0];
+            Float  lambda_cloth = mu_lambda[1];
+
+            StretchEnergy::compute_gradient_hessian(
+                vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
+
+            // Output
+            {
+                output_gradient_ptr->write(fid * 3 + 0, gradients[0]);
+                output_gradient_ptr->write(fid * 3 + 1, gradients[1]);
+                output_gradient_ptr->write(fid * 3 + 2, gradients[2]);
+            }
+            {
+                output_hessian_ptr->write(fid * 9 + 0, hessians->block(0, 0));
+                output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 1));
+                output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 2));
+
+                output_hessian_ptr->write(fid * 9 + 3, hessians->block(1, 0));
+                output_hessian_ptr->write(fid * 9 + 4, hessians->block(2, 0));
+                output_hessian_ptr->write(fid * 9 + 5, hessians->block(0, 1));
+                output_hessian_ptr->write(fid * 9 + 6, hessians->block(2, 1));
+                output_hessian_ptr->write(fid * 9 + 7, hessians->block(0, 2));
+                output_hessian_ptr->write(fid * 9 + 8, hessians->block(1, 2));
+            }
+        },
+        default_option);
 }
 
 void StretchFaceEnergy::device_compute_energy(luisa::compute::Stream& stream)
@@ -61,6 +111,14 @@ void StretchFaceEnergy::device_compute_energy(luisa::compute::Stream& stream,
                                               size_t                                dispatch_count)
 {
     stream << _shader(constraint, sa_x).dispatch(dispatch_count);
+}
+
+void StretchFaceEnergy::device_evaluate(luisa::compute::Stream& stream,
+                                        const Constitutions::StretchFace<luisa::compute::Buffer>& constraint,
+                                        const luisa::compute::Buffer<float3>& sa_x,
+                                        size_t                                dispatch_count)
+{
+    stream << _eval_shader(constraint, sa_x.view()).dispatch(dispatch_count);
 }
 
 double StretchFaceEnergy::host_evaluate(const std::vector<float>& host_energy)

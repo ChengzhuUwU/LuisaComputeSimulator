@@ -1,4 +1,4 @@
-#include "inertia_energy.h"
+#include "soft_inertia_energy.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
@@ -8,13 +8,13 @@ using namespace luisa::compute;
 
 namespace lcs
 {
-InertiaEnergy::InertiaEnergy(BufferView<float3> sa_q_tilde_view, BufferView<float> sa_system_energy_view) noexcept
+SoftInertiaEnergy::SoftInertiaEnergy(BufferView<float3> sa_q_tilde_view, BufferView<float> sa_system_energy_view) noexcept
     : _sa_q_tilde_view(sa_q_tilde_view)
     , _sa_system_energy_view(sa_system_energy_view)
 {
 }
 
-void InertiaEnergy::compile(AsyncCompiler& compiler)
+void SoftInertiaEnergy::compile(AsyncCompiler& compiler)
 {
     luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
     compiler.compile<1>(
@@ -49,29 +49,74 @@ void InertiaEnergy::compile(AsyncCompiler& compiler)
             };
         },
         default_option);
+
+    // gradient/hessian evaluate shader (soft inertia)
+    compiler.compile<1>(
+        _eval_shader,
+        [sa_q_tilde = _sa_q_tilde_view](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> contraint,
+                                        Var<BufferView<float3>> sa_q,
+                                        Float                   substep_dt)
+        {
+            auto& sa_vert_mass           = contraint.sa_soft_vert_mass;
+            auto& sa_stiffness_dirichlet = contraint.sa_stiffness_dirichlet;
+            auto& output_gradient        = contraint.constraint_gradients;
+            auto& output_hessian         = contraint.constraint_hessians;
+
+            const UInt  vid     = dispatch_id().x;
+            const Float h       = substep_dt;
+            const Float h_2_inv = 1.0f / (h * h);
+
+            Float3 x_k     = sa_q->read(vid);
+            Float3 x_tilde = sa_q_tilde->read(vid);
+            Float  mass    = sa_vert_mass->read(vid);
+
+            Float3   gradient = mass * h_2_inv * (x_k - x_tilde);
+            Float3x3 hessian  = make_float3x3(1.0f) * mass * h_2_inv;
+
+            {
+                const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
+
+                gradient = stiffness_dirichlet * gradient;
+                hessian  = stiffness_dirichlet * hessian;
+            };
+
+            output_gradient->write(vid, gradient);
+            output_hessian->write(vid, hessian);
+        },
+        default_option);
 }
 
-void InertiaEnergy::device_compute_energy(luisa::compute::Stream& stream)
+void SoftInertiaEnergy::device_compute_energy(luisa::compute::Stream& stream)
 {
     // This class does not know which constitution to dispatch; caller should use the stored _shader directly.
     // Left intentionally empty — caller will dispatch using shader member exposed via friend or directly if needed.
 }
 
-void InertiaEnergy::device_compute_energy(luisa::compute::Stream& stream,
-                                          const Constitutions::SoftInertia<luisa::compute::Buffer>& constraint,
-                                          const luisa::compute::Buffer<float3>& sa_q,
-                                          float                                 substep_dt,
-                                          size_t                                dispatch_count)
+void SoftInertiaEnergy::device_compute_energy(luisa::compute::Stream& stream,
+                                              const Constitutions::SoftInertia<luisa::compute::Buffer>& constraint,
+                                              const luisa::compute::Buffer<float3>& sa_q,
+                                              float                                 substep_dt,
+                                              size_t                                dispatch_count)
 {
     stream << _shader(constraint, sa_q.view(), substep_dt).dispatch(dispatch_count);
 }
 
-double InertiaEnergy::host_evaluate(const std::vector<float>& host_energy)
+void SoftInertiaEnergy::device_evaluate(luisa::compute::Stream& stream,
+                                        const Constitutions::SoftInertia<luisa::compute::Buffer>& constraint,
+                                        const luisa::compute::Buffer<float3>& sa_q,
+                                        float                                 substep_dt,
+                                        size_t                                dispatch_count)
+{
+    stream << _eval_shader(constraint, sa_q.view(), substep_dt).dispatch(dispatch_count);
+}
+
+double SoftInertiaEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_inertia];
 }
 
-void InertiaEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data)
+void SoftInertiaEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data,
+                                      lcs::MeshData<std::vector>&       host_mesh_data)
 {
     auto& inertia_data = host_sim_data.get_soft_inertia_data();
     if (inertia_data.is_valid())

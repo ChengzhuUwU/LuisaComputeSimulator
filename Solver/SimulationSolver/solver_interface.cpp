@@ -7,7 +7,7 @@
 #include "Energies/abd_ortho_energy.h"
 #include "Energies/bending_energy_kernel.h"
 #include "Energies/ground_collision_energy.h"
-#include "Energies/inertia_energy.h"
+#include "Energies/soft_inertia_energy.h"
 #include "Energies/spring_energy.h"
 #include "Energies/stretch_face_energy.h"
 #include "Energy/bending_energy.h"
@@ -519,7 +519,7 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
 
     // instantiate energy objects and let them register their shaders
     inertia_energy =
-        std::make_unique<InertiaEnergy>(sim_data->sa_q_tilde.view(), sim_data->sa_system_energy.view());
+        std::make_unique<SoftInertiaEnergy>(sim_data->sa_q_tilde.view(), sim_data->sa_system_energy.view());
     inertia_energy->compile(compiler);
 
     ground_collision_energy =
@@ -529,6 +529,9 @@ void SolverInterface::compile_compute_energy(AsyncCompiler& compiler)
                                                 sim_data->sa_contact_active_verts_d_hat.view(),
                                                 sim_data->sa_contact_active_verts_friction_coeff.view(),
                                                 sim_data->sa_x_step_start.view(),
+                                                sim_data->sa_x.view(),
+                                                sim_data->sa_scaled_model_x.view(),
+                                                sim_data->sa_x_to_dof_map.view(),
                                                 sim_data->sa_system_energy.view());
     ground_collision_energy->compile(compiler);
 
@@ -618,16 +621,6 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     auto& host_energy = host_sim_data->sa_system_energy;
     stream << sim_data->sa_system_energy.view(0, 8).copy_to(host_energy.data()) << luisa::compute::synchronize();
 
-    // float total_energy = std::reduce(&host_energy[0], &host_energy[8], 0.0f);
-    // if (get_scene_params().print_system_energy)
-    // {
-    //     LUISA_INFO("    Energy {} = inertia {} + ground {} + stretch {} + bending {}",
-    //                total_energy,
-    //                host_energy[offset_inertia],
-    //                host_energy[offset_ground_collision],
-    //                host_energy[offset_stretch_spring],
-    //                host_energy[offset_bending]);
-    // }
     energy_list.insert(std::make_pair("Inertia Soft Body", host_energy[offset_inertia]));
     energy_list.insert(std::make_pair("Inertia Rigid Body", host_energy[offset_abd_inertia]));
     energy_list.insert(std::make_pair("Ground Collision", host_energy[offset_ground_collision]));
@@ -636,12 +629,6 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     energy_list.insert(std::make_pair("Stretch Face", host_energy[offset_stretch_face]));
     energy_list.insert(std::make_pair("Cloth Bending", host_energy[offset_bending]));
     energy_list.insert(std::make_pair("ABD Orthogonality", host_energy[offset_abd_ortho]));
-    // auto total_energy = std::accumulate(energy_list.begin(),
-    //                                     energy_list.end(),
-    //                                     0.0,
-    //                                     [](double sum, const auto& pair) { return sum + pair.second; });
-    // return total_energy;
-    // return energy_inertia + energy_goundcollision + energy_spring;
 };
 
 }  // namespace lcs

@@ -15,6 +15,9 @@ GroundCollisionEnergy::GroundCollisionEnergy(BufferView<float>  sa_rest_vert_are
                                              BufferView<float>  sa_contact_active_verts_d_hat,
                                              BufferView<float>  sa_contact_active_verts_friction_coeff,
                                              BufferView<float3> sa_x_step_start,
+                                             BufferView<float3> sa_x,
+                                             BufferView<float3> sa_scaled_model_x,
+                                             BufferView<uint>   sa_x_to_dof_map,
                                              BufferView<float>  sa_system_energy) noexcept
     : _sa_rest_vert_area(sa_rest_vert_area)
     , _sa_is_fixed(sa_is_fixed)
@@ -22,8 +25,35 @@ GroundCollisionEnergy::GroundCollisionEnergy(BufferView<float>  sa_rest_vert_are
     , _sa_contact_active_verts_d_hat(sa_contact_active_verts_d_hat)
     , _sa_contact_active_verts_friction_coeff(sa_contact_active_verts_friction_coeff)
     , _sa_x_step_start(sa_x_step_start)
+    , _sa_x(sa_x)
+    , _sa_scaled_model_x(sa_scaled_model_x)
+    , _sa_x_to_dof_map(sa_x_to_dof_map)
     , _sa_system_energy(sa_system_energy)
 {
+}
+
+void GroundCollisionEnergy::device_compute_energy(luisa::compute::Stream& stream,
+                                                  const Constitutions::SoftInertia<luisa::compute::Buffer>& constraint,
+                                                  float  floor_y,
+                                                  bool   use_ground_collision,
+                                                  float  stiffness,
+                                                  uint   collision_type,
+                                                  size_t dispatch_count)
+{
+    stream << _eval_soft_shader(constraint, floor_y, use_ground_collision, stiffness, collision_type).dispatch(dispatch_count);
+}
+
+void GroundCollisionEnergy::device_compute_energy(luisa::compute::Stream& stream,
+                                                  const Constitutions::AbdInertia<luisa::compute::Buffer>& constraint,
+                                                  float  floor_y,
+                                                  bool   use_ground_collision,
+                                                  float  stiffness,
+                                                  uint   vid_start,
+                                                  uint   collision_type,
+                                                  size_t dispatch_count)
+{
+    stream << _eval_abd_shader(constraint, floor_y, use_ground_collision, stiffness, vid_start, collision_type)
+                  .dispatch(dispatch_count);
 }
 
 void GroundCollisionEnergy::compile(AsyncCompiler& compiler)
@@ -106,6 +136,162 @@ void GroundCollisionEnergy::compile(AsyncCompiler& compiler)
                 sa_system_energy->atomic(offset_ground_collision).fetch_add(energy.x);
                 sa_system_energy->atomic(offset_ground_friction).fetch_add(energy.y);
             };
+        },
+        default_option);
+
+    auto calculate_per_vert_grad_hess_template =
+        [sa_x                           = _sa_x,
+         sa_x_step_start                = _sa_x_step_start,
+         sa_rest_vert_area              = _sa_rest_vert_area,
+         sa_is_fixed                    = _sa_is_fixed,
+         sa_contact_active_verts_offset = _sa_contact_active_verts_offset,
+         sa_contact_active_verts_d_hat  = _sa_contact_active_verts_d_hat,
+         sa_contact_active_verts_friction_coeff =
+             _sa_contact_active_verts_friction_coeff](const Uint  vid,
+                                                      Float3&     out_gradient,
+                                                      Float3x3&   out_hessian,
+                                                      const Float floor_y,
+                                                      const Bool  use_ground_collision,
+                                                      const Float stiffness,
+                                                      const Uint  collision_type)
+    {
+        Bool collide = false;
+        $if(!sa_is_fixed->read(vid) & use_ground_collision)
+        {
+            Float3 x_k = sa_x->read(vid);
+            Float3 x_0 = sa_x_step_start->read(vid);
+
+            Float d_hat     = sa_contact_active_verts_d_hat->read(vid);
+            Float thickness = sa_contact_active_verts_offset->read(vid);
+
+            float3 normal = luisa::make_float3(0, 1, 0);
+            Float  area   = sa_rest_vert_area->read(vid);
+            Float  stiff  = stiffness * area;
+
+            // Repulsion
+            Float curr_dist = x_k.y - floor_y;
+            $if(curr_dist - thickness < d_hat)
+            {
+                Float k1;
+                Float k2;
+                $if(collision_type == 0)
+                {
+                    k1 = stiff * (curr_dist - thickness - d_hat);
+                    k2 = stiff;
+                }
+                $else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
+                    k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
+                };
+
+                out_gradient = k1 * normal;
+                out_hessian  = k2 * outer_product(normal, normal);
+                collide      = true;
+            };
+
+            // Friction
+            Float init_dist = x_0.y - floor_y;
+            $if(init_dist - thickness < d_hat)
+            {
+                Float k1;
+                $if(collision_type == 0)
+                {
+                    k1 = stiff * (init_dist - thickness - d_hat);
+                }
+                $else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+                };
+
+                Float3 rel_dx       = x_k - x_0;
+                Float  friction_mu  = sa_contact_active_verts_friction_coeff->read(vid);
+                Float  friction_eps = Friction::ando_barrier::friction_eps;
+                auto   lambda_mu    = -k1 * friction_mu;
+                auto   friction_grad_hess =
+                    Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+                out_gradient += friction_grad_hess.first;
+                out_hessian += friction_grad_hess.second;
+                collide = true;
+            };
+        };
+        return collide;
+    };
+
+    compiler.compile<1>(
+        _eval_soft_shader,
+        [calculate_per_vert_grad_hess_template](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> contraint,
+                                                Float floor_y,
+                                                Bool  use_ground_collision,
+                                                Float stiffness,
+                                                Uint  collision_type)
+        {
+            auto& output_gradient = contraint.constraint_gradients;
+            auto& output_hessian  = contraint.constraint_hessians;
+
+            const UInt vid = dispatch_id().x;
+
+            Float3   grad    = make_float3(0.0f);
+            Float3x3 hess    = make_float3x3(0.0f);
+            Bool     collide = calculate_per_vert_grad_hess_template(
+                vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
+
+            $if(collide)
+            {
+                BufferOp::buffer_add(output_gradient, vid, grad);
+                BufferOp::buffer_add(output_hessian, vid, hess);
+            };
+        },
+        default_option);
+
+    compiler.compile<1>(
+        _eval_abd_shader,
+        [sa_scaled_model_x = _sa_scaled_model_x,
+         sa_x_to_dof_map   = _sa_x_to_dof_map,
+         calculate_per_vert_grad_hess_template](Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint,
+                                                Float floor_y,
+                                                Bool  use_ground_collision,
+                                                Float stiffness,
+                                                Uint  vid_start,
+                                                Uint  collision_type)
+        {
+            auto& abd_gradients = constraint.constraint_gradients;
+            auto& abd_hessians  = constraint.constraint_hessians;
+
+            const UInt vid = vid_start + dispatch_id().x;
+
+            Float3   grad    = make_float3(0.0f);
+            Float3x3 hess    = make_float3x3(0.0f);
+            Bool     collide = calculate_per_vert_grad_hess_template(
+                vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
+
+            const Uint dof_info = sa_x_to_dof_map->read(vid);
+            const Uint dof_idx  = dof_info & Attributions::RIGID_BODY_MASK;
+            const Uint body_idx = (dof_idx - vid_start) / 4;
+
+            const Float4 weight = make_float4(1.0f, sa_scaled_model_x->read(vid));
+
+            uint idx = 4;
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                Float  wi          = weight[ii];
+                Float3 affine_grad = wi * grad;
+                BufferOp::atomic_buffer_add(abd_gradients, 4 * body_idx + ii, affine_grad);
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    Float    wj          = weight[jj];
+                    Float3x3 affine_hess = wi * wj * hess;
+                    if (ii == jj)
+                    {
+                        BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + ii, affine_hess);
+                    }
+                    else
+                    {
+                        BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + idx, affine_hess);
+                        idx += 1;
+                    }
+                }
+            }
         },
         default_option);
 }
