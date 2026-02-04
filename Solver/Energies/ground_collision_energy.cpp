@@ -1,6 +1,9 @@
 #include "ground_collision_energy.h"
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/friction_kernel.hpp"
+#include "SimulationCore/scene_params.h"
+#include "Utils/buffer_adder.h"
+#include "Utils/cpu_parallel.h"
 
 using namespace luisa::compute;
 
@@ -126,6 +129,158 @@ void GroundCollisionEnergy::device_compute_energy(luisa::compute::Stream&       
 double GroundCollisionEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_ground_collision];
+}
+
+void GroundCollisionEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data,
+                                          lcs::MeshData<std::vector>&       host_mesh_data)
+{
+    if (!get_scene_params().use_floor)
+        return;
+
+    auto calculate_per_vert_grad_hess_template =
+        [sa_x                           = std::span(host_sim_data.sa_x),
+         sa_x_step_start                = std::span(host_sim_data.sa_x_step_start),
+         sa_contact_active_verts_offset = std::span(host_sim_data.sa_contact_active_verts_offset),
+         sa_contact_active_verts_d_hat  = std::span(host_sim_data.sa_contact_active_verts_d_hat),
+         sa_contact_active_verts_friction_coeff = std::span(host_sim_data.sa_contact_active_verts_friction_coeff),
+         sa_is_fixed       = std::span(host_mesh_data.sa_is_fixed),
+         sa_rest_vert_area = std::span(host_mesh_data.sa_rest_vert_area),
+         floor_y           = get_scene_params().floor.y,
+         stiffness_ground  = get_scene_params().stiffness_collision,
+         collision_type    = get_scene_params().contact_energy_type](
+            const uint vid, float3& out_gradient, float3x3& out_hessian) -> bool
+    {
+        bool collide = false;
+        if (!sa_is_fixed[vid] && get_scene_params().use_floor)
+        {
+            float3 x_k = sa_x[vid];
+            float3 x_0 = sa_x_step_start[vid];
+
+            float thickness = sa_contact_active_verts_offset[vid];
+            float d_hat     = sa_contact_active_verts_d_hat[vid];
+            float curr_dist = x_k.y - floor_y;
+            float init_dist = x_0.y - floor_y;
+
+            float3 normal = luisa::make_float3(0, 1, 0);
+            float  area   = sa_rest_vert_area[vid];
+            float  stiff  = stiffness_ground * area;
+
+            if (curr_dist - thickness < d_hat)
+            {
+                float k1;
+                float k2;
+                if (collision_type == 0)
+                {
+                    k1 = stiff * (curr_dist - thickness - d_hat);
+                    k2 = stiff;
+                }
+                else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
+                    k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
+                }
+                if (luisa::isnan(k1 * k2) || luisa::isinf(k1 * k2))
+                {
+                    LUISA_ERROR("NaN detected in ground collision computation");
+                }
+                out_gradient = k1 * normal;
+                out_hessian  = k2 * outer_product(normal, normal);
+                collide      = true;
+            }
+            if (init_dist - thickness < d_hat)
+            {
+                float k1;
+                if (collision_type == 0)
+                {
+                    k1 = stiff * (init_dist - thickness - d_hat);
+                }
+                else
+                {
+                    k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+                }
+                float3 rel_dx       = x_k - x_0;
+                float  friction_mu  = sa_contact_active_verts_friction_coeff[vid];
+                float  friction_eps = Friction::ando_barrier::friction_eps;
+                auto   lambda_mu    = -k1 * friction_mu;
+                auto   friction_grad_hess =
+                    Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+                out_gradient += friction_grad_hess.first;
+                out_hessian = out_hessian + friction_grad_hess.second;
+                collide     = true;
+            }
+        }
+        return collide;
+    };
+
+    auto& inertia_data = host_sim_data.get_soft_inertia_data();
+    if (inertia_data.is_valid())
+    {
+        CpuParallel::parallel_for(0,
+                                  inertia_data.get_num_indices(),
+                                  [output_gradient = std::span(inertia_data.constraint_gradients),
+                                   output_hessian  = std::span(inertia_data.constraint_hessians),
+                                   &calculate_per_vert_grad_hess_template](const uint vid)
+                                  {
+                                      float3   gradient = Zero3;
+                                      float3x3 hessian  = Zero3x3;
+                                      bool collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
+                                      if (collide)
+                                      {
+                                          BufferOp::buffer_add(output_gradient, vid, gradient);
+                                          BufferOp::buffer_add(output_hessian, vid, hessian);
+                                      }
+                                  });
+    }
+
+    const uint prefix   = host_sim_data.num_verts_soft;
+    auto&      abd_data = host_sim_data.get_abd_inertia_data();
+
+    if (abd_data.is_valid())
+    {
+        CpuParallel::parallel_for(
+            0,
+            host_sim_data.num_verts_rigid,
+            [output_gradient   = std::span(abd_data.constraint_gradients),
+             output_hessian    = std::span(abd_data.constraint_hessians),
+             sa_scaled_model_x = std::span(host_sim_data.sa_scaled_model_x),
+             sa_x_to_dof_map   = std::span(host_sim_data.sa_x_to_dof_map),
+             prefix_vid        = host_sim_data.num_verts_soft,
+             &calculate_per_vert_grad_hess_template](const uint index)
+            {
+                float3     gradient = Zero3;
+                float3x3   hessian  = Zero3x3;
+                const uint vid      = prefix_vid + index;
+                bool       collide  = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
+                if (collide)
+                {
+                    const uint dof_idx  = sa_x_to_dof_map[vid] & Attributions::RIGID_BODY_MASK;
+                    const uint body_idx = (dof_idx - prefix_vid) / 4;
+                    float3     model_x  = sa_scaled_model_x[vid];
+                    float4     weight   = luisa::make_float4(1.0f, model_x);
+                    uint       idx      = 4;
+                    for (uint ii = 0; ii < 4; ii++)
+                    {
+                        float  wi          = weight[ii];
+                        float3 affine_grad = wi * gradient;
+                        CpuParallel::spin_atomic<float3>::fetch_add(output_gradient[4 * body_idx + ii], affine_grad);
+                        for (uint jj = 0; jj < 4; jj++)
+                        {
+                            float    wj          = weight[jj];
+                            float3x3 affine_hess = wi * wj * hessian;
+                            if (ii == jj)
+                            {
+                                BufferOp::atomic_buffer_add(output_hessian, 16 * body_idx + ii, affine_hess);
+                            }
+                            else
+                            {
+                                BufferOp::atomic_buffer_add(output_hessian, 16 * body_idx + idx, affine_hess);
+                                idx += 1;
+                            }
+                        }
+                    }
+                }
+            });
+    }
 }
 
 }  // namespace lcs

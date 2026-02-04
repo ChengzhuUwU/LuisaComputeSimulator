@@ -1,4 +1,6 @@
 #include "abd_ortho_energy.h"
+#include "SimulationCore/scene_params.h"
+#include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
 using namespace luisa::compute;
@@ -73,6 +75,91 @@ void AbdOrthoEnergy::device_compute_energy(luisa::compute::Stream& stream,
 double AbdOrthoEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_abd_ortho];
+}
+
+void AbdOrthoEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data,
+                                   lcs::MeshData<std::vector>&       host_mesh_data)
+{
+    auto& abd_data = host_sim_data.get_abd_orthogonality_data();
+
+    if (abd_data.is_valid())
+    {
+        CpuParallel::parallel_for(
+            0,
+            abd_data.get_num_indices(),
+            [abd_q                   = std::span(host_sim_data.sa_q),
+             abd_gradients           = std::span(abd_data.constraint_gradients),
+             abd_hessians            = std::span(abd_data.constraint_hessians),
+             sa_affine_bodies_kappa  = std::span(abd_data.abd_kappa),
+             sa_affine_bodies_volume = std::span(abd_data.abd_volume),
+             abd_ortho_indices       = std::span(abd_data.constraint_indices)](const uint body_idx)
+            {
+                float3   ortho_gradient[3] = {Zero3};
+                float3x3 ortho_hessian[6]  = {Zero3x3};
+
+                const float substep_dt = get_scene_params().get_substep_dt();
+                const float h          = substep_dt;
+                const float h_2_inv    = 1.f / (h * h);
+
+                const uint3 indices = abd_ortho_indices[body_idx];
+                float3x3 A = luisa::make_float3x3(abd_q[indices[0]], abd_q[indices[1]], abd_q[indices[2]]);
+
+                const float kappa = sa_affine_bodies_kappa[body_idx];
+                const float V     = sa_affine_bodies_volume[body_idx];
+
+                float stiff = kappa * V;
+                for (uint ii = 0; ii < 3; ii++)
+                {
+                    float3 grad = (-1.0f) * A[ii];
+                    for (uint jj = 0; jj < 3; jj++)
+                    {
+                        grad += dot_vec(A[ii], A[jj]) * A[jj];
+                    }
+                    ortho_gradient[ii] += 4.0f * stiff * grad;
+                }
+                uint idx = 0;
+                for (uint ii = 0; ii < 3; ii++)
+                {
+                    for (uint jj = ii; jj < 3; jj++)
+                    {
+                        float3x3 hessian = Zero3x3;
+                        if (ii == jj)
+                        {
+                            float3x3 qiqiT = outer_product(A[ii], A[ii]);
+                            float3x3 qiTqi = (dot_vec(A[ii], A[ii]) - 1.0f) * Identity3x3;
+                            hessian        = qiqiT + qiTqi;
+                            for (uint kk = 0; kk < 3; kk++)
+                            {
+                                hessian = hessian + outer_product(A[kk], A[kk]);
+                            }
+                        }
+                        else
+                        {
+                            hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
+                        }
+                        ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
+                        idx += 1;
+                    }
+                }
+
+                auto* body_grad_ptr = &abd_gradients[3 * body_idx];
+                auto* body_hess_ptr = &abd_hessians[9 * body_idx];
+                body_grad_ptr[0]    = ortho_gradient[0];
+                body_grad_ptr[1]    = ortho_gradient[1];
+                body_grad_ptr[2]    = ortho_gradient[2];
+
+                body_hess_ptr[0] = ortho_hessian[0];
+                body_hess_ptr[1] = ortho_hessian[3];
+                body_hess_ptr[2] = ortho_hessian[5];
+                body_hess_ptr[3] = ortho_hessian[1];
+                body_hess_ptr[4] = ortho_hessian[2];
+                body_hess_ptr[5] = transpose(ortho_hessian[1]);
+                body_hess_ptr[6] = ortho_hessian[4];
+                body_hess_ptr[7] = transpose(ortho_hessian[2]);
+                body_hess_ptr[8] = transpose(ortho_hessian[4]);
+            },
+            32);
+    }
 }
 
 }  // namespace lcs

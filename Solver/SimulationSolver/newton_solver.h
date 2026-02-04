@@ -75,15 +75,8 @@ class NewtonSolver : public lcs::SolverInterface
 
     void host_predict_position();
     void host_update_velocity();
-    void host_evaluate_inertia();
-    void host_evaluate_orthogonality();
-    void host_evaluate_ground_collision();
-    void host_evaluate_dirichlet();
     void host_reset_off_diag();
     void host_reset_cgB_cgX_diagA();
-    void host_evaluete_stretch_spring();
-    void host_evaluete_stretch_face();
-    void host_evaluete_bending();
     void host_material_energy_assembly();
     void host_solve_eigen(luisa::compute::Stream& stream);
     void host_SpMV(luisa::compute::Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);

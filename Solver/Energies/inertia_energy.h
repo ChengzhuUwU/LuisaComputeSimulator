@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SimulationCore/base_mesh.h"
 #pragma once
 
 #include "Energies/energy.h"
@@ -22,6 +23,8 @@ class InertiaEnergy : public Energy
                                  float                                                     substep_dt,
                                  size_t                                                    dispatch_count);
     double host_evaluate(const std::vector<float>& host_energy) override;
+    // Host-side evaluation: compute per-constraint gradients and hessians on CPU
+    void host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data);
 
   private:
     luisa::compute::BufferView<float3> _sa_q_tilde_view;

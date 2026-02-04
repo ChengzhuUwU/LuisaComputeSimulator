@@ -2,6 +2,7 @@
 
 #include <luisa/dsl/builtin.h>
 #include "Energies/energy_offsets.h"
+#include "SimulationCore/base_mesh.h"
 #include "Utils/reduce_helper.h"
 #pragma once
 
@@ -35,6 +36,8 @@ class GroundCollisionEnergy : public Energy
                                size_t                                dispatch_count);
 
     double host_evaluate(const std::vector<float>& host_energy) override;
+    // Host-side evaluation: compute per-constraint grad/hess for ground collision and friction
+    void host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data);
 
   private:
     luisa::compute::BufferView<float>  _sa_rest_vert_area;

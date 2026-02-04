@@ -1,4 +1,6 @@
 #include "stretch_face_energy.h"
+#include "SimulationCore/base_mesh.h"
+#include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
 using namespace luisa::compute;
@@ -64,6 +66,52 @@ void StretchFaceEnergy::device_compute_energy(luisa::compute::Stream& stream,
 double StretchFaceEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_stretch_face];
+}
+
+void StretchFaceEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data,
+                                      lcs::MeshData<std::vector>&       host_mesh_data)
+{
+    auto& stretch_faces = host_sim_data.get_stretch_face_data();
+
+    CpuParallel::parallel_for(
+        0,
+        stretch_faces.get_num_indices(),
+        [sa_x                       = std::span(host_sim_data.sa_x),
+         sa_faces                   = std::span(stretch_faces.constraint_indices),
+         sa_stretch_faces_rest_area = std::span(stretch_faces.sa_stretch_faces_rest_area),
+         sa_stretch_faces_Dm_inv    = std::span(stretch_faces.sa_stretch_faces_Dm_inv),
+         sa_stretch_faces_mu_lambda = std::span(stretch_faces.sa_stretch_faces_mu_lambda),
+         output_gradient_ptr        = std::span(stretch_faces.constraint_gradients),
+         output_hessian_ptr         = std::span(stretch_faces.constraint_hessians)](const uint fid)
+        {
+            uint3 face = sa_faces[fid];
+
+            float3   vert_pos[3] = {sa_x[face[0]], sa_x[face[1]], sa_x[face[2]]};
+            float3x3 gradients;
+            float9x9 hessians;
+            float2x2 Dm_inv = sa_stretch_faces_Dm_inv[fid];
+            float    area   = sa_stretch_faces_rest_area[fid];
+
+            auto [mu_cloth, lambda_cloth] = sa_stretch_faces_mu_lambda[fid];
+
+            StretchEnergy::compute_gradient_hessian(
+                vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
+
+            output_gradient_ptr[fid * 3 + 0] = gradients[0];
+            output_gradient_ptr[fid * 3 + 1] = gradients[1];
+            output_gradient_ptr[fid * 3 + 2] = gradients[2];
+
+            output_hessian_ptr[fid * 9 + 0] = hessians.block(0, 0);
+            output_hessian_ptr[fid * 9 + 1] = hessians.block(1, 1);
+            output_hessian_ptr[fid * 9 + 2] = hessians.block(2, 2);
+
+            output_hessian_ptr[fid * 9 + 3] = hessians.block(1, 0);
+            output_hessian_ptr[fid * 9 + 4] = hessians.block(2, 0);
+            output_hessian_ptr[fid * 9 + 5] = hessians.block(0, 1);
+            output_hessian_ptr[fid * 9 + 6] = hessians.block(2, 1);
+            output_hessian_ptr[fid * 9 + 7] = hessians.block(0, 2);
+            output_hessian_ptr[fid * 9 + 8] = hessians.block(1, 2);
+        });
 }
 
 }  // namespace lcs

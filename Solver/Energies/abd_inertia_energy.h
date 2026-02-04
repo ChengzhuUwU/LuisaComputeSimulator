@@ -2,6 +2,7 @@
 
 #include "Energies/energy.h"
 #include "Energies/energy_offsets.h"
+#include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
 #include <luisa/dsl/builtin.h>
 
@@ -20,6 +21,8 @@ class AbdInertiaEnergy : public Energy
                                  float                                                    substep_dt,
                                  size_t                                                   dispatch_count);
     double host_evaluate(const std::vector<float>& host_energy) override;
+    // Host-side evaluation for ABD inertia
+    void host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data);
 
   private:
     luisa::compute::BufferView<float3> _sa_q_tilde;

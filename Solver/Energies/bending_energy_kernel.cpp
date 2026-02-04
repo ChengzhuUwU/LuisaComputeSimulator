@@ -1,4 +1,6 @@
 #include "bending_energy_kernel.h"
+#include "SimulationCore/scene_params.h"
+#include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
 using namespace luisa::compute;
@@ -63,6 +65,62 @@ void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream,
 double BendingEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_bending];
+}
+
+void BendingEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data)
+{
+    auto& bending_edges = host_sim_data.get_bending_edge_data();
+
+    CpuParallel::parallel_for(
+        0,
+        bending_edges.get_num_indices(),
+        [sa_x                        = std::span(host_sim_data.sa_x),
+         sa_bending_edges            = std::span(bending_edges.constraint_indices),
+         sa_bending_edges_Q          = std::span(bending_edges.sa_bending_edges_Q),
+         sa_bending_edges_rest_angle = std::span(bending_edges.sa_bending_edges_rest_angle),
+         sa_bending_edges_rest_area  = std::span(bending_edges.sa_bending_edges_rest_area),
+         sa_bending_edges_stiffness  = std::span(bending_edges.sa_bending_edges_stiffness),
+         output_gradient_ptr         = std::span(bending_edges.constraint_gradients),
+         output_hessian_ptr          = std::span(bending_edges.constraint_hessians),
+         scaling = get_scene_params().get_bending_stiffness_scaling()](const uint eid)
+        {
+            uint4  edge         = sa_bending_edges[eid];
+            float3 vert_pos[4]  = {sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]]};
+            float3 gradients[4] = {Zero3, Zero3, Zero3, Zero3};
+
+            const float rest_angle = sa_bending_edges_rest_angle[eid];
+            const float angle =
+                BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+            const float delta_angle = angle - rest_angle;
+
+            const float area                 = sa_bending_edges_rest_area[eid];
+            const float stiff                = sa_bending_edges_stiffness[eid] * scaling * area;
+            output_gradient_ptr[eid * 4 + 0] = stiff * delta_angle * gradients[0];
+            output_gradient_ptr[eid * 4 + 1] = stiff * delta_angle * gradients[1];
+            output_gradient_ptr[eid * 4 + 2] = stiff * delta_angle * gradients[2];
+            output_gradient_ptr[eid * 4 + 3] = stiff * delta_angle * gradients[3];
+
+            auto outer = [&gradients, stiff](uint ii, uint jj) -> float3x3
+            { return outer_product(stiff * gradients[ii], gradients[jj]); };
+
+            output_hessian_ptr[eid * 16 + 0] = outer(0, 0);
+            output_hessian_ptr[eid * 16 + 1] = outer(1, 1);
+            output_hessian_ptr[eid * 16 + 2] = outer(2, 2);
+            output_hessian_ptr[eid * 16 + 3] = outer(3, 3);
+
+            uint idx = 4;
+            for (uint ii = 0; ii < 4; ii++)
+            {
+                for (uint jj = 0; jj < 4; jj++)
+                {
+                    if (ii != jj)
+                    {
+                        output_hessian_ptr[eid * 16 + idx] = outer(ii, jj);
+                        idx += 1;
+                    }
+                }
+            }
+        });
 }
 
 }  // namespace lcs

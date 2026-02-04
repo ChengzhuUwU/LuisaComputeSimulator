@@ -1,4 +1,7 @@
 #include "abd_inertia_energy.h"
+#include "SimulationCore/base_mesh.h"
+#include "SimulationCore/scene_params.h"
+#include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
 
 using namespace luisa::compute;
@@ -79,6 +82,77 @@ void AbdInertiaEnergy::device_compute_energy(luisa::compute::Stream& stream,
 double AbdInertiaEnergy::host_evaluate(const std::vector<float>& host_energy)
 {
     return host_energy[offset_abd_inertia];
+}
+
+void AbdInertiaEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data,
+                                     lcs::MeshData<std::vector>& /*host_mesh_data*/)
+{
+    auto& abd_data = host_sim_data.get_abd_inertia_data();
+
+    if (abd_data.is_valid())
+    {
+        CpuParallel::parallel_for(
+            0,
+            abd_data.get_num_indices(),
+            [abd_gradients           = std::span(abd_data.constraint_gradients),
+             abd_hessians            = std::span(abd_data.constraint_hessians),
+             abd_indices             = std::span(abd_data.constraint_indices),
+             abd_mass_matrix         = std::span(abd_data.sa_affine_bodies_mass_matrix),
+             abd_stiffness_dirichlet = std::span(abd_data.sa_stiffness_dirichlet),
+             abd_q                   = std::span(host_sim_data.sa_q),
+             abd_q_tilde             = std::span(host_sim_data.sa_q_tilde)](const uint body_idx)
+            {
+                const float substep_dt = get_scene_params().get_substep_dt();
+                const float h          = substep_dt;
+                const float h_2_inv    = 1.f / (h * h);
+
+                const uint4 indices = abd_indices[body_idx];
+
+                float3   delta_q[4]  = {abd_q[indices[0]] - abd_q_tilde[indices[0]],
+                                        abd_q[indices[1]] - abd_q_tilde[indices[1]],
+                                        abd_q[indices[2]] - abd_q_tilde[indices[2]],
+                                        abd_q[indices[3]] - abd_q_tilde[indices[3]]};
+                float4x4 mass_matrix = abd_mass_matrix[body_idx];
+                float3   gradient[4] = {Zero3, Zero3, Zero3, Zero3};
+
+                // apply dirichlet stiffness if present
+                {
+                    mass_matrix = abd_stiffness_dirichlet[body_idx] * mass_matrix;
+                }
+
+                for (uint ii = 0; ii < 4; ii++)
+                {
+                    for (uint jj = 0; jj < 4; jj++)
+                    {
+                        gradient[ii] += mass_matrix[ii][jj] * delta_q[jj];
+                    }
+                }
+
+                abd_gradients[4 * body_idx + 0] = h_2_inv * gradient[0];
+                abd_gradients[4 * body_idx + 1] = h_2_inv * gradient[1];
+                abd_gradients[4 * body_idx + 2] = h_2_inv * gradient[2];
+                abd_gradients[4 * body_idx + 3] = h_2_inv * gradient[3];
+
+                abd_hessians[16 * body_idx + 0] = float3x3::eye(h_2_inv * mass_matrix[0][0]);
+                abd_hessians[16 * body_idx + 1] = float3x3::eye(h_2_inv * mass_matrix[1][1]);
+                abd_hessians[16 * body_idx + 2] = float3x3::eye(h_2_inv * mass_matrix[2][2]);
+                abd_hessians[16 * body_idx + 3] = float3x3::eye(h_2_inv * mass_matrix[3][3]);
+
+                uint idx = 4;
+                for (uint ii = 0; ii < 4; ii++)
+                {
+                    for (uint jj = 0; jj < 4; jj++)
+                    {
+                        if (ii != jj)
+                        {
+                            abd_hessians[body_idx * 16 + idx] = float3x3::eye(h_2_inv * mass_matrix[ii][jj]);
+                            idx += 1;
+                        }
+                    }
+                }
+            },
+            32);
+    }
 }
 
 }  // namespace lcs

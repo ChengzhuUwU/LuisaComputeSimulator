@@ -130,6 +130,16 @@ class SolverInterface
     CollisionData<std::vector>&  get_host_collision_data() const { return *host_collision_data; }
     CollisionData<luisa::compute::Buffer>& get_device_collision_data() const { return *collision_data; }
 
+  protected:
+    // Accessors for energy objects for derived solvers
+    InertiaEnergy*         get_inertia_energy() const { return inertia_energy.get(); }
+    AbdInertiaEnergy*      get_abd_inertia_energy() const { return abd_inertia_energy.get(); }
+    GroundCollisionEnergy* get_ground_collision_energy() const { return ground_collision_energy.get(); }
+    SpringEnergy*          get_spring_energy() const { return spring_energy.get(); }
+    StretchFaceEnergy*     get_stretch_face_energy() const { return stretch_face_energy.get(); }
+    BendingEnergy*         get_bending_energy() const { return bending_energy.get(); }
+    AbdOrthoEnergy*        get_abd_ortho_energy() const { return abd_ortho_energy.get(); }
+
   private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
 
