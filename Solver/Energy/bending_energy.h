@@ -11,7 +11,7 @@
 namespace lcs
 {
 
-namespace BendingEnergy
+namespace BendingEnergyUtils
 {
 
     namespace LibShell
@@ -342,7 +342,7 @@ namespace BendingEnergy
     //     const float sin_half_theta = sign * luisa::sqrt(1 - luisa::dot(normal1, normal2) / 2);
     // }
 
-};  // namespace BendingEnergy
+};  // namespace BendingEnergyUtils
 
 
 };  // namespace lcs

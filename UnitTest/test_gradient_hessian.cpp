@@ -524,7 +524,7 @@ int main(int argc, char** argv)
                 luisa::float3 v1         = luisa::make_float3(xv[3], xv[4], xv[5]);
                 luisa::float3 v2         = luisa::make_float3(xv[6], xv[7], xv[8]);
                 luisa::float3 v3         = luisa::make_float3(xv[9], xv[10], xv[11]);
-                float         angle      = BendingEnergy::compute_theta(v0, v1, v2, v3);
+                float         angle      = BendingEnergyUtils::compute_theta(v0, v1, v2, v3);
                 float         rest_angle = 0.0f;
                 float         delta      = angle - rest_angle;
                 return 0.5f * stiff * area * delta * delta;
@@ -538,13 +538,13 @@ int main(int argc, char** argv)
 
             // analytic as implemented in host: use compute_d_theta_d_x and outer product approx
             float3 grad_arr[4];
-            float  angle = BendingEnergy::compute_d_theta_d_x(luisa::make_float3(x0[0], x0[1], x0[2]),
-                                                             luisa::make_float3(x0[3], x0[4], x0[5]),
-                                                             luisa::make_float3(x0[6], x0[7], x0[8]),
-                                                             luisa::make_float3(x0[9], x0[10], x0[11]),
-                                                             grad_arr);
-            float  rest_angle = 0.0f;
-            float  delta      = angle - rest_angle;
+            float angle = BendingEnergyUtils::compute_d_theta_d_x(luisa::make_float3(x0[0], x0[1], x0[2]),
+                                                                  luisa::make_float3(x0[3], x0[4], x0[5]),
+                                                                  luisa::make_float3(x0[6], x0[7], x0[8]),
+                                                                  luisa::make_float3(x0[9], x0[10], x0[11]),
+                                                                  grad_arr);
+            float           rest_angle = 0.0f;
+            float           delta      = angle - rest_angle;
             Eigen::VectorXf g_ana(12);
             Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(12, 12);
             for (int ii = 0; ii < 4; ++ii)

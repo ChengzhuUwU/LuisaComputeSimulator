@@ -113,12 +113,12 @@ More building guidance about computing backend can be found in [the document of 
 - [ ] Elastic Rod Energy
 - [ ] Strain Limiting
 - [ ] Consistent Solve
-- [ ] Replace All Constraint With Bindless-Group
+- [x] Replace All Constraint With Bindless-Group
 - [ ] Thin Shell Rigid-Body Simulation
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
 - [ ] Mesh Split
-- [ ] Accurate Frictional Modeling
+- [x] Accurate Frictional Modeling
 - [ ] Better Numerical Preconditioners
 
 

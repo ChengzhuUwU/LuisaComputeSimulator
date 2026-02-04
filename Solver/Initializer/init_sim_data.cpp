@@ -653,7 +653,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
                     const float3& x2 = vert_pos[2];
                     const float3& x3 = vert_pos[3];
 
-                    const float angle = lcs::BendingEnergy::compute_theta(x0, x1, x2, x3);
+                    const float angle = lcs::BendingEnergyUtils::compute_theta(x0, x1, x2, x3);
 
                     const float A1    = compute_face_area(x0, x1, x2);
                     const float A2    = compute_face_area(x0, x1, x3);

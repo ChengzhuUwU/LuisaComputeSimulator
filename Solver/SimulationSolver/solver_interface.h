@@ -17,6 +17,14 @@
 #include "luisa/runtime/shader.h"
 #include "luisa/runtime/stream.h"
 #include <Utils/async_compiler.h>
+#include <memory>
+#include "Energies/inertia_energy.h"
+#include "Energies/ground_collision_energy.h"
+#include "Energies/spring_energy.h"
+#include "Energies/stretch_face_energy.h"
+#include "Energies/bending_energy_kernel.h"
+#include "Energies/abd_inertia_energy.h"
+#include "Energies/abd_ortho_energy.h"
 
 namespace lcs
 {
@@ -124,49 +132,14 @@ class SolverInterface
 
   private:
     luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
-    luisa::compute::Shader<1,
-                           Constitutions::SoftInertia<luisa::compute::Buffer>,
-                           luisa::compute::BufferView<float3>,  // sa_x
-                           float                                // substep_dt
-                           >
-        fn_calc_energy_inertia;
-    luisa::compute::Shader<1,
-                           Constitutions::AbdInertia<luisa::compute::Buffer>,
-                           luisa::compute::BufferView<float3>,  // sa_q
-                           float                                // substep_dt
-                           >
-        fn_calc_energy_abd_inertia;
 
-    luisa::compute::Shader<1,
-                           Constitutions::StretchSpring<luisa::compute::Buffer>,  // stretch_spring_constitution
-                           luisa::compute::BufferView<float3>,                    // sa_x
-                           float                                                  // stiffness_spring
-                           >
-        fn_calc_energy_spring;
-    luisa::compute::Shader<1,
-                           Constitutions::StretchFace<luisa::compute::Buffer>,  // stretch_face_constitution
-                           luisa::compute::BufferView<float3>                   // sa_x
-                           >
-        fn_calc_energy_stretch_face;
-    luisa::compute::Shader<1,
-                           Constitutions::AbdOrthogonality<luisa::compute::Buffer>,  // abd_ortho_constitution
-                           luisa::compute::BufferView<float3>                        // sa_q
-                           >
-        fn_calc_energy_abd_ortho;
-    luisa::compute::Shader<1,
-                           Constitutions::BendingEdge<luisa::compute::Buffer>,  // bending_edge_constitution
-                           luisa::compute::BufferView<float3>,                  // sa_x
-                           float                                                // stiffness_bending
-                           >
-        fn_calc_energy_bending;
-    luisa::compute::Shader<1,
-                           luisa::compute::BufferView<float3>,  // sa_x
-                           float,                               // floor_y
-                           bool,                                // use_ground_collision
-                           float,                               // stiffness
-                           uint                                 // collision_type
-                           >
-        fn_calc_energy_ground_collision;
+    std::unique_ptr<InertiaEnergy>         inertia_energy;
+    std::unique_ptr<AbdInertiaEnergy>      abd_inertia_energy;
+    std::unique_ptr<GroundCollisionEnergy> ground_collision_energy;
+    std::unique_ptr<SpringEnergy>          spring_energy;
+    std::unique_ptr<StretchFaceEnergy>     stretch_face_energy;
+    std::unique_ptr<BendingEnergy>         bending_energy;
+    std::unique_ptr<AbdOrthoEnergy>        abd_ortho_energy;
     // luisa::compute::Shader<1,
     //     luisa::compute::BufferView<float3>,
     //     luisa::compute::BufferView<float3>,

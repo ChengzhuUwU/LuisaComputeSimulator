@@ -1201,7 +1201,7 @@ void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::comput
             // Refers to ppf-contact-solver
             const Float rest_angle = sa_bending_edges_rest_angle->read(eid);
             const Float angle =
-                BendingEnergy::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+                BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
             const Float delta_angle = angle - rest_angle;
 
             const Float area  = sa_bending_edges_rest_area->read(eid);
@@ -1428,6 +1428,7 @@ void NewtonSolver::host_reset_cgB_cgX_diagA()
         CpuParallel::parallel_set(host_sim_data->sa_cgX, luisa::make_float3(0.0f));
     }
 }
+
 void NewtonSolver::host_evaluate_inertia()
 {
     auto& inertia_data = host_sim_data->get_soft_inertia_data();
@@ -2023,8 +2024,8 @@ void NewtonSolver::host_test_dynamics(luisa::compute::Stream& stream)
                 const float rest_angle = sa_bending_edges_rest_angle[eid];
 
                 float3 gradients[4] = {Zero3, Zero3, Zero3, Zero3};
-                float  angle =
-                    BendingEnergy::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+                float  angle        = BendingEnergyUtils::compute_d_theta_d_x(
+                    vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
                 const float delta_angle = angle - rest_angle;
 
                 EigenFloat12x12 H = EigenFloat12x12::Zero();
@@ -2858,8 +2859,8 @@ void NewtonSolver::host_evaluete_bending()
             if constexpr (true)  // Dehedral angle beding
             {
                 const float rest_angle = sa_bending_edges_rest_angle[eid];
-                const float angle =
-                    BendingEnergy::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+                const float angle      = BendingEnergyUtils::compute_d_theta_d_x(
+                    vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
                 const float delta_angle = angle - rest_angle;
 
                 const float area                 = sa_bending_edges_rest_area[eid];
