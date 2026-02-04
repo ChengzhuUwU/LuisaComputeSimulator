@@ -646,12 +646,12 @@ void NewtonSolver::compile_advancing(AsyncCompiler& compiler, const luisa::compu
 
 
 template <typename T>
-void assembly_template3(const luisa::compute::Var<uint>       vid,
-                        const luisa::compute::Var<T>&         constaints,
-                        luisa::compute::BufferView<uint>&     sa_vert_adj_material_force_verts_csr,
-                        luisa::compute::BufferView<float3>&   sa_cgB,
-                        luisa::compute::BufferView<float3x3>& sa_cgA_diag,
-                        luisa::compute::BufferView<MatrixTriplet3x3>& sa_cgA_offdiag_triplet)
+void assembly_template3(const luisa::compute::Var<uint>             vid,
+                        const luisa::compute::Var<T>&               constaints,
+                        const luisa::compute::BufferView<uint>&     sa_vert_adj_material_force_verts_csr,
+                        const luisa::compute::BufferView<float3>&   sa_cgB,
+                        const luisa::compute::BufferView<float3x3>& sa_cgA_diag,
+                        const luisa::compute::BufferView<MatrixTriplet3x3>& sa_cgA_offdiag_triplet)
 {
     constexpr uint N = T::get_num_verts_per_constaint();
 
@@ -713,39 +713,43 @@ void assembly_template3(const luisa::compute::Var<uint>       vid,
 void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
 {
     using namespace luisa::compute;
-    auto sa_vert_adj_material_force_verts_csr = sim_data->sa_vert_adj_material_force_verts_csr.view();
-    auto sa_cgB                               = sim_data->sa_cgB.view();
-    auto sa_cgA_diag                          = sim_data->sa_cgA_diag.view();
-    auto sa_cgA_offdiag_triplet               = sim_data->sa_cgA_fixtopo_offdiag_triplet.view();
 
-    auto perform_assembly_interface = [&](const auto& constraint, const Uint prefix_dof)
+
+    auto perform_assembly_interface =
+        [sa_vert_adj_material_force_verts_csr = sim_data->sa_vert_adj_material_force_verts_csr.view(),
+         sa_cgB                               = sim_data->sa_cgB.view(),
+         sa_cgA_diag                          = sim_data->sa_cgA_diag.view(),
+         sa_cgA_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](const auto& constraint,
+                                                                                   const Uint prefix_dof)
     {
         assembly_template3(prefix_dof + dispatch_x(), constraint, sa_vert_adj_material_force_verts_csr, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
     };
 
     // Assembly
     compiler.compile(fn_material_energy_assembly_stretch_spring,
-                     [&](Var<Constitutions::StretchSpring<luisa::compute::Buffer>> constraint)
+                     [perform_assembly_interface](Var<Constitutions::StretchSpring<luisa::compute::Buffer>> constraint)
                      { perform_assembly_interface(constraint, 0); });
 
     compiler.compile(fn_material_energy_assembly_stretch_face,
-                     [&](Var<Constitutions::StretchFace<luisa::compute::Buffer>> constraint)
+                     [perform_assembly_interface](Var<Constitutions::StretchFace<luisa::compute::Buffer>> constraint)
                      { perform_assembly_interface(constraint, 0); });
 
     compiler.compile(fn_material_energy_assembly_bending,
-                     [&](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint)
+                     [perform_assembly_interface](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint)
                      { perform_assembly_interface(constraint, 0); });
 
     compiler.compile(fn_material_energy_assembly_soft_inertia,
-                     [&](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> constraint)
+                     [perform_assembly_interface](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> constraint)
                      { perform_assembly_interface(constraint, 0); });
 
     compiler.compile(fn_material_energy_assembly_abd_inertia,
-                     [&](Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint, const Uint prefix)
+                     [perform_assembly_interface](Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint,
+                                                  const Uint prefix)
                      { perform_assembly_interface(constraint, prefix); });
 
     compiler.compile(fn_material_energy_assembly_abd_ortho,
-                     [&](Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint, const Uint prefix)
+                     [perform_assembly_interface](Var<Constitutions::AbdOrthogonality<luisa::compute::Buffer>> constraint,
+                                                  const Uint prefix)
                      { perform_assembly_interface(constraint, prefix); });
 }
 void NewtonSolver::compile_evaluate(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
