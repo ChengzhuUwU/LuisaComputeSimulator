@@ -83,6 +83,8 @@ class NewtonSolver : public lcs::SolverInterface
     void line_search(luisa::compute::Device& device, luisa::compute::Stream& stream, bool& dirichlet_converged, bool& global_converged);
 
     // Device functions
+    void device_reset_contact_list(luisa::compute::Stream& stream);
+    void device_construct_lbvh(luisa::compute::Stream& stream);
     void device_broadphase_ccd(luisa::compute::Stream& stream);
     void device_broadphase_dcd(luisa::compute::Stream& stream);
     void device_narrowphase_ccd(luisa::compute::Stream& stream);
@@ -107,9 +109,10 @@ class NewtonSolver : public lcs::SolverInterface
     template <typename... Args>
     using Shader = luisa::compute::Shader<1, Args...>;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3>>   fn_reset_vector;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float3x3>> fn_reset_float3x3;
-    luisa::compute::Shader<1>                                       fn_reset_cgA_offdiag_triplet;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float>, float> fn_reset_float;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3>>       fn_reset_vector;
+    luisa::compute::Shader<1, luisa::compute::BufferView<float3x3>>     fn_reset_float3x3;
+    luisa::compute::Shader<1>                                           fn_reset_cgA_offdiag_triplet;
 
     luisa::compute::Shader<1, float, float3> fn_predict_position;  // const Float substep_dt
     luisa::compute::Shader<1, float, bool, float> fn_update_velocity;  // const Float substep_dt, const Bool fix_scene, const Float damping

@@ -176,6 +176,12 @@ void NewtonSolver::compile(AsyncCompiler& compiler)
 
     compile_evaluate(compiler, default_option);
 
+    compiler.compile<1>(fn_reset_float,
+                        [](Var<BufferView<float>> buffer, Float val)
+                        {
+                            const UInt vid = dispatch_id().x;
+                            buffer->write(vid, val);
+                        });
 
     compiler.compile<1>(fn_reset_vector,
                         [](Var<BufferView<float3>> buffer)
@@ -1894,6 +1900,13 @@ void NewtonSolver::host_material_energy_assembly()
 }
 
 // Device functions
+void NewtonSolver::device_construct_lbvh(luisa::compute::Stream& stream)
+{
+    lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
+    lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+    lbvh_face->construct_tree(stream);
+    lbvh_edge->construct_tree(stream);
+}
 void NewtonSolver::device_broadphase_ccd(luisa::compute::Stream& stream)
 {
     narrow_phase_detector->reset_broadphase_count(stream);
@@ -1958,11 +1971,6 @@ void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
 }
 void NewtonSolver::device_narrowphase_ccd(luisa::compute::Stream& stream)
 {
-    narrow_phase_detector->reset_toi(stream);
-
-    stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
-                  .dispatch(sim_data->sa_x.size());
-
     // stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
     //        << luisa::compute::synchronize();
     // LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
@@ -2019,83 +2027,77 @@ void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
                                                   sim_data->sa_contact_active_verts_offset,
                                                   kappa);
 }
-void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, luisa::compute::Stream& stream)
+void NewtonSolver::device_reset_contact_list(luisa::compute::Stream& stream)
 {
     narrow_phase_detector->reset_broadphase_count(stream);
     narrow_phase_detector->reset_narrowphase_count(stream);
     narrow_phase_detector->reset_pervert_collision_count(stream);
+}
+void NewtonSolver::device_update_contact_list(luisa::compute::Device& device, luisa::compute::Stream& stream)
+{
+    // Has been reset before
+    // device_reset_contact_list(stream);
 
     if (get_scene_params().use_self_collision)
-        device_broadphase_dcd(stream);
-
-    bool succ_broad = narrow_phase_detector->download_broadphase_collision_count(stream);
-    if (!succ_broad)
     {
-        narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
-        narrow_phase_detector->reset_broadphase_count(stream);
         device_broadphase_dcd(stream);
-        narrow_phase_detector->download_broadphase_collision_count(stream);
+        bool succ_broad = narrow_phase_detector->download_broadphase_collision_count(stream);
+        if (!succ_broad)
+        {
+            narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
+            narrow_phase_detector->reset_broadphase_count(stream);
+            device_broadphase_dcd(stream);
+            narrow_phase_detector->download_broadphase_collision_count(stream);
+        }
     }
 
     // lbvh_face->check_health(stream);
     // lbvh_edge->check_health(stream);
 
     if (get_scene_params().use_self_collision)
-        device_narrowphase_dcd(stream);
-
-    bool succ_narrow = narrow_phase_detector->download_narrowphase_collision_count(stream);
-    if (!succ_narrow)
     {
-        narrow_phase_detector->resize_buffers(device, stream);  // Resize narrowphase buffers
-        narrow_phase_detector->reset_narrowphase_count(stream);
         device_narrowphase_dcd(stream);
+        bool succ_narrow = narrow_phase_detector->download_narrowphase_collision_count(stream);
+        if (!succ_narrow)
+        {
+            narrow_phase_detector->resize_buffers(device, stream);  // Resize narrowphase buffers
+            narrow_phase_detector->reset_narrowphase_count(stream);
+            device_narrowphase_dcd(stream);
+            narrow_phase_detector->download_narrowphase_collision_count(stream);
+        }
+    }
+    else
+    {
         narrow_phase_detector->download_narrowphase_collision_count(stream);
     }
-
-    // narrow_phase_detector->download_narrowphase_list(stream);
-    // auto&      host_count        = host_collision_data->narrow_phase_collision_count;
-    // auto&      narrow_phase_list = host_collision_data->narrow_phase_list;
-    // const uint num_pairs         = host_count.front();
-    // float      min_dist          = CpuParallel::parallel_for_and_reduce(
-    //     0,
-    //     num_pairs,
-    //     [&](const uint pair_idx)
-    //     {
-    //         const auto& pair    = narrow_phase_list[pair_idx];
-    //         float4      weight  = pair.get_weight();
-    //         uint4       indices = pair.get_indices();
-    //         float3      diff =
-    //             weight[0] * host_sim_data->sa_x[indices[0]] + weight[1] * host_sim_data->sa_x[indices[1]]
-    //             + weight[2] * host_sim_data->sa_x[indices[2]] + weight[3] * host_sim_data->sa_x[indices[3]];
-    //         return length_vec(diff);
-    //     },
-    //     [](float a, float b) { return min_scalar(a, b); },
-    //     std::numeric_limits<float>::max());
-    // LUISA_INFO("    Narrowphase collision pairs: {}, min_dist = {:7.6f}", num_pairs, min_dist);
-    // float max_k1 = std::min_element(host_collision_data->narrow_phase_list.begin(),
-    //                                 host_collision_data->narrow_phase_list.begin() + num_pairs,
-    //                                 [](const auto& a, const auto& b) { return a.get_k1() < b.get_k1(); })
-    //                    ->get_k1();
-    // LUISA_INFO("    Narrowphase collision pairs: {}, max_k1 = {:7.6f}", num_pairs, max_k1);
 }
 void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 {
-    if (get_scene_params().use_self_collision)
-        device_broadphase_ccd(stream);
+    // narrow_phase_detector->reset_toi(stream);
+    stream << fn_reset_float(collision_data->toi_per_vert, 1.0f).dispatch(collision_data->toi_per_vert.size());
 
-    bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
-    if (!succ)
+    if (get_scene_params().use_floor)
     {
-        LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
-        narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
-        device_broadphase_ccd(stream);
-        narrow_phase_detector->download_broadphase_collision_count(stream);
+        stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
+                      .dispatch(sim_data->sa_x.size());
     }
 
-    // lbvh_face->check_health(stream);
-    // lbvh_edge->check_health(stream);
+    if (get_scene_params().use_self_collision)
+    {
+        device_broadphase_ccd(stream);
+        bool succ = narrow_phase_detector->download_broadphase_collision_count(stream);
+        if (!succ)
+        {
+            LUISA_INFO("Broadphase collision count out of range, reallocate buffers and retry.");
+            narrow_phase_detector->resize_buffers(device, stream);  // Resize broadphase buffers
+            device_broadphase_ccd(stream);
+            narrow_phase_detector->download_broadphase_collision_count(stream);
+        }
+        // lbvh_face->check_health(stream);
+        // lbvh_edge->check_health(stream);
 
-    device_narrowphase_ccd(stream);
+        device_narrowphase_ccd(stream);
+    }
 }
 void NewtonSolver::device_post_dist_check(luisa::compute::Stream& stream)
 {
@@ -2685,6 +2687,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
 
     auto update_contact_set = [&]()
     {
+        device_reset_contact_list(stream);
+
+        if (!get_scene_params().use_self_collision)
+            return;
         stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
         device_update_contact_list(device, stream);
@@ -2699,6 +2705,8 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     };
     auto evaluate_contact = [&]()
     {
+        if (!get_scene_params().use_self_collision)
+            return;
         stream << sim_data->sa_cgB.copy_from(host_sim_data->sa_cgB.data())
                << sim_data->sa_cgA_diag.copy_from(host_sim_data->sa_cgA_diag.data());
 
@@ -2749,13 +2757,10 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
     // buffer_copy(host_sim_data->sa_x_step_start, host_sim_data->sa_x_iter_start);
 
     // Init LBVH
+    if (get_scene_params().use_self_collision)
     {
         buffer_upload(stream, host_sim_data->sa_x_step_start, sim_data->sa_x_step_start);
-        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        lbvh_face->construct_tree(stream);
-        lbvh_edge->construct_tree(stream);
-        stream << luisa::compute::synchronize();
+        device_construct_lbvh(stream);
     }
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
     {
@@ -2865,6 +2870,10 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
 
     auto update_contact_set = [&]()
     {
+        device_reset_contact_list(stream);
+
+        if (!get_scene_params().use_self_collision)
+            return;
         device_update_contact_list(device, stream);
         narrow_phase_detector->prescan_pervert_adj_list(
             stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
@@ -2877,6 +2886,8 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     };
     auto evaluate_contact = [&]()
     {
+        if (!get_scene_params().use_self_collision)
+            return;
         narrow_phase_detector->device_perPair_evaluate_gradient_hessian(stream,
                                                                         sim_data->sa_x,
                                                                         sim_data->sa_x_step_start,
@@ -2941,12 +2952,9 @@ void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compu
     const float substep_dt           = lcs::get_scene_params().get_substep_dt();
 
     // Init LBVH
+    if (get_scene_params().use_self_collision)
     {
-        lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-        lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
-        lbvh_face->construct_tree(stream);
-        lbvh_edge->construct_tree(stream);
-        stream << luisa::compute::synchronize();
+        device_construct_lbvh(stream);
     }
 
     // for (uint substep = 0; substep < get_scene_params().num_substep; substep++)
