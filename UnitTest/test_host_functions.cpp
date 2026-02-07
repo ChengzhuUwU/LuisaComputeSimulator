@@ -1,9 +1,12 @@
 #include "Utils/cpu_parallel.h"
 #include "luisa/core/fiber.h"
+#include "luisa/core/spin_mutex.h"
 #include <cstdint>
 #include <iostream>
 #include <atomic>
 #include <luisa/core/basic_types.h>
+#include <mutex>
+#include <vector>
 
 template <typename T>
 struct spin_atomic
@@ -20,6 +23,15 @@ struct spin_atomic
     {
     }
     spin_atomic<T>(const T& f) { store(f); }
+    spin_atomic(const spin_atomic& other) { store(other.load()); }
+    spin_atomic& operator=(const spin_atomic& other)
+    {
+        if (this != &other)
+        {
+            store(other.load());
+        }
+        return *this;
+    }
 
     void store(const T& f, std::memory_order order = std::memory_order_seq_cst)
     {
@@ -75,36 +87,40 @@ int main()
         af.store(0.0f);
     }
 
-    auto fn_test_atomic_float3_add = [](std::vector<luisa::float3>& af)
+    auto fn_test_atomic_float3_add = [](const std::span<luisa::float3>& af, const std::span<luisa::spin_mutex>& mtx_array)
     {
         CpuParallel::parallel_for(0,
                                   100000,
                                   [&](const uint32_t i)
                                   {
                                       const uint32_t target_index = i % 10;
-                                      auto af_atomic_view         = (atomic_float3*)(&af[target_index]);
-                                      af_atomic_view->fetch_add(luisa::make_float3(1, 2, 3));
-                                      //   auto       af_atomic_view = (atomic_float*)(&af[target_index]);
-                                      //   af_atomic_view[0].fetch_add(1.0f);
-                                      //   af_atomic_view[1].fetch_add(2.0f);
-                                      //   af_atomic_view[2].fetch_add(3.0f);
+                                      {
+                                          mtx_array[target_index].lock();
+                                          af[target_index] += luisa::make_float3(1, 2, 3);
+                                          mtx_array[target_index].unlock();
+                                      }
                                   });
     };
-    std::vector<luisa::float3> af3_array(10, luisa::make_float3(0.0f));
+    std::vector<luisa::float3> f3_array(10, luisa::make_float3(0.0f));
+    // std::vector<atomic_float3> af3_array(10, atomic_float3(luisa::make_float3(0.0f)));
+    // auto af3_array = std::span(reinterpret_cast<atomic_float3*>(f3_array.data()), f3_array.size());
+
+    constexpr size_t stride_mutex  = sizeof(luisa::spin_mutex);
+    constexpr size_t stride_mutex2 = sizeof(std::atomic_flag);
+    constexpr size_t stride_mutex3 = sizeof(uint32_t);
+
+    std::vector<uint32_t> mtx_array(10);
+    auto mtx_array2 = std::span(reinterpret_cast<luisa::spin_mutex*>(mtx_array.data()), mtx_array.size());
 
     for (int i = 0; i < 10; i++)
     {
-        fn_test_atomic_float3_add(af3_array);
+        fn_test_atomic_float3_add(std::span(f3_array), mtx_array2);
         for (int j = 0; j < 10; j++)
         {
-            printf("Result in iter %d: [%d] = (%f, %f, %f)\n",
-                   i,
-                   j,
-                   af3_array[j].x,
-                   af3_array[j].y,
-                   af3_array[j].z);
+            auto v = f3_array[j];
+            printf("Result in iter %d: [%d] = (%f, %f, %f)\n", i, j, v.x, v.y, v.z);
         }
-        for (auto& val : af3_array)
+        for (auto& val : f3_array)
             val = luisa::make_float3(0.0f);
     }
 }

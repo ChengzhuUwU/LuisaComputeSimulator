@@ -349,6 +349,7 @@ struct SimulationData : SimulationType
 
 
     // PCG
+    std::vector<uint>            sa_cgMutex;
     BufferType<float3>           sa_cgX;
     BufferType<float3>           sa_cgB;
     BufferType<float3x3>         sa_cgA_diag;

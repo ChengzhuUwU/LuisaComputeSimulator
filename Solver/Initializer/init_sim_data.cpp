@@ -1023,6 +1023,7 @@ void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
         const uint     alinged_nnz    = segment_size == 1 ?
                                             orig_hessian_nnz :
                                             (orig_hessian_nnz + segment_size - 1) / segment_size * segment_size;
+        LUISA_INFO("Original Hessian NNZ = {}, Aligned Hessian NNZ = {}", orig_hessian_nnz, alinged_nnz);
         // const uint alinged_nnz = orig_hessian_nnz;
         sim_data->sa_cgA_fixtopo_offdiag_triplet.resize(alinged_nnz);
         sim_data->sa_cgA_fixtopo_offdiag_triplet_info.resize(alinged_nnz, make_matrix_triplet_info(-1u, -1u, 0));
@@ -1582,6 +1583,7 @@ void resize_pcg_data(luisa::compute::Device&                      device,
     resize_buffer(host_data->sa_cgB, num_verts);
     resize_buffer(host_data->sa_cgA_diag, num_verts);
 
+    resize_buffer(host_data->sa_cgMutex, num_verts);
     resize_buffer(host_data->sa_cgMinv, num_verts);
     resize_buffer(host_data->sa_cgP, num_verts);
     resize_buffer(host_data->sa_cgQ, num_verts);

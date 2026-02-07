@@ -423,6 +423,9 @@ void GroundCollisionEnergy::host_evaluate(lcs::SimulationData<std::vector>& host
 
     if (abd_data.is_valid())
     {
+        auto& mtx_array = host_sim_data.sa_cgMutex;
+        auto mtx_view = std::span(reinterpret_cast<luisa::spin_mutex*>(mtx_array.data()), mtx_array.size());
+
         CpuParallel::parallel_for(
             0,
             host_sim_data.num_verts_rigid,
@@ -431,7 +434,8 @@ void GroundCollisionEnergy::host_evaluate(lcs::SimulationData<std::vector>& host
              sa_scaled_model_x = std::span(host_sim_data.sa_scaled_model_x),
              sa_x_to_dof_map   = std::span(host_sim_data.sa_x_to_dof_map),
              prefix_vid        = host_sim_data.num_verts_soft,
-             &calculate_per_vert_grad_hess_template](const uint index)
+             &calculate_per_vert_grad_hess_template,
+             mtx_view](const uint index)
             {
                 float3     gradient = Zero3;
                 float3x3   hessian  = Zero3x3;
@@ -448,18 +452,18 @@ void GroundCollisionEnergy::host_evaluate(lcs::SimulationData<std::vector>& host
                     {
                         float  wi          = weight[ii];
                         float3 affine_grad = wi * gradient;
-                        CpuParallel::spin_atomic<float3>::fetch_add(output_gradient[4 * body_idx + ii], affine_grad);
+                        BufferOp::atomic_buffer_add(output_gradient, mtx_view, 4 * body_idx + ii, affine_grad);
                         for (uint jj = 0; jj < 4; jj++)
                         {
                             float    wj          = weight[jj];
                             float3x3 affine_hess = wi * wj * hessian;
                             if (ii == jj)
                             {
-                                BufferOp::atomic_buffer_add(output_hessian, 16 * body_idx + ii, affine_hess);
+                                BufferOp::atomic_buffer_add(output_hessian, mtx_view, 16 * body_idx + ii, affine_hess);
                             }
                             else
                             {
-                                BufferOp::atomic_buffer_add(output_hessian, 16 * body_idx + idx, affine_hess);
+                                BufferOp::atomic_buffer_add(output_hessian, mtx_view, 16 * body_idx + idx, affine_hess);
                                 idx += 1;
                             }
                         }

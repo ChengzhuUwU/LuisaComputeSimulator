@@ -1741,23 +1741,25 @@ void assembly_template2(const uint                                              
     // constexpr size_t N = constaints.get_num_verts_per_constaint();
     constexpr size_t N = Derived::get_num_verts_per_constaint();
 
-    // auto& sa_vert_adj_material_force_verts_csr = constaints.get_vert_adj_material_force_verts_csr();
     auto& vert_adj_constraints_csr     = constaints.get_vert_adj_constraints_csr();
     auto& constaint_gradients          = constaints.get_constraint_gradients();
     auto& constaint_hessians           = constaints.get_constraint_hessians();
     auto& constaint_offsets_in_adjlist = constaints.get_constraint_offsets_in_adjlist();
     auto& indices                      = constaints.get_indices();
 
-    //  sa_vert_adj_material_force_verts_csr = std::span(host_sim_data->sa_vert_adj_material_force_verts_csr),
-    //  sa_cgB      = std::span(host_sim_data->sa_cgB),
-    //  sa_cgA_diag = std::span(host_sim_data->sa_cgA_diag),
-    //  sa_cgA_offdiag_triplet = std::span(host_sim_data->sa_cgA_fixtopo_offdiag_triplet)
-
     const uint curr_prefix = sa_vert_adj_material_force_verts_csr[vid];
     const uint next_prefix = sa_vert_adj_material_force_verts_csr[vid + 1];
 
     const uint curr_prefix_bending = vert_adj_constraints_csr[vid];
     const uint next_prefix_bending = vert_adj_constraints_csr[vid + 1];
+
+    // if (next_prefix - curr_prefix > 100)
+    // {
+    //     LUISA_ERROR("Error in assembly: vertex {} has too many adjacent constraints ({}), constitution = {}",
+    //                 vid,
+    //                 next_prefix - curr_prefix,
+    //                 constaints.get_constitution_name());
+    // }
 
     for (uint j = curr_prefix_bending; j < next_prefix_bending; j++)
     {
@@ -2201,6 +2203,9 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
             return;
         }
 
+        auto cgMutex = std::span(reinterpret_cast<luisa::spin_mutex*>(host_sim_data->sa_cgMutex.data()),
+                                 host_sim_data->sa_cgMutex.size());
+
         // Material Energy
         auto fn_SpMV_reduce_by_key =
             [&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim, const uint triplet_count)
@@ -2212,11 +2217,11 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                 {
                     const uint blockDim    = 256;
                     const uint blockPrefix = blockIdx * blockDim;
+                    const uint blockSuffix = min_scalar(blockPrefix + blockDim, triplet_count);
+                    // LUISA_INFO("SpMV reduce by key block {}, prefix {}, suffix {}", blockIdx, blockPrefix, blockSuffix);
 
                     float3 sum_contrib = luisa::make_float3(0.0f);
-                    for (uint triplet_idx = blockPrefix;
-                         triplet_idx < min_scalar(blockPrefix + blockDim, triplet_count);
-                         triplet_idx++)
+                    for (uint triplet_idx = blockPrefix; triplet_idx < blockSuffix; triplet_idx++)
                     {
                         auto       triplet         = sa_cgA_offdiag_triplet[triplet_idx];
                         const uint vid             = triplet.get_row_idx();
@@ -2250,7 +2255,10 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
 
                             if (MatrixTriplet::write_use_atomic(matrix_property))
                             {
-                                CpuParallel::spin_atomic<float3>::fetch_add(output_ptr[vid], sum_contrib);
+                                cgMutex[vid].lock();
+                                output_ptr[vid] += sum_contrib;
+                                cgMutex[vid].unlock();
+                                // CpuParallel::spin_atomic<float3>::fetch_add(output_ptr[vid], sum_contrib);
                                 // auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
                                 // output_ptr[vid] += sum_contrib;
                             }
@@ -2264,15 +2272,18 @@ void NewtonSolver::host_SpMV(luisa::compute::Stream&    stream,
                 });
         };
 
+        const uint num_triplet_material = host_sim_data->sa_cgA_fixtopo_offdiag_triplet.size();
+        // LUISA_INFO("Host SpMV off-diag part with {} triplets", num_triplet_material);
         fn_SpMV_reduce_by_key(host_sim_data->sa_cgA_fixtopo_offdiag_triplet,
-                              get_dispatch_block(sim_data->sa_cgA_fixtopo_offdiag_triplet.size(), 256),
-                              sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
+                              get_dispatch_block(num_triplet_material, 256),
+                              num_triplet_material);
 
-        const auto& host_count     = host_collision_data->narrow_phase_collision_count;
-        const uint reduced_triplet = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        const auto& host_count = host_collision_data->narrow_phase_collision_count;
+        const uint num_triplet_contact = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
+        // LUISA_INFO("Host SpMV off-diag contact part with {} triplets", num_triplet_contact);
         fn_SpMV_reduce_by_key(host_collision_data->triplet_data.sa_cgA_contact_offdiag_triplet,
-                              get_dispatch_block(reduced_triplet, 256),
-                              reduced_triplet);
+                              get_dispatch_block(num_triplet_contact, 256),
+                              num_triplet_contact);
     }
 }
 void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream)

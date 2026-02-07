@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Utils/cpu_parallel.h"
+#include "luisa/core/spin_mutex.h"
 #include "luisa/dsl/resource.h"
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/stream.h"
@@ -76,14 +77,26 @@ static void buffer_add(const std::span<T>& buffer, const uint dest, const T& val
     buffer[dest] = buffer[dest] + value;
 }
 template <typename T>
-static void atomic_buffer_add(const std::vector<T>& buffer, const uint dest, const T& value)
+static void atomic_buffer_add(const std::span<T>&                 buffer,
+                              const std::span<luisa::spin_mutex>& mutex_ref,
+                              const uint                          dest,
+                              const T&                            value)
 {
-    CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
+    // CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
+    mutex_ref[dest].lock();
+    buffer[dest] = buffer[dest] + value;
+    mutex_ref[dest].unlock();
 }
 template <typename T>
-static void atomic_buffer_add(const std::span<T>& buffer, const uint dest, const T& value)
+static void atomic_buffer_add(const std::vector<T>&               buffer,
+                              const std::span<luisa::spin_mutex>& mutex_ref,
+                              const uint                          dest,
+                              const T&                            value)
 {
-    CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
+    // CpuParallel::spin_atomic<T>::fetch_add(buffer[dest], value);
+    mutex_ref[dest].lock();
+    buffer[dest] = buffer[dest] + value;
+    mutex_ref[dest].unlock();
 }
 
 static void atomic_buffer_add(const luisa::compute::BufferVar<luisa::float3>& buffer,

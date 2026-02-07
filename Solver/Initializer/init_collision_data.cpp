@@ -2,6 +2,7 @@
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/distance.hpp"
 #include "SimulationCore/scene_params.h"
+#include "Utils/cpu_parallel.h"
 #include <algorithm>
 
 namespace lcs::Initializer
@@ -67,40 +68,42 @@ void init_collision_data(std::vector<lcs::Initializer::WorldData>& world_data,
 
 
     std::vector<float> mesh_min_dist(mesh_data->num_meshes, 1e10f);
-    CpuParallel::parallel_for(0,
-                              mesh_data->num_edges,
-                              [&](const uint eid)
-                              {
-                                  const uint2 edge        = mesh_data->sa_edges[eid];
-                                  const float rest_length = luisa::length(mesh_data->sa_rest_x[edge[0]]
-                                                                          - mesh_data->sa_rest_x[edge[1]]);
-                                  const uint  mesh_idx    = mesh_data->sa_edge_mesh_id[eid];
-                                  CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_length);
-                              });
-    CpuParallel::parallel_for(0,
-                              mesh_data->num_faces,
-                              [&](const uint fid)
-                              {
-                                  const uint3 face        = mesh_data->sa_faces[fid];
-                                  float3      vert_pos[3] = {mesh_data->sa_rest_x[face[0]],
-                                                             mesh_data->sa_rest_x[face[1]],
-                                                             mesh_data->sa_rest_x[face[2]]};
+    CpuParallel::single_thread_for(0,
+                                   mesh_data->num_edges,
+                                   [&](const uint eid)
+                                   {
+                                       const uint2 edge        = mesh_data->sa_edges[eid];
+                                       const float rest_length = luisa::length(
+                                           mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
+                                       const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
+                                       mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_length);
+                                       //    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_length);
+                                   });
+    CpuParallel::single_thread_for(0,
+                                   mesh_data->num_faces,
+                                   [&](const uint fid)
+                                   {
+                                       const uint3 face        = mesh_data->sa_faces[fid];
+                                       float3      vert_pos[3] = {mesh_data->sa_rest_x[face[0]],
+                                                                  mesh_data->sa_rest_x[face[1]],
+                                                                  mesh_data->sa_rest_x[face[2]]};
 
-                                  auto rest_dist = 10000.0f;
-                                  for (int i = 0; i < 3; i++)
-                                  {
-                                      const float3& v0 = vert_pos[i];
-                                      const float3& v1 = vert_pos[(i + 1) % 3];
-                                      const float3& v2 = vert_pos[(i + 2) % 3];
+                                       auto rest_dist = 10000.0f;
+                                       for (int i = 0; i < 3; i++)
+                                       {
+                                           const float3& v0 = vert_pos[i];
+                                           const float3& v1 = vert_pos[(i + 1) % 3];
+                                           const float3& v2 = vert_pos[(i + 2) % 3];
 
-                                      auto bary = host_distance::point_edge_distance_coeff(
-                                          float3_to_eigen3(v0), float3_to_eigen3(v1), float3_to_eigen3(v2));
-                                      const float curr_dist = length_vec(bary[0] * v1 + bary[1] * v2 - v0);
-                                      rest_dist = min_scalar(rest_dist, curr_dist);
-                                  }
-                                  const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
-                                  CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_dist);
-                              });
+                                           auto bary = host_distance::point_edge_distance_coeff(
+                                               float3_to_eigen3(v0), float3_to_eigen3(v1), float3_to_eigen3(v2));
+                                           const float curr_dist = length_vec(bary[0] * v1 + bary[1] * v2 - v0);
+                                           rest_dist = min_scalar(rest_dist, curr_dist);
+                                       }
+                                       const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
+                                       mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_dist);
+                                       //    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_dist);
+                                   });
 
     std::vector<float> mesh_scaled_offset(mesh_data->num_meshes);
     std::vector<float> mesh_scaled_d_hat(mesh_data->num_meshes);
