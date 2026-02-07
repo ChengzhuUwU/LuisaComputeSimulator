@@ -253,6 +253,3 @@ void AbdOrthoEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_da
 }
 
 }  // namespace lcs
-#include "abd_ortho_energy.h"
-
-// Implementation file left intentionally minimal. Kernel functor is header-only.

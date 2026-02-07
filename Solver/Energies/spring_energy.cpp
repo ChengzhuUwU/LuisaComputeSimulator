@@ -17,8 +17,7 @@ void SpringEnergy::compile(AsyncCompiler& compiler)
     compiler.compile<1>(
         _shader,
         [sa_system_energy = _sa_system_energy](Var<Constitutions::StretchSpring<luisa::compute::Buffer>> constraint,
-                                               Var<BufferView<float3>> sa_x,
-                                               Float                   stiffness_spring)
+                                               Var<BufferView<float3>> sa_x)
         {
             auto& sa_edges                    = constraint.constraint_indices;
             auto& sa_edge_rest_state_length   = constraint.sa_stretch_spring_rest_state_length;
@@ -104,10 +103,9 @@ void SpringEnergy::device_compute_energy(luisa::compute::Stream& stream)
 void SpringEnergy::device_compute_energy(luisa::compute::Stream& stream,
                                          const Constitutions::StretchSpring<luisa::compute::Buffer>& constraint,
                                          const luisa::compute::Buffer<float3>& sa_x,
-                                         float                                 stiffness_spring,
                                          size_t                                dispatch_count)
 {
-    stream << _shader(constraint, sa_x, stiffness_spring).dispatch(dispatch_count);
+    stream << _shader(constraint, sa_x).dispatch(dispatch_count);
 }
 
 void SpringEnergy::device_evaluate(luisa::compute::Stream& stream,

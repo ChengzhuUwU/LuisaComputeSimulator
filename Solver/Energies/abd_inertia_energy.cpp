@@ -227,6 +227,3 @@ void AbdInertiaEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_
 }
 
 }  // namespace lcs
-#include "abd_inertia_energy.h"
-
-// Implementation file left intentionally minimal. Kernel functor is header-only.

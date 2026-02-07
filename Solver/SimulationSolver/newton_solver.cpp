@@ -2818,11 +2818,14 @@ void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compu
                 {
                     e->host_evaluate(*host_sim_data, *host_mesh_data);
                 }
+                if (auto* e = get_abd_inertia_energy())
+                {
+                    e->host_evaluate(*host_sim_data, *host_mesh_data);
+                }
                 if (auto* e = get_abd_ortho_energy())
                 {
                     e->host_evaluate(*host_sim_data, *host_mesh_data);
                 }
-
                 if (auto* e = get_ground_collision_energy())
                 {
                     if (get_scene_params().use_floor)

@@ -2,15 +2,10 @@
 
 #include <luisa/dsl/builtin.h>
 #include "SimulationCore/base_mesh.h"
-#include "SimulationCore/simulation_data.h"
-#include "Energies/energy_offsets.h"
 #include "Utils/reduce_helper.h"
-
-
 #include "Energies/energy.h"
 #include "Energies/energy_offsets.h"
 #include "SimulationCore/simulation_data.h"
-#include <luisa/dsl/builtin.h>
 
 namespace lcs
 {
@@ -20,11 +15,6 @@ class SpringEnergy : public Energy
     SpringEnergy(luisa::compute::BufferView<float> sa_system_energy) noexcept;
     void   compile(AsyncCompiler& compiler) override;
     void   device_compute_energy(luisa::compute::Stream& stream) override;
-    void   device_compute_energy(luisa::compute::Stream&                                     stream,
-                                 const Constitutions::StretchSpring<luisa::compute::Buffer>& constraint,
-                                 const luisa::compute::Buffer<float3>&                       sa_x,
-                                 float  stiffness_spring,
-                                 size_t dispatch_count);
     void   device_compute_energy(luisa::compute::Stream&                                     stream,
                                  const Constitutions::StretchSpring<luisa::compute::Buffer>& constraint,
                                  const luisa::compute::Buffer<float3>&                       sa_x,
@@ -39,7 +29,7 @@ class SpringEnergy : public Energy
 
   private:
     luisa::compute::BufferView<float> _sa_system_energy;
-    luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>, luisa::compute::BufferView<float3>, float> _shader;
+    luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>, luisa::compute::BufferView<float3>> _shader;
     luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>, luisa::compute::BufferView<float3>> _eval_shader;
 };
 

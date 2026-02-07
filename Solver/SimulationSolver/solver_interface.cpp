@@ -594,11 +594,8 @@ void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream&     
     const auto& stretch_spring_constitution = sim_data->get_stretch_spring_data();
     if (stretch_spring_constitution.is_valid())
     {
-        spring_energy->device_compute_energy(stream,
-                                             stretch_spring_constitution,
-                                             curr_x,
-                                             get_scene_params().stiffness_spring,
-                                             stretch_spring_constitution.get_num_indices());
+        spring_energy->device_compute_energy(
+            stream, stretch_spring_constitution, curr_x, stretch_spring_constitution.get_num_indices());
     }
 
     const auto& stretch_face_constitution = sim_data->get_stretch_face_data();

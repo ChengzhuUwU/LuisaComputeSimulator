@@ -4,10 +4,7 @@
 #include "Energies/energy_offsets.h"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/reduce_helper.h"
-#pragma once
-
 #include "Energies/energy.h"
-#include "Energies/energy_offsets.h"
 #include "SimulationCore/simulation_data.h"
 #include <luisa/dsl/builtin.h>
 

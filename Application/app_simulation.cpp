@@ -356,12 +356,12 @@ int main(int argc, char** argv)
                 {
                     fn_single_step_with_ui();
                 }
-                if (ImGui::Button("Advance Some Frame", ImVec2(-1, 0)))
-                {
-                    is_simulate_frame = true;
-                    max_frame         = lcs::get_scene_params().current_frame + optimize_frames;
-                }
-                ImGui::InputScalar("Advance Frame Count", ImGuiDataType_U32, &optimize_frames);
+                // if (ImGui::Button("Advance Some Frame", ImVec2(-1, 0)))
+                // {
+                //     is_simulate_frame = true;
+                //     max_frame         = lcs::get_scene_params().current_frame + optimize_frames;
+                // }
+                // ImGui::InputScalar("Advance Frame Count", ImGuiDataType_U32, &optimize_frames);
                 if (ImGui::Button("Start Simulation", ImVec2(-1, 0)))
                 {
                     is_simulate_frame = true;
