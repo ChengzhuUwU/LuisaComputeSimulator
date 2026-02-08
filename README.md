@@ -41,8 +41,9 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 - **You can build with Cmake:**  
   - Configure: ```cmake -S . -B build```
-    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release`.
-    - (Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`).
+    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release`. 
+    - Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`.
+    - We have tested our example on [clang 18.1.8](https://github.com/llvm/llvm-project/releases/tag/llvmorg-18.1.8), you can click the link for downloading the binary release and set `-D CMAKE_C_COMPILER=path_to_pachakge/bin/clang` (and `clang++` path) for confuguration.
     - You can also enable/disable computing backends by adding `-D LUISA_COMPUTE_ENABLE_VULKAN=ON`.
   - Build   : ```cmake --build build -j```
 
@@ -54,7 +55,7 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 - **Run the application:**  
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
-    `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
+    `build\bin\app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
 
     The launching parameters `<backend-name> <scene-json-file>` is optional, you can specify your favorite backend in `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario in `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in [Resources/Scenes](Resources/Scenes) directory).
 
@@ -73,47 +74,47 @@ More building guidance about computing backend can be found in [the document of 
 
 ## Supported Backends (of LuisaCompute)
 
-|   Backend |  Windows   | Linux     |  MacOS  | Description |
-|  -----    |  ------    |  ------   |  ------ |      ------ |
-| CUDA      | Supported  | Supported |         | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
-| Vulkan    | Supported  | Experimental | Developing  | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
-| DirectX12 | Supported  |           |           |   | 
-| Metal     |            |           | Supported |   | 
-| Fallback  | Supported  | Supported | Supported | Launch kernels on the CPU. Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
+| Backend   | Windows   | Linux        | MacOS      | Description                                                                                                                                                     |
+| --------- | --------- | ------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CUDA      | Supported | Supported    |            | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0)                                                                        |
+| Vulkan    | Supported | Experimental | Developing | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development                                                |
+| DirectX12 | Supported |              |            |                                                                                                                                                                 |
+| Metal     |           |              | Supported  |                                                                                                                                                                 |
+| Fallback  | Supported | Supported    | Supported  | Launch kernels on the CPU. Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
 
 
 ## Examples
 
-|   [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)  |
-|  -----   |
-| ![Case6](Document/Images/RotationCylinder60s.gif)  |
+| [Rotation Cylinder](Resources/Scenes/cloth_rotation_cylinder_88K.json)       |
+| ---------------------------------------------------------------------------- |
+| ![Case6](Document/Images/RotationCylinder60s.gif)                            |
 | About 3 fps on RTX3090 (CUDA backend), about 2 fps on M2 Max (Metal Backend) |
 
-|       |   |
-|  -----   |------|
-|          |      |
-| Moving Dirichlet Case |  |
-| ![Case0Bg](Document/Images/0_bg.png) [File](Resources/Scenes/cloth_moving_boundary.json) |  ![Teaser](Document/Images/0_ed.png) (The velocity of red plane is 3m/s )  |    
-|  Different Material Properties | Cloth-Rigid Coupling  Case 1 |
-| ![Case1](Document/Images/1.png) [File](Resources/Scenes/cloth_pinned.json)  |  ![Case3](Document/Images/3.png) [File](Resources/Scenes/cloth_rigid_coupling_drop.json) |
-|   Cloth-Rigid Coupling Case 2 | Rotation Cylinder (21K DOF) |
-| ![Case4](Document/Images/4.png) [File](Resources/Scenes/cloth_rigid_coupling_high_res.json)  |  ![Case5](Document/Images/5.png) [File](Resources/Scenes/cloth_rotation_cylinder_7K.json) |
-|   Rotation Cylinder (260K DOF) | Large Thickness Case |
-| ![Case6](Document/Images/6.png) [File](Resources/Scenes/cloth_rotation_cylinder_88K.json)   |  ![Case9](Document/Images/9.png) [File](Resources/Scenes/cloth_unit_test_square2.json) |
-|   Multi-Rigid-Body Case 1 | Multi-Rigid-Body Case 2 |
-| ![Case11](Document/Images/11.png)  [File](Resources/Scenes/rigid_bucket.json)  |  ![Case13](Document/Images/13.png) [File](Resources/Scenes/rigid_multi_folding_cubes.json) |
-|  Friciontal Test |  |
-| ![Case11](Document/Images/18.png)  [File](Resources/Scenes/rigid_frictional_test.json)  |  |
+|                                                                                             |                                                                                           |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+|                                                                                             |                                                                                           |
+| Moving Dirichlet Case                                                                       |                                                                                           |
+| ![Case0Bg](Document/Images/0_bg.png) [File](Resources/Scenes/cloth_moving_boundary.json)    | ![Teaser](Document/Images/0_ed.png) (The velocity of red plane is 3m/s )                  |
+| Different Material Properties                                                               | Cloth-Rigid Coupling  Case 1                                                              |
+| ![Case1](Document/Images/1.png) [File](Resources/Scenes/cloth_pinned.json)                  | ![Case3](Document/Images/3.png) [File](Resources/Scenes/cloth_rigid_coupling_drop.json)   |
+| Cloth-Rigid Coupling Case 2                                                                 | Rotation Cylinder (21K DOF)                                                               |
+| ![Case4](Document/Images/4.png) [File](Resources/Scenes/cloth_rigid_coupling_high_res.json) | ![Case5](Document/Images/5.png) [File](Resources/Scenes/cloth_rotation_cylinder_7K.json)  |
+| Rotation Cylinder (260K DOF)                                                                | Large Thickness Case                                                                      |
+| ![Case6](Document/Images/6.png) [File](Resources/Scenes/cloth_rotation_cylinder_88K.json)   | ![Case9](Document/Images/9.png) [File](Resources/Scenes/cloth_unit_test_square2.json)     |
+| Multi-Rigid-Body Case 1                                                                     | Multi-Rigid-Body Case 2                                                                   |
+| ![Case11](Document/Images/11.png)  [File](Resources/Scenes/rigid_bucket.json)               | ![Case13](Document/Images/13.png) [File](Resources/Scenes/rigid_multi_folding_cubes.json) |
+| Friciontal Test                                                                             |                                                                                           |
+| ![Case11](Document/Images/18.png)  [File](Resources/Scenes/rigid_frictional_test.json)      |                                                                                           |
 
 ## TODOLIST
 
 - [ ] Joint Constraint
-- [ ] Python Binding
+- [ ] Python Binding (developing...)
 - [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy
 - [ ] Strain Limiting
 - [ ] Consistent Solve
-- [x] Replace All Constraint With Bindless-Group
+- [x] Replace All Constraint With Binding-Group
 - [ ] Thin Shell Rigid-Body Simulation
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)

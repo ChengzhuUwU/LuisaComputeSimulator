@@ -6,7 +6,7 @@ if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG bf794dce070bfa78b0b86e282cd9ebed85690e00
+        GIT_TAG ba723cc001da99cbcbe248e451f1a860da8c61f0
         # GIT_TAG next
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
@@ -27,6 +27,20 @@ if (NOT TARGET luisa::compute)
     add_subdirectory(${LuisaCompute_SOURCE_DIR})
 endif ()
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
+
+# lcpp
+if (NOT TARGET lcpp)
+    FetchContent_Declare(
+        lcpp
+        GIT_REPOSITORY https://github.com/Ligo04/lc_parallel_primitive.git
+        GIT_TAG ef9c3d7b74c2b2b490e941c6dd5562eabef0479b
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/lcpp
+    )
+    set(LCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Populate(lcpp)
+    add_subdirectory(${EXT_PATH}/lcpp)
+endif ()
+target_link_libraries(luisa-compute-solver-lib PUBLIC lcpp)
 
 find_package(Eigen3 QUIET)
 if (NOT TARGET Eigen3::Eigen)
