@@ -25,9 +25,9 @@ bool check_template(const T& actual, FnGetDesired fn_get_desired, const std::str
     return true;
 }
 
+// Reduce
 void test_device_reduce(Device& device, Stream& stream)
 {
-    // Device-level reduce example
     DeviceReduce<> device_reduce;
     device_reduce.create(device);
 
@@ -41,8 +41,7 @@ void test_device_reduce(Device& device, Stream& stream)
         std::vector<Type4Byte> host_input(num_items, 1);
         stream << d_input.copy_from(host_input.data()) << synchronize();
         CommandList cmdlist;
-        device_reduce.Sum(cmdlist, stream, d_input.view(), d_output.view(), 1024);
-        // device_reduce.Sum(cmdlist, stream, d_input.view(), d_output.view(), num_items);
+        device_reduce.Sum(cmdlist, stream, d_input.view(), d_output.view(), num_items);
         stream << cmdlist.commit() << synchronize();
         std::vector<Type4Byte> host_output(1);
         stream << d_output.copy_to(host_output.data()) << synchronize();
@@ -54,6 +53,8 @@ void test_device_reduce(Device& device, Stream& stream)
         d_output.release();
     }
 }
+
+// Scan (Prefix sum)
 void test_device_scan(Device& device, Stream& stream)
 {
     DeviceScan<> device_scan;
@@ -72,15 +73,6 @@ void test_device_scan(Device& device, Stream& stream)
         CommandList cmdlist;
         device_scan.ExclusiveSum(cmdlist, stream, d_keys_in.view(), d_keys_out.view(), num_items);
 
-        // `ExclusiveScan` should provide binary-operation
-        // device_scan.ExclusiveScan(
-        //     cmdlist,
-        //     stream,
-        //     d_keys_in.view(),
-        //     d_keys_out.view(),
-        //     num_items,
-        //     [](UInt a, UInt b) { return a + b; },
-        //     0u);
         stream << cmdlist.commit() << synchronize();
         std::vector<uint> host_keys_out(num_items);
         stream << d_keys_out.copy_to(host_keys_out.data()) << synchronize();
@@ -92,9 +84,10 @@ void test_device_scan(Device& device, Stream& stream)
             host_keys_out, [](uint i) -> uint { return i; }, "Device Scan", num_items);
     }
 }
+
+// Radix Sort
 void test_device_radix_sort(Device& device, Stream& stream)
 {
-
     DeviceRadixSort<> device_radix_sort;
     device_radix_sort.create(device);
     for (uint loop = 0; loop < 24; ++loop)
@@ -129,15 +122,11 @@ void test_device_radix_sort(Device& device, Stream& stream)
 
 int main(int argc, char* argv[])
 {
-
-    // Create device and stream
     Context ctx{argv[0]};
     auto    backend = argc > 1 ? argv[1] : "cuda";
     Device  device  = ctx.create_device("cuda");
     Stream  stream  = device.create_stream();
 
-
-    // Run tests
     test_device_reduce(device, stream);
     test_device_scan(device, stream);
     test_device_radix_sort(device, stream);
