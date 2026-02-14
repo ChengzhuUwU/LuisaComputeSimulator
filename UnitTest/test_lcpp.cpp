@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
 {
     Context ctx{argv[0]};
     auto    backend = argc > 1 ? argv[1] : "cuda";
-    Device  device  = ctx.create_device("cuda");
+    Device  device  = ctx.create_device(backend);
     Stream  stream  = device.create_stream();
 
     test_device_reduce(device, stream);
