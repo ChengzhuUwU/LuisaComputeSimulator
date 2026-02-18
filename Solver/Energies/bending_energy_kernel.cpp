@@ -7,194 +7,194 @@ using namespace luisa::compute;
 
 namespace lcs
 {
-BendingEnergy::BendingEnergy(BufferView<float> sa_system_energy) noexcept
-    : _sa_system_energy(sa_system_energy)
-{
-}
+	BendingEnergy::BendingEnergy(BufferView<float> sa_system_energy) noexcept
+		: _sa_system_energy(sa_system_energy)
+	{
+	}
 
-void BendingEnergy::compile(AsyncCompiler& compiler)
-{
-    luisa::compute::ShaderOption default_option = {.enable_debug_info = false};
-    compiler.compile<1>(
-        _shader,
-        [sa_system_energy = _sa_system_energy](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint,
-                                               Var<BufferView<float3>> sa_x,
-                                               Float                   scaling)
-        {
-            auto& sa_edges                    = constraint.constraint_indices;
-            auto& sa_bending_edges_rest_angle = constraint.sa_bending_edges_rest_angle;
-            auto& sa_bending_edges_rest_area  = constraint.sa_bending_edges_rest_area;
-            auto& sa_bending_edges_stiffness  = constraint.sa_bending_edges_stiffness;
+	void BendingEnergy::compile(AsyncCompiler& compiler)
+	{
+		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		compiler.compile<1>(
+			_shader,
+			[sa_system_energy = _sa_system_energy](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint,
+				Var<BufferView<float3>>																	   sa_x,
+				Float																					   scaling)
+			{
+				auto& sa_edges = constraint.constraint_indices;
+				auto& sa_bending_edges_rest_angle = constraint.sa_bending_edges_rest_angle;
+				auto& sa_bending_edges_rest_area = constraint.sa_bending_edges_rest_area;
+				auto& sa_bending_edges_stiffness = constraint.sa_bending_edges_stiffness;
 
-            const Uint eid    = dispatch_id().x;
-            Float      energy = 0.0f;
-            {
-                const Uint4 edge = sa_edges->read(eid);
+				const Uint eid = dispatch_id().x;
+				Float	   energy = 0.0f;
+				{
+					const Uint4 edge = sa_edges->read(eid);
 
-                Float3 vert_pos[4] = {sa_x.read(edge[0]), sa_x.read(edge[1]), sa_x.read(edge[2]), sa_x.read(edge[3])};
-                Float rest_angle = sa_bending_edges_rest_angle->read(eid);
-                Float angle =
-                    BendingEnergyUtils::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
-                Float delta_angle = angle - rest_angle;
-                Float area        = sa_bending_edges_rest_area->read(eid);
-                energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
-            };
+					Float3 vert_pos[4] = { sa_x.read(edge[0]), sa_x.read(edge[1]), sa_x.read(edge[2]), sa_x.read(edge[3]) };
+					Float  rest_angle = sa_bending_edges_rest_angle->read(eid);
+					Float  angle =
+						BendingEnergyUtils::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
+					Float delta_angle = angle - rest_angle;
+					Float area = sa_bending_edges_rest_area->read(eid);
+					energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
+				};
 
-            energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
-            $if(eid % 256 == 0)
-            {
-                sa_system_energy->atomic(offset_bending).fetch_add(energy);
-            };
-        },
-        default_option);
+				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				$if(eid % 256 == 0)
+				{
+					sa_system_energy->atomic(offset_bending).fetch_add(energy);
+				};
+			},
+			default_option);
 
-    // evaluate gradient/hessian shader
-    compiler.compile<1>(
-        _eval_shader,
-        [](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_x, Float scaling)
-        {
-            auto& sa_edges                    = constraint.constraint_indices;
-            auto& sa_bending_edges_rest_angle = constraint.sa_bending_edges_rest_angle;
-            auto& sa_bending_edges_rest_area  = constraint.sa_bending_edges_rest_area;
-            auto& sa_bending_edges_stiffness  = constraint.sa_bending_edges_stiffness;
-            auto& output_gradient_ptr         = constraint.constraint_gradients;
-            auto& output_hessian_ptr          = constraint.constraint_hessians;
+		// evaluate gradient/hessian shader
+		compiler.compile<1>(
+			_eval_shader,
+			[](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint, Var<BufferView<float3>> sa_x, Float scaling)
+			{
+				auto& sa_edges = constraint.constraint_indices;
+				auto& sa_bending_edges_rest_angle = constraint.sa_bending_edges_rest_angle;
+				auto& sa_bending_edges_rest_area = constraint.sa_bending_edges_rest_area;
+				auto& sa_bending_edges_stiffness = constraint.sa_bending_edges_stiffness;
+				auto& output_gradient_ptr = constraint.constraint_gradients;
+				auto& output_hessian_ptr = constraint.constraint_hessians;
 
-            const UInt  eid  = dispatch_id().x;
-            const UInt4 edge = sa_edges->read(eid);
+				const UInt	eid = dispatch_id().x;
+				const UInt4 edge = sa_edges->read(eid);
 
-            Float3 vert_pos[4] = {
-                sa_x->read(edge[0]),
-                sa_x->read(edge[1]),
-                sa_x->read(edge[2]),
-                sa_x->read(edge[3]),
-            };
-            Float3 gradients[4] = {
-                make_float3(0.0f),
-                make_float3(0.0f),
-                make_float3(0.0f),
-                make_float3(0.0f),
-            };
+				Float3 vert_pos[4] = {
+					sa_x->read(edge[0]),
+					sa_x->read(edge[1]),
+					sa_x->read(edge[2]),
+					sa_x->read(edge[3]),
+				};
+				Float3 gradients[4] = {
+					make_float3(0.0f),
+					make_float3(0.0f),
+					make_float3(0.0f),
+					make_float3(0.0f),
+				};
 
-            const Float rest_angle = sa_bending_edges_rest_angle->read(eid);
-            const Float angle =
-                BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
-            const Float delta_angle = angle - rest_angle;
+				const Float rest_angle = sa_bending_edges_rest_angle->read(eid);
+				const Float angle =
+					BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+				const Float delta_angle = angle - rest_angle;
 
-            const Float area  = sa_bending_edges_rest_area->read(eid);
-            const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
+				const Float area = sa_bending_edges_rest_area->read(eid);
+				const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
 
-            {
-                output_gradient_ptr->write(eid * 4 + 0, stiff * delta_angle * gradients[0]);
-                output_gradient_ptr->write(eid * 4 + 1, stiff * delta_angle * gradients[1]);
-                output_gradient_ptr->write(eid * 4 + 2, stiff * delta_angle * gradients[2]);
-                output_gradient_ptr->write(eid * 4 + 3, stiff * delta_angle * gradients[3]);
+				{
+					output_gradient_ptr->write(eid * 4 + 0, stiff * delta_angle * gradients[0]);
+					output_gradient_ptr->write(eid * 4 + 1, stiff * delta_angle * gradients[1]);
+					output_gradient_ptr->write(eid * 4 + 2, stiff * delta_angle * gradients[2]);
+					output_gradient_ptr->write(eid * 4 + 3, stiff * delta_angle * gradients[3]);
 
-                auto outer = [&](const uint ii, const uint jj) -> Float3x3
-                { return stiff * outer_product(gradients[ii], gradients[jj]); };
-                output_hessian_ptr->write(eid * 16 + 0, outer(0, 0));
-                output_hessian_ptr->write(eid * 16 + 1, outer(1, 1));
-                output_hessian_ptr->write(eid * 16 + 2, outer(2, 2));
-                output_hessian_ptr->write(eid * 16 + 3, outer(3, 3));
+					auto outer = [&](const uint ii, const uint jj) -> Float3x3
+					{ return stiff * outer_product(gradients[ii], gradients[jj]); };
+					output_hessian_ptr->write(eid * 16 + 0, outer(0, 0));
+					output_hessian_ptr->write(eid * 16 + 1, outer(1, 1));
+					output_hessian_ptr->write(eid * 16 + 2, outer(2, 2));
+					output_hessian_ptr->write(eid * 16 + 3, outer(3, 3));
 
-                uint idx = 4;
-                for (uint ii = 0; ii < 4; ii++)
-                {
-                    for (uint jj = 0; jj < 4; jj++)
-                    {
-                        if (ii != jj)
-                        {
-                            output_hessian_ptr->write(eid * 16 + idx, outer(ii, jj));
-                            idx += 1;
-                        }
-                    }
-                }
-            }
-        },
-        default_option);
-}
+					uint idx = 4;
+					for (uint ii = 0; ii < 4; ii++)
+					{
+						for (uint jj = 0; jj < 4; jj++)
+						{
+							if (ii != jj)
+							{
+								output_hessian_ptr->write(eid * 16 + idx, outer(ii, jj));
+								idx += 1;
+							}
+						}
+					}
+				}
+			},
+			default_option);
+	}
 
-void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream)
-{
-}
+	void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream)
+	{
+	}
 
-void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream,
-                                          const Constitutions::BendingEdge<luisa::compute::Buffer>& constraint,
-                                          const luisa::compute::Buffer<float3>& sa_x,
-                                          float                                 scaling,
-                                          size_t                                dispatch_count)
-{
-    stream << _shader(constraint, sa_x, scaling).dispatch(dispatch_count);
-}
+	void BendingEnergy::device_compute_energy(luisa::compute::Stream& stream,
+		const Constitutions::BendingEdge<luisa::compute::Buffer>&	  constraint,
+		const luisa::compute::Buffer<float3>&						  sa_x,
+		float														  scaling,
+		size_t														  dispatch_count)
+	{
+		stream << _shader(constraint, sa_x, scaling).dispatch(dispatch_count);
+	}
 
-void BendingEnergy::device_evaluate(luisa::compute::Stream&                                   stream,
-                                    const Constitutions::BendingEdge<luisa::compute::Buffer>& constraint,
-                                    const luisa::compute::Buffer<float3>&                     sa_x,
-                                    float                                                     scaling,
-                                    size_t dispatch_count)
-{
-    stream << _eval_shader(constraint, sa_x.view(), scaling).dispatch(dispatch_count);
-}
+	void BendingEnergy::device_evaluate(luisa::compute::Stream&	  stream,
+		const Constitutions::BendingEdge<luisa::compute::Buffer>& constraint,
+		const luisa::compute::Buffer<float3>&					  sa_x,
+		float													  scaling,
+		size_t													  dispatch_count)
+	{
+		stream << _eval_shader(constraint, sa_x.view(), scaling).dispatch(dispatch_count);
+	}
 
-double BendingEnergy::host_evaluate(const std::vector<float>& host_energy)
-{
-    return host_energy[offset_bending];
-}
+	double BendingEnergy::host_evaluate(const std::vector<float>& host_energy)
+	{
+		return host_energy[offset_bending];
+	}
 
-void BendingEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data)
-{
-    auto& bending_edges = host_sim_data.get_bending_edge_data();
+	void BendingEnergy::host_evaluate(lcs::SimulationData<std::vector>& host_sim_data, lcs::MeshData<std::vector>& host_mesh_data)
+	{
+		auto& bending_edges = host_sim_data.get_bending_edge_data();
 
-    CpuParallel::parallel_for(
-        0,
-        bending_edges.get_num_indices(),
-        [sa_x                        = std::span(host_sim_data.sa_x),
-         sa_bending_edges            = std::span(bending_edges.constraint_indices),
-         sa_bending_edges_Q          = std::span(bending_edges.sa_bending_edges_Q),
-         sa_bending_edges_rest_angle = std::span(bending_edges.sa_bending_edges_rest_angle),
-         sa_bending_edges_rest_area  = std::span(bending_edges.sa_bending_edges_rest_area),
-         sa_bending_edges_stiffness  = std::span(bending_edges.sa_bending_edges_stiffness),
-         output_gradient_ptr         = std::span(bending_edges.constraint_gradients),
-         output_hessian_ptr          = std::span(bending_edges.constraint_hessians),
-         scaling = get_scene_params().get_bending_stiffness_scaling()](const uint eid)
-        {
-            uint4  edge         = sa_bending_edges[eid];
-            float3 vert_pos[4]  = {sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]]};
-            float3 gradients[4] = {Zero3, Zero3, Zero3, Zero3};
+		CpuParallel::parallel_for(
+			0,
+			bending_edges.get_num_indices(),
+			[sa_x = std::span(host_sim_data.sa_x),
+				sa_bending_edges = std::span(bending_edges.constraint_indices),
+				sa_bending_edges_Q = std::span(bending_edges.sa_bending_edges_Q),
+				sa_bending_edges_rest_angle = std::span(bending_edges.sa_bending_edges_rest_angle),
+				sa_bending_edges_rest_area = std::span(bending_edges.sa_bending_edges_rest_area),
+				sa_bending_edges_stiffness = std::span(bending_edges.sa_bending_edges_stiffness),
+				output_gradient_ptr = std::span(bending_edges.constraint_gradients),
+				output_hessian_ptr = std::span(bending_edges.constraint_hessians),
+				scaling = get_scene_params().get_bending_stiffness_scaling()](const uint eid)
+			{
+				uint4  edge = sa_bending_edges[eid];
+				float3 vert_pos[4] = { sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]] };
+				float3 gradients[4] = { Zero3, Zero3, Zero3, Zero3 };
 
-            const float rest_angle = sa_bending_edges_rest_angle[eid];
-            const float angle =
-                BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
-            const float delta_angle = angle - rest_angle;
+				const float rest_angle = sa_bending_edges_rest_angle[eid];
+				const float angle =
+					BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
+				const float delta_angle = angle - rest_angle;
 
-            const float area                 = sa_bending_edges_rest_area[eid];
-            const float stiff                = sa_bending_edges_stiffness[eid] * scaling * area;
-            output_gradient_ptr[eid * 4 + 0] = stiff * delta_angle * gradients[0];
-            output_gradient_ptr[eid * 4 + 1] = stiff * delta_angle * gradients[1];
-            output_gradient_ptr[eid * 4 + 2] = stiff * delta_angle * gradients[2];
-            output_gradient_ptr[eid * 4 + 3] = stiff * delta_angle * gradients[3];
+				const float area = sa_bending_edges_rest_area[eid];
+				const float stiff = sa_bending_edges_stiffness[eid] * scaling * area;
+				output_gradient_ptr[eid * 4 + 0] = stiff * delta_angle * gradients[0];
+				output_gradient_ptr[eid * 4 + 1] = stiff * delta_angle * gradients[1];
+				output_gradient_ptr[eid * 4 + 2] = stiff * delta_angle * gradients[2];
+				output_gradient_ptr[eid * 4 + 3] = stiff * delta_angle * gradients[3];
 
-            auto outer = [&gradients, stiff](uint ii, uint jj) -> float3x3
-            { return outer_product(stiff * gradients[ii], gradients[jj]); };
+				auto outer = [&gradients, stiff](uint ii, uint jj) -> float3x3
+				{ return outer_product(stiff * gradients[ii], gradients[jj]); };
 
-            output_hessian_ptr[eid * 16 + 0] = outer(0, 0);
-            output_hessian_ptr[eid * 16 + 1] = outer(1, 1);
-            output_hessian_ptr[eid * 16 + 2] = outer(2, 2);
-            output_hessian_ptr[eid * 16 + 3] = outer(3, 3);
+				output_hessian_ptr[eid * 16 + 0] = outer(0, 0);
+				output_hessian_ptr[eid * 16 + 1] = outer(1, 1);
+				output_hessian_ptr[eid * 16 + 2] = outer(2, 2);
+				output_hessian_ptr[eid * 16 + 3] = outer(3, 3);
 
-            uint idx = 4;
-            for (uint ii = 0; ii < 4; ii++)
-            {
-                for (uint jj = 0; jj < 4; jj++)
-                {
-                    if (ii != jj)
-                    {
-                        output_hessian_ptr[eid * 16 + idx] = outer(ii, jj);
-                        idx += 1;
-                    }
-                }
-            }
-        });
-}
+				uint idx = 4;
+				for (uint ii = 0; ii < 4; ii++)
+				{
+					for (uint jj = 0; jj < 4; jj++)
+					{
+						if (ii != jj)
+						{
+							output_hessian_ptr[eid * 16 + idx] = outer(ii, jj);
+							idx += 1;
+						}
+					}
+				}
+			});
+	}
 
-}  // namespace lcs
+} // namespace lcs

@@ -10,62 +10,61 @@
 #include <string>
 #include <luisa/luisa-compute.h>
 
+namespace lcs
+{
+
+	struct ReducedCollisionPairInfo
+	{
+		std::array<float, 3> weighted_model_pos1;
+		uint				 affine_body_idx1;
+		std::array<float, 3> weighted_model_pos2;
+		uint				 affine_body_idx2;
+	};
+	// enum CollisionListType
+	// {
+	//     CollisionListTypeVV,
+	//     CollisionListTypeVF,
+	//     CollisionListTypeEE,
+	//     CollisionListTypeEF,
+	// };
+
+} // namespace lcs
 
 namespace lcs
 {
 
-struct ReducedCollisionPairInfo
-{
-    std::array<float, 3> weighted_model_pos1;
-    uint                 affine_body_idx1;
-    std::array<float, 3> weighted_model_pos2;
-    uint                 affine_body_idx2;
-};
-// enum CollisionListType
-// {
-//     CollisionListTypeVV,
-//     CollisionListTypeVF,
-//     CollisionListTypeEE,
-//     CollisionListTypeEF,
-// };
+	constexpr uint mask_collision_type = 1u << 31;
+	constexpr uint mask_get_index = ~(mask_collision_type);
 
-}  // namespace lcs
-
-namespace lcs
-{
-
-constexpr uint mask_collision_type = 1u << 31;
-constexpr uint mask_get_index      = ~(mask_collision_type);
-
-namespace CollisionPair
-{
-    // clang-format off
+	namespace CollisionPair
+	{
+		// clang-format off
     constexpr uint type_vv() { return 1 << 0; }
     constexpr uint type_ve() { return 1 << 1; }
     constexpr uint type_vf() { return 1 << 2; }
     constexpr uint type_ee() { return 1 << 3; }
-    // clang-format on
+		// clang-format on
 
-    struct CollisionPairTemplate
-    {
-        uint4  indices;
-        float4 vec1;  // normal:3, area:1
-        float4 vec2;  // stiff:2, bary:2
-        float4 vec3;  // dv:3, lambda:1
+		struct CollisionPairTemplate
+		{
+			uint4  indices;
+			float4 vec1; // normal:3, area:1
+			float4 vec2; // stiff:2, bary:2
+			float4 vec3; // dv:3, lambda:1
 
-        uint  get_index(const uint i) const { return indices[i] & mask_get_index; }
-        uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
+			uint  get_index(const uint i) const { return indices[i] & mask_get_index; }
+			uint4 get_indices() const { return indices & luisa::make_uint4(mask_get_index); }
 
-        float3 get_normal() const { return vec1.xyz(); }
-        float  get_area() const { return vec1[3]; }
-        float3 get_friction_rel_dx() const { return vec3.xyz(); }
-        float  get_friction_mu_lambda() const { return vec3[3]; }
+			float3 get_normal() const { return vec1.xyz(); }
+			float  get_area() const { return vec1[3]; }
+			float3 get_friction_rel_dx() const { return vec3.xyz(); }
+			float  get_friction_mu_lambda() const { return vec3[3]; }
 
-        float         get_k1() const { return vec2[0]; }
-        float         get_k2() const { return vec2[1]; }
-        luisa::float2 get_stiff() const { return vec2.xy(); }
+			float		  get_k1() const { return vec2[0]; }
+			float		  get_k2() const { return vec2[1]; }
+			luisa::float2 get_stiff() const { return vec2.xy(); }
 
-        // clang-format off
+			// clang-format off
         uint get_collision_type() const
         {
             return ((indices[0] & lcs::mask_collision_type) >> 31)
@@ -137,10 +136,10 @@ namespace CollisionPair
             else if (type == type_ve()) { return get_ve_weight(); }
             else [[unlikely]] { return luisa::make_float4(0.0f); }
         }
-        // clang-format on
-    };
-}  // namespace CollisionPair
-};  // namespace lcs
+			// clang-format on
+		};
+	} // namespace CollisionPair
+};	  // namespace lcs
 
 // clang-format off
 LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2, vec3)
@@ -375,328 +374,324 @@ LUISA_STRUCT(lcs::CollisionPair::CollisionPairTemplate, indices, vec1, vec2, vec
 // LUISA_STRUCT(lcs::CollisionPairVF, indices, vec1, bary, vec2, gradient, hessian) {};
 // LUISA_STRUCT(lcs::CollisionPairEE, indices, vec1, bary, vec2, gradient, hessian) {};
 
-
 namespace lcs
 {
 
-namespace CollisionPair
-{
-    namespace CollisionCount
-    {
-        // clang-format off
+	namespace CollisionPair
+	{
+		namespace CollisionCount
+		{
+			// clang-format off
         inline constexpr uint vv_offset() { return 0; }
         inline constexpr uint ve_offset() { return 1; }
         inline constexpr uint vf_offset() { return 2; }
         inline constexpr uint ee_offset() { return 3; }
         inline constexpr uint total_adj_pairs_offset() { return 4; }
         inline constexpr uint total_adj_verts_offset() { return 5; }
-        // clang-format on
-    }  // namespace CollisionCount
-}  // namespace CollisionPair
+			// clang-format on
+		} // namespace CollisionCount
+	}	  // namespace CollisionPair
 
+	template <template <typename...> typename BufferType>
+	struct ContactTripletData : SimulationType
+	{
+		BufferType<uint>			 sa_triplet_info;
+		BufferType<MatrixTriplet3x3> sa_cgA_contact_offdiag_triplet;
+		BufferType<uint2>			 sa_cgA_contact_offdiag_triplet_indices;
+		BufferType<uint2>			 sa_cgA_contact_offdiag_triplet_indices2;
+		BufferType<uint>			 sa_cgA_contact_offdiag_triplet_property;
+		BufferType<uint>			 sa_cgA_contact_offdiag_triplet_property2;
+	};
 
-template <template <typename...> typename BufferType>
-struct ContactTripletData : SimulationType
-{
-    BufferType<uint>             sa_triplet_info;
-    BufferType<MatrixTriplet3x3> sa_cgA_contact_offdiag_triplet;
-    BufferType<uint2>            sa_cgA_contact_offdiag_triplet_indices;
-    BufferType<uint2>            sa_cgA_contact_offdiag_triplet_indices2;
-    BufferType<uint>             sa_cgA_contact_offdiag_triplet_property;
-    BufferType<uint>             sa_cgA_contact_offdiag_triplet_property2;
-};
+	// template <typename T>
+	// using BufferType = std::vector<T>;
+	template <template <typename...> typename BufferType>
+	struct CollisionData : SimulationType
+	{
+		BufferType<uint> broad_phase_collision_count;  // 0: VV, 1: VE, 2: VF, 3: EE
+		BufferType<uint> narrow_phase_collision_count; // 0: VF&EE narrow phase count
+													   // 4: vertAdjPairs, 5: vertAdjCollideVerts
 
-// template <typename T>
-// using BufferType = std::vector<T>;
-template <template <typename...> typename BufferType>
-struct CollisionData : SimulationType
-{
-    BufferType<uint> broad_phase_collision_count;   // 0: VV, 1: VE, 2: VF, 3: EE
-    BufferType<uint> narrow_phase_collision_count;  // 0: VF&EE narrow phase count
-                                                    // 4: vertAdjPairs, 5: vertAdjCollideVerts
+		BufferType<uint>  broad_phase_list_vf;
+		BufferType<uint>  broad_phase_list_ee;
+		BufferType<float> toi_per_vert; // Actually is global min TOI
+		BufferType<float> contact_energy;
 
-    BufferType<uint>  broad_phase_list_vf;
-    BufferType<uint>  broad_phase_list_ee;
-    BufferType<float> toi_per_vert;  // Actually is global min TOI
-    BufferType<float> contact_energy;
+		BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list; // 0
 
-    BufferType<CollisionPair::CollisionPairTemplate> narrow_phase_list;  // 0
+		ContactTripletData<BufferType> triplet_data;
 
-    ContactTripletData<BufferType> triplet_data;
+		// BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
+		// BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
+		// BufferType<uint> narrow_phase_indices_ef;
 
-    // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_vf;
-    // BufferType<ReducedCollisionPairInfo> reduced_narrow_phase_list_info_ee;
-    // BufferType<uint> narrow_phase_indices_ef;
+		BufferType<uint> per_vert_num_broad_phase_vf;
+		BufferType<uint> per_vert_num_broad_phase_ee;
 
-    BufferType<uint> per_vert_num_broad_phase_vf;
-    BufferType<uint> per_vert_num_broad_phase_ee;
+		BufferType<uint> per_vert_num_adj_pairs;
+		BufferType<uint> per_vert_num_adj_verts;
+		BufferType<uint> per_vert_prefix_adj_pairs;
+		BufferType<uint> per_vert_prefix_adj_verts;
 
-    BufferType<uint> per_vert_num_adj_pairs;
-    BufferType<uint> per_vert_num_adj_verts;
-    BufferType<uint> per_vert_prefix_adj_pairs;
-    BufferType<uint> per_vert_prefix_adj_verts;
+		BufferType<uint> num_pairs_in_first_iter;
 
-    BufferType<uint> num_pairs_in_first_iter;
+		// luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
+		// luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
 
-    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_broad_phase;
-    // luisa::compute::IndirectDispatchBuffer collision_indirect_cmd_buffer_narrow_phase;
+		const uint get_vv_count_offset() { return 0; }
+		const uint get_ve_count_offset() { return 1; }
+		const uint get_vf_count_offset() { return 2; }
+		const uint get_ee_count_offset() { return 3; }
 
-    const uint get_vv_count_offset() { return 0; }
-    const uint get_ve_count_offset() { return 1; }
-    const uint get_vf_count_offset() { return 2; }
-    const uint get_ee_count_offset() { return 3; }
+		// template<template<typename...> typename BufferType>
+		inline void allocate_basic_buffers(luisa::compute::Device& device,
+			const uint											   num_verts,
+			const uint											   num_faces,
+			const uint											   num_edges,
+			const uint											   num_dofs)
+		{
+			constexpr bool use_vv_ve = false;
+			lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
+			lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 8);
+			lcs::Initializer::resize_buffer(device, this->num_pairs_in_first_iter, 1);
+			lcs::Initializer::resize_buffer(device, this->contact_energy, 4);
+			lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts);
 
-    // template<template<typename...> typename BufferType>
-    inline void allocate_basic_buffers(luisa::compute::Device& device,
-                                       const uint              num_verts,
-                                       const uint              num_faces,
-                                       const uint              num_edges,
-                                       const uint              num_dofs)
-    {
-        constexpr bool use_vv_ve = false;
-        lcs::Initializer::resize_buffer(device, this->broad_phase_collision_count, 4);
-        lcs::Initializer::resize_buffer(device, this->narrow_phase_collision_count, 8);
-        lcs::Initializer::resize_buffer(device, this->num_pairs_in_first_iter, 1);
-        lcs::Initializer::resize_buffer(device, this->contact_energy, 4);
-        lcs::Initializer::resize_buffer(device, this->toi_per_vert, num_verts);
+			lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_dofs);
+			lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_dofs);
+			lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_pairs, num_dofs);
+			lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_dofs);
+			lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_dofs + 1);
+			lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
+		}
 
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_vf, num_dofs);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_broad_phase_ee, num_dofs);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_pairs, num_dofs);
-        lcs::Initializer::resize_buffer(device, this->per_vert_num_adj_verts, num_dofs);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_pairs, num_dofs + 1);
-        lcs::Initializer::resize_buffer(device, this->per_vert_prefix_adj_verts, num_dofs + 1);
-    }
+		inline size_t get_momery_bytes() const
+		{
+			const size_t collision_pair_bytes =
+				sizeof(uint) * this->broad_phase_collision_count.size()
+				+ sizeof(uint) * this->narrow_phase_collision_count.size()
+				+ sizeof(uint) * this->num_pairs_in_first_iter.size()
+				+ sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
+				+ sizeof(float) * this->toi_per_vert.size() + sizeof(float) * this->contact_energy.size()
+				+ sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
+				+ sizeof(uint) * this->triplet_data.sa_triplet_info.size()
+				+ sizeof(MatrixTriplet3x3) * this->triplet_data.sa_cgA_contact_offdiag_triplet.size()
+				+ sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices.size()
+				+ sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2.size()
+				+ sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property.size()
+				+ sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property2.size()
+				+ sizeof(uint) * this->per_vert_num_broad_phase_vf.size()
+				+ sizeof(uint) * this->per_vert_num_broad_phase_ee.size()
+				+ sizeof(uint) * this->per_vert_num_adj_pairs.size()
+				+ sizeof(uint) * this->per_vert_num_adj_verts.size()
+				+ sizeof(uint) * this->per_vert_prefix_adj_pairs.size()
+				+ sizeof(uint) * this->per_vert_prefix_adj_verts.size();
 
-    inline size_t get_momery_bytes() const
-    {
-        const size_t collision_pair_bytes =
-            sizeof(uint) * this->broad_phase_collision_count.size()
-            + sizeof(uint) * this->narrow_phase_collision_count.size()
-            + sizeof(uint) * this->num_pairs_in_first_iter.size()
-            + sizeof(uint) * this->broad_phase_list_vf.size() + sizeof(uint) * this->broad_phase_list_ee.size()
-            + sizeof(float) * this->toi_per_vert.size() + sizeof(float) * this->contact_energy.size()
-            + sizeof(CollisionPair::CollisionPairTemplate) * this->narrow_phase_list.size()
-            + sizeof(uint) * this->triplet_data.sa_triplet_info.size()
-            + sizeof(MatrixTriplet3x3) * this->triplet_data.sa_cgA_contact_offdiag_triplet.size()
-            + sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices.size()
-            + sizeof(uint2) * this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2.size()
-            + sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property.size()
-            + sizeof(uint) * this->triplet_data.sa_cgA_contact_offdiag_triplet_property2.size()
-            + sizeof(uint) * this->per_vert_num_broad_phase_vf.size()
-            + sizeof(uint) * this->per_vert_num_broad_phase_ee.size()
-            + sizeof(uint) * this->per_vert_num_adj_pairs.size()
-            + sizeof(uint) * this->per_vert_num_adj_verts.size()
-            + sizeof(uint) * this->per_vert_prefix_adj_pairs.size()
-            + sizeof(uint) * this->per_vert_prefix_adj_verts.size();
+			return size_t(collision_pair_bytes);
+		}
 
-        return size_t(collision_pair_bytes);
-    }
+		inline void resize_collision_data_list(luisa::compute::Device& device,
+			const uint												   num_verts,
+			const uint												   num_faces,
+			const uint												   num_edges,
+			const uint												   num_dofs,
+			const bool												   allocate_contact_list,
+			const bool												   allocate_triplet)
+		{
+			const uint per_element_count_BP = 4;
+			const uint per_element_count_NP = 2;
+			const uint per_element_count_NP_culled = 2;
 
-    inline void resize_collision_data_list(luisa::compute::Device& device,
-                                           const uint              num_verts,
-                                           const uint              num_faces,
-                                           const uint              num_edges,
-                                           const uint              num_dofs,
-                                           const bool              allocate_contact_list,
-                                           const bool              allocate_triplet)
-    {
-        const uint per_element_count_BP        = 4;
-        const uint per_element_count_NP        = 2;
-        const uint per_element_count_NP_culled = 2;
+			if (allocate_contact_list)
+			{
+				lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts);
+				lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges);
+				// lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
+				// lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
 
-        if (allocate_contact_list)
-        {
-            lcs::Initializer::resize_buffer(device, this->broad_phase_list_vf, per_element_count_BP * num_verts);
-            lcs::Initializer::resize_buffer(device, this->broad_phase_list_ee, per_element_count_BP * num_edges);
-            // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_vv, per_element_count_NP * num_verts);
-            // lcs::Initializer::resize_buffer(device, this->narrow_phase_list_ve, per_element_count_NP * num_verts);
+				const uint max_pairs = per_element_count_NP * (num_verts + num_edges);
+				const uint max_triplet = max_pairs * 12; // 12 off-diagonal
 
-            const uint max_pairs   = per_element_count_NP * (num_verts + num_edges);
-            const uint max_triplet = max_pairs * 12;  // 12 off-diagonal
+				lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
+				lcs::Initializer::resize_buffer(device, this->triplet_data.sa_triplet_info, max_pairs * 4);
 
-            lcs::Initializer::resize_buffer(device, this->narrow_phase_list, max_pairs);
-            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_triplet_info, max_pairs * 4);
+				lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices, max_triplet);
+				lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
+				lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property, max_triplet);
+				lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property2, max_triplet);
+			}
 
-            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_indices2, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property, max_triplet);
-            lcs::Initializer::resize_buffer(device, this->triplet_data.sa_cgA_contact_offdiag_triplet_property2, max_triplet);
-        }
+			if (allocate_triplet)
+			{
+				const uint max_culled_triplet = per_element_count_NP_culled * (num_verts + num_edges);
+				lcs::Initializer::resize_buffer(device,
+					this->triplet_data.sa_cgA_contact_offdiag_triplet,
+					max_scalar(max_culled_triplet, 256));
+			}
 
-        if (allocate_triplet)
-        {
-            const uint max_culled_triplet = per_element_count_NP_culled * (num_verts + num_edges);
-            lcs::Initializer::resize_buffer(device,
-                                            this->triplet_data.sa_cgA_contact_offdiag_triplet,
-                                            max_scalar(max_culled_triplet, 256));
-        }
+			const size_t collision_pair_bytes = get_momery_bytes();
 
-        const size_t collision_pair_bytes = get_momery_bytes();
+			LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
+			if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)
+				LUISA_INFO("Allocated buffer size for collision pair = {} GB",
+					float(collision_pair_bytes) / (1024 * 1024 * 1024));
+		}
+	};
 
-        LUISA_INFO("Allocated collision buffer size {} MB", collision_pair_bytes / (1024 * 1024));
-        if (float(collision_pair_bytes) / (1024 * 1024 * 1024) > 1.0f)
-            LUISA_INFO("Allocated buffer size for collision pair = {} GB",
-                       float(collision_pair_bytes) / (1024 * 1024 * 1024));
-    }
-};
-
-
-}  // namespace lcs
-
+} // namespace lcs
 
 LUISA_BINDING_GROUP(lcs::CollisionData<luisa::compute::Buffer>,
-                    broad_phase_collision_count,
-                    narrow_phase_collision_count,
-                    num_pairs_in_first_iter,
-                    broad_phase_list_vf,
-                    broad_phase_list_ee,
-                    toi_per_vert,
-                    contact_energy,
-                    narrow_phase_list,
-                    per_vert_num_broad_phase_vf,
-                    per_vert_num_broad_phase_ee,
-                    per_vert_num_adj_pairs,
-                    per_vert_num_adj_verts,
-                    per_vert_prefix_adj_pairs,
-                    per_vert_prefix_adj_verts){};
+	broad_phase_collision_count,
+	narrow_phase_collision_count,
+	num_pairs_in_first_iter,
+	broad_phase_list_vf,
+	broad_phase_list_ee,
+	toi_per_vert,
+	contact_energy,
+	narrow_phase_list,
+	per_vert_num_broad_phase_vf,
+	per_vert_num_broad_phase_ee,
+	per_vert_num_adj_pairs,
+	per_vert_num_adj_verts,
+	per_vert_prefix_adj_pairs,
+	per_vert_prefix_adj_verts){};
 
 LUISA_BINDING_GROUP(lcs::ContactTripletData<luisa::compute::Buffer>,
-                    sa_triplet_info,
-                    sa_cgA_contact_offdiag_triplet,
-                    sa_cgA_contact_offdiag_triplet_indices,
-                    sa_cgA_contact_offdiag_triplet_indices2,
-                    sa_cgA_contact_offdiag_triplet_property,
-                    sa_cgA_contact_offdiag_triplet_property2){};
+	sa_triplet_info,
+	sa_cgA_contact_offdiag_triplet,
+	sa_cgA_contact_offdiag_triplet_indices,
+	sa_cgA_contact_offdiag_triplet_indices2,
+	sa_cgA_contact_offdiag_triplet_property,
+	sa_cgA_contact_offdiag_triplet_property2){};
 
 // Full matrix
 namespace lcs
 {
-namespace CollisioinPair
-{
-    inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
-    {
-        //   0   2
-        //  t2   1
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[1][0];
-    }
-    inline void write_upper_hessian(float3x3 hessian[3], float6x6& H)
-    {
-        //   0   2
-        //  t2   1
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[1][0];
-    }
-    inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
-    {
-        //   0   2
-        //  t2   1
-        H.mat[0][0] = hessian[0];
-        H.mat[0][1] = transpose_mat(hessian[2]);
-        H.mat[1][0] = hessian[2];
-        H.mat[1][1] = hessian[1];
-    }
+	namespace CollisioinPair
+	{
+		inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<3>& hessian, Float6x6& H)
+		{
+			//   0   2
+			//  t2   1
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[1][0];
+		}
+		inline void write_upper_hessian(float3x3 hessian[3], float6x6& H)
+		{
+			//   0   2
+			//  t2   1
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[1][0];
+		}
+		inline void extract_upper_hessian(float3x3 hessian[3], float6x6& H)
+		{
+			//   0   2
+			//  t2   1
+			H.mat[0][0] = hessian[0];
+			H.mat[0][1] = transpose_mat(hessian[2]);
+			H.mat[1][0] = hessian[2];
+			H.mat[1][1] = hessian[1];
+		}
 
-    inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<6>& hessian, Float9x9& H)
-    {
-        //   0   3   5
-        //  t3   1   4
-        //  t5  t4   2
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[2][2];
-        hessian[3] = H.mat[1][0];
-        hessian[4] = H.mat[2][1];
-        hessian[5] = H.mat[2][0];
-    }
-    inline void write_upper_hessian(float3x3 hessian[6], float9x9& H)
-    {
-        //   0   3   5
-        //  t3   1   4
-        //  t5  t4   2
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[2][2];
-        hessian[3] = H.mat[1][0];
-        hessian[4] = H.mat[2][1];
-        hessian[5] = H.mat[2][0];
-    }
-    inline void extract_upper_hessian(float3x3 hessian[6], float9x9& H)
-    {
-        //   0   3   5
-        //  t3   1   4
-        //  t5  t4   2
-        H.mat[0][0] = hessian[0];
-        H.mat[0][1] = transpose_mat(hessian[3]);
-        H.mat[0][2] = transpose_mat(hessian[5]);
-        H.mat[1][0] = hessian[3];
-        H.mat[1][1] = hessian[1];
-        H.mat[1][2] = transpose_mat(hessian[4]);
-        H.mat[2][0] = hessian[5];
-        H.mat[2][1] = hessian[4];
-        H.mat[2][2] = hessian[2];
-    }
+		inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<6>& hessian, Float9x9& H)
+		{
+			//   0   3   5
+			//  t3   1   4
+			//  t5  t4   2
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[2][2];
+			hessian[3] = H.mat[1][0];
+			hessian[4] = H.mat[2][1];
+			hessian[5] = H.mat[2][0];
+		}
+		inline void write_upper_hessian(float3x3 hessian[6], float9x9& H)
+		{
+			//   0   3   5
+			//  t3   1   4
+			//  t5  t4   2
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[2][2];
+			hessian[3] = H.mat[1][0];
+			hessian[4] = H.mat[2][1];
+			hessian[5] = H.mat[2][0];
+		}
+		inline void extract_upper_hessian(float3x3 hessian[6], float9x9& H)
+		{
+			//   0   3   5
+			//  t3   1   4
+			//  t5  t4   2
+			H.mat[0][0] = hessian[0];
+			H.mat[0][1] = transpose_mat(hessian[3]);
+			H.mat[0][2] = transpose_mat(hessian[5]);
+			H.mat[1][0] = hessian[3];
+			H.mat[1][1] = hessian[1];
+			H.mat[1][2] = transpose_mat(hessian[4]);
+			H.mat[2][0] = hessian[5];
+			H.mat[2][1] = hessian[4];
+			H.mat[2][2] = hessian[2];
+		}
 
-    inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<10>& hessian, Float12x12& H)
-    {
-        //   0   4   7   9
-        //  t4   1   5   8
-        //  t7  t5   2   6
-        //  t9  t8  t6   3
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[2][2];
-        hessian[3] = H.mat[3][3];
-        hessian[4] = H.mat[1][0];
-        hessian[5] = H.mat[2][1];
-        hessian[6] = H.mat[3][2];
-        hessian[7] = H.mat[2][0];
-        hessian[8] = H.mat[3][1];
-        hessian[9] = H.mat[3][0];
-    }
-    inline void write_upper_hessian(float3x3 hessian[10], float12x12& H)
-    {
+		inline void write_upper_hessian(luisa::compute::ArrayFloat3x3<10>& hessian, Float12x12& H)
+		{
+			//   0   4   7   9
+			//  t4   1   5   8
+			//  t7  t5   2   6
+			//  t9  t8  t6   3
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[2][2];
+			hessian[3] = H.mat[3][3];
+			hessian[4] = H.mat[1][0];
+			hessian[5] = H.mat[2][1];
+			hessian[6] = H.mat[3][2];
+			hessian[7] = H.mat[2][0];
+			hessian[8] = H.mat[3][1];
+			hessian[9] = H.mat[3][0];
+		}
+		inline void write_upper_hessian(float3x3 hessian[10], float12x12& H)
+		{
 
-        //   0   4   7   9
-        //  t4   1   5   8
-        //  t7  t5   2   6
-        //  t9  t8  t6   3
-        hessian[0] = H.mat[0][0];
-        hessian[1] = H.mat[1][1];
-        hessian[2] = H.mat[2][2];
-        hessian[3] = H.mat[3][3];
-        hessian[4] = H.mat[1][0];
-        hessian[5] = H.mat[2][1];
-        hessian[6] = H.mat[3][2];
-        hessian[7] = H.mat[2][0];
-        hessian[8] = H.mat[3][1];
-        hessian[9] = H.mat[3][0];
-    }
-    inline void extract_upper_hessian(float3x3 hessian[10], float12x12& H)
-    {
-        //   0   4   7   9
-        //  t4   1   5   8
-        //  t7  t5   2   6
-        //  t9  t8  t6   3
-        H.mat[0][0] = hessian[0];
-        H.mat[0][1] = transpose_mat(hessian[4]);
-        H.mat[0][2] = transpose_mat(hessian[7]);
-        H.mat[0][3] = transpose_mat(hessian[9]);
-        H.mat[1][0] = hessian[4];
-        H.mat[1][1] = hessian[1];
-        H.mat[1][2] = transpose_mat(hessian[5]);
-        H.mat[1][3] = transpose_mat(hessian[8]);
-        H.mat[2][0] = hessian[7];
-        H.mat[2][1] = hessian[5];
-        H.mat[2][2] = hessian[2];
-        H.mat[2][3] = transpose_mat(hessian[3]);
-        H.mat[3][0] = hessian[9];
-        H.mat[3][1] = hessian[8];
-        H.mat[3][2] = hessian[6];
-        H.mat[3][3] = hessian[3];
-    }
-}  // namespace CollisioinPair
-};  // namespace lcs
+			//   0   4   7   9
+			//  t4   1   5   8
+			//  t7  t5   2   6
+			//  t9  t8  t6   3
+			hessian[0] = H.mat[0][0];
+			hessian[1] = H.mat[1][1];
+			hessian[2] = H.mat[2][2];
+			hessian[3] = H.mat[3][3];
+			hessian[4] = H.mat[1][0];
+			hessian[5] = H.mat[2][1];
+			hessian[6] = H.mat[3][2];
+			hessian[7] = H.mat[2][0];
+			hessian[8] = H.mat[3][1];
+			hessian[9] = H.mat[3][0];
+		}
+		inline void extract_upper_hessian(float3x3 hessian[10], float12x12& H)
+		{
+			//   0   4   7   9
+			//  t4   1   5   8
+			//  t7  t5   2   6
+			//  t9  t8  t6   3
+			H.mat[0][0] = hessian[0];
+			H.mat[0][1] = transpose_mat(hessian[4]);
+			H.mat[0][2] = transpose_mat(hessian[7]);
+			H.mat[0][3] = transpose_mat(hessian[9]);
+			H.mat[1][0] = hessian[4];
+			H.mat[1][1] = hessian[1];
+			H.mat[1][2] = transpose_mat(hessian[5]);
+			H.mat[1][3] = transpose_mat(hessian[8]);
+			H.mat[2][0] = hessian[7];
+			H.mat[2][1] = hessian[5];
+			H.mat[2][2] = hessian[2];
+			H.mat[2][3] = transpose_mat(hessian[3]);
+			H.mat[3][0] = hessian[9];
+			H.mat[3][1] = hessian[8];
+			H.mat[3][2] = hessian[6];
+			H.mat[3][3] = hessian[3];
+		}
+	} // namespace CollisioinPair
+};	  // namespace lcs

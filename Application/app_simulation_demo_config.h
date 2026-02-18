@@ -6,12 +6,12 @@
 namespace Demo
 {
 
-namespace Simulation
-{
+	namespace Simulation
+	{
 
-    void load_default_scene(std::vector<lcs::Initializer::WorldData>& shell_list);
-    void load_scene_params_from_json(std::vector<lcs::Initializer::WorldData>& shell_list, const std::string& json_path);
+		void load_default_scene(std::vector<lcs::Initializer::WorldData>& shell_list);
+		void load_scene_params_from_json(std::vector<lcs::Initializer::WorldData>& shell_list, const std::string& json_path);
 
-}  // namespace Simulation
+	} // namespace Simulation
 
-}  // namespace Demo
+} // namespace Demo

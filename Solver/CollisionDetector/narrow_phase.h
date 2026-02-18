@@ -15,274 +15,271 @@
 namespace lcs
 {
 
-enum class ContactEnergyType
-{
-    Quadratic,
-    Barrier,
-};
-// constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Quadratic; // Quadratic or Barrier
+	enum class ContactEnergyType
+	{
+		Quadratic,
+		Barrier,
+	};
+	// constexpr ContactEnergyType contact_energy_type = ContactEnergyType::Quadratic; // Quadratic or Barrier
 
-class NarrowPhasesDetector
-{
-    template <typename T>
-    using Buffer = luisa::compute::Buffer<T>;
-    template <typename T>
-    using BufferView = luisa::compute::BufferView<T>;
-    using Stream     = luisa::compute::Stream;
-    using Device     = luisa::compute::Device;
+	class NarrowPhasesDetector
+	{
+		template <typename T>
+		using Buffer = luisa::compute::Buffer<T>;
+		template <typename T>
+		using BufferView = luisa::compute::BufferView<T>;
+		using Stream = luisa::compute::Stream;
+		using Device = luisa::compute::Device;
 
-  private:
-    void compile_ccd(AsyncCompiler& compiler);
-    void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-    void compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-    void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-    void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
-    void compile_make_contact_triplet(AsyncCompiler& compiler);
-    void compile_assemble_atomic(AsyncCompiler& compiler);
-    void compile_SpMV(AsyncCompiler& compiler);
+	private:
+		void compile_ccd(AsyncCompiler& compiler);
+		void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+		void compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+		void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+		void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
+		void compile_make_contact_triplet(AsyncCompiler& compiler);
+		void compile_assemble_atomic(AsyncCompiler& compiler);
+		void compile_SpMV(AsyncCompiler& compiler);
 
-  public:
-    void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
-    void compile(AsyncCompiler& compiler);
-    void set_collision_data(CollisionData<std::vector>* host_ccd_ptr, CollisionData<luisa::compute::Buffer>* ccd_ptr)
-    {
-        host_collision_data = host_ccd_ptr;
-        collision_data      = ccd_ptr;
-    }
+	public:
+		void unit_test(luisa::compute::Device& device, luisa::compute::Stream& stream);
+		void compile(AsyncCompiler& compiler);
+		void set_collision_data(CollisionData<std::vector>* host_ccd_ptr, CollisionData<luisa::compute::Buffer>* ccd_ptr)
+		{
+			host_collision_data = host_ccd_ptr;
+			collision_data = ccd_ptr;
+		}
 
-  public:
-    void   reset_energy(Stream& stream);
-    float2 download_energy(Stream& stream);
+	public:
+		void   reset_energy(Stream& stream);
+		float2 download_energy(Stream& stream);
 
-    void  reset_toi(Stream& stream);
-    void  host_reset_toi(Stream& stream);
-    void  reset_broadphase_count(Stream& stream);
-    void  reset_narrowphase_count(Stream& stream);
-    void  reset_pervert_collision_count(Stream& stream);
-    float get_global_toi(Stream& stream);
-    bool  download_broadphase_collision_count(Stream& stream);
-    bool  download_narrowphase_collision_count(Stream& stream);
-    void  download_narrowphase_list(Stream& stream);
-    void  download_contact_triplet(Stream& stream);
-    void  upload_spd_narrowphase_list(Stream& stream);
-    void  resize_buffers(Device& decice, Stream& stream);
+		void  reset_toi(Stream& stream);
+		void  host_reset_toi(Stream& stream);
+		void  reset_broadphase_count(Stream& stream);
+		void  reset_narrowphase_count(Stream& stream);
+		void  reset_pervert_collision_count(Stream& stream);
+		float get_global_toi(Stream& stream);
+		bool  download_broadphase_collision_count(Stream& stream);
+		bool  download_narrowphase_collision_count(Stream& stream);
+		void  download_narrowphase_list(Stream& stream);
+		void  download_contact_triplet(Stream& stream);
+		void  upload_spd_narrowphase_list(Stream& stream);
+		void  resize_buffers(Device& decice, Stream& stream);
 
-  private:
-    template <typename T>
-    void resize_template(luisa::compute::Device&    device,
-                         luisa::compute::Buffer<T>& buffer,
-                         const uint                 curr_count,
-                         const std::string          name)
-    {
-        if (curr_count > buffer.size())
-        {
-            const uint desired_size = curr_count * 2;
+	private:
+		template <typename T>
+		void resize_template(luisa::compute::Device& device,
+			luisa::compute::Buffer<T>&				 buffer,
+			const uint								 curr_count,
+			const std::string						 name)
+		{
+			if (curr_count > buffer.size())
+			{
+				const uint desired_size = curr_count * 2;
 
-            LUISA_INFO("Resize buffer {} : from {} (< 2*CurrMax = {}) to {} ({} MB) , Total collision buffer size = {} MB",
-                       name,
-                       buffer.size(),
-                       curr_count * 2,
-                       desired_size,
-                       uint(desired_size * sizeof(T) / 1024 / 1024),
-                       collision_data->get_momery_bytes() / (1024 * 1024));
-            buffer.release();
-            buffer = device.create_buffer<T>(desired_size);
-        }
-    }
+				LUISA_INFO("Resize buffer {} : from {} (< 2*CurrMax = {}) to {} ({} MB) , Total collision buffer size = {} MB",
+					name,
+					buffer.size(),
+					curr_count * 2,
+					desired_size,
+					uint(desired_size * sizeof(T) / 1024 / 1024),
+					collision_data->get_momery_bytes() / (1024 * 1024));
+				buffer.release();
+				buffer = device.create_buffer<T>(desired_size);
+			}
+		}
 
-    void dispatch_large_thread_template(const std::function<void(uint, uint)>& dispatch_func, uint total_size);
+		void dispatch_large_thread_template(const std::function<void(uint, uint)>& dispatch_func, uint total_size);
 
-  public:
-    // CCD
-    void vf_ccd_query(Stream&               stream,
-                      const Buffer<float3>& sa_x_begin,
-                      const Buffer<float3>& sa_x_end,
-                      const Buffer<uint3>&  sa_faces,
-                      const Buffer<uint>&   sa_vert_affine_bodies_id,
-                      const Buffer<float>&  d_hat,
-                      const Buffer<float>&  thickness);
+	public:
+		// CCD
+		void vf_ccd_query(Stream& stream,
+			const Buffer<float3>& sa_x_begin,
+			const Buffer<float3>& sa_x_end,
+			const Buffer<uint3>&  sa_faces,
+			const Buffer<uint>&	  sa_vert_affine_bodies_id,
+			const Buffer<float>&  d_hat,
+			const Buffer<float>&  thickness);
 
-    void ee_ccd_query(Stream&               stream,
-                      const Buffer<float3>& sa_x_begin,
-                      const Buffer<float3>& sa_x_end,
-                      const Buffer<uint2>&  sa_edges,
-                      const Buffer<uint>&   sa_vert_affine_bodies_id,
-                      const Buffer<float>&  d_hat,
-                      const Buffer<float>&  thickness);
+		void ee_ccd_query(Stream& stream,
+			const Buffer<float3>& sa_x_begin,
+			const Buffer<float3>& sa_x_end,
+			const Buffer<uint2>&  sa_edges,
+			const Buffer<uint>&	  sa_vert_affine_bodies_id,
+			const Buffer<float>&  d_hat,
+			const Buffer<float>&  thickness);
 
-    void host_vf_ccd_query(Stream&                    stream,
-                           const std::vector<float3>& sa_x_begin_left,
-                           const std::vector<float3>& sa_x_begin_right,
-                           const std::vector<float3>& sa_x_end_left,
-                           const std::vector<float3>& sa_x_end_right,
-                           const std::vector<uint3>&  sa_faces_right,
-                           const float                d_hat,
-                           const float                thickness);
+		void host_vf_ccd_query(Stream& stream,
+			const std::vector<float3>& sa_x_begin_left,
+			const std::vector<float3>& sa_x_begin_right,
+			const std::vector<float3>& sa_x_end_left,
+			const std::vector<float3>& sa_x_end_right,
+			const std::vector<uint3>&  sa_faces_right,
+			const float				   d_hat,
+			const float				   thickness);
 
-    void host_ee_ccd_query(Stream&                    stream,
-                           const std::vector<float3>& sa_x_begin_left,
-                           const std::vector<float3>& sa_x_begin_right,
-                           const std::vector<float3>& sa_x_end_left,
-                           const std::vector<float3>& sa_x_end_right,
-                           const std::vector<uint2>&  sa_edges_left,
-                           const std::vector<uint2>&  sa_edges_right,
-                           const float                d_hat,
-                           const float                thickness);
+		void host_ee_ccd_query(Stream& stream,
+			const std::vector<float3>& sa_x_begin_left,
+			const std::vector<float3>& sa_x_begin_right,
+			const std::vector<float3>& sa_x_end_left,
+			const std::vector<float3>& sa_x_end_right,
+			const std::vector<uint2>&  sa_edges_left,
+			const std::vector<uint2>&  sa_edges_right,
+			const float				   d_hat,
+			const float				   thickness);
 
-  public:
-    // DCD
-    void vf_dcd_query_repulsion(Stream&               stream,
-                                const Buffer<float3>& sa_x,
-                                const Buffer<float3>& sa_rest_x,
-                                const Buffer<float>&  sa_rest_vert_area,
-                                const Buffer<float>&  sa_rest_face_area,
-                                const Buffer<uint3>&  sa_faces,
-                                const Buffer<uint>&   sa_vert_affine_bodies_id,
-                                const Buffer<float>&  d_hat,
-                                const Buffer<float>&  thickness,
-                                const float           kappa);
+	public:
+		// DCD
+		void vf_dcd_query_repulsion(Stream& stream,
+			const Buffer<float3>&			sa_x,
+			const Buffer<float3>&			sa_rest_x,
+			const Buffer<float>&			sa_rest_vert_area,
+			const Buffer<float>&			sa_rest_face_area,
+			const Buffer<uint3>&			sa_faces,
+			const Buffer<uint>&				sa_vert_affine_bodies_id,
+			const Buffer<float>&			d_hat,
+			const Buffer<float>&			thickness,
+			const float						kappa);
 
-    void ee_dcd_query_repulsion(Stream&               stream,
-                                const Buffer<float3>& sa_x,
-                                const Buffer<float3>& sa_rest_x,
-                                const Buffer<float>&  sa_rest_edge_area,
-                                const Buffer<uint2>&  sa_edges,
-                                const Buffer<uint>&   sa_vert_affine_bodies_id,
-                                const Buffer<float>&  d_hat,
-                                const Buffer<float>&  thickness,
-                                const float           kappa);
+		void ee_dcd_query_repulsion(Stream& stream,
+			const Buffer<float3>&			sa_x,
+			const Buffer<float3>&			sa_rest_x,
+			const Buffer<float>&			sa_rest_edge_area,
+			const Buffer<uint2>&			sa_edges,
+			const Buffer<uint>&				sa_vert_affine_bodies_id,
+			const Buffer<float>&			d_hat,
+			const Buffer<float>&			thickness,
+			const float						kappa);
 
-    void device_perPair_evaluate_gradient_hessian(Stream&               stream,
-                                                  const Buffer<float3>& sa_x,
-                                                  const Buffer<float3>& sa_x_step_start,
-                                                  const Buffer<float>&  sa_vert_friction_coeff,
-                                                  const Buffer<float>&  d_hat,
-                                                  const Buffer<float>&  thickness,
-                                                  const Buffer<uint>&   sa_vert_affine_bodies_id,
-                                                  const Buffer<float3>& sa_scaled_model_x,
-                                                  const uint            prefix_abd,
-                                                  Buffer<float3>&       sa_cgB,
-                                                  Buffer<float3x3>&     sa_cgA_diag);
+		void device_perPair_evaluate_gradient_hessian(Stream& stream,
+			const Buffer<float3>&							  sa_x,
+			const Buffer<float3>&							  sa_x_step_start,
+			const Buffer<float>&							  sa_vert_friction_coeff,
+			const Buffer<float>&							  d_hat,
+			const Buffer<float>&							  thickness,
+			const Buffer<uint>&								  sa_vert_affine_bodies_id,
+			const Buffer<float3>&							  sa_scaled_model_x,
+			const uint										  prefix_abd,
+			Buffer<float3>&									  sa_cgB,
+			Buffer<float3x3>&								  sa_cgA_diag);
 
-    void prescan_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
-    void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
-    void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
-    void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
-    void host_sort_contact_triplet(Stream& stream);
-    void device_sort_contact_triplet(Stream& stream);
-    void device_assemble_contact_triplet(Stream& stream, Buffer<float3>& sa_scaled_model_x, const uint prefix_abd);
+		void prescan_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
+		void construct_pervert_adj_list(Stream& stream, Buffer<uint>& sa_vert_affine_bodies_id, const uint prefix_abd);
+		void host_perPair_spmv(Stream& stream, const std::vector<float3>& input_array, std::vector<float3>& output_array);
+		void device_perPair_spmv(Stream& stream, const Buffer<float3>& input_array, Buffer<float3>& output_array);
+		void host_sort_contact_triplet(Stream& stream);
+		void device_sort_contact_triplet(Stream& stream);
+		void device_assemble_contact_triplet(Stream& stream, Buffer<float3>& sa_scaled_model_x, const uint prefix_abd);
 
-  public:
-    // Compute barrier energy
-    void compute_contact_energy_from_iter_start_list(Stream&               stream,
-                                                     const Buffer<float3>& sa_x,
-                                                     const Buffer<float3>& sa_x_step_start,
-                                                     const Buffer<float>&  sa_rest_vert_area,
-                                                     const Buffer<float>&  sa_rest_face_area,
-                                                     const Buffer<uint3>&  sa_faces_right,
-                                                     const Buffer<float>&  d_hat,
-                                                     const Buffer<float>&  thickness,
-                                                     const Buffer<float>&  friction_mu,
-                                                     const float           kappa);
+	public:
+		// Compute barrier energy
+		void compute_contact_energy_from_iter_start_list(Stream& stream,
+			const Buffer<float3>&								 sa_x,
+			const Buffer<float3>&								 sa_x_step_start,
+			const Buffer<float>&								 sa_rest_vert_area,
+			const Buffer<float>&								 sa_rest_face_area,
+			const Buffer<uint3>&								 sa_faces_right,
+			const Buffer<float>&								 d_hat,
+			const Buffer<float>&								 thickness,
+			const Buffer<float>&								 friction_mu,
+			const float											 kappa);
 
-  public:
-  public:
-    CollisionData<luisa::compute::Buffer>* collision_data;
-    CollisionData<std::vector>*            host_collision_data;
+	public:
+	public:
+		CollisionData<luisa::compute::Buffer>* collision_data;
+		CollisionData<std::vector>*			   host_collision_data;
 
-  private:
-    CollisionData<luisa::compute::Buffer>& get_collision_data() { return *collision_data; }
-    using CDBG = lcs::CollisionData<luisa::compute::Buffer>;       // CollisionData Binding Group
-    using TDBG = lcs::ContactTripletData<luisa::compute::Buffer>;  // ContactTripletData Binding Group
+	private:
+		CollisionData<luisa::compute::Buffer>& get_collision_data() { return *collision_data; }
+		using CDBG = lcs::CollisionData<luisa::compute::Buffer>;	  // CollisionData Binding Group
+		using TDBG = lcs::ContactTripletData<luisa::compute::Buffer>; // ContactTripletData Binding Group
 
-    luisa::compute::Shader<1,
-                           CDBG,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<uint3>,
-                           luisa::compute::Buffer<uint>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>,
-                           uint>
-        fn_narrow_phase_vf_ccd_query;
+		luisa::compute::Shader<1,
+			CDBG,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<uint3>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			uint>
+			fn_narrow_phase_vf_ccd_query;
 
-    luisa::compute::Shader<1,
-                           CDBG,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<uint2>,
-                           luisa::compute::Buffer<uint>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>,
-                           uint>
-        fn_narrow_phase_ee_ccd_query;
+		luisa::compute::Shader<1,
+			CDBG,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<uint2>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			uint>
+			fn_narrow_phase_ee_ccd_query;
 
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_energy;
-    luisa::compute::Shader<1, luisa::compute::BufferView<uint>>  fn_reset_uint;
-    luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
+		luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_toi;
+		luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_energy;
+		luisa::compute::Shader<1, luisa::compute::BufferView<uint>>	 fn_reset_uint;
+		luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
 
+		luisa::compute::Shader<1,
+			CDBG,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<uint3>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			float,
+			uint,
+			uint>
+			fn_narrow_phase_vf_dcd_query;
 
-    luisa::compute::Shader<1,
-                           CDBG,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<uint3>,
-                           luisa::compute::Buffer<uint>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>,
-                           float,
-                           uint,
-                           uint>
-        fn_narrow_phase_vf_dcd_query;
+		luisa::compute::Shader<1,
+			CDBG,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<uint2>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			float,
+			uint,
+			uint>
+			fn_narrow_phase_ee_dcd_query;
 
-    luisa::compute::Shader<1,
-                           CDBG,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float3>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<uint2>,
-                           luisa::compute::Buffer<uint>,
-                           luisa::compute::Buffer<float>,
-                           luisa::compute::Buffer<float>,
-                           float,
-                           uint,
-                           uint>
-        fn_narrow_phase_ee_dcd_query;
+		luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float>
+																																		 fn_compute_repulsion_energy;
+		luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float, bool> fn_process_collision_pair_friction;
 
-    luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float>
-        fn_compute_repulsion_energy;
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float, bool> fn_process_collision_pair_friction;
+		// Scan
+		luisa::compute::Shader<1, CDBG>											 fn_preprocess_for_affine_bodies;
+		luisa::compute::Shader<1, CDBG, Buffer<uint>, uint>						 fn_calc_pervert_collion_count;
+		luisa::compute::Shader<1, CDBG>											 fn_calc_pervert_prefix_adj_pairs;
+		luisa::compute::Shader<1, CDBG>											 fn_calc_pervert_prefix_adj_verts;
+		luisa::compute::Shader<1, CDBG, TDBG, Buffer<uint>, uint>				 fn_fill_in_pairs_in_vert_adjacent;
+		luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint, uint> fn_block_level_sort_contact_triplet;
+		luisa::compute::Shader<1, CDBG, TDBG>									 fn_specify_target_slot;
+		luisa::compute::Shader<1, CDBG, TDBG, uint, uint, uint>					 fn_block_level_second_sort_contact_triplet_fill_in;
+		luisa::compute::Shader<1, CDBG, TDBG, uint>								 fn_specify_target_slot_2_level;
+		luisa::compute::Shader<1, CDBG, TDBG, Buffer<float3>, uint, uint>		 fn_assemble_triplet_sorted;
+		luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<uint>, uint>		 fn_assemble_triplet_sorted_perPair;
+		luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>>				 fn_reset_triplet;
 
-    // Scan
-    luisa::compute::Shader<1, CDBG>                           fn_preprocess_for_affine_bodies;
-    luisa::compute::Shader<1, CDBG, Buffer<uint>, uint>       fn_calc_pervert_collion_count;
-    luisa::compute::Shader<1, CDBG>                           fn_calc_pervert_prefix_adj_pairs;
-    luisa::compute::Shader<1, CDBG>                           fn_calc_pervert_prefix_adj_verts;
-    luisa::compute::Shader<1, CDBG, TDBG, Buffer<uint>, uint> fn_fill_in_pairs_in_vert_adjacent;
-    luisa::compute::Shader<1, CDBG, Buffer<uint2>, Buffer<uint>, uint, uint> fn_block_level_sort_contact_triplet;
-    luisa::compute::Shader<1, CDBG, TDBG> fn_specify_target_slot;
-    luisa::compute::Shader<1, CDBG, TDBG, uint, uint, uint> fn_block_level_second_sort_contact_triplet_fill_in;
-    luisa::compute::Shader<1, CDBG, TDBG, uint>                       fn_specify_target_slot_2_level;
-    luisa::compute::Shader<1, CDBG, TDBG, Buffer<float3>, uint, uint> fn_assemble_triplet_sorted;
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<uint>, uint> fn_assemble_triplet_sorted_perPair;
-    luisa::compute::Shader<1, CDBG, Buffer<MatrixTriplet3x3>> fn_reset_triplet;
+		// Assemble
+		luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
 
-    // Assemble
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<uint>, Buffer<float3>, uint, Buffer<float3>, Buffer<float3x3>> fn_perPair_assemble_gradient_hessian;
+		// SpMV
+		luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
+	};
 
-    // SpMV
-    luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>> fn_perPair_spmv;
-};
+	// class AccdDetector
+	// {
+	// private:
+	//     CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
+	// };
 
-
-// class AccdDetector
-// {
-// private:
-//     CollisionDataCCD<luisa::compute::Buffer>* ccd_data;
-// };
-
-
-}  // namespace lcs
+} // namespace lcs

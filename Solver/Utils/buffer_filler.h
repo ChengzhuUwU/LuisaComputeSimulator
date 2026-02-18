@@ -14,32 +14,32 @@
 namespace lcs
 {
 
-class LCGS_API BufferFiller
-{
-    template <typename T>
-    using Buffer = luisa::compute::Buffer<T>;
-    template <typename T>
-    using BufferView = luisa::compute::BufferView<T>;
-    template <size_t I, typename... Ts>
-    using Shader      = luisa::compute::Shader<I, Ts...>;
-    using Device      = luisa::compute::Device;
-    using CommandList = luisa::compute::CommandList;
-    using uint        = luisa::uint;
-    using ulong       = luisa::ulong;
-    using float2      = luisa::float2;
-    using float3      = luisa::float3;
-    using float4      = luisa::float4;
-    using uint2       = luisa::uint2;
-    using uint3       = luisa::uint3;
-    using uint4       = luisa::uint4;
-    using float3x3    = luisa::float3x3;
-    using float3x4    = lcs::float3x4;
-    using float4x3    = lcs::float4x3;
+	class LCGS_API BufferFiller
+	{
+		template <typename T>
+		using Buffer = luisa::compute::Buffer<T>;
+		template <typename T>
+		using BufferView = luisa::compute::BufferView<T>;
+		template <size_t I, typename... Ts>
+		using Shader = luisa::compute::Shader<I, Ts...>;
+		using Device = luisa::compute::Device;
+		using CommandList = luisa::compute::CommandList;
+		using uint = luisa::uint;
+		using ulong = luisa::ulong;
+		using float2 = luisa::float2;
+		using float3 = luisa::float3;
+		using float4 = luisa::float4;
+		using uint2 = luisa::uint2;
+		using uint3 = luisa::uint3;
+		using uint4 = luisa::uint4;
+		using float3x3 = luisa::float3x3;
+		using float3x4 = lcs::float3x4;
+		using float4x3 = lcs::float4x3;
 
-  public:
-    uint block_size = 256u;
+	public:
+		uint block_size = 256u;
 
-    // clang-format off
+		// clang-format off
 // filler_shader macro start
 #define filler_shader(basic_type) \
 public: \
@@ -60,21 +60,21 @@ protected:\
 	mutable U<Shader<1, int, Buffer<basic_type>, basic_type>> m_fill_##basic_type = nullptr;
 
 // filler_shader macro end
-    // clang-format on
+		// clang-format on
 
-    filler_shader(int);
-    filler_shader(float);
-    filler_shader(float2);
-    filler_shader(float3);
-    filler_shader(float4);
-    filler_shader(uint);
-    filler_shader(ulong);
-    filler_shader(uint2);
-    filler_shader(uint3);
-    filler_shader(uint4);
-    filler_shader(float3x3);
-    filler_shader(float3x4);
-    filler_shader(float4x3);
-};  // namespace inno
+		filler_shader(int);
+		filler_shader(float);
+		filler_shader(float2);
+		filler_shader(float3);
+		filler_shader(float4);
+		filler_shader(uint);
+		filler_shader(ulong);
+		filler_shader(uint2);
+		filler_shader(uint3);
+		filler_shader(uint4);
+		filler_shader(float3x3);
+		filler_shader(float3x4);
+		filler_shader(float4x3);
+	}; // namespace inno
 
-}  // namespace lcs
+} // namespace lcs
