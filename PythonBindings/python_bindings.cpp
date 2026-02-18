@@ -41,7 +41,7 @@ static void py_init(py::object backend_name_obj = py::none(), py::object binary_
 		try
 		{
 			// try to get this module file path
-			py::module_ self = py::module_::import("lcs_solver_py");
+			py::module_ self = py::module_::import("lcs_py");
 			if (py::hasattr(self, "__file__"))
 			{
 				binary_path = self.attr("__file__").cast<std::string>();
@@ -196,13 +196,13 @@ struct PyNewtonBuilder
 		WorldData info;
 		info.set_name(name);
 
-		const ssize_t nverts = vertices.shape(0);
-		const ssize_t nfaces = triangles.shape(0);
+		const size_t nverts = vertices.shape(0);
+		const size_t nfaces = triangles.shape(0);
 
 		// copy vertices
 		info.input_mesh.model_positions.resize(nverts);
 		auto buf_v = vertices.unchecked<2>();
-		for (ssize_t i = 0; i < nverts; ++i)
+		for (size_t i = 0; i < nverts; ++i)
 		{
 			SimMesh::Float3 p;
 			p[0] = static_cast<float>(buf_v(i, 0));
@@ -214,7 +214,7 @@ struct PyNewtonBuilder
 		// copy faces
 		info.input_mesh.faces.resize(nfaces);
 		auto buf_t = triangles.unchecked<2>();
-		for (ssize_t i = 0; i < nfaces; ++i)
+		for (size_t i = 0; i < nfaces; ++i)
 		{
 			SimMesh::Int3 f;
 			f[0] = static_cast<unsigned int>(buf_t(i, 0));
@@ -284,11 +284,11 @@ struct PyNewtonBuilder
 		py::list py_out;
 		for (uint i = 0; i < num_meshes; ++i)
 		{
-			const auto&			 mesh = out_positions[i];
-			std::vector<ssize_t> shape = { (ssize_t)mesh.size(), 3 };
-			py::array_t<float>	 arr(shape);
-			auto				 buf = arr.mutable_unchecked<2>();
-			for (ssize_t r = 0; r < (ssize_t)mesh.size(); ++r)
+			const auto&			mesh = out_positions[i];
+			std::vector<size_t> shape = { (size_t)mesh.size(), 3 };
+			py::array_t<float>	arr(shape);
+			auto				buf = arr.mutable_unchecked<2>();
+			for (size_t r = 0; r < (size_t)mesh.size(); ++r)
 			{
 				buf(r, 0) = mesh[r][0];
 				buf(r, 1) = mesh[r][1];
@@ -300,7 +300,7 @@ struct PyNewtonBuilder
 	}
 };
 
-PYBIND11_MODULE(lcs_solver_py, m)
+PYBIND11_MODULE(lcs_py, m)
 {
 	py::enum_<lcs::Initializer::SimulationType>(m, "SimulationType")
 		.value("Cloth", lcs::Initializer::SimulationType::SimulationTypeCloth)

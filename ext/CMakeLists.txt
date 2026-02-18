@@ -70,6 +70,22 @@ if(LCS_ENABLE_GUI)
 endif()
 
 
+if (LCS_BUILD_PYBINDINGS)
+    find_package(pybind11 QUIET)
+    if(pybind11_FOUND)
+        message(STATUS "Found pybind11: ${pybind11_DIR}")
+    else()
+        message(STATUS "pybind11 not found; fetching pybind11 via FetchContent...")
+        FetchContent_Declare(
+            pybind11
+            GIT_REPOSITORY https://github.com/pybind/pybind11.git
+            GIT_TAG v2.11.1
+            SOURCE_DIR ${EXT_PATH}/pybind11
+        )
+        FetchContent_MakeAvailable(pybind11)
+    endif()
+endif()
+
 if (LCS_USE_SYSTEM_PARALLEL_FOR)
     target_compile_definitions(luisa-compute-solver-lib PRIVATE LCS_USE_SYSTEM_PARALLEL_FOR=1)
     find_package(TBB CONFIG QUIET)

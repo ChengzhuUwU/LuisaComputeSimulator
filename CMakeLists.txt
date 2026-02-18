@@ -62,20 +62,5 @@ if(LCS_ENABLE_TEST)
 endif()
 
 if(LCS_BUILD_PYBINDINGS)
-    if(LCS_PYTHON_EXECUTABLE)
-        set(PYBIND11_PYTHON_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python executable for pybind11")
-        message(STATUS "Using Python executable for bindings: ${PYBIND11_PYTHON_EXECUTABLE}")
-    endif()
-
-    find_package(pybind11 REQUIRED)
-    if(pybind11_FOUND)
-        pybind11_add_module(lcs_solver_py PythonBindings/python_bindings.cpp)
-        target_include_directories(lcs_solver_py PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Solver)
-        target_link_libraries(lcs_solver_py PRIVATE
-            luisa-compute-solver-lib
-            luisa::compute
-        )
-    else()
-        message(WARNING "pybind11 not found; Python bindings will not be built")
-    endif()
+    add_subdirectory(PythonBindings)
 endif()

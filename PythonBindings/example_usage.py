@@ -1,18 +1,22 @@
-# Example usage of the Python bindings (requires trimesh and the built lcs_solver_py module)
+# Example usage of the Python bindings (requires trimesh and the built lcs_py module)
 # Install trimesh via: pip install trimesh
 import trimesh
 import numpy as np
+import os, sys
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 
 # import the generated module
-import lcs_solver_py as lcs
+import lcs_py as lcs
 
-backend = "metal"  # or "cuda", "cpu", etc.
+backend = "cuda"  # backends: cuda, dx, vk, metal (if supported on the platform)
 
 # initialize luisa compute context/device (optional args)
 lcs.init(backend_name=backend, binary_path=None)
 
 # Load a mesh using trimesh
-mesh = trimesh.load('cube.obj', process=False)
+mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
+mesh = trimesh.load(mesh_path, process=False)
 verts = np.asarray(mesh.vertices, dtype=np.double)
 faces = np.asarray(mesh.faces, dtype=np.int32)
 
