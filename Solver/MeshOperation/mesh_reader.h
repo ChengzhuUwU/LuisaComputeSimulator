@@ -10,7 +10,6 @@
 #include <luisa/core/stl/vector.h>
 
 #include "MeshOperation/tiny_obj_loader.h"
-#include "Utils/cpu_parallel.h"
 
 namespace SimMesh
 {

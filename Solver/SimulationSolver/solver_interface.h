@@ -163,6 +163,9 @@ namespace lcs
 		//     float,
 		//     float
 		//     >  fn_compute_repulsion_energy_from_ee;
+
+	protected:
+		luisa::fiber::scheduler scheduler;
 	};
 
 } // namespace lcs

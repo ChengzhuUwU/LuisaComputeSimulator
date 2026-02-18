@@ -223,10 +223,33 @@ struct PyNewtonBuilder
 			info.input_mesh.faces[i] = f;
 		}
 
+		// compute edges & dihedral edges from provided faces
+		SimMesh::extract_edges_from_surface(info.input_mesh.faces, info.input_mesh.edges, info.input_mesh.dihedral_edges, true);
+
 		shell_list.emplace_back(std::move(info));
 		return WorldDataWrapper(&shell_list.back());
 	}
 
+	// register mesh from an obj file path: read file then compute auxiliary topology
+	WorldDataWrapper register_mesh(const std::string& name, const std::string& obj_file_path)
+	{
+		WorldData info;
+		info.set_name(name);
+		// read OBJ into TriangleMeshData
+		LUISA_INFO("Read mesh {}, path = {}", name, obj_file_path);
+		SimMesh::read_mesh_file(obj_file_path, info.input_mesh);
+		LUISA_INFO("Read mesh {}: numVerts = {}, numFaces = {}", name, info.input_mesh.model_positions.size(), info.input_mesh.faces.size());
+
+		// if (!SimMesh::read_mesh_file(obj_file_path, info.input_mesh))
+		// {
+		// 	throw std::runtime_error(std::string("Failed to read mesh file: ") + obj_file_path);
+		// }
+		// compute auxiliary topology (this is the original load_mesh_data flow)
+		// info.load_mesh_data();
+
+		shell_list.emplace_back(std::move(info));
+		return WorldDataWrapper(&shell_list.back());
+	}
 	// expose method to get number of registered meshes
 	size_t num_meshes() const { return shell_list.size(); }
 
@@ -337,9 +360,18 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("set_scale", &WorldDataWrapper::set_scale)
 		.def("load_mesh_data", &WorldDataWrapper::load_mesh_data);
 
+	// disambiguate overloaded register_mesh signatures
+	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
+	using TriArr = py::array_t<int, py::array::c_style | py::array::forcecast>;
+
 	py::class_<PyNewtonBuilder>(m, "NewtonSolver")
 		.def(py::init<>())
-		.def("register_mesh", &PyNewtonBuilder::register_mesh, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
+		.def("register_mesh",
+			(WorldDataWrapper(PyNewtonBuilder::*)(const std::string&, VertArr, TriArr)) & PyNewtonBuilder::register_mesh,
+			py::arg("name"), py::arg("vertices"), py::arg("triangles"))
+		.def("register_mesh",
+			(WorldDataWrapper(PyNewtonBuilder::*)(const std::string&, const std::string&)) & PyNewtonBuilder::register_mesh,
+			py::arg("name"), py::arg("obj_file_path"))
 		.def("num_meshes", &PyNewtonBuilder::num_meshes)
 		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names)
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using previously created device/context")

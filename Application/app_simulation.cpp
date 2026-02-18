@@ -41,7 +41,6 @@ int main(int argc, char** argv)
 	luisa::log_level_info();
 #endif
 
-	luisa::fiber::scheduler scheduler; // Initialize the fiber scheduler, which is also need in HostParallel functions
 	LUISA_INFO("Hello, LuisaComputeSimulation!");
 
 	// Init GPU system
@@ -82,6 +81,8 @@ int main(int argc, char** argv)
 
 	lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
 
+	lcs::NewtonSolver solver;
+
 	// Read Mesh
 	std::string scene_json_path = "default_scene.json";
 	if (argc >= 3)
@@ -94,11 +95,9 @@ int main(int argc, char** argv)
 		LUISA_INFO("Load default scene {}", scene_json_path);
 	}
 	std::vector<lcs::Initializer::WorldData> world_data;
-	// Demo::Simulation::load_default_scene(shell_list);
 	Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
 
 	// Init Solver
-	lcs::NewtonSolver solver;
 	solver.init_solver(device, stream, world_data);
 
 	auto fn_update_pinned_verts = [&](const uint curr_frame)

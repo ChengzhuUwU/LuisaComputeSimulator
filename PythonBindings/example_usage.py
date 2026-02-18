@@ -1,5 +1,3 @@
-# Example usage of the Python bindings (requires trimesh and the built lcs_py module)
-# Install trimesh via: pip install trimesh
 import trimesh
 import numpy as np
 import os, sys
@@ -20,13 +18,33 @@ mesh = trimesh.load(mesh_path, process=False)
 verts = np.asarray(mesh.vertices, dtype=np.double)
 faces = np.asarray(mesh.faces, dtype=np.int32)
 
+# "translation": [
+# 	0.0,
+# 	0.34,
+# 	0.0
+# ],
+# "rotation": [
+# 	0.5235988,
+# 	0.0,
+# 	0.5235988
+# ],
+# "scale": 0.1,
+# "shell_type": "Rigid"
+
 # build solver and register meshes
 solver = lcs.NewtonSolver()
-wd = solver.register_mesh('cube', verts, faces)
-# chain calls
-wd.set_simulation_type(lcs.SimulationType.Cloth).set_physics_material_cloth(thickness=0.01, youngs_modulus=1e4)
+cube = solver.register_mesh('cube', verts, faces)
+cube.set_simulation_type(lcs.SimulationType.Rigid)
+cube.set_physics_material_cloth(thickness=0.01, youngs_modulus=1e4)
+cube.set_translation(0.0, 0.34, 0.0)
+cube.set_rotation(0.5235988, 0.0, 0.5235988)
+cube.set_scale(0.1)
 
-# initialize underlying C++ NewtonSolver (creates shaders / internal data)
+
+
+# cube = solver.register_mesh('cube', mesh_path)
+
+# initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
 
 print('Registered meshes:', solver.get_mesh_names())

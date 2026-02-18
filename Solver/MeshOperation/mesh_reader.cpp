@@ -1,7 +1,60 @@
 #include "MeshOperation/mesh_reader.h"
+#include <cstdint>
 #include <filesystem>
 #include <istream>
 #include <sstream>
+#include <algorithm>
+#include "Utils/cpu_parallel.h"
+
+namespace NotParallel
+{
+	using Index = uint32_t;
+
+	template <typename Func>
+	static void parallel_for(Index start, Index end, Func f)
+	{
+		for (Index i = start; i < end; ++i)
+			f((Index)i);
+	}
+
+	template <typename It, typename Comp>
+	static void parallel_sort(It begin, It end, Comp comp)
+	{
+		std::sort(begin, end, comp);
+	}
+
+	template <typename Pred, typename OutFunc>
+	static void parallel_for_and_scan(Index start, Index end, Pred pred, OutFunc out, unsigned int /*init*/ = 0u)
+	{
+		unsigned int count = 0u;
+		for (Index i = start; i < end; ++i)
+		{
+			auto curr = pred(i);
+			if (curr)
+			{
+				unsigned int prefix = count + 1u;
+				out(i, prefix, curr);
+				count += curr;
+			}
+		}
+	}
+
+	template <typename T, typename Func>
+	static T parallel_for_and_reduce_sum(Index start, Index end, Func f)
+	{
+		T sum{};
+		for (Index i = start; i < end; ++i)
+			sum += f(i);
+		return sum;
+	}
+
+	template <typename Func>
+	static void single_thread_for(Index start, Index end, Func f)
+	{
+		for (Index i = start; i < end; ++i)
+			f(i);
+	}
+} // namespace NotParallel
 
 namespace SimMesh
 {
@@ -38,7 +91,7 @@ namespace SimMesh
 			std::sort(tmp, tmp + 4);
 			return Int4{ tmp[0], tmp[1], tmp[2], tmp[3] };
 		};
-		CpuParallel::parallel_for(0,
+		NotParallel::parallel_for(0,
 			num_tets,
 			[&](uint tid)
 			{
@@ -67,7 +120,7 @@ namespace SimMesh
 				return temp < 0;
 			});
 		std::vector<uchar> list_face_type(tmp_tets.size(), 0);
-		CpuParallel::parallel_for(0,
+		NotParallel::parallel_for(0,
 			tmp_tets.size(),
 			[&](const uint i)
 			{
@@ -142,7 +195,7 @@ namespace SimMesh
 				return Int3{ v1, v2, v3 }; // Correct order
 		};
 
-		CpuParallel::parallel_for_and_scan(
+		NotParallel::parallel_for_and_scan(
 			0,
 			tmp_tets.size(),
 			[&](const uint i)
@@ -178,11 +231,11 @@ namespace SimMesh
 
 		std::vector<bool> is_surface_vert(num_verts, false);
 
-		uint num_surface_verts = CpuParallel::parallel_for_and_reduce_sum<uint>(
+		uint num_surface_verts = NotParallel::parallel_for_and_reduce_sum<uint>(
 			0, num_verts, [&](const uint vid)
 			{ return list_vert_is_on_surface[vid] ? 1 : 0; });
 		surface_verts.resize(num_surface_verts);
-		CpuParallel::parallel_for_and_scan(
+		NotParallel::parallel_for_and_scan(
 			0,
 			num_verts,
 			[&](const uint vid)
@@ -197,7 +250,7 @@ namespace SimMesh
 			},
 			0u);
 
-		CpuParallel::single_thread_for(0,
+		NotParallel::single_thread_for(0,
 			num_tets,
 			[&](uint tid)
 			{
@@ -228,7 +281,7 @@ namespace SimMesh
 			std::sort(tmp, tmp + 3);
 			return Int3{ tmp[0], tmp[1], tmp[2] };
 		};
-		CpuParallel::parallel_for(0,
+		NotParallel::parallel_for(0,
 			num_surface_faces,
 			[&](const uint fid)
 			{
@@ -238,7 +291,7 @@ namespace SimMesh
 				tmp_faces[3 * fid + 1] = Int3{ face[0], face[2], fid };
 				tmp_faces[3 * fid + 2] = Int3{ face[1], face[2], fid };
 			});
-		CpuParallel::parallel_sort(tmp_faces.begin(),
+		NotParallel::parallel_sort(tmp_faces.begin(),
 			tmp_faces.end(),
 			[](const Int3& left, const Int3& right)
 			{
@@ -253,7 +306,7 @@ namespace SimMesh
 				return temp < 0;
 			});
 		std::vector<uchar> list_edge_type(tmp_faces.size(), 0);
-		CpuParallel::parallel_for(0,
+		NotParallel::parallel_for(0,
 			tmp_faces.size(),
 			[&](const uint i)
 			{
@@ -284,7 +337,7 @@ namespace SimMesh
 		output_edges.resize(num_edges);
 		output_bending_edges.resize(num_bending_edges);
 
-		CpuParallel::parallel_for_and_scan(
+		NotParallel::parallel_for_and_scan(
 			0,
 			tmp_faces.size(),
 			[&](const uint i)
@@ -312,7 +365,7 @@ namespace SimMesh
 
 		if (extract_bending_edge)
 		{
-			CpuParallel::parallel_for_and_scan(
+			NotParallel::parallel_for_and_scan(
 				0,
 				tmp_faces.size(),
 				[&](const uint i)
@@ -349,11 +402,11 @@ namespace SimMesh
 		}
 	}
 
-	bool read_mesh_file(std::string_view mesh_name, TriangleMeshData& mesh_data)
+	bool read_mesh_file(std::string_view obj_path, TriangleMeshData& mesh_data)
 	{
 		std::string err, warn;
 
-		std::string full_path{ mesh_name };
+		std::string full_path{ obj_path };
 
 		std::string mtl_path = std::filesystem::path(full_path).replace_extension(".mtl").string();
 
@@ -392,7 +445,12 @@ namespace SimMesh
 		mesh_data.material_ids.reserve(num_faces);
 		mesh_data.material_names.reserve(material.size());
 
-		CpuParallel::parallel_for(0,
+		LUISA_INFO("Read mesh from {}, numVerts = {}, numFaces = {}", obj_path, num_verts, num_faces);
+
+		LUISA_INFO("A = {}", mesh_data.model_positions);
+		LUISA_INFO("B = {}", mesh_attrib.vertices);
+
+		NotParallel::parallel_for(0,
 			num_verts,
 			[&](const uint vid)
 			{
@@ -401,6 +459,8 @@ namespace SimMesh
 					mesh_attrib.vertices[vid * 3 + 2] };
 				mesh_data.model_positions[vid] = local_pos;
 			});
+
+		LUISA_INFO("Access 4");
 
 		const bool has_uv = !mesh_attrib.texcoords.empty();
 		if (has_uv)
@@ -411,7 +471,7 @@ namespace SimMesh
 			mesh_data.uv_positions.resize(num_uvs);
 			mesh_data.uv_to_vert_map.resize(num_uvs);
 
-			CpuParallel::parallel_for(0,
+			NotParallel::parallel_for(0,
 				num_uvs,
 				[&](const uint vid)
 				{
@@ -468,6 +528,8 @@ namespace SimMesh
 			//     mesh_data.uv_to_vert_map[vid] = vid;
 			// });
 		}
+
+		LUISA_INFO("Access 3");
 
 		uint face_prefix = 0;
 		for (size_t submesh_idx = 0; submesh_idx < mesh_shape.size(); submesh_idx++)
@@ -526,8 +588,11 @@ namespace SimMesh
 			}
 		}
 
+		LUISA_INFO("Access 1");
+
 		extract_edges_from_surface(mesh_data.faces, mesh_data.edges, mesh_data.dihedral_edges, true);
 
+		LUISA_INFO("Access 2");
 		// fast_format("   Readed Mesh Data {} : numSubMesh = {}, numVerts = {}, numFaces = {}, numEdges = {}, numBendingEdges = {}",
 		//     mesh_name, mesh_shape.size(), num_verts, num_faces, mesh_data.edges.size(), mesh_data.bending_edges.size());
 
