@@ -80,9 +80,7 @@ namespace SimMesh
 	// bool read_tet_file_t(std::string mesh_name, TetrahedralMeshData& meshes);
 
 	// template<typename Vert, typename Face>
-	bool saveToOBJ_combined(std::vector<std::vector<Float3>> const& sa_rendering_vertices,
-		std::vector<std::vector<Int3>> const&						sa_rendering_faces,
-		std::string_view											addition_path,
-		std::string_view											addition_str,
-		const uint													frame);
+	bool saveToOBJ_combined(const std::vector<std::vector<Float3>>& sa_rendering_vertices,
+		const std::vector<std::vector<Int3>>&						sa_rendering_faces,
+		const std::string&											full_path);
 }; // namespace SimMesh

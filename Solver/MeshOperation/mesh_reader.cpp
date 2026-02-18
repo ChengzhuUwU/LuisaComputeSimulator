@@ -735,20 +735,11 @@ namespace SimMesh
 	}
 
 	// template<typename Vert, typename Face>
-	bool saveToOBJ_combined(std::vector<std::vector<Float3>> const& sa_rendering_vertices,
-		std::vector<std::vector<Int3>> const&						sa_rendering_faces,
-		std::string_view											addition_path,
-		std::string_view											addition_str,
-		const uint													frame)
+	bool saveToOBJ_combined(const std::vector<std::vector<Float3>>& sa_rendering_vertices,
+		const std::vector<std::vector<Int3>>&						sa_rendering_faces,
+		const std::string&											full_path)
 	{
-		std::string filename = std::string("frame_") + std::to_string(frame);
-		filename += addition_str;
-		filename += ".obj";
-		std::string full_directory(LCSV_RESOURCE_PATH);
-		full_directory += "/OutputMesh/";
-		full_directory += addition_path;
-		full_directory += "/";
-		std::string full_path = full_directory + filename;
+		std::string full_directory = std::filesystem::path(full_path).parent_path().string();
 
 		// Ensure the directory exists
 		{
@@ -758,11 +749,11 @@ namespace SimMesh
 				try
 				{
 					std::filesystem::create_directories(dir_path);
-					std::cout << "Created directory: " << dir_path << std::endl;
+					LUISA_INFO("Created directory: {}", dir_path.string());
 				}
 				catch (const std::filesystem::filesystem_error& e)
 				{
-					std::cerr << "Error creating directory: " << e.what() << std::endl;
+					LUISA_ERROR("Failed to create directory: {}", dir_path.string());
 					return false;
 				}
 			}
@@ -795,13 +786,13 @@ namespace SimMesh
 			}
 
 			file.close();
-			std::cout << "OBJ file saved: " << full_path << std::endl;
+			LUISA_INFO("OBJ file saved: {}", full_path);
 
 			return true;
 		}
 		else
 		{
-			std::cerr << "Unable to open file: " << full_path << std::endl;
+			LUISA_ERROR("Unable to open file: {}", full_path);
 			return false;
 		}
 	}

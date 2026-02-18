@@ -291,17 +291,10 @@ struct PyNewtonBuilder
 		if (!solver_ptr)
 			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 
-		auto&										   mesh_data = solver_ptr->get_host_mesh_data();
-		const uint									   num_meshes = mesh_data.num_meshes;
-		std::vector<std::vector<std::array<float, 3>>> out_positions(num_meshes);
-		// allocate per-mesh sizes
-		for (uint i = 0; i < num_meshes; ++i)
-		{
-			const uint start = mesh_data.prefix_num_verts[i];
-			const uint end = mesh_data.prefix_num_verts[i + 1];
-			out_positions[i].resize(end - start);
-		}
+		auto&	   mesh_data = solver_ptr->get_host_mesh_data();
+		const uint num_meshes = mesh_data.num_meshes;
 
+		std::vector<std::vector<std::array<float, 3>>> out_positions;
 		solver_ptr->get_simulation_results_to_host(out_positions);
 
 		py::list py_out;
@@ -320,6 +313,31 @@ struct PyNewtonBuilder
 			py_out.append(arr);
 		}
 		return py_out;
+	}
+
+	void save_to(const std::string& full_path)
+	{
+		std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices;
+		std::vector<std::vector<std::array<uint, 3>>>  sa_rendering_faces;
+
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+
+		const uint num_meshes = solver_ptr->get_host_mesh_data().num_meshes;
+		// LUISA_INFO(" -> Saving mesh to OBJ: {}, num_meshes = {}", full_path, num_meshes);
+
+		sa_rendering_vertices.resize(num_meshes);
+		sa_rendering_faces.resize(num_meshes);
+		// populate faces from registered shell_list (topology)
+		for (uint i = 0; i < num_meshes; ++i)
+		{
+			sa_rendering_faces[i] = shell_list[i].input_mesh.faces;
+		}
+		// get vertex positions from solver
+		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
+
+		// frame id not used here, pass 0
+		SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, full_path);
 	}
 };
 
@@ -377,7 +395,9 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using previously created device/context")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
-		.def("get_simulation_results", &PyNewtonBuilder::get_simulation_results);
+		.def("get_simulation_results", &PyNewtonBuilder::get_simulation_results)
+		.def("save_to", &PyNewtonBuilder::save_to,
+			py::arg("full_path"));
 
 	m.def("init",
 		&py_init,

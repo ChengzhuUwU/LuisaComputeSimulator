@@ -18,6 +18,7 @@
 #include "Utils/reduce_helper.h"
 #include "SimulationCore/scene_params.h"
 #include "MeshOperation/mesh_reader.h"
+#include "luisa/core/logging.h"
 #include "luisa/dsl/builtin.h"
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/stream.h"
@@ -199,6 +200,7 @@ namespace lcs
 		buffer_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
 		per_vertex_animations.clear();
 		per_body_animations.clear();
+		lcs::get_scene_params().current_frame += 1;
 	}
 
 	void SolverInterface::restart_system()
@@ -212,17 +214,26 @@ namespace lcs
 	void SolverInterface::get_simulation_results_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions)
 	{
 		const auto& sim_result_positions = host_sim_data->sa_x_outer;
+
+		if (output_positions.size() != host_mesh_data->num_meshes)
+		{
+			output_positions.resize(host_mesh_data->num_meshes);
+		}
+
 		for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
 		{
-			CpuParallel::parallel_for(
-				0,
-				host_mesh_data->prefix_num_verts[meshIdx + 1] - host_mesh_data->prefix_num_verts[meshIdx],
-				[&](const uint vid)
-				{
-					auto pos = sim_result_positions[vid + host_mesh_data->prefix_num_verts[meshIdx]];
-					output_positions[meshIdx][vid] = { pos.x, pos.y, pos.z };
-				},
-				32);
+			const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
+			const uint suffix = host_mesh_data->prefix_num_verts[meshIdx + 1];
+			const uint num_verts = suffix - prefix;
+			if (output_positions[meshIdx].size() != num_verts)
+			{
+				output_positions[meshIdx].resize(num_verts);
+			}
+			for (uint vid = 0; vid < num_verts; vid++)
+			{
+				auto pos = sim_result_positions[prefix + vid];
+				output_positions[meshIdx][vid] = { pos.x, pos.y, pos.z };
+			}
 		}
 	}
 	void SolverInterface::update_pinned_verts_position(const uint meshIdx,
