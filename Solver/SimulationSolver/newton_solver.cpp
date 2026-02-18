@@ -752,7 +752,7 @@ namespace lcs
 				sa_is_fixed = std::span(host_sim_data->sa_q_is_fixed),
 				substep_dt = get_scene_params().get_substep_dt(),
 				fix_scene = get_scene_params().fix_scene,
-				damping = get_scene_params().damping_cloth](const uint vid)
+				damping = get_scene_params().damping_rate](const uint vid)
 			{
 				float3 x_step_begin = sa_q_step_start[vid];
 				float3 x_step_end = sa_q[vid];
@@ -825,6 +825,7 @@ namespace lcs
 		// Soft inertia
 		// if constexpr (false)
 		{
+			const auto&						  intertia_data = host_sim_data->get_soft_inertia_data();
 			std::vector<EigenTripletBlock<1>> hessian_blocks(host_sim_data->num_verts_soft);
 			CpuParallel::single_thread_for(0,
 				host_sim_data->num_verts_soft,
@@ -834,8 +835,8 @@ namespace lcs
 					sa_x_tilde = std::span(host_sim_data->sa_q_tilde),
 					sa_is_fixed = std::span(host_mesh_data->sa_is_fixed),
 					sa_vert_mass = std::span(host_mesh_data->sa_vert_mass),
+					sa_stiffness_dirichlet = intertia_data.sa_stiffness_dirichlet,
 					substep_dt = get_scene_params().get_substep_dt(),
-					stiffness_dirichlet = get_scene_params().stiffness_dirichlet,
 					&cgB,
 					&hessian_blocks](const uint vid)
 				{
@@ -852,6 +853,7 @@ namespace lcs
 
 					if (sa_is_fixed[vid])
 					{
+						float stiffness_dirichlet = sa_stiffness_dirichlet[vid];
 						gradient = stiffness_dirichlet * gradient;
 						hessian = stiffness_dirichlet * hessian;
 					}
@@ -887,8 +889,6 @@ namespace lcs
 					sa_stretch_faces_rest_area = std::span(stretch_faces.sa_stretch_faces_rest_area),
 					sa_stretch_faces_Dm_inv = std::span(stretch_faces.sa_stretch_faces_Dm_inv),
 					sa_stretch_faces_mu_lambda = std::span(stretch_faces.sa_stretch_faces_mu_lambda),
-					youngs_modulus_cloth = get_scene_params().youngs_modulus_cloth,
-					poisson_ratio_cloth = get_scene_params().poisson_ratio_cloth,
 					&hessian_blocks,
 					&cgB](const uint fid)
 				{
@@ -956,7 +956,6 @@ namespace lcs
 					sa_stretch_spring_stiffness = std::span(stretch_springs.sa_stretch_spring_stiffness),
 					output_gradient_ptr = std::span(stretch_springs.constraint_gradients),
 					output_hessian_ptr = std::span(stretch_springs.constraint_hessians),
-					stiffness_stretch = get_scene_params().stiffness_spring,
 					&cgB,
 					&hessian_blocks](const uint eid)
 				{
@@ -2951,7 +2950,6 @@ namespace lcs
 		buffer_download(stream, sim_data->sa_q, host_sim_data->sa_q);
 		stream << luisa::compute::synchronize();
 
-		const uint	num_substep = lcs::get_scene_params().num_substep;
 		const uint	nonlinear_iter_count = lcs::get_scene_params().nonlinear_iter_count;
 		const float substep_dt = lcs::get_scene_params().get_substep_dt();
 
@@ -3088,7 +3086,7 @@ namespace lcs
 					LUISA_ERROR("Solver is not converged in 100 iters");
 			}
 
-			stream << fn_update_velocity(substep_dt, get_scene_params().fix_scene, get_scene_params().damping_cloth)
+			stream << fn_update_velocity(substep_dt, get_scene_params().fix_scene, get_scene_params().damping_rate)
 						  .dispatch(host_sim_data->num_dof);
 			device_apply_q_to_x(stream, sim_data->sa_q_v, sim_data->sa_v);
 		}

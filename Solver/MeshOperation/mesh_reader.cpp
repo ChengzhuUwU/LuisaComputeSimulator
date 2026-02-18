@@ -445,11 +445,6 @@ namespace SimMesh
 		mesh_data.material_ids.reserve(num_faces);
 		mesh_data.material_names.reserve(material.size());
 
-		LUISA_INFO("Read mesh from {}, numVerts = {}, numFaces = {}", obj_path, num_verts, num_faces);
-
-		LUISA_INFO("A = {}", mesh_data.model_positions);
-		LUISA_INFO("B = {}", mesh_attrib.vertices);
-
 		NotParallel::parallel_for(0,
 			num_verts,
 			[&](const uint vid)

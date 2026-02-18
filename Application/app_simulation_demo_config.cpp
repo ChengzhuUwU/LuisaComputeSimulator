@@ -42,7 +42,6 @@ namespace Demo::Simulation
 		lcs::get_scene_params().use_floor = false;
 		lcs::get_scene_params().implicit_dt = 0.2;
 		lcs::get_scene_params().use_energy_linesearch = true;
-		lcs::get_scene_params().stiffness_DAB_bending = 200.0f;
 		lcs::get_scene_params().use_gpu = false;
 	}
 

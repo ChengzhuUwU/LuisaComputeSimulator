@@ -79,8 +79,6 @@ int main(int argc, char** argv)
 	);
 	luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
-	lcs::get_scene_params().solver_type = lcs::SolverTypeNewton;
-
 	lcs::NewtonSolver solver;
 
 	// Read Mesh
@@ -319,13 +317,9 @@ int main(int argc, char** argv)
 				// lcs::get_scene_params().stiffness_bending_ui = pow(10.0f, (float)stiffness_bending_exp);
 
 				static uint stiffness_spring_exp = 4;
-				ImGui::InputScalar("Stretch Stiffness's Exp", ImGuiDataType_U32, &stiffness_spring_exp);
-				lcs::get_scene_params().stiffness_spring = pow(10.0f, (float)stiffness_spring_exp);
-				// ImGui::Checkbox("Print Convergence", &lcs::get_scene_params().print_xpbd_convergence);
 				ImGui::Checkbox("Print Energy", &lcs::get_scene_params().print_system_energy);
 				ImGui::Checkbox("Use GPU Solver", &lcs::get_scene_params().use_gpu);
 				ImGui::Checkbox("Use Self-Collision", &lcs::get_scene_params().use_self_collision);
-				// ImGui::Checkbox("Print PCG Convergence", &lcs::get_scene_params().print_pcg_convergence);
 
 				// static const char* items[] = { "A", "B", "C" };
 				// static int current_item = 0;
@@ -407,7 +401,7 @@ int main(int argc, char** argv)
 					solver.lcs::SolverInterface::save_current_frame_state_to_host(lcs::get_scene_params().current_frame,
 						"");
 				}
-				uint& state_frame = lcs::get_scene_params().load_state_frame;
+				static uint state_frame = -1u;
 				ImGui::InputScalar("Load State Frame", ImGuiDataType_U32, &state_frame);
 				if (ImGui::Button("Load State", ImVec2(-1, 0)))
 				{
