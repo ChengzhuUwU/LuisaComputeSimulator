@@ -106,7 +106,7 @@ int main(int argc, char** argv)
 			const float										curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
 			std::vector<lcs::Animation::PerVertexAnimation> per_vertex_animations;
 			std::vector<lcs::Animation::PerBodyAnimation>	per_body_animations;
-			world_data[mesh_idx].get_vertex_animations(curr_time, per_vertex_animations);
+			world_data[mesh_idx].update_default_vertex_animations(curr_time, per_vertex_animations);
 			for (const auto& animate : per_vertex_animations)
 			{
 				solver.update_pinned_verts_position(mesh_idx, animate.vertex_id, animate.translation);

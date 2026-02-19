@@ -252,7 +252,7 @@ namespace lcs
 
 			return *this;
 		}
-		void WorldData::get_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& fixed_point_target_positions)
+		void WorldData::update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& fixed_point_target_positions)
 		{
 			fixed_point_target_positions.resize(fixed_point_indices.size());
 			for (uint index = 0; index < fixed_point_indices.size(); index++)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/affine_position.h"
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/physical_material.h"
@@ -204,6 +205,20 @@ namespace lcs
 				this->scale = luisa::make_float3(s);
 				return *this;
 			}
+			float3 get_rest_position(const float3& model_pos) const
+			{
+				float4x4 model_matrix = lcs::make_model_matrix(translation, rotation, scale);
+				return lcs::affine_position(model_matrix, model_pos);
+			}
+			float3 get_rest_position(const uint local_vid) const
+			{
+				if (local_vid >= input_mesh.model_positions.size())
+				{
+					throw std::runtime_error("Vertex ID out of range in get_rest_position");
+				}
+				const auto model_pos = input_mesh.model_positions[local_vid];
+				return get_rest_position(luisa::make_float3(model_pos[0], model_pos[1], model_pos[2]));
+			}
 			WorldData& set_physics_material(const MaterialVariant& mat)
 			{
 				this->physics_material = mat;
@@ -288,7 +303,7 @@ namespace lcs
 				const FixedPointAnimationInfo&							info = FixedPointAnimationInfo());
 			void set_pinned_vert_fixed_info(const uint vid, const FixedPointAnimationInfo& info);
 
-			void get_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
+			void update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
 			// void get_body_animation(const float time, Animation::PerBodyAnimation& body_animation);
 			void get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
 		};

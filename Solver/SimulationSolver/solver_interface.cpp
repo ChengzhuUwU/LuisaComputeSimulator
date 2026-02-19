@@ -110,6 +110,32 @@ namespace lcs
 				true,
 				true);
 		}
+
+		init_animation(world_data);
+	}
+	void SolverInterface::init_animation(const std::vector<lcs::Initializer::WorldData>& world_datas)
+	{
+		for (uint mesh_idx = 0; mesh_idx < host_mesh_data->num_meshes; mesh_idx++)
+		{
+			const auto& world_data = world_datas[mesh_idx];
+			const uint	prefix_vid = host_mesh_data->prefix_num_verts[mesh_idx];
+			const uint	suffix_vid = host_mesh_data->prefix_num_verts[mesh_idx + 1];
+			for (uint index = 0; index < world_data.fixed_point_indices.size(); index++)
+			{
+				const uint local_vid = world_data.fixed_point_indices[index];
+				const uint global_vid = prefix_vid + local_vid;
+				// const auto rest_pos = world_data.get_rest_position(local_vid);
+				const float3 rest_pos = host_mesh_data->sa_rest_x[global_vid];
+				vid_to_animation_idx_map[global_vid] = per_vertex_animations.size();
+				per_vertex_animations.push_back({
+					.vertex_id = global_vid,
+					.translation = { rest_pos[0], rest_pos[1], rest_pos[2] },
+				});
+				// LUISA_INFO(" -> Init animation for mesh {}, local_vid {}, global_vid {}, rest_pos ({:.3f}, {:.3f}, {:.3f})",
+				// 	mesh_idx, local_vid, global_vid, rest_pos[0], rest_pos[1], rest_pos[2]);
+			}
+			//  per_body_animations;
+		}
 	}
 	void SolverInterface::compile(AsyncCompiler& compiler)
 	{
@@ -198,8 +224,6 @@ namespace lcs
 		buffer_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
 		buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
 		buffer_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
-		per_vertex_animations.clear();
-		per_body_animations.clear();
 		lcs::get_scene_params().current_frame += 1;
 	}
 
@@ -242,8 +266,19 @@ namespace lcs
 	{
 		const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
 		const uint vid = prefix + local_vid;
-		per_vertex_animations.push_back(
-			{ vid, { pinned_verts_target_position[0], pinned_verts_target_position[1], pinned_verts_target_position[2] } });
+		if (vid_to_animation_idx_map.contains(vid))
+		{
+			const uint animation_idx = vid_to_animation_idx_map[vid];
+			per_vertex_animations[animation_idx].translation = pinned_verts_target_position;
+		}
+		else
+		{
+			LUISA_ERROR("Vertex {} in mesh {} is not a pinned vertex. Cannot update position.", local_vid, meshIdx);
+			// uint animation_idx = per_vertex_animations.size();
+			// vid_to_animation_idx_map[vid] = animation_idx;
+			// per_vertex_animations.push_back(
+			// 	{ vid, { pinned_verts_target_position[0], pinned_verts_target_position[1], pinned_verts_target_position[2] } });
+		}
 	}
 	void SolverInterface::update_pinned_body_state(const uint body_id,
 		const std::array<float, 3>&							  translation,

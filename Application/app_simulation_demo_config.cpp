@@ -762,11 +762,11 @@ namespace Demo::Simulation
 				}
 
 				// finally add to shell_list and load mesh (and fixed points if provided)
-				shell_list.emplace_back(info);
-				if (!shell_list.back().input_mesh.model_positions.empty())
-					shell_list.back().load_mesh_data();
-				if (!shell_list.back().fixed_point_range_info.empty())
-					shell_list.back().load_fixed_points();
+				auto& curr_body = shell_list.emplace_back(info);
+				if (!curr_body.input_mesh.model_positions.empty())
+					curr_body.load_mesh_data();
+				if (!curr_body.fixed_point_range_info.empty())
+					curr_body.load_fixed_points();
 			}
 		}
 
