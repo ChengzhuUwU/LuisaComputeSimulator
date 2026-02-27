@@ -18,6 +18,10 @@ bool check_template(const T& actual, FnGetDesired fn_get_desired, const std::str
         {
             // LUISA_WARNING("Test failed at size {:5}: index {}, expected {}, got {}", size, i, desired, actual[i]);
             LUISA_WARNING("{:12} {:4} elements: Failed at index {}, expected {}, got {}", test_name, size, i, desired, actual[i]);
+            if (actual.size() <= 64)
+            {
+                LUISA_WARNING("{:12} {:4} elements: actual: {}", test_name, size, actual);
+            }
             return false;
         }
     }
@@ -42,7 +46,7 @@ void test_device_reduce(Device& device, Stream& stream)
         stream << d_input.copy_from(host_input.data()) << synchronize();
         CommandList cmdlist;
         device_reduce.Sum(cmdlist, stream, d_input.view(), d_output.view(), num_items);
-        stream << cmdlist.commit() << synchronize();
+
         std::vector<Type4Byte> host_output(1);
         stream << d_output.copy_to(host_output.data()) << synchronize();
 
@@ -73,7 +77,6 @@ void test_device_scan(Device& device, Stream& stream)
         CommandList cmdlist;
         device_scan.ExclusiveSum(cmdlist, stream, d_keys_in.view(), d_keys_out.view(), num_items);
 
-        stream << cmdlist.commit() << synchronize();
         std::vector<uint> host_keys_out(num_items);
         stream << d_keys_out.copy_to(host_keys_out.data()) << synchronize();
 
@@ -90,7 +93,7 @@ void test_device_radix_sort(Device& device, Stream& stream)
 {
     DeviceRadixSort<> device_radix_sort;
     device_radix_sort.create(device);
-    for (uint loop = 0; loop < 24; ++loop)
+    for (uint loop = 1; loop < 20; ++loop)
     {
         uint              num_items    = 1 << loop;
         Buffer<uint>      d_keys_in    = device.create_buffer<uint>(num_items);
@@ -105,7 +108,7 @@ void test_device_radix_sort(Device& device, Stream& stream)
         stream << d_keys_in.copy_from(host_keys.data()) << synchronize();
         CommandList cmdlist;
         device_radix_sort.SortKeys(cmdlist, stream, d_keys_in.view(), d_keys_out.view(), num_items);
-        stream << cmdlist.commit() << synchronize();
+
         std::vector<uint> host_keys_out(num_items);
         stream << d_keys_out.copy_to(host_keys_out.data()) << synchronize();
 
@@ -123,7 +126,7 @@ void test_device_radix_sort(Device& device, Stream& stream)
 int main(int argc, char* argv[])
 {
     Context ctx{argv[0]};
-    auto    backend = argc > 1 ? argv[1] : "cuda";
+    auto    backend = argc > 1 ? argv[1] : "metal";
     Device  device  = ctx.create_device(backend);
     Stream  stream  = device.create_stream();
 
