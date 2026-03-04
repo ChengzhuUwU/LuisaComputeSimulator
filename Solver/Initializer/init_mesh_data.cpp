@@ -344,7 +344,7 @@ namespace lcs
 					shell_info.load_mesh_data();
 				}
 
-				if (shell_info.simulation_type == SimulationTypeCloth)
+				if (shell_info.simulation_type == SimulationType::Cloth)
 				{
 					if (!shell_info.holds<ClothMaterial>())
 					{
@@ -353,7 +353,7 @@ namespace lcs
 					auto& mat = shell_info.get_material<ClothMaterial>();
 					mat.is_shell = true; // Cloth material must be shell
 				}
-				else if (shell_info.simulation_type == SimulationTypeTetrahedral)
+				else if (shell_info.simulation_type == SimulationType::Tetrahedral)
 				{
 					if (!shell_info.holds<TetMaterial>())
 					{
@@ -362,7 +362,7 @@ namespace lcs
 					auto& mat = shell_info.get_material<TetMaterial>();
 					mat.is_shell = false;
 				}
-				else if (shell_info.simulation_type == SimulationTypeRigid)
+				else if (shell_info.simulation_type == SimulationType::Rigid)
 				{
 					if (!shell_info.holds<RigidMaterial>())
 					{
@@ -390,7 +390,7 @@ namespace lcs
 						mat.thickness = 0.0f;
 					}
 				}
-				else if (shell_info.simulation_type == SimulationTypeRod)
+				else if (shell_info.simulation_type == SimulationType::Rod)
 				{
 					if (!shell_info.holds<RodMaterial>())
 					{
@@ -869,7 +869,7 @@ namespace lcs
 					{
 						if (shell_info.input_mesh.tetrahedrons.empty())
 						{
-							if (shell_info.simulation_type == SimulationTypeTetrahedral)
+							if (shell_info.simulation_type == SimulationType::Tetrahedral)
 							{
 								LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
 							}

@@ -102,12 +102,13 @@ namespace lcs
 			void*					data_ptr = nullptr;
 		};
 
-		enum SimulationType
+		enum class SimulationType
 		{
-			SimulationTypeCloth,
-			SimulationTypeTetrahedral,
-			SimulationTypeRigid,
-			SimulationTypeRod,
+			None,
+			Cloth,
+			Tetrahedral,
+			Rigid,
+			Rod,
 		};
 
 		struct WorldData
@@ -122,7 +123,7 @@ namespace lcs
 			std::vector<uint>					 fixed_point_indices;
 			std::vector<FixedPointAnimationInfo> fixed_point_animations;
 
-			SimulationType			  simulation_type = SimulationTypeCloth;
+			SimulationType			  simulation_type = SimulationType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
 
 			template <typename T>
@@ -143,7 +144,7 @@ namespace lcs
 
 			WorldData()
 				: model_name("sim_object")
-				, simulation_type(SimulationTypeCloth)
+				, simulation_type(SimulationType::None)
 			{
 			}
 			WorldData(const std::string& model_name, const SimulationType& mesh_type)

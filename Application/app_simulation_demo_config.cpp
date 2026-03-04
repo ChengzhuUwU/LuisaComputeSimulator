@@ -24,14 +24,14 @@ namespace Demo::Simulation
 	{
 		WorldData& up = shell_list.emplace_back(WorldData())
 							.set_name("upper square")
-							.set_simulation_type(lcs::Initializer::SimulationTypeCloth)
+							.set_simulation_type(lcs::Initializer::SimulationType::Cloth)
 							.load_mesh_from_path(obj_mesh_path + "square2.obj")
 							.set_physics_material(ClothMaterial{ .thickness = 0.1f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
 
 		WorldData& down = shell_list.emplace_back(WorldData())
 							  .set_name("lower square")
-							  .set_simulation_type(lcs::Initializer::SimulationTypeCloth)
+							  .set_simulation_type(lcs::Initializer::SimulationType::Cloth)
 							  .load_mesh_from_path(obj_mesh_path + "square2.obj")
 							  .set_physics_material(ClothMaterial{ .thickness = 0.1f })
 							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
@@ -367,13 +367,13 @@ namespace Demo::Simulation
 				{
 					const char* ss = yyjson_get_str(stype);
 					if (strcmp(ss, "Rigid") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationTypeRigid);
+						info.set_simulation_type(lcs::Initializer::SimulationType::Rigid);
 					else if (strcmp(ss, "Tetrahedral") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationTypeTetrahedral);
+						info.set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
 					else if (strcmp(ss, "Rod") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationTypeRod);
+						info.set_simulation_type(lcs::Initializer::SimulationType::Rod);
 					else
-						info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
+						info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
 				}
 
 				// set physical material
@@ -414,12 +414,12 @@ namespace Demo::Simulation
 						auto material_to_shell = [&](const std::string& s)
 						{
 							if (s == "Rigid")
-								return lcs::Initializer::SimulationTypeRigid;
+								return lcs::Initializer::SimulationType::Rigid;
 							else if (s == "Tetrahedral" || s == "Tet" || s == "TetMaterial")
-								return lcs::Initializer::SimulationTypeTetrahedral;
+								return lcs::Initializer::SimulationType::Tetrahedral;
 							else if (s == "Rod")
-								return lcs::Initializer::SimulationTypeRod;
-							return lcs::Initializer::SimulationTypeCloth;
+								return lcs::Initializer::SimulationType::Rod;
+							return lcs::Initializer::SimulationType::Cloth;
 						};
 
 						// Parse and fill material struct based on material_type
@@ -500,7 +500,7 @@ namespace Demo::Simulation
 							// if shell_type not provided explicitly, set from material
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
+								info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
 							}
 							else
 							{
@@ -535,7 +535,7 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationTypeTetrahedral);
+								info.set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
 							}
 							else
 							{
@@ -575,7 +575,7 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationTypeRigid);
+								info.set_simulation_type(lcs::Initializer::SimulationType::Rigid);
 							}
 							else
 							{
@@ -615,7 +615,7 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationTypeRod);
+								info.set_simulation_type(lcs::Initializer::SimulationType::Rod);
 							}
 							else
 							{
@@ -636,7 +636,7 @@ namespace Demo::Simulation
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
-								info.set_simulation_type(lcs::Initializer::SimulationTypeCloth);
+								info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
 						}
 					}
 				}

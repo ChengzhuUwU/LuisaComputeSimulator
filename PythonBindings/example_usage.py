@@ -14,22 +14,23 @@ solver = lcs.NewtonSolver()
 
 # Register meshes
 
-# Load a mesh using trimesh
+# Load a mesh by providing vertices and triangles array directly
 cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
 cube_mesh = trimesh.load(cube_mesh_path, process=False)
 cube_verts = np.asarray(cube_mesh.vertices, dtype=np.double)
 cube_faces = np.asarray(cube_mesh.faces, dtype=np.int32)
 cube = solver.register_mesh('cube', cube_verts, cube_faces)
 cube.set_simulation_type(lcs.SimulationType.Rigid)
+cube.set_physics_material_rigid(thickness=1e-3, stiffness=1e6)
 cube.set_translation(0.0, 0.34, 0.0)
 cube.set_rotation(0.5235988, 0.0, 0.5235988)
 cube.set_scale(0.1)
 
-# Load a mesh using obj file path directly 
+# Load a mesh by providing the path to the obj file
 cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
 cloth = solver.register_mesh('cloth', cloth_mesh_path)
 cloth.set_simulation_type(lcs.SimulationType.Cloth)
-cloth.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e4)
+cloth.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
 cloth.set_scale(0.75)
 cloth.add_fixed_point_by_method("LeftBack")
 cloth.add_fixed_point_by_method("RightBack")
@@ -57,7 +58,7 @@ def update():
 	# solver.update_pinned_verts_position(mesh_idx=1, local_vid=0, target_pos=np.array([0.0, 0.5, 0.0], dtype=_np.float32))
 	solver.physics_step_gpu() # cpu is invalid???
 
-for frame in range(0, 1):
+for frame in range(0, 30):
 	update()
 
 # results = solver.get_simulation_results()

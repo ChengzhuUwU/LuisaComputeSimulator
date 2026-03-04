@@ -22,7 +22,7 @@ namespace lcs::Initializer
 			{
 				const uint	mesh_idx = mesh_data->sa_vert_mesh_id[vid];
 				const auto& shell_info = world_data[mesh_idx];
-				if (shell_info.simulation_type == SimulationTypeTetrahedral)
+				if (shell_info.simulation_type == SimulationType::Tetrahedral)
 				{
 					const auto& adj_faces = mesh_data->vert_adj_faces[vid];
 					if (!adj_faces.empty())

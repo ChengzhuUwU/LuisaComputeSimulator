@@ -223,12 +223,55 @@ struct WorldDataWrapper
 	}
 
 	// Expose cloth material setter by accepting keyword args
-	WorldDataWrapper& set_physics_material_cloth(float thickness = 0.002f, float youngs_modulus = 1e5f, float poisson_ratio = 0.25f)
+	WorldDataWrapper& set_physics_material_cloth(float thickness = 1e-3f, float youngs_modulus = 1e6f, float poisson_ratio = 0.35f, float area_bending_stiffness = 5e-3f)
 	{
+		wd->set_simulation_type(lcs::Initializer::SimulationType::Cloth);
 		ClothMaterial mat;
 		mat.thickness = thickness;
 		mat.youngs_modulus = youngs_modulus;
 		mat.poisson_ratio = poisson_ratio;
+		mat.area_bending_stiffness = area_bending_stiffness;
+		wd->set_physics_material(mat);
+		return *this;
+	}
+
+	// Expose tetrahedral material setter
+	WorldDataWrapper& set_physics_material_tet(float youngs_modulus = 1e6f, float poisson_ratio = 0.35f, float density = 1e3f, float mass = 0.0f)
+	{
+		wd->set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
+		TetMaterial mat;
+		mat.youngs_modulus = youngs_modulus;
+		mat.poisson_ratio = poisson_ratio;
+		mat.density = density;
+		mat.mass = mass;
+		mat.is_shell = false;
+		wd->set_physics_material(mat);
+		return *this;
+	}
+
+	// Expose rigid material setter
+	WorldDataWrapper& set_physics_material_rigid(float thickness = 1e-3f, float stiffness = 1e6f, float density = 1e3f, float mass = 0.0f)
+	{
+		wd->set_simulation_type(lcs::Initializer::SimulationType::Rigid);
+		RigidMaterial mat;
+		mat.thickness = thickness;
+		mat.stiffness = stiffness;
+		mat.density = density;
+		mat.mass = mass;
+		wd->set_physics_material(mat);
+		return *this;
+	}
+
+	// Expose rod material setter
+	WorldDataWrapper& set_physics_material_rod(float radius = 1e-3f, float bending_stiffness = 1e4f, float twisting_stiffness = 1e4f, float density = 1e3f, float mass = 0.0f)
+	{
+		wd->set_simulation_type(lcs::Initializer::SimulationType::Rod);
+		RodMaterial mat;
+		mat.radius = radius;
+		mat.bending_stiffness = bending_stiffness;
+		mat.twisting_stiffness = twisting_stiffness;
+		mat.density = density;
+		mat.mass = mass;
 		wd->set_physics_material(mat);
 		return *this;
 	}
@@ -463,10 +506,10 @@ struct PyNewtonBuilder
 PYBIND11_MODULE(lcs_py, m)
 {
 	py::enum_<lcs::Initializer::SimulationType>(m, "SimulationType")
-		.value("Cloth", lcs::Initializer::SimulationType::SimulationTypeCloth)
-		.value("Tetrahedral", lcs::Initializer::SimulationType::SimulationTypeTetrahedral)
-		.value("Rigid", lcs::Initializer::SimulationType::SimulationTypeRigid)
-		.value("Rod", lcs::Initializer::SimulationType::SimulationTypeRod)
+		.value("Cloth", lcs::Initializer::SimulationType::Cloth)
+		.value("Tetrahedral", lcs::Initializer::SimulationType::Tetrahedral)
+		.value("Rigid", lcs::Initializer::SimulationType::Rigid)
+		.value("Rod", lcs::Initializer::SimulationType::Rod)
 		.export_values();
 
 	py::class_<ClothMaterial>(m, "ClothMaterial")
@@ -478,6 +521,35 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("mass", &ClothMaterial::mass)
 		.def_readwrite("density", &ClothMaterial::density);
 
+	py::class_<TetMaterial>(m, "TetMaterial")
+		.def(py::init<>())
+		.def_readwrite("youngs_modulus", &TetMaterial::youngs_modulus)
+		.def_readwrite("poisson_ratio", &TetMaterial::poisson_ratio)
+		.def_readwrite("mass", &TetMaterial::mass)
+		.def_readwrite("density", &TetMaterial::density)
+		.def_readwrite("d_hat", &TetMaterial::d_hat)
+		.def_readwrite("friction_mu", &TetMaterial::friction_mu);
+
+	py::class_<RigidMaterial>(m, "RigidMaterial")
+		.def(py::init<>())
+		.def_readwrite("thickness", &RigidMaterial::thickness)
+		.def_readwrite("stiffness", &RigidMaterial::stiffness)
+		.def_readwrite("is_solid", &RigidMaterial::is_solid)
+		.def_readwrite("mass", &RigidMaterial::mass)
+		.def_readwrite("density", &RigidMaterial::density)
+		.def_readwrite("d_hat", &RigidMaterial::d_hat)
+		.def_readwrite("friction_mu", &RigidMaterial::friction_mu);
+
+	py::class_<RodMaterial>(m, "RodMaterial")
+		.def(py::init<>())
+		.def_readwrite("radius", &RodMaterial::radius)
+		.def_readwrite("bending_stiffness", &RodMaterial::bending_stiffness)
+		.def_readwrite("twisting_stiffness", &RodMaterial::twisting_stiffness)
+		.def_readwrite("mass", &RodMaterial::mass)
+		.def_readwrite("density", &RodMaterial::density)
+		.def_readwrite("d_hat", &RodMaterial::d_hat)
+		.def_readwrite("friction_mu", &RodMaterial::friction_mu);
+
 	py::class_<MakeFixedPointsInterface>(m, "MakeFixedPointsInterface")
 		.def(py::init<>())
 		.def_readwrite("method", &MakeFixedPointsInterface::method)
@@ -488,9 +560,29 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("set_simulation_type", &WorldDataWrapper::set_simulation_type)
 		.def("set_physics_material_cloth",
 			&WorldDataWrapper::set_physics_material_cloth,
-			py::arg("thickness") = 0.002f,
-			py::arg("youngs_modulus") = 1e5f,
-			py::arg("poisson_ratio") = 0.25f)
+			py::arg("thickness") = 1e-3f,
+			py::arg("youngs_modulus") = 1e6f,
+			py::arg("poisson_ratio") = 0.35f,
+			py::arg("area_bending_stiffness") = 5e-3f)
+		.def("set_physics_material_tet",
+			&WorldDataWrapper::set_physics_material_tet,
+			py::arg("youngs_modulus") = 1e6f,
+			py::arg("poisson_ratio") = 0.35f,
+			py::arg("density") = 1e3f,
+			py::arg("mass") = 0.0f)
+		.def("set_physics_material_rigid",
+			&WorldDataWrapper::set_physics_material_rigid,
+			py::arg("thickness") = 1e-3f,
+			py::arg("stiffness") = 1e6f,
+			py::arg("density") = 1e3f,
+			py::arg("mass") = 0.0f)
+		.def("set_physics_material_rod",
+			&WorldDataWrapper::set_physics_material_rod,
+			py::arg("radius") = 1e-3f,
+			py::arg("bending_stiffness") = 1e4f,
+			py::arg("twisting_stiffness") = 1e4f,
+			py::arg("density") = 1e3f,
+			py::arg("mass") = 0.0f)
 		.def("add_fixed_point_info", &WorldDataWrapper::add_fixed_point_info)
 		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
 		.def("add_fixed_point_indices", &WorldDataWrapper::add_fixed_point_indices, py::arg("indices"))

@@ -388,7 +388,7 @@ namespace lcs::Initializer
 
 		std::vector<uint> soft_vert_indices =
 			fn_get_active_indices([&](const uint vid)
-				{ return mesh_data->sa_vert_mesh_type[vid] == SimulationTypeRigid ? 0 : 1; },
+				{ return mesh_data->sa_vert_mesh_type[vid] == uint(SimulationType::Rigid) ? 0 : 1; },
 				mesh_data->num_verts);
 
 		const uint num_stretch_springs = static_cast<uint>(stretch_spring_indices.size());
