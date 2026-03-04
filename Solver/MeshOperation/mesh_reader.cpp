@@ -455,8 +455,6 @@ namespace SimMesh
 				mesh_data.model_positions[vid] = local_pos;
 			});
 
-		LUISA_INFO("Access 4");
-
 		const bool has_uv = !mesh_attrib.texcoords.empty();
 		if (has_uv)
 		{
@@ -524,8 +522,6 @@ namespace SimMesh
 			// });
 		}
 
-		LUISA_INFO("Access 3");
-
 		uint face_prefix = 0;
 		for (size_t submesh_idx = 0; submesh_idx < mesh_shape.size(); submesh_idx++)
 		{
@@ -583,11 +579,8 @@ namespace SimMesh
 			}
 		}
 
-		LUISA_INFO("Access 1");
-
 		extract_edges_from_surface(mesh_data.faces, mesh_data.edges, mesh_data.dihedral_edges, true);
 
-		LUISA_INFO("Access 2");
 		// fast_format("   Readed Mesh Data {} : numSubMesh = {}, numVerts = {}, numFaces = {}, numEdges = {}, numBendingEdges = {}",
 		//     mesh_name, mesh_shape.size(), num_verts, num_faces, mesh_data.edges.size(), mesh_data.bending_edges.size());
 

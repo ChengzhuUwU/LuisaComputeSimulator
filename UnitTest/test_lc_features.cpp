@@ -84,6 +84,38 @@ int main(int argc, char** argv)
 	luisa::compute::Device device = context.create_device(backend, nullptr, true);
 	luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
+	{
+		auto If = [](auto cond, auto&& true_branch) noexcept
+		{
+			return ::luisa::compute::detail::IfStmtBuilder::create_with_comment(
+					   ::luisa ::compute::dsl_detail::format_source_location(__FILE__, __LINE__),
+					   cond)
+				% std::forward<decltype(true_branch)>(true_branch);
+		};
+
+		using namespace luisa::compute;
+
+		auto kernel = device.compile<1>(
+			[If](Var<Arguments> args, const UInt iter)
+			{
+				const UInt lid = dispatch_id().x;
+
+				$if(lid < 4){};
+
+				If(lid < 4, [&]()
+					{ args.buffer1.write(lid, iter); });
+
+				// ::luisa::compute::detail::IfStmtBuilder::create_with_comment(
+				// 	::luisa ::compute::dsl_detail::format_source_location(__FILE__, __LINE__),
+				// 	lid < 4)
+				// 	%
+				// 	[&]() noexcept -> void
+				// {
+				// 	args.buffer1.write(lid, iter);
+				// };
+			});
+	}
+
 	test_dynamic_resize(device, stream);
 
 	return 0;
