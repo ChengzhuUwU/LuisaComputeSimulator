@@ -71,11 +71,12 @@ endif()
 
 
 if (LCS_BUILD_PYBINDINGS)
-    find_package(pybind11 QUIET)
-    if(pybind11_FOUND)
-        message(STATUS "Found pybind11: ${pybind11_DIR}")
-    else()
-        message(STATUS "pybind11 not found; fetching pybind11 via FetchContent...")
+    # find_package(pybind11 QUIET)
+    # if(pybind11_FOUND)
+    #     message(STATUS "Found pybind11: ${pybind11_DIR}")
+    # else()
+        # message(STATUS "pybind11 not found; fetching pybind11 via FetchContent...")
+        # Using a specific commit of pybind11 to ensure stability
         FetchContent_Declare(
             pybind11
             GIT_REPOSITORY https://github.com/pybind/pybind11.git
@@ -83,7 +84,7 @@ if (LCS_BUILD_PYBINDINGS)
             SOURCE_DIR ${EXT_PATH}/pybind11
         )
         FetchContent_MakeAvailable(pybind11)
-    endif()
+    # endif()
 endif()
 
 if (LCS_USE_SYSTEM_PARALLEL_FOR)
