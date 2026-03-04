@@ -184,39 +184,13 @@ struct WorldDataWrapper
 	}
 
 	// Convenience: add fixed-point rule by name and optional numeric range/list
-	WorldDataWrapper& add_fixed_point_by_method(const std::string& method, py::object range = py::none())
+	WorldDataWrapper& add_fixed_point_by_method(const std::string& method, float range)
 	{
 		MakeFixedPointsInterface mfp;
 		mfp.method = parse_fixed_method_py(method);
-		if (!range.is_none())
-		{
-			// accept iterable of numbers or single number
-			if (py::isinstance<py::iterable>(range))
-			{
-				for (auto item : range)
-				{
-					try
-					{
-						float v = item.cast<float>();
-						mfp.range.push_back(v);
-					}
-					catch (...)
-					{
-					}
-				}
-			}
-			else
-			{
-				try
-				{
-					float v = range.cast<float>();
-					mfp.range.push_back(v);
-				}
-				catch (...)
-				{
-				}
-			}
-		}
+		mfp.range = range;
+
+		LUISA_INFO("Adding fixed point info: method = {}, range size = {}", method, mfp.range);
 		wd->add_fixed_point_info(mfp);
 		return *this;
 	}
@@ -252,13 +226,6 @@ struct WorldDataWrapper
 	WorldDataWrapper& set_scale(float s)
 	{
 		wd->set_scale(s);
-		return *this;
-	}
-
-	// Optionally call load_mesh_data to compute auxiliary topology
-	WorldDataWrapper& load_mesh_data()
-	{
-		wd->load_mesh_data();
 		return *this;
 	}
 };
@@ -467,12 +434,11 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("youngs_modulus") = 1e5f,
 			py::arg("poisson_ratio") = 0.25f)
 		.def("add_fixed_point_info", &WorldDataWrapper::add_fixed_point_info)
-		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = py::none())
+		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
 		.def("add_fixed_point_indices", &WorldDataWrapper::add_fixed_point_indices, py::arg("indices"))
 		.def("set_translation", &WorldDataWrapper::set_translation)
 		.def("set_rotation", &WorldDataWrapper::set_rotation)
-		.def("set_scale", &WorldDataWrapper::set_scale)
-		.def("load_mesh_data", &WorldDataWrapper::load_mesh_data);
+		.def("set_scale", &WorldDataWrapper::set_scale);
 
 	// disambiguate overloaded register_mesh signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;

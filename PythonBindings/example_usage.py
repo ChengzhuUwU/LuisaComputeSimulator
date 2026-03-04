@@ -57,7 +57,7 @@ def update():
 	# solver.update_pinned_verts_position(mesh_idx=1, local_vid=0, target_pos=np.array([0.0, 0.5, 0.0], dtype=_np.float32))
 	solver.physics_step_gpu() # cpu is invalid???
 
-for frame in range(0, 50):
+for frame in range(0, 1):
 	update()
 
 # results = solver.get_simulation_results()

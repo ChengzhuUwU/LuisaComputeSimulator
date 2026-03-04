@@ -98,7 +98,7 @@ namespace lcs
 		{
 			FixedPointsType			method = FixedPointsType::All;
 			FixedPointAnimationInfo fixed_info;
-			std::vector<float>		range = { 0.001f };
+			float					range = 0.001f;
 			void*					data_ptr = nullptr;
 		};
 

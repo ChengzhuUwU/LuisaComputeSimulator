@@ -127,109 +127,109 @@ namespace lcs
 				}
 				else if (fixed_point_func.method == FixedPointsType::Left)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::Right)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::Front)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::Back)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::Up)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.y > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::Down)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.y < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::LeftUp)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x < range && norm_pos.y > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::LeftDown)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x < range && norm_pos.y < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::LeftFront)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x < range && norm_pos.z > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::LeftBack)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x < range && norm_pos.z < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::RightUp)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x > 1.0f - range && norm_pos.y > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::RightDown)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x > 1.0f - range && norm_pos.y < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::RightFront)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x > 1.0f - range && norm_pos.z > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::RightBack)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.x > 1.0f - range && norm_pos.z < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::FrontUp)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z < range && norm_pos.y > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::FrontDown)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z < range && norm_pos.y < range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::BackUp)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z > 1.0f - range && norm_pos.y > 1.0f - range; },
 						fixed_point_func.fixed_info);
 				}
 				else if (fixed_point_func.method == FixedPointsType::BackDown)
 				{
-					from_norm_position([range = fixed_point_func.range.front()](const float3& norm_pos)
+					from_norm_position([range = fixed_point_func.range](const float3& norm_pos)
 						{ return norm_pos.z > 1.0f - range && norm_pos.y < range; },
 						fixed_point_func.fixed_info);
 				}

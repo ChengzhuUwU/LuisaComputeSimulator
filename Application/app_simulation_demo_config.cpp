@@ -656,17 +656,9 @@ namespace Demo::Simulation
 							mfp.method = parse_fixed_method(yyjson_get_str(mth));
 						// range
 						yyjson_val* rng = yyjson_obj_get(fpv, "range");
-						if (rng && yyjson_is_arr(rng))
-						{
-							yyjson_val* ev;
-							size_t		ri, rmax;
-							mfp.range.clear();
-							yyjson_arr_foreach(rng, ri, rmax, ev)
-							{
-								if (yyjson_is_num(ev))
-									mfp.range.push_back(static_cast<float>(yyjson_get_num(ev)));
-							}
-						}
+						if (rng && yyjson_is_num(rng))
+							mfp.range = static_cast<float>(yyjson_get_num(rng));
+
 						// fixed_info (animation)
 						yyjson_val* fin = yyjson_obj_get(fpv, "fixed_info");
 						if (fin && yyjson_is_obj(fin))
@@ -756,7 +748,7 @@ namespace Demo::Simulation
 								fi.use_setting_position = true;
 							}
 						}
-
+						// info.add_fixed_point_info(mfp);
 						info.fixed_point_range_info.push_back(mfp);
 					}
 				}

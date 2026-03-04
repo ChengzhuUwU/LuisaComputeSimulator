@@ -17,9 +17,7 @@
             "fixed_points": [
                 {
                     "method": "LeftBack",
-                    "range": [
-                        0.001
-                    ]
+                    "range": 0.001
                 }
             ],
             "shell_type": "Cloth",
@@ -44,9 +42,7 @@
             "fixed_points": [
                 {
                     "method": "LeftBack",
-                    "range": [
-                        0.001
-                    ]
+                    "range": 0.001
                 }
             ],
             "shell_type": "Cloth",
@@ -70,9 +66,7 @@
             "fixed_points": [
                 {
                     "method": "LeftBack",
-                    "range": [
-                        0.001
-                    ]
+                    "range": 0.001
                 }
             ],
             "shell_type": "Cloth",
