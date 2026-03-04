@@ -42,8 +42,6 @@ namespace lcs
 		// Collision
 		bool use_floor = true;
 		bool use_self_collision = true;
-		bool use_collision_vf = true;
-		bool use_collision_ee = true;
 
 		// Animation
 		bool output_per_frame = false;
@@ -61,7 +59,6 @@ namespace lcs
 		uint current_substep = 0;
 
 		uint collision_detection_frequece = 1;
-		uint animation_start_frame = 9999;
 
 		uint contact_energy_type = 1; // 0 for quadratic, 1 for log-barrier
 
@@ -92,10 +89,6 @@ namespace lcs
 			dt = input_dt;
 			dt_inv = 1.0f / dt;
 			dt_2_inv = dt_inv * dt_inv;
-		}
-		uint get_curr_iteration_with_substep()
-		{
-			return num_substep * current_substep + current_nonlinear_iter;
 		}
 		float get_substep_dt() { return implicit_dt / float(num_substep); }
 		float get_bending_stiffness_scaling() { return stiffness_bending_ui; }

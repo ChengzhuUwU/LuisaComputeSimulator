@@ -6,7 +6,6 @@ root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
-
 # Initialize LuisaCompute device
 backend = "metal"  # backends: cuda, dx, vk, metal (if supported on the platform)
 lcs.device_init(backend_name=backend, binary_path=None)
@@ -46,22 +45,13 @@ print('Registered meshes:', solver.get_mesh_names())
 config_ref = lcs.get_scene_params()
 config_ref.use_floor = False
 
-# Simulate loop
+# Output directory (for optional file saving)
 output_dir = os.path.join(root, "Resources", "OutputMesh")
-if not os.path.exists(output_dir):
-	os.makedirs(output_dir)
+os.makedirs(output_dir, exist_ok=True)
 
-solver.save_to(full_path=os.path.join(output_dir, "init.obj"))
-
-def update():
-	# solver.update_pinned_verts_position(mesh_idx=1, local_vid=0, target_pos=np.array([0.0, 0.5, 0.0], dtype=_np.float32))
-	# solver.physics_step_cpu()
-	solver.physics_step_gpu()
-
-for frame in range(0, 30):
-	update()
-
-# results = solver.get_simulation_results()
-solver.save_to(full_path=os.path.join(output_dir, "result.obj"))
+# Launch polyscope GUI
+from polyscope_gui import SimulationGUI
+gui = SimulationGUI(solver, config_ref, output_dir)
+gui.show()
 
 lcs.device_cleanup()

@@ -474,6 +474,39 @@ struct PyNewtonBuilder
 		return py_out;
 	}
 
+	// Return simulation results as a tuple of (vertices_list, faces_list) of numpy arrays.
+	// Uses memcpy for efficient data transfer.
+	py::tuple get_sim_result_to()
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+
+		const uint num_meshes = solver_ptr->get_host_mesh_data().num_meshes;
+
+		std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(num_meshes);
+		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
+
+		py::list py_verts;
+		py::list py_faces;
+		for (uint i = 0; i < num_meshes; ++i)
+		{
+			// vertices – contiguous std::array<float,3>, safe to memcpy
+			const auto&		   mesh_verts = sa_rendering_vertices[i];
+			py::array_t<float> v_arr({ (ssize_t)mesh_verts.size(), (ssize_t)3 });
+			if (!mesh_verts.empty())
+				std::memcpy(v_arr.mutable_data(), mesh_verts.data(), mesh_verts.size() * 3 * sizeof(float));
+			py_verts.append(v_arr);
+
+			// faces
+			const auto&			  mesh_faces = shell_list[i].input_mesh.faces;
+			py::array_t<uint32_t> f_arr({ (ssize_t)mesh_faces.size(), (ssize_t)3 });
+			if (!mesh_faces.empty())
+				std::memcpy(f_arr.mutable_data(), mesh_faces.data(), mesh_faces.size() * 3 * sizeof(uint32_t));
+			py_faces.append(f_arr);
+		}
+		return py::make_tuple(py_verts, py_faces);
+	}
+
 	void save_to(const std::string& full_path)
 	{
 		std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices;
@@ -483,19 +516,14 @@ struct PyNewtonBuilder
 			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 
 		const uint num_meshes = solver_ptr->get_host_mesh_data().num_meshes;
-		// LUISA_INFO(" -> Saving mesh to OBJ: {}, num_meshes = {}", full_path, num_meshes);
 
 		sa_rendering_vertices.resize(num_meshes);
 		sa_rendering_faces.resize(num_meshes);
-		// populate faces from registered shell_list (topology)
 		for (uint i = 0; i < num_meshes; ++i)
 		{
 			sa_rendering_faces[i] = shell_list[i].input_mesh.faces;
 		}
-		// get vertex positions from solver
 		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
-
-		// frame id not used here, pass 0
 		SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, full_path);
 	}
 };
@@ -607,8 +635,10 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position,
 			py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("get_simulation_results", &PyNewtonBuilder::get_simulation_results)
-		.def("save_to", &PyNewtonBuilder::save_to,
-			py::arg("full_path"));
+		.def("get_sim_result_to", &PyNewtonBuilder::get_sim_result_to,
+			"Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
+		.def("save_sim_result_to", &PyNewtonBuilder::save_to,
+			py::arg("obj_path"));
 
 	m.def("device_init",
 		&global_create_device,
@@ -650,6 +680,16 @@ PYBIND11_MODULE(lcs_py, m)
 		},
 		"Return the raw pointer (as int) to the active luisa::compute::Stream.");
 
+	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.
+	py::class_<luisa::float3>(m, "Float3")
+		.def(py::init<>())
+		.def(py::init<float, float, float>())
+		.def_readwrite("x", &luisa::float3::x)
+		.def_readwrite("y", &luisa::float3::y)
+		.def_readwrite("z", &luisa::float3::z)
+		.def("__repr__", [](const luisa::float3& v)
+			{ return "Float3(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ")"; });
+
 	// Expose SceneParams and accessors so Python can read/modify global scene settings
 	py::class_<lcs::SceneParams>(m, "SceneParams")
 		.def("update_dt", &lcs::SceneParams::update_dt)
@@ -666,6 +706,12 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("num_substep", &lcs::SceneParams::num_substep)
 		.def_readwrite("nonlinear_iter_count", &lcs::SceneParams::nonlinear_iter_count)
 		.def_readwrite("pcg_iter_count", &lcs::SceneParams::pcg_iter_count)
+		.def_readwrite("current_frame", &lcs::SceneParams::current_frame)
+		.def_readwrite("current_nonlinear_iter", &lcs::SceneParams::current_nonlinear_iter)
+		.def_readwrite("current_pcg_it", &lcs::SceneParams::current_pcg_it)
+		.def_readwrite("current_substep", &lcs::SceneParams::current_substep)
+		.def_readwrite("collision_detection_frequece", &lcs::SceneParams::collision_detection_frequece)
+		.def_readwrite("contact_energy_type", &lcs::SceneParams::contact_energy_type)
 		.def_readwrite("implicit_dt", &lcs::SceneParams::implicit_dt)
 		.def_readwrite("explicit_dt", &lcs::SceneParams::explicit_dt)
 		.def_readwrite("dt", &lcs::SceneParams::dt)
@@ -675,7 +721,9 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("stiffness_collision", &lcs::SceneParams::stiffness_collision)
 		.def_readwrite("stiffness_dirichlet", &lcs::SceneParams::stiffness_dirichlet)
 		.def_readwrite("damping_rate", &lcs::SceneParams::damping_rate)
-		.def_readwrite("d_hat", &lcs::SceneParams::d_hat);
+		.def_readwrite("d_hat", &lcs::SceneParams::d_hat)
+		.def("get_substep_dt", &lcs::SceneParams::get_substep_dt)
+		.def("get_bending_stiffness_scaling", &lcs::SceneParams::get_bending_stiffness_scaling);
 
 	m.def(
 		"get_scene_params",
