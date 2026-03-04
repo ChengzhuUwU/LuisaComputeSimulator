@@ -55,7 +55,7 @@ class SimulationGUI:
     # ------------------------------------------------------------------
 
     def _register_meshes(self):
-        verts_list, faces_list = self._solver.get_sim_result_to()
+        verts_list, faces_list = self._solver.get_sim_result()
         self._mesh_names = self._solver.get_mesh_names()
         self._surface_meshes = []
         for idx, name in enumerate(self._mesh_names):
@@ -67,7 +67,7 @@ class SimulationGUI:
 
     def _update_gui_vertices(self):
         """Fetch latest simulation vertices and push them to polyscope."""
-        v_list, _ = self._solver.get_sim_result_to()
+        v_list, _ = self._solver.get_sim_result()
         for idx in range(len(self._surface_meshes)):
             self._surface_meshes[idx].update_vertex_positions(v_list[idx])
 
@@ -142,7 +142,7 @@ class SimulationGUI:
 
             if psim.Button("Reset"):
                 cfg.current_frame = 0
-                # Note: restart_system is not yet exposed to Python
+                self._solver.restart_system()
                 self._update_gui_vertices()
 
             if psim.Button("Advance Single Frame"):
@@ -167,7 +167,7 @@ class SimulationGUI:
             ps.set_ground_plane_height(cfg.floor.y)
         else:
             ps.set_ground_plane_mode("none")
-            
+
         if psim.TreeNode("Collision"):
             _, cfg.use_floor = psim.Checkbox("Use Ground Collision", cfg.use_floor)
             if cfg.use_floor:
@@ -186,7 +186,7 @@ class SimulationGUI:
         cfg = self._config
         if psim.TreeNode("Data IO"):
             if psim.Button("Save mesh"):
-                self._solver.save_sim_result_to(
+                self._solver.save_sim_result(
                     obj_path=os.path.join(
                         self._output_dir, f"frame_{cfg.current_frame}.obj"
                     )
@@ -205,7 +205,7 @@ class SimulationGUI:
         cfg = self._config
 
         if cfg.output_per_frame and cfg.current_frame == 0:
-            self._solver.save_sim_result_to(
+            self._solver.save_sim_result(
                 obj_path=os.path.join(self._output_dir, "frame_0_init.obj")
             )
 
@@ -216,7 +216,7 @@ class SimulationGUI:
             animation_fps = 60.0
             output_freq = max(1, int((1.0 / animation_fps) / cfg.implicit_dt))
             if cfg.current_frame % output_freq == 0:
-                self._solver.save_sim_result_to(
+                self._solver.save_sim_result(
                     obj_path=os.path.join(
                         self._output_dir, f"frame_{cfg.current_frame}.obj"
                     )

@@ -54,4 +54,10 @@ from polyscope_gui import SimulationGUI
 gui = SimulationGUI(solver, config_ref, output_dir)
 gui.show()
 
+# Or run the simulation without GUI
+# solver.save_to(full_path=os.path.join(output_dir, "init.obj"))
+# for frame in range(0, 30):
+# 	solver.physics_step_gpu() # or solver.physics_step_cpu() 
+# solver.save_to(full_path=os.path.join(output_dir, "result.obj"))
+
 lcs.device_cleanup()

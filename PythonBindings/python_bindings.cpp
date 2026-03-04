@@ -429,6 +429,13 @@ struct PyNewtonBuilder
 		solver_ptr->physics_step_GPU(*g_state.device, *g_state.stream);
 	}
 
+	void restart_system()
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		solver_ptr->lcs::SolverInterface::restart_system();
+	}
+
 	// Update a pinned vertex position on the solver (mesh local vertex id, target position)
 	void update_pinned_verts_position(const unsigned int			  mesh_idx,
 		const unsigned int											  local_vid,
@@ -443,35 +450,6 @@ struct PyNewtonBuilder
 		auto				 buf = target_pos.unchecked<1>();
 		std::array<float, 3> tp{ buf(0), buf(1), buf(2) };
 		solver_ptr->update_pinned_verts_position(mesh_idx, local_vid, tp);
-	}
-
-	py::list get_simulation_results()
-	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
-		auto&	   mesh_data = solver_ptr->get_host_mesh_data();
-		const uint num_meshes = mesh_data.num_meshes;
-
-		std::vector<std::vector<std::array<float, 3>>> out_positions;
-		solver_ptr->get_simulation_results_to_host(out_positions);
-
-		py::list py_out;
-		for (uint i = 0; i < num_meshes; ++i)
-		{
-			const auto&			mesh = out_positions[i];
-			std::vector<size_t> shape = { (size_t)mesh.size(), 3 };
-			py::array_t<float>	arr(shape);
-			auto				buf = arr.mutable_unchecked<2>();
-			for (size_t r = 0; r < (size_t)mesh.size(); ++r)
-			{
-				buf(r, 0) = mesh[r][0];
-				buf(r, 1) = mesh[r][1];
-				buf(r, 2) = mesh[r][2];
-			}
-			py_out.append(arr);
-		}
-		return py_out;
 	}
 
 	// Return simulation results as a tuple of (vertices_list, faces_list) of numpy arrays.
@@ -632,13 +610,11 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using previously created device/context")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
+		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
 		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position,
 			py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
-		.def("get_simulation_results", &PyNewtonBuilder::get_simulation_results)
-		.def("get_sim_result_to", &PyNewtonBuilder::get_sim_result_to,
-			"Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
-		.def("save_sim_result_to", &PyNewtonBuilder::save_to,
-			py::arg("obj_path"));
+		.def("get_sim_result", &PyNewtonBuilder::get_sim_result_to, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
+		.def("save_sim_result", &PyNewtonBuilder::save_to, py::arg("obj_path"));
 
 	m.def("device_init",
 		&global_create_device,
