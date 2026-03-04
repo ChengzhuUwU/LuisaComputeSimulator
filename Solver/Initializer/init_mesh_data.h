@@ -119,9 +119,8 @@ namespace lcs
 
 			MaterialVariant physics_material; // Maybe we can use Polymorphism
 
-			std::vector<MakeFixedPointsInterface> fixed_point_range_info;
-			std::vector<uint>					  fixed_point_indices;
-			std::vector<FixedPointAnimationInfo>  fixed_point_animations;
+			std::vector<uint>					 fixed_point_indices;
+			std::vector<FixedPointAnimationInfo> fixed_point_animations;
 
 			SimulationType			  simulation_type = SimulationTypeCloth;
 			SimMesh::TriangleMeshData input_mesh;
@@ -162,11 +161,7 @@ namespace lcs
 				this->simulation_type = sim_type;
 				return *this;
 			}
-			WorldData& add_fixed_point_info(const MakeFixedPointsInterface& info)
-			{
-				this->fixed_point_range_info.emplace_back(info);
-				return *this;
-			}
+			WorldData& add_fixed_point_info(const MakeFixedPointsInterface& info);
 			WorldData& load_mesh_data();
 			WorldData& load_mesh_from_path(const std::string& path);
 
@@ -292,8 +287,6 @@ namespace lcs
 			{
 				return std::filesystem::path(model_name).filename().string();
 			}
-
-			WorldData& load_fixed_points();
 
 			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
 				const FixedPointAnimationInfo&												   info = FixedPointAnimationInfo());

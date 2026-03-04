@@ -105,18 +105,12 @@ namespace lcs
 				fixed_point_animations.push_back(fixed_info);
 			}
 		}
-		WorldData& WorldData::load_fixed_points()
+		WorldData& WorldData::add_fixed_point_info(const MakeFixedPointsInterface& fixed_point_func)
 		{
-			if (input_mesh.model_positions.size() == 0)
-			{
-				load_mesh_data();
-			}
-
 			auto from_norm_position = [&](const std::function<bool(const float3&)>& func,
 										  const FixedPointAnimationInfo&			info = FixedPointAnimationInfo())
 			{ set_pinned_verts_from_norm_position(func, info); };
 
-			for (const auto& fixed_point_func : fixed_point_range_info)
 			{
 				const auto& range = fixed_point_func.range;
 				if (fixed_point_func.method == FixedPointsType::All)
@@ -245,7 +239,7 @@ namespace lcs
 				}
 				else
 				{
-					LUISA_ERROR("Unsupported FixedPointsType {} in ShellInfo::load_fixed_points().",
+					LUISA_ERROR("Unsupported FixedPointsType {} in provided fix point info.",
 						int(fixed_point_func.method));
 				}
 			}

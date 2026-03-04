@@ -27,8 +27,7 @@ namespace Demo::Simulation
 							.set_simulation_type(lcs::Initializer::SimulationTypeCloth)
 							.load_mesh_from_path(obj_mesh_path + "square2.obj")
 							.set_physics_material(ClothMaterial{ .thickness = 0.1f })
-							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack })
-							.load_fixed_points();
+							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
 
 		WorldData& down = shell_list.emplace_back(WorldData())
 							  .set_name("lower square")
@@ -36,8 +35,7 @@ namespace Demo::Simulation
 							  .load_mesh_from_path(obj_mesh_path + "square2.obj")
 							  .set_physics_material(ClothMaterial{ .thickness = 0.1f })
 							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
-							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right })
-							  .load_fixed_points();
+							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
 
 		lcs::get_scene_params().use_floor = false;
 		lcs::get_scene_params().implicit_dt = 0.2;
@@ -309,6 +307,10 @@ namespace Demo::Simulation
 						}
 					}
 				}
+
+				// load mesh
+				if (!info.input_mesh.model_positions.empty())
+					info.load_mesh_data();
 
 				// translation / rotation / scale
 				yyjson_val* t = yyjson_obj_get(shell_val, "translation");
@@ -748,17 +750,12 @@ namespace Demo::Simulation
 								fi.use_setting_position = true;
 							}
 						}
-						// info.add_fixed_point_info(mfp);
-						info.fixed_point_range_info.push_back(mfp);
+						info.add_fixed_point_info(mfp);
 					}
 				}
 
 				// finally add to shell_list and load mesh (and fixed points if provided)
 				auto& curr_body = shell_list.emplace_back(info);
-				if (!curr_body.input_mesh.model_positions.empty())
-					curr_body.load_mesh_data();
-				if (!curr_body.fixed_point_range_info.empty())
-					curr_body.load_fixed_points();
 			}
 		}
 

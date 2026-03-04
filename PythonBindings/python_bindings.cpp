@@ -190,7 +190,6 @@ struct WorldDataWrapper
 		mfp.method = parse_fixed_method_py(method);
 		mfp.range = range;
 
-		LUISA_INFO("Adding fixed point info: method = {}, range size = {}", method, mfp.range);
 		wd->add_fixed_point_info(mfp);
 		return *this;
 	}
