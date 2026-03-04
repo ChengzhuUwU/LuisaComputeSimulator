@@ -9,7 +9,7 @@ import lcs_py as lcs
 
 # Initialize luisa compute context/device (optional args)
 backend = "metal"  # backends: cuda, dx, vk, metal (if supported on the platform)
-lcs.init(backend_name=backend, binary_path=None)
+lcs.device_init(backend_name=backend, binary_path=None)
 solver = lcs.NewtonSolver()
 
 # Register meshes
@@ -57,8 +57,10 @@ def update():
 	# solver.update_pinned_verts_position(mesh_idx=1, local_vid=0, target_pos=np.array([0.0, 0.5, 0.0], dtype=_np.float32))
 	solver.physics_step_gpu() # cpu is invalid???
 
-for frame in range(0, 10):
+for frame in range(0, 1):
 	update()
 
 # results = solver.get_simulation_results()
 solver.save_to(full_path=os.path.join(output_dir, "result.obj"))
+
+lcs.device_cleanup()
