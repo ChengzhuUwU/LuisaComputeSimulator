@@ -6,7 +6,7 @@ if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG bf794dce070bfa78b0b86e282cd9ebed85690e00
+        GIT_TAG 0e641eb8667c3d3ce0e3c9ecb709de9f22363d4e
         # GIT_TAG next
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
