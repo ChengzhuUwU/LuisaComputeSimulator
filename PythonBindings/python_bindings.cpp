@@ -52,7 +52,18 @@ struct GlobalState
 	}
 } g_state;
 
-static void global_create_devicce(py::object backend_name_obj = py::none(), py::object binary_path_obj = py::none())
+static void global_set_device(luisa::compute::Device* device, luisa::compute::Stream* stream)
+{
+	if (g_state.initialized)
+		g_state.cleanup();
+
+	g_state.device = device;
+	g_state.stream = stream;
+	g_state.initialized = true;
+}
+
+// Create a luisa device/stream owned by this module, with optional backend and binary path arguments.
+static void global_create_device(py::object backend_name_obj = py::none(), py::object binary_path_obj = py::none())
 {
 	if (g_state.initialized)
 		return;
@@ -127,32 +138,17 @@ static void global_create_devicce(py::object backend_name_obj = py::none(), py::
 		auto st = g_state.owned_device->create_stream(luisa::compute::StreamTag::COMPUTE);
 		g_state.owned_stream = std::make_unique<luisa::compute::Stream>(std::move(st));
 
-		g_state.device = g_state.owned_device.get();
-		g_state.stream = g_state.owned_stream.get();
+		global_set_device(g_state.owned_device.get(), g_state.owned_stream.get());
+		g_state.owns_resources = true;
 	}
 	catch (const std::exception& e)
 	{
 		throw std::runtime_error(std::string("Failed to create luisa device: ") + e.what());
 	}
-
-	g_state.initialized = true;
-	g_state.owns_resources = true;
 }
 
 // Use an existing device/stream from another module (non-owning).
 // The caller must ensure that the passed-in objects outlive this module's usage.
-static void global_set_device(luisa::compute::Device& device, luisa::compute::Stream& stream)
-{
-	if (g_state.initialized)
-		g_state.cleanup();
-
-	g_state.device = &device;
-	g_state.stream = &stream;
-	g_state.initialized = true;
-	g_state.owns_resources = false;
-}
-
-// Python-facing version: accept raw pointers as integers (uintptr_t)
 static void global_set_device_from_pointers(uintptr_t device_ptr, uintptr_t stream_ptr)
 {
 	if (device_ptr == 0 || stream_ptr == 0)
@@ -160,7 +156,8 @@ static void global_set_device_from_pointers(uintptr_t device_ptr, uintptr_t stre
 
 	auto* device = reinterpret_cast<luisa::compute::Device*>(device_ptr);
 	auto* stream = reinterpret_cast<luisa::compute::Stream*>(stream_ptr);
-	global_set_device(*device, *stream);
+	global_set_device(device, stream);
+	g_state.owns_resources = false;
 }
 
 static void global_free_device()
@@ -614,7 +611,7 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("full_path"));
 
 	m.def("device_init",
-		&global_create_devicce,
+		&global_create_device,
 		py::arg("backend_name") = py::none(),
 		py::arg("binary_path") = py::none(),
 		"Initialize luisa compute context/device/stream from Python.\n\n"
