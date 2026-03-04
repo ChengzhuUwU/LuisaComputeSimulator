@@ -235,7 +235,10 @@ struct PyNewtonBuilder
 	std::vector<WorldData>			   shell_list;
 	std::unique_ptr<lcs::NewtonSolver> solver_ptr;
 
-	PyNewtonBuilder() = default;
+	PyNewtonBuilder()
+		: solver_ptr(std::make_unique<lcs::NewtonSolver>())
+	{
+	}
 
 	// register_mesh accepts numpy arrays (vertices Nx3, triangles Mx3)
 	WorldDataWrapper register_mesh(const std::string&				   name,
@@ -312,7 +315,6 @@ struct PyNewtonBuilder
 		if (!g_state.initialized)
 			throw std::runtime_error("Global luisa context/device not initialized. Call init(...) first.");
 
-		solver_ptr = std::make_unique<lcs::NewtonSolver>();
 		solver_ptr->init_solver(*g_state.device, *g_state.stream, shell_list);
 	}
 
