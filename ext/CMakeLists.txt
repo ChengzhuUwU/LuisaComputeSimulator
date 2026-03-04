@@ -71,6 +71,10 @@ endif()
 
 
 if (LCS_BUILD_PYBINDINGS)
+
+    set(PYBIND11_PYTHON_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python executable for pybind11" FORCE)
+    message(STATUS "Python binding executable path: ${PYBIND11_PYTHON_EXECUTABLE}")
+
     # find_package(pybind11 QUIET)
     # if(pybind11_FOUND)
     #     message(STATUS "Found pybind11: ${pybind11_DIR}")
