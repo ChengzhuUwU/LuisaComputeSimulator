@@ -20,7 +20,7 @@
                     "range": 0.001
                 }
             ],
-            "shell_type": "Cloth",
+            "material_type": "Cloth",
             "material": {
                 "stretch_model": "Spring",
                 "youngs_modulus": 1e5,
@@ -45,7 +45,7 @@
                     "range": 0.001
                 }
             ],
-            "shell_type": "Cloth",
+            "material_type": "Cloth",
             "material": {
                 "youngs_modulus": 1e5,
                 "poisson_ratio": 0.3
@@ -69,7 +69,7 @@
                     "range": 0.001
                 }
             ],
-            "shell_type": "Cloth",
+            "material_type": "Cloth",
             "material": {
                 "youngs_modulus": 1e6,
                 "poisson_ratio": 0.3,

@@ -332,18 +332,18 @@ namespace Demo::Simulation
 				}
 
 				// set simulation type
-				yyjson_val* stype = yyjson_obj_get(shell_val, "shell_type");
+				yyjson_val* stype = yyjson_obj_get(shell_val, "material_type");
 				if (stype && yyjson_is_str(stype))
 				{
 					const char* ss = yyjson_get_str(stype);
 					if (strcmp(ss, "Rigid") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationType::Rigid);
+						info.set_material_type(lcs::Initializer::MaterialType::Rigid);
 					else if (strcmp(ss, "Tetrahedral") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
+						info.set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
 					else if (strcmp(ss, "Rod") == 0)
-						info.set_simulation_type(lcs::Initializer::SimulationType::Rod);
+						info.set_material_type(lcs::Initializer::MaterialType::Rod);
 					else
-						info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
+						info.set_material_type(lcs::Initializer::MaterialType::Cloth);
 				}
 
 				// set physical material
@@ -384,12 +384,12 @@ namespace Demo::Simulation
 						auto material_to_shell = [&](const std::string& s)
 						{
 							if (s == "Rigid")
-								return lcs::Initializer::SimulationType::Rigid;
+								return lcs::Initializer::MaterialType::Rigid;
 							else if (s == "Tetrahedral" || s == "Tet" || s == "TetMaterial")
-								return lcs::Initializer::SimulationType::Tetrahedral;
+								return lcs::Initializer::MaterialType::Tetrahedral;
 							else if (s == "Rod")
-								return lcs::Initializer::SimulationType::Rod;
-							return lcs::Initializer::SimulationType::Cloth;
+								return lcs::Initializer::MaterialType::Rod;
+							return lcs::Initializer::MaterialType::Cloth;
 						};
 
 						// Parse and fill material struct based on material_type
@@ -467,16 +467,16 @@ namespace Demo::Simulation
 							}
 
 							info.set_physics_material(mat);
-							// if shell_type not provided explicitly, set from material
+							// if material_type not provided explicitly, set from material
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
+								info.set_material_type(lcs::Initializer::MaterialType::Cloth);
 							}
 							else
 							{
 								// ensure consistency when both provided
 								auto mt = material_to_shell(material_type);
-								LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
+								LUISA_ASSERT(mt == info.material_type && "material_type and material.type mismatch");
 							}
 						}
 						else if (material_type == "Tetrahedral" || material_type == "Tet" || material_type == "TetMaterial")
@@ -505,12 +505,12 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
+								info.set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
 							}
 							else
 							{
 								auto mt = material_to_shell(material_type);
-								LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
+								LUISA_ASSERT(mt == info.material_type && "material_type and material.type mismatch");
 							}
 						}
 						else if (material_type == "Rigid")
@@ -545,12 +545,12 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationType::Rigid);
+								info.set_material_type(lcs::Initializer::MaterialType::Rigid);
 							}
 							else
 							{
 								auto mt = material_to_shell(material_type);
-								LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
+								LUISA_ASSERT(mt == info.material_type && "material_type and material.type mismatch");
 							}
 						}
 						else if (material_type == "Rod")
@@ -585,12 +585,12 @@ namespace Demo::Simulation
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_simulation_type(lcs::Initializer::SimulationType::Rod);
+								info.set_material_type(lcs::Initializer::MaterialType::Rod);
 							}
 							else
 							{
 								auto mt = material_to_shell(material_type);
-								LUISA_ASSERT(mt == info.simulation_type && "shell_type and material.type mismatch");
+								LUISA_ASSERT(mt == info.material_type && "material_type and material.type mismatch");
 							}
 						}
 						else
@@ -606,7 +606,7 @@ namespace Demo::Simulation
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
-								info.set_simulation_type(lcs::Initializer::SimulationType::Cloth);
+								info.set_material_type(lcs::Initializer::MaterialType::Cloth);
 						}
 					}
 				}

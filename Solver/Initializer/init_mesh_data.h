@@ -102,15 +102,6 @@ namespace lcs
 			void*					data_ptr = nullptr;
 		};
 
-		enum class SimulationType
-		{
-			None,
-			Cloth,
-			Tetrahedral,
-			Rigid,
-			Rod,
-		};
-
 		struct WorldData
 		{
 			// std::string file_path;
@@ -124,7 +115,7 @@ namespace lcs
 			std::vector<uint>					 fixed_point_indices;
 			std::vector<FixedPointAnimationInfo> fixed_point_animations;
 
-			SimulationType			  simulation_type = SimulationType::Cloth;
+			MaterialType			  material_type = MaterialType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
 
 			SimMesh::TriangleMeshData& get_mesh() { return input_mesh; }
@@ -147,7 +138,7 @@ namespace lcs
 
 			WorldData()
 				: model_name("unnamed")
-				, simulation_type(SimulationType::None)
+				, material_type(MaterialType::None)
 			{
 			}
 			WorldData& set_name(const std::string_view& model_name)
@@ -160,9 +151,9 @@ namespace lcs
 			// 	this->file_path = file_path;
 			// 	return *this;
 			// }
-			WorldData& set_simulation_type(const SimulationType& sim_type)
+			WorldData& set_material_type(const MaterialType& sim_type)
 			{
-				this->simulation_type = sim_type;
+				this->material_type = sim_type;
 				return *this;
 			}
 			WorldData& add_fixed_point_info(const MakeFixedPointsInterface& info);

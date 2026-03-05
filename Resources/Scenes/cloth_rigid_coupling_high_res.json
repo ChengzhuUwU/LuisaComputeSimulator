@@ -32,7 +32,7 @@
                 0.0
             ],
             "scale": 1.0,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "bowl/bottle4.obj",
@@ -47,7 +47,7 @@
                 0.0
             ],
             "scale": 0.5,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "sphere1K.obj",
@@ -57,7 +57,7 @@
                 0.2
             ],
             "scale": 0.2,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "sphere63.obj",
@@ -67,7 +67,7 @@
                 0.2
             ],
             "scale": 0.2,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         }
     ]
 }

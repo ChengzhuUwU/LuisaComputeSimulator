@@ -66,9 +66,9 @@ struct WorldDataWrapper
 		wd->set_name(name);
 		return *this;
 	}
-	WorldDataWrapper& set_simulation_type(lcs::Initializer::SimulationType t)
+	WorldDataWrapper& set_simulation_type(lcs::Initializer::MaterialType t)
 	{
-		wd->set_simulation_type(t);
+		wd->set_material_type(t);
 		return *this;
 	}
 
@@ -79,7 +79,7 @@ struct WorldDataWrapper
 		float poisson_ratio = ClothMaterial::default_poisson_ratio(),
 		float area_bending_stiffness = ClothMaterial::default_area_bending_stiffness())
 	{
-		wd->set_simulation_type(lcs::Initializer::SimulationType::Cloth);
+		wd->set_material_type(lcs::Initializer::MaterialType::Cloth);
 		ClothMaterial mat;
 		mat.thickness = thickness;
 		mat.youngs_modulus = youngs_modulus;
@@ -96,7 +96,7 @@ struct WorldDataWrapper
 		float density = TetMaterial::default_density(),
 		float mass = TetMaterial::default_mass())
 	{
-		wd->set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
+		wd->set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
 		TetMaterial mat;
 		mat.youngs_modulus = youngs_modulus;
 		mat.poisson_ratio = poisson_ratio;
@@ -114,7 +114,7 @@ struct WorldDataWrapper
 		float density = RigidMaterial::default_density(),
 		float mass = RigidMaterial::default_mass())
 	{
-		wd->set_simulation_type(lcs::Initializer::SimulationType::Rigid);
+		wd->set_material_type(lcs::Initializer::MaterialType::Rigid);
 		RigidMaterial mat;
 		mat.thickness = thickness;
 		mat.stiffness = stiffness;
@@ -132,7 +132,7 @@ struct WorldDataWrapper
 		float density = RodMaterial::default_density(),
 		float mass = RodMaterial::default_mass())
 	{
-		wd->set_simulation_type(lcs::Initializer::SimulationType::Rod);
+		wd->set_material_type(lcs::Initializer::MaterialType::Rod);
 		RodMaterial mat;
 		mat.radius = radius;
 		mat.bending_stiffness = bending_stiffness;
@@ -434,11 +434,11 @@ struct PyNewtonBuilder
 
 PYBIND11_MODULE(lcs_py, m)
 {
-	py::enum_<lcs::Initializer::SimulationType>(m, "SimulationType")
-		.value("Cloth", lcs::Initializer::SimulationType::Cloth)
-		.value("Tetrahedral", lcs::Initializer::SimulationType::Tetrahedral)
-		.value("Rigid", lcs::Initializer::SimulationType::Rigid)
-		.value("Rod", lcs::Initializer::SimulationType::Rod)
+	py::enum_<lcs::Initializer::MaterialType>(m, "SimulationType")
+		.value("Cloth", lcs::Initializer::MaterialType::Cloth)
+		.value("Tetrahedral", lcs::Initializer::MaterialType::Tetrahedral)
+		.value("Rigid", lcs::Initializer::MaterialType::Rigid)
+		.value("Rod", lcs::Initializer::MaterialType::Rod)
 		.export_values();
 
 	py::class_<ClothMaterial>(m, "ClothMaterial")

@@ -310,7 +310,7 @@ namespace lcs
 			std::sort(world_data.begin(),
 				world_data.end(),
 				[](const Initializer::WorldData& left, const Initializer::WorldData& right)
-				{ return int(left.simulation_type) < int(right.simulation_type); });
+				{ return int(left.material_type) < int(right.material_type); });
 			const uint num_meshes = world_data.size();
 			// std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
@@ -344,7 +344,7 @@ namespace lcs
 					LUISA_ERROR("Mesh {} has no vertex positions.", shell_info.get_model_name());
 				}
 
-				if (shell_info.simulation_type == SimulationType::Cloth)
+				if (shell_info.material_type == MaterialType::Cloth)
 				{
 					if (!shell_info.holds<ClothMaterial>())
 					{
@@ -353,7 +353,7 @@ namespace lcs
 					auto& mat = shell_info.get_material<ClothMaterial>();
 					mat.is_shell = true; // Cloth material must be shell
 				}
-				else if (shell_info.simulation_type == SimulationType::Tetrahedral)
+				else if (shell_info.material_type == MaterialType::Tetrahedral)
 				{
 					if (!shell_info.holds<TetMaterial>())
 					{
@@ -362,7 +362,7 @@ namespace lcs
 					auto& mat = shell_info.get_material<TetMaterial>();
 					mat.is_shell = false;
 				}
-				else if (shell_info.simulation_type == SimulationType::Rigid)
+				else if (shell_info.material_type == MaterialType::Rigid)
 				{
 					if (!shell_info.holds<RigidMaterial>())
 					{
@@ -390,7 +390,7 @@ namespace lcs
 						mat.thickness = 0.0f;
 					}
 				}
-				else if (shell_info.simulation_type == SimulationType::Rod)
+				else if (shell_info.material_type == MaterialType::Rod)
 				{
 					if (!shell_info.holds<RodMaterial>())
 					{
@@ -505,7 +505,7 @@ namespace lcs
 							mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
 							mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
 							mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
-							mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.simulation_type);
+							mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.material_type);
 						});
 					// Read triangle face
 					CpuParallel::parallel_for(0,
@@ -869,7 +869,7 @@ namespace lcs
 					{
 						if (shell_info.input_mesh.tetrahedrons.empty())
 						{
-							if (shell_info.simulation_type == SimulationType::Tetrahedral)
+							if (shell_info.material_type == MaterialType::Tetrahedral)
 							{
 								LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
 							}

@@ -10,7 +10,7 @@
                 0.0
             ],
             "scale": 0.1,
-            "shell_type": "Rigid",
+            "material_type": "Rigid",
             "material": {
                 "is_shell": true
             }
@@ -23,7 +23,7 @@
                 0.0
             ],
             "scale": 0.1,
-            "shell_type": "Rigid",
+            "material_type": "Rigid",
             "material": {
                 "is_shell": true
             }

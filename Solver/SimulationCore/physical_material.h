@@ -7,7 +7,6 @@ namespace lcs
 
 	namespace Initializer
 	{
-
 		enum class ConstitutiveStretchModelCloth
 		{
 			// None     = 0,
@@ -40,6 +39,15 @@ namespace lcs
 		enum class ConstitutiveModelRod
 		{
 			Spring = 0,
+		};
+
+		enum class MaterialType
+		{
+			None,
+			Cloth,
+			Tetrahedral,
+			Rigid,
+			Rod,
 		};
 
 		struct MaterialBase
@@ -110,6 +118,25 @@ namespace lcs
 		};
 
 		using MaterialVariant = std::variant<ClothMaterial, TetMaterial, RigidMaterial, RodMaterial>;
+
+		constexpr MaterialType material_type_from_variant(const MaterialVariant& var)
+		{
+			return std::visit([](auto const& m) noexcept
+				{
+					using T = std::decay_t<decltype(m)>;
+					if constexpr (std::is_same_v<T, ClothMaterial>)
+						return MaterialType::Cloth;
+					else if constexpr (std::is_same_v<T, TetMaterial>)
+						return MaterialType::Tetrahedral;
+					else if constexpr (std::is_same_v<T, RigidMaterial>)
+						return MaterialType::Rigid;
+					else if constexpr (std::is_same_v<T, RodMaterial>)
+						return MaterialType::Rod;
+					else
+						return MaterialType::None; },
+				var);
+		}
+
 	} // namespace Initializer
 
 } // namespace lcs

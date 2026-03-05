@@ -53,6 +53,13 @@ Sample usage of python frontend:
     solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
 ```
 
+### Cpp Frontend
+
+```C++
+
+
+```
+
 ## Getting Started
 
 - **Clone the repository:**

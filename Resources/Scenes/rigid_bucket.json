@@ -15,7 +15,7 @@
                 0.3
             ],
             "scale": 0.8,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "Extreme/arm_thicker.obj",
@@ -30,7 +30,7 @@
                 0.0
             ],
             "scale": 1.0,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "bowl/bottle4.obj",
@@ -45,7 +45,7 @@
                 0.0
             ],
             "scale": 0.5,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         }
     ]
 }

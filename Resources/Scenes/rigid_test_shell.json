@@ -10,7 +10,7 @@
                 0.0
             ],
             "scale": 0.1,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         },
         {
             "relative_path": "cube.obj",
@@ -20,7 +20,7 @@
                 0.0
             ],
             "scale": 0.1,
-            "shell_type": "Rigid"
+            "material_type": "Rigid"
         }
     ]
 }

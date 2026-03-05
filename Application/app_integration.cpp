@@ -1,26 +1,6 @@
-#include <iostream>
-#include <luisa/luisa-compute.h>
 #include <string>
-
-#include "CollisionDetector/lbvh.h"
-#include "CollisionDetector/narrow_phase.h"
-#include "Core/constant_value.h"
-#include "Initializer/init_collision_data.h"
-#include "MeshOperation/default_mesh.h"
-#include "MeshOperation/mesh_reader.h"
+#include <vector>
 #include "SimulationSolver/newton_solver.h"
-#include "Utils/cpu_parallel.h"
-#include "Utils/device_parallel.h"
-#include "Utils/buffer_filler.h"
-
-#include "SimulationCore/scene_params.h"
-#include "SimulationCore/base_mesh.h"
-#include "SimulationSolver/solver_interface.h"
-
-#include "Initializer/init_mesh_data.h"
-#include "Initializer/init_sim_data.h"
-#include "app_simulation_demo_config.h"
-#include "luisa/core/basic_types.h"
 
 int main(int argc, char** argv)
 {
@@ -38,7 +18,7 @@ int main(int argc, char** argv)
 	solver.create_device(binary_path, backend);
 
 	auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
-							.set_simulation_type(lcs::Initializer::SimulationType::Cloth)
+							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{
 								.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
 								.thickness = 0.1f })
@@ -48,7 +28,7 @@ int main(int argc, char** argv)
 	std::vector<std::array<uint, 3>>  square_mesh_faces{ { 0, 3, 1 }, { 0, 2, 3 } };
 
 	auto lower_square = solver.register_world_data_from_array("lower square", square_mesh_vertices, square_mesh_faces)
-							.set_simulation_type(lcs::Initializer::SimulationType::Cloth)
+							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{
 								.thickness = 0.1f })
 							.set_scale(1.0f)
