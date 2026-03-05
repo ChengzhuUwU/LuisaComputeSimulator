@@ -602,7 +602,7 @@ namespace lcs
 			}
 		}
 
-		std::ofstream file(full_path, std::ios::out);
+		std::ofstream file(full_path.data(), std::ios::out);
 
 		if (file.is_open())
 		{
