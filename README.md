@@ -11,10 +11,52 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 > Teasor figure: 88K vertices & 174K triangles, over 3,000,000 collision pairs, about 3 fps on RTX3090 (CUDA backend) and 2 fps on M2 Max (Metal Backend).
 
+## Usage
+
+### Python Frontend
+
+Sample usage of python frontend:
+
+```python
+    import lcs_py as lcs
+    lcs.device_init(backend_name="metal" , binary_path=None)
+    solver = lcs.NewtonSolver()
+
+    # Register 2 meshes: A rigid cube and a soft cloth
+    cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
+    cube_mesh = trimesh.load(cube_mesh_path, process=False)
+    cube_ref = solver.register_mesh_from_array('cube', cube_mesh.vertices, cube_mesh.faces)
+    cube_ref.set_simulation_type(lcs.SimulationType.Rigid)
+    cube_ref.set_translation(0.0, 0.34, 0.0)
+    cube_ref.set_rotation(0.5235988, 0.0, 0.5235988)
+    cube_ref.set_scale(0.1)
+
+    cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
+    cloth_ref = solver.register_mesh_from_file_path('cloth', cloth_mesh_path)
+    cloth_ref.set_simulation_type(lcs.SimulationType.Cloth)
+    cloth_ref.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
+    cloth_ref.set_scale(0.75)
+    cloth_ref.add_fixed_point_by_method("LeftBack")
+
+    # Initialize the solver
+    solver.init_solver()
+
+    config_ref = lcs.get_scene_params()
+    config_ref.use_floor = False
+    config_ref.implicit_dt = 1/60
+
+    # Launch simulation
+    for frame in range(0, 30):
+        solver.physics_step_gpu() # or solver.physics_step_cpu() 
+        result = solver.get_sim_result() # simulated positions
+    output_dir = os.path.join(root, "Resources", "OutputMesh")
+    solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
+```
+
 ## Getting Started
 
 - **Clone the repository:**
-    ```
+    ```Bash
     git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git
     cd LuisaComputeSimulator
     ```
@@ -22,35 +64,40 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 - **Install required packages:**  
     - Cmake > 3.26
 
-    - For MacOS users:
-      - [Xcode](https://developer.apple.com/cn/xcode/) is required for the support of Metal Backend.
-
-    - For Linux users:
+    - For Linux users: 
+		- You need to install required packages:
       <!-- sudo apt-get update && sudo apt-get upgrade -y
       sudo apt-get install -y software-properties-common
       sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
       sudo apt-get update -->
-      Install required packages:
       ```bash
       sudo apt-get install -y wget uuid-dev ninja-build libvulkan-dev libeigen3-dev libx11-dev cmake
       ```
       Clang is recommended as the compiler:`sudo apt-get install -y clang-15 `
       
     - For Linux and Windows users:
-      - If you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: CUDA >= 12.0). Check the maximum supported CUDA version using `nvidia-smi`.
+      - If you want to use CUDA backend, you need to install NVIDIA CUDA Toolkit (required: `CUDA >= 12.0`). Check the maximum supported CUDA version using `nvidia-smi`.
+
+	<!-- - For MacOS users:
+      - [Xcode](https://developer.apple.com/cn/xcode/) is required for the support of Metal Backend. -->
+
 
 - **You can build with Cmake:**  
   - Configure: ```cmake -S . -B build```
-    - Optionally, you can specify your favorite generators, compilers, or build types by adding parameters `-G Ninja -D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15 -D CMAKE_BUILD_TYPE=Release`.
-    - (Or you can specify the compiler path using `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`).
-    - You can also enable/disable computing backends by adding `-D LUISA_COMPUTE_ENABLE_VULKAN=ON`.
   - Build   : ```cmake --build build -j```
+  - Configure Params: You can specify your favorite generators, compilers, or build types by adding parameters after `cmake -S . -B build`:
+	- Specify **generators**: `-G Ninja`
+	- Specify **compilers**: `-D CMAKE_C_COMPILER=clang-15 -D CMAKE_CXX_COMPILER=clang++-15`
+	- Specify **compilers by path**: `-D CMAKE_C_COMPILER=/usr/bin/gcc-13, -D CMAKE_CXX_COMPILER=/usr/bin/g++-13`
+	- Specify **build type**: `-D CMAKE_BUILD_TYPE=Release`
+    - Enable/disable **computing backends**: `-D LUISA_COMPUTE_ENABLE_VULKAN=ON`
+	- Enable/disable **python binding**: Set `-D LCS_BUILD_PYBINDINGS=ON`, and specify the python executable path `-D LCS_PYTHON_EXECUTABLE=/usr/bin/python3`
+	- Enable/disable **GUI**: `-D LCS_ENABLE_GUI=ON` (based on [polyscope](https://github.com/nmwsharp/polyscope))
 
 - **You can also build with Xmake:**  
   - Configure: ```xmake lua setup.lua```
+  	- If you are root-user, you may need `xmake lua --root setup.lua`
   - Build   : ```xmake build```
-
-  > If you are root-user, you may need `xmake lua --root setup.lua`
 
 - **Run the application:**  
     `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
@@ -66,10 +113,7 @@ More building guidance about computing backend can be found in [the document of 
 1. The default backend is `dx` (DirectX12) on Windows, `cuda` on Linux, and `metal` on macOS. 
    To enable other backends such as `vulkan`, or `fallback (TBB)`, update the building options in CMake/Xmake (e.g., set `LUISA_COMPUTE_ENABLE_VULKAN` to `ON`), and specify the target backend by passing `<backend-name>` in the launching parameters.
 
-2. GUI is disabled by default for broader platform compatibility.  
-   To enable the GUI (based on [polyscope](https://github.com/nmwsharp/polyscope)), set the option `LCS_ENABLE_GUI` to `ON` in CMake/Xmake.
-
-3. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
+2. Check the generated shader using `echo 'export LUISA_DUMP_SOURCE=0' >> ~/.zshrc` (Shader files will be saved in `build/bin/.cache/`)
 
 ## Supported Backends (of LuisaCompute)
 
@@ -108,28 +152,29 @@ More building guidance about computing backend can be found in [the document of 
 ## TODOLIST
 
 - [ ] Joint Constraint
-- [ ] Python Binding
+- [x] Python Binding
+- [ ] UV Package
 - [ ] Deformable Body Energy (And atomatic tet mesh generation)
 - [ ] Elastic Rod Energy
 - [ ] Strain Limiting
 - [ ] Consistent Solve
-- [x] Replace All Constraint With Bindless-Group
+- [x] Replace All Constraint With Binding Group for AOT
 - [ ] Thin Shell Rigid-Body Simulation
 - [ ] Upper/Lower-Triangle of System Matrix Optimization
 - [ ] GPU-based Global Triplet Sorting (For Matrix Assembly)
-- [ ] Mesh Split
+- [ ] Mesh Split and Simplification
 - [x] Accurate Frictional Modeling
 - [ ] Better Numerical Preconditioners
 
 
 ## References
 
-- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [Codim-IPC](https://github.com/ipc-sim/Codim-IPC)
-- **DCD & CCD:** [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver), libuipc.
-- **PCG (Linear equation solver):** [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl), libuipc.
+- **Constitutions:** [libuipc](https://github.com/spiriMirror/libuipc), [GAMES 103](https://www.bilibili.com/video/BV12Q4y1S73g), [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC), [HOBAK](https://github.com/theodorekim/HOBAKv1), [solid-sim-tutorial](https://github.com/phys-sim-book/solid-sim-tutorial), [Codim-IPC](https://github.com/ipc-sim/Codim-IPC), [ZOZO's Contact Solver](https://github.com/st-tech/ppf-contact-solver)
+- **DCD & CCD:** ZOZO's Contact Solver, libuipc.
+- **PCG (Linear Equation Solver):** [MAS](https://wanghmin.github.io/publication/wu-2022-gbm/), [AMGCL](https://github.com/ddemidov/amgcl), libuipc.
 - **Framework:** [libshell](https://github.com/legionus/libshell), [LuisaComputeGaussSplatting](https://github.com/LuisaGroup/LuisaComputeGaussianSplatting).
-- **Dirichlet Boundary Energy:** solid-sim-tutorial.
 - **GPU Intrinsic:** LuisaComputeGaussSplatting.
+- **Collision Energy:** MAS, [PNCG-IPC](https://github.com/Xingbaji/PNCG_IPC)
 - **Affine Body Dynamics:** [abd-warp](https://github.com/Luke-Skycrawler/abd-warp), libuipc ([documentation](https://spirimirror.github.io/libuipc-doc/specification/constitutions/affine_body/), [theory derivation](https://github.com/spiriMirror/libuipc/blob/main/scripts/symbol_calculation/affine_body_quantity.ipynb)).
 
 ## Others
