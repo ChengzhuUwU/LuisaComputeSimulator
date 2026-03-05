@@ -7,21 +7,20 @@ int main(int argc, char** argv)
 	luisa::log_level_info();
 
 	// Init GPU system
-	const std::string binary_path(argv[0]);
-	std::string		  backend;
+	std::string backend;
 	if (argc >= 2)
 	{
 		backend = argv[1];
 	}
 
 	lcs::NewtonSolver solver;
-	solver.create_device(binary_path, backend);
+	solver.create_device(argv[0], backend);
 
 	auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
 							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{
 								.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
-								.thickness = 0.04f })
+							})
 							.set_translation({ 0.0f, 0.4f, 0.0f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
 
@@ -59,6 +58,8 @@ int main(int argc, char** argv)
 
 		// Display or other processing
 	}
+
+	solver.save_mesh_to_obj(luisa::format("{}/OutputMesh/sample.obj", LCSV_RESOURCE_PATH));
 
 	return 0;
 }

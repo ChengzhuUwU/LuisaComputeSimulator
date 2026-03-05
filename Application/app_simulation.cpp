@@ -135,9 +135,8 @@ int main(int argc, char** argv)
 			LCSV_RESOURCE_PATH,
 			lcs::get_scene_params().scene_id,
 			frame_id, additional_info);
-		SimMesh::saveToOBJ_combined(sim_result,
-			sa_rendering_faces,
-			full_path);
+		SimMesh::saveToOBJ_combined(sim_result, sa_rendering_faces, full_path);
+		// solver.save_mesh_to_obj(full_path);
 	};
 
 #if !defined(SIMULATION_APP_USE_GUI)

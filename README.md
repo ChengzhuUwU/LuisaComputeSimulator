@@ -15,7 +15,7 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 ### Python Frontend
 
-Sample usage of python frontend:
+Sample Python-frontend code can be found at [example_usage.py](PythonBindings/example_usage.py):
 
 ```python
     import lcs_py as lcs
@@ -55,8 +55,59 @@ Sample usage of python frontend:
 
 ### Cpp Frontend
 
-```C++
+Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_integration.cpp).
 
+```C++
+    #include "SimulationSolver/newton_solver.h"
+
+    int main(int argc, char** argv)
+    {
+        const std::string binary_path(argv[0]);
+        std::string	backend;
+        if (argc >= 2) backend = argv[1];
+
+        lcs::NewtonSolver solver;
+        solver.create_device(binary_path, backend);
+
+        // Register mesh using file path
+        auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
+                                .set_material_type(lcs::Initializer::MaterialType::Cloth)
+                                .set_physics_material(lcs::Initializer::ClothMaterial{
+                                    .stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
+                                })
+                                .set_translation({ 0.0f, 0.4f, 0.0f });
+
+        // Register mesh using array
+        std::vector<std::array<float, 3>> square_mesh_vertices{ { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } };
+        std::vector<std::array<uint, 3>>  square_mesh_faces{ { 0, 3, 1 }, { 0, 2, 3 } };
+        auto lower_square = solver.register_world_data_from_array("lower square", square_mesh_vertices, square_mesh_faces)
+                                .set_physics_material(lcs::Initializer::ClothMaterial{}) 
+                                .set_scale(0.8f)
+                                .set_translation({ 0.1f, 0.2f, 0.0f })
+                                .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
+                                .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
+
+        auto config = solver.get_config();
+        config.use_floor = false;
+        config.implicit_dt = 0.2;
+        config.use_energy_linesearch = true;
+
+        solver.init_solver();
+
+        // Init rendering data
+        std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices;
+        solver.get_curr_vertices_to_host(sa_rendering_vertices);
+
+        // Main application
+        for (uint ii = 0; ii < 20; ii++)
+        {
+            solver.physics_step_GPU();
+            solver.get_curr_vertices_to_host(sa_rendering_vertices);
+            // Display or other processing
+        }
+
+        return 0;
+    }
 
 ```
 

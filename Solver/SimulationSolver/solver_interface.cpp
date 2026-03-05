@@ -410,47 +410,22 @@ namespace lcs
 
 	uint SolverInterface::query_object_index_by_registration_id(uint registration_id) const
 	{
-		if (host_mesh_data == nullptr)
-		{
-			throw std::runtime_error("Solver mesh data is not initialized.");
-		}
 		if (registration_id >= host_mesh_data->input_to_sorted_mesh_id.size())
 		{
-			throw std::runtime_error(luisa::format(
-				"Invalid registration_id {} (num registered objects: {}).",
-				registration_id,
-				host_mesh_data->input_to_sorted_mesh_id.size()));
+			LUISA_ERROR("Invalid registration_id {}. Out of range.", registration_id);
 		}
 		return host_mesh_data->input_to_sorted_mesh_id[registration_id];
 	}
 
 	uint SolverInterface::query_object_index_by_unique_name(const std::string& unique_name) const
 	{
-		if (host_mesh_data == nullptr)
+		auto find = std::find_if(world_data.begin(), world_data.end(), [&](const lcs::Initializer::WorldData& data)
+			{ return data.get_model_name() == unique_name; });
+		if (find == world_data.end())
 		{
-			throw std::runtime_error("Solver mesh data is not initialized.");
+			LUISA_ERROR("Invalid unique name '{}'. Multiple objects found with the same name.", unique_name);
 		}
-
-		uint found_sorted_idx = uint(-1);
-		for (uint sorted_idx = 0; sorted_idx < world_data.size(); sorted_idx++)
-		{
-			if (world_data[sorted_idx].get_model_name() == unique_name)
-			{
-				if (found_sorted_idx != uint(-1))
-				{
-					throw std::runtime_error(luisa::format(
-						"Model name '{}' is not unique. Please query by registration_id.",
-						unique_name));
-				}
-				found_sorted_idx = sorted_idx;
-			}
-		}
-
-		if (found_sorted_idx == uint(-1))
-		{
-			throw std::runtime_error(luisa::format("No object found for name '{}'.", unique_name));
-		}
-
+		uint found_sorted_idx = std::distance(world_data.begin(), find);
 		return found_sorted_idx;
 	}
 
@@ -462,10 +437,7 @@ namespace lcs
 	{
 		if (sorted_idx >= host_mesh_data->num_meshes)
 		{
-			throw std::runtime_error(luisa::format(
-				"Invalid object index {} (num objects: {}).",
-				sorted_idx,
-				host_mesh_data->num_meshes));
+			LUISA_ERROR("Invalid sorted index {}. Out of range.", sorted_idx);
 		}
 
 		const uint prefix_vert = host_mesh_data->prefix_num_verts[sorted_idx];
