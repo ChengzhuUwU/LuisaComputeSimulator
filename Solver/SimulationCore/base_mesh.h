@@ -146,6 +146,12 @@ namespace lcs
 		std::vector<uint> prefix_num_dihedral_edges;
 		std::vector<uint> prefix_num_tets;
 
+		// Mesh order mapping:
+		// - sorted_to_input_mesh_id[sorted_idx] = input registration index
+		// - input_to_sorted_mesh_id[input_idx] = sorted index used in simulation buffers
+		std::vector<uint> sorted_to_input_mesh_id;
+		std::vector<uint> input_to_sorted_mesh_id;
+
 		std::vector<std::vector<uint>> vert_adj_verts;
 		std::vector<std::vector<uint>> vert_adj_faces;
 		std::vector<std::vector<uint>> vert_adj_edges;

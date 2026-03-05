@@ -117,14 +117,26 @@ namespace lcs
 
 	public:
 		void restart_system();
-		void save_current_frame_state_to_host(const uint frame, const std::string& addition_str);
-		void load_saved_state_from_host(const uint frame, const std::string& addition_str);
-		void save_mesh_to_obj(const uint frame, const std::string& addition_str = "");
 		void device_compute_elastic_energy(luisa::compute::Stream& stream, std::map<std::string, double>& energy_list);
 		void compile_compute_energy(AsyncCompiler& compiler);
 
 	public:
-		void get_simulation_results_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
+		void save_current_frame_state_to_host(const std::string_view& full_path);
+		void load_saved_state_from_host(const std::string_view& full_path);
+		void save_mesh_to_obj(const std::string_view& full_path);
+
+	public:
+		void get_curr_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
+		void get_rest_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
+		void get_triangles_to_host(std::vector<std::vector<std::array<uint, 3>>>& output_triangles);
+		uint query_object_index_by_registration_id(uint registration_id) const;
+		uint query_object_index_by_unique_name(const std::string& unique_name) const;
+		void get_object_sim_result_by_registration_id(uint registration_id,
+			std::vector<std::array<float, 3>>&			   output_positions,
+			std::vector<std::array<uint, 3>>&			   output_triangles);
+		void get_object_sim_result_by_unique_name(const std::string& unique_name,
+			std::vector<std::array<float, 3>>&						 output_positions,
+			std::vector<std::array<uint, 3>>&						 output_triangles);
 		void update_pinned_verts_position(const uint meshIdx,
 			const uint								 local_vid,
 			const std::array<float, 3>&				 pinned_verts_target_position);
@@ -175,14 +187,23 @@ namespace lcs
 		CollisionData<luisa::compute::Buffer>& get_device_collision_data() const { return *collision_data; }
 		std::vector<Initializer::WorldData>&   get_world_data() { return world_data; }
 
-		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd) { return world_data.emplace_back(wd); }
+		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd)
+		{
+			auto& data = world_data.emplace_back(wd);
+			data.registration_index = static_cast<uint>(world_data.size() - 1);
+			return data;
+		}
 		Initializer::WorldData& register_world_data_from_file_path(const std::string_view& name, const std::string_view& file_path)
 		{
-			return world_data.emplace_back().load_mesh_from_path(file_path).set_name(name);
+			auto& data = world_data.emplace_back().load_mesh_from_path(file_path).set_name(name);
+			data.registration_index = static_cast<uint>(world_data.size() - 1);
+			return data;
 		}
 		Initializer::WorldData& register_world_data_from_array(const std::string_view& name, const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
 		{
-			return world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
+			auto& data = world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
+			data.registration_index = static_cast<uint>(world_data.size() - 1);
+			return data;
 		}
 
 		// Device management: create and own a luisa device/stream.

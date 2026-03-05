@@ -307,10 +307,22 @@ namespace lcs
 		// template<template<typename> typename BasicBuffer>
 		void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
 		{
+			for (uint i = 0; i < world_data.size(); i++)
+			{
+				if (world_data[i].registration_index == std::numeric_limits<uint>::max())
+				{
+					world_data[i].registration_index = i;
+				}
+			}
+
 			std::sort(world_data.begin(),
 				world_data.end(),
 				[](const Initializer::WorldData& left, const Initializer::WorldData& right)
-				{ return int(left.material_type) < int(right.material_type); });
+				{
+					if (left.material_type != right.material_type)
+						return int(left.material_type) < int(right.material_type);
+					return left.registration_index < right.registration_index;
+				});
 			const uint num_meshes = world_data.size();
 			// std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
 
@@ -327,6 +339,8 @@ namespace lcs
 			mesh_data->prefix_num_edges.resize(1 + num_meshes, 0);
 			mesh_data->prefix_num_dihedral_edges.resize(1 + num_meshes, 0);
 			mesh_data->prefix_num_tets.resize(1 + num_meshes, 0);
+			mesh_data->sorted_to_input_mesh_id.resize(num_meshes);
+			mesh_data->input_to_sorted_mesh_id.resize(num_meshes);
 
 			mesh_data->sa_rest_translate.resize(num_meshes);
 			mesh_data->sa_rest_rotation.resize(num_meshes);
@@ -406,6 +420,10 @@ namespace lcs
 			{
 				auto& shell_info = world_data[meshIdx];
 				auto& input_mesh = shell_info.input_mesh;
+
+				uint registration_index = shell_info.get_registration_index();
+				mesh_data->sorted_to_input_mesh_id[meshIdx] = registration_index;
+				mesh_data->input_to_sorted_mesh_id[registration_index] = meshIdx;
 
 				mesh_data->prefix_num_verts[meshIdx] = mesh_data->num_verts;
 				mesh_data->prefix_num_faces[meshIdx] = mesh_data->num_faces;

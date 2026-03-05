@@ -4,6 +4,7 @@
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/physical_material.h"
+#include <limits>
 
 namespace lcs
 {
@@ -117,6 +118,7 @@ namespace lcs
 
 			MaterialType			  material_type = MaterialType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
+			uint					  registration_index = std::numeric_limits<uint>::max();
 
 			SimMesh::TriangleMeshData& get_mesh() { return input_mesh; }
 
@@ -287,6 +289,10 @@ namespace lcs
 			std::string get_model_name() const
 			{
 				return model_name;
+			}
+			uint get_registration_index() const
+			{
+				return registration_index;
 			}
 
 			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,

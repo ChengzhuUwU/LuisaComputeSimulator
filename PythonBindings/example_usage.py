@@ -36,7 +36,12 @@ cloth_ref.add_fixed_point_by_method("RightFront")
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
 
+# Get mesh info
 print('Registered meshes:', solver.get_mesh_names())
+cube_get = solver.get_object_by_registration_id(0)
+cloth_get = solver.get_object_by_unique_name("cloth")
+print("Cube object", cube_get.get_name())
+print("Cloth object", cloth_get.get_name())
 
 # Set scene parameters
 config_ref = solver.get_config()

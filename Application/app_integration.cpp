@@ -21,7 +21,8 @@ int main(int argc, char** argv)
 							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{
 								.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
-								.thickness = 0.1f })
+								.thickness = 0.04f })
+							.set_translation({ 0.0f, 0.4f, 0.0f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
 
 	std::vector<std::array<float, 3>> square_mesh_vertices{ { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } };
@@ -29,10 +30,9 @@ int main(int argc, char** argv)
 
 	auto lower_square = solver.register_world_data_from_array("lower square", square_mesh_vertices, square_mesh_faces)
 							.set_material_type(lcs::Initializer::MaterialType::Cloth)
-							.set_physics_material(lcs::Initializer::ClothMaterial{
-								.thickness = 0.1f })
-							.set_scale(1.0f)
-							.set_translation({ 0.1f, -0.2f, 0.0f })
+							.set_physics_material(lcs::Initializer::ClothMaterial{})
+							.set_scale(0.8f)
+							.set_translation({ 0.1f, 0.2f, 0.0f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
 
@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 
 	// Init rendering data
 	std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices;
-	solver.get_simulation_results_to_host(sa_rendering_vertices);
+	solver.get_curr_vertices_to_host(sa_rendering_vertices);
 
 	// Main application
 	for (uint ii = 0; ii < 20; ii++)
@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 
 		solver.physics_step_GPU();
 
-		solver.get_simulation_results_to_host(sa_rendering_vertices);
+		solver.get_curr_vertices_to_host(sa_rendering_vertices);
 
 		// Display or other processing
 	}

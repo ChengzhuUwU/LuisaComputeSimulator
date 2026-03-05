@@ -235,7 +235,7 @@ namespace lcs
 		buffer_copy(host_sim_data->sa_rest_q_v, host_sim_data->sa_q_v_outer);
 	}
 
-	void SolverInterface::get_simulation_results_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions)
+	void SolverInterface::get_curr_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions)
 	{
 		const auto& sim_result_positions = host_sim_data->sa_x_outer;
 
@@ -244,10 +244,11 @@ namespace lcs
 			output_positions.resize(host_mesh_data->num_meshes);
 		}
 
-		for (uint meshIdx = 0; meshIdx < host_mesh_data->num_meshes; meshIdx++)
+		for (uint sortedIdx = 0; sortedIdx < host_mesh_data->num_meshes; sortedIdx++)
 		{
-			const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
-			const uint suffix = host_mesh_data->prefix_num_verts[meshIdx + 1];
+			const uint meshIdx = host_mesh_data->sorted_to_input_mesh_id[sortedIdx];
+			const uint prefix = host_mesh_data->prefix_num_verts[sortedIdx];
+			const uint suffix = host_mesh_data->prefix_num_verts[sortedIdx + 1];
 			const uint num_verts = suffix - prefix;
 			if (output_positions[meshIdx].size() != num_verts)
 			{
@@ -260,11 +261,71 @@ namespace lcs
 			}
 		}
 	}
+	void SolverInterface::get_rest_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions)
+	{
+		const auto& rest_positions = host_mesh_data->sa_rest_x;
+
+		if (output_positions.size() != host_mesh_data->num_meshes)
+		{
+			output_positions.resize(host_mesh_data->num_meshes);
+		}
+
+		for (uint sortedIdx = 0; sortedIdx < host_mesh_data->num_meshes; sortedIdx++)
+		{
+			const uint meshIdx = host_mesh_data->sorted_to_input_mesh_id[sortedIdx];
+			const uint prefix = host_mesh_data->prefix_num_verts[sortedIdx];
+			const uint suffix = host_mesh_data->prefix_num_verts[sortedIdx + 1];
+			const uint num_verts = suffix - prefix;
+			if (output_positions[meshIdx].size() != num_verts)
+			{
+				output_positions[meshIdx].resize(num_verts);
+			}
+			for (uint vid = 0; vid < num_verts; vid++)
+			{
+				auto pos = rest_positions[prefix + vid];
+				output_positions[meshIdx][vid] = { pos.x, pos.y, pos.z };
+			}
+		}
+	}
+	void SolverInterface::get_triangles_to_host(std::vector<std::vector<std::array<uint, 3>>>& output_triangles)
+	{
+		const auto& triangles = host_mesh_data->sa_faces;
+
+		if (output_triangles.size() != host_mesh_data->num_meshes)
+		{
+			output_triangles.resize(host_mesh_data->num_meshes);
+		}
+
+		for (uint sortedIdx = 0; sortedIdx < host_mesh_data->num_meshes; sortedIdx++)
+		{
+			const uint meshIdx = host_mesh_data->sorted_to_input_mesh_id[sortedIdx];
+			const uint prefix_face = host_mesh_data->prefix_num_faces[sortedIdx];
+			const uint suffix_face = host_mesh_data->prefix_num_faces[sortedIdx + 1];
+			const uint num_faces = suffix_face - prefix_face;
+			const uint prefix_vert = host_mesh_data->prefix_num_verts[sortedIdx];
+
+			if (output_triangles[meshIdx].size() != num_faces)
+			{
+				output_triangles[meshIdx].resize(num_faces);
+			}
+
+			for (uint fid = 0; fid < num_faces; fid++)
+			{
+				auto tri = triangles[prefix_face + fid];
+				output_triangles[meshIdx][fid] = {
+					tri.x - prefix_vert,
+					tri.y - prefix_vert,
+					tri.z - prefix_vert,
+				};
+			}
+		}
+	}
 	void SolverInterface::update_pinned_verts_position(const uint meshIdx,
 		const uint												  local_vid,
 		const std::array<float, 3>&								  pinned_verts_target_position)
 	{
-		const uint prefix = host_mesh_data->prefix_num_verts[meshIdx];
+		const uint sortedIdx = host_mesh_data->input_to_sorted_mesh_id[meshIdx];
+		const uint prefix = host_mesh_data->prefix_num_verts[sortedIdx];
 		const uint vid = prefix + local_vid;
 		if (vid_to_animation_idx_map.contains(vid))
 		{
@@ -290,35 +351,12 @@ namespace lcs
 		per_body_animations.push_back(tmp);
 	}
 
-	void SolverInterface::save_current_frame_state_to_host(const uint frame, const std::string& addition_str)
+	void SolverInterface::save_current_frame_state_to_host(const std::string_view& full_path)
 	{
 		// save_current_frame_state();
 		std::vector<float3> sa_q_frame_saved(host_sim_data->sa_q_outer);
 		std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_q_v_outer);
 
-		const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
-
-		std::string full_directory = std::string(LCSV_RESOURCE_PATH) + "/SimulationState/";
-
-		{
-			std::filesystem::path dir_path(full_directory);
-			if (!std::filesystem::exists(dir_path))
-			{
-				try
-				{
-					std::filesystem::create_directories(dir_path);
-					LUISA_INFO("Created directory: {}", dir_path.string());
-				}
-				catch (const std::filesystem::filesystem_error& e)
-				{
-					LUISA_ERROR("Error creating directory: {}", e.what());
-					return;
-				}
-			}
-		}
-
-		std::string full_path = full_directory;
-		full_path += std::string_view{ filename };
 		std::ofstream file(full_path, std::ios::out);
 
 		if (file.is_open())
@@ -349,7 +387,6 @@ namespace lcs
 		const std::vector<float3>&							 input_q,
 		const uint											 vid)
 	{
-
 		float3	   new_dx;
 		const uint map_info = sa_x_to_dof_map[vid];
 		const uint dof_idx = map_info & (~Attributions::RIGID_BODY_FLAG);
@@ -370,14 +407,114 @@ namespace lcs
 		};
 		return new_dx;
 	};
-	void SolverInterface::load_saved_state_from_host(const uint frame, const std::string& addition_str)
+
+	uint SolverInterface::query_object_index_by_registration_id(uint registration_id) const
 	{
-		const auto filename = luisa::format("frame_{}{}.state", frame, addition_str);
+		if (host_mesh_data == nullptr)
+		{
+			throw std::runtime_error("Solver mesh data is not initialized.");
+		}
+		if (registration_id >= host_mesh_data->input_to_sorted_mesh_id.size())
+		{
+			throw std::runtime_error(luisa::format(
+				"Invalid registration_id {} (num registered objects: {}).",
+				registration_id,
+				host_mesh_data->input_to_sorted_mesh_id.size()));
+		}
+		return host_mesh_data->input_to_sorted_mesh_id[registration_id];
+	}
 
-		std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/SimulationState/");
-		std::string full_path = full_directory;
-		full_path += std::string_view{ filename };
+	uint SolverInterface::query_object_index_by_unique_name(const std::string& unique_name) const
+	{
+		if (host_mesh_data == nullptr)
+		{
+			throw std::runtime_error("Solver mesh data is not initialized.");
+		}
 
+		uint found_sorted_idx = uint(-1);
+		for (uint sorted_idx = 0; sorted_idx < world_data.size(); sorted_idx++)
+		{
+			if (world_data[sorted_idx].get_model_name() == unique_name)
+			{
+				if (found_sorted_idx != uint(-1))
+				{
+					throw std::runtime_error(luisa::format(
+						"Model name '{}' is not unique. Please query by registration_id.",
+						unique_name));
+				}
+				found_sorted_idx = sorted_idx;
+			}
+		}
+
+		if (found_sorted_idx == uint(-1))
+		{
+			throw std::runtime_error(luisa::format("No object found for name '{}'.", unique_name));
+		}
+
+		return found_sorted_idx;
+	}
+
+	static void fn_get_object_sim_result_by_sorted_index(const lcs::MeshData<std::vector>* host_mesh_data,
+		const lcs::SimulationData<std::vector>*											   host_sim_data,
+		const uint																		   sorted_idx,
+		std::vector<std::array<float, 3>>&												   output_positions,
+		std::vector<std::array<uint, 3>>&												   output_triangles)
+	{
+		if (sorted_idx >= host_mesh_data->num_meshes)
+		{
+			throw std::runtime_error(luisa::format(
+				"Invalid object index {} (num objects: {}).",
+				sorted_idx,
+				host_mesh_data->num_meshes));
+		}
+
+		const uint prefix_vert = host_mesh_data->prefix_num_verts[sorted_idx];
+		const uint suffix_vert = host_mesh_data->prefix_num_verts[sorted_idx + 1];
+		const uint num_verts = suffix_vert - prefix_vert;
+		output_positions.resize(num_verts);
+		for (uint vid = 0; vid < num_verts; vid++)
+		{
+			const auto pos = host_sim_data->sa_x_outer[prefix_vert + vid];
+			output_positions[vid] = { pos.x, pos.y, pos.z };
+		}
+
+		const uint prefix_face = host_mesh_data->prefix_num_faces[sorted_idx];
+		const uint suffix_face = host_mesh_data->prefix_num_faces[sorted_idx + 1];
+		const uint num_faces = suffix_face - prefix_face;
+		output_triangles.resize(num_faces);
+		for (uint fid = 0; fid < num_faces; fid++)
+		{
+			const auto tri = host_mesh_data->sa_faces[prefix_face + fid];
+			output_triangles[fid] = { tri.x - prefix_vert, tri.y - prefix_vert, tri.z - prefix_vert };
+		}
+	}
+
+	void SolverInterface::get_object_sim_result_by_registration_id(uint registration_id,
+		std::vector<std::array<float, 3>>&								output_positions,
+		std::vector<std::array<uint, 3>>&								output_triangles)
+	{
+		const uint sorted_idx = query_object_index_by_registration_id(registration_id);
+		fn_get_object_sim_result_by_sorted_index(host_mesh_data,
+			host_sim_data,
+			sorted_idx,
+			output_positions,
+			output_triangles);
+	}
+
+	void SolverInterface::get_object_sim_result_by_unique_name(const std::string& unique_name,
+		std::vector<std::array<float, 3>>&										  output_positions,
+		std::vector<std::array<uint, 3>>&										  output_triangles)
+	{
+		const uint sorted_idx = query_object_index_by_unique_name(unique_name);
+		fn_get_object_sim_result_by_sorted_index(host_mesh_data,
+			host_sim_data,
+			sorted_idx,
+			output_positions,
+			output_triangles);
+	}
+
+	void SolverInterface::load_saved_state_from_host(const std::string_view& full_path)
+	{
 		std::ifstream file(full_path, std::ios::in);
 		if (!file.is_open())
 		{
@@ -471,23 +608,19 @@ namespace lcs
 
 		LUISA_INFO("State file loaded: {}", full_path);
 	}
-	void SolverInterface::save_mesh_to_obj(const uint frame, const std::string& addition_str)
+	void SolverInterface::save_mesh_to_obj(const std::string_view& full_path)
 	{
 		const auto& position_buffer = host_sim_data->sa_x_outer;
 
-		// , lcs::get_scene_params().current_frame
-		const auto filename = luisa::format("frame_{}{}.obj", frame, addition_str);
-
-		std::string full_directory = std::string(LCSV_RESOURCE_PATH) + std::string("/OutputMesh/");
-
+		// Ensure the directory exists
 		{
-			std::filesystem::path dir_path(full_directory);
-			if (!std::filesystem::exists(dir_path))
+			std::filesystem::path file_directory = std::filesystem::path(full_path).parent_path();
+			if (!std::filesystem::exists(file_directory))
 			{
 				try
 				{
-					std::filesystem::create_directories(dir_path);
-					std::cout << "Created directory: " << dir_path << std::endl;
+					std::filesystem::create_directories(file_directory);
+					std::cout << "Created directory: " << file_directory.string() << std::endl;
 				}
 				catch (const std::filesystem::filesystem_error& e)
 				{
@@ -497,8 +630,6 @@ namespace lcs
 			}
 		}
 
-		std::string full_path = full_directory;
-		full_path += std::string_view{ filename };
 		std::ofstream file(full_path, std::ios::out);
 
 		if (file.is_open())
