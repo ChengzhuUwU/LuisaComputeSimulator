@@ -38,11 +38,6 @@ namespace lcs
 		void WorldData::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
 			const FixedPointAnimationInfo&												 fixed_info)
 		{
-			if (input_mesh.model_positions.size() == 0)
-			{
-				load_mesh_data();
-			}
-
 			for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
 			{
 				if (func(vid))
@@ -55,11 +50,6 @@ namespace lcs
 		void WorldData::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
 			const FixedPointAnimationInfo&															  fixed_info)
 		{
-			if (input_mesh.model_positions.size() == 0)
-			{
-				load_mesh_data();
-				// LUISA_INFO("ShellInfo::set_pinned_verts_from_norm_position() : auto load mesh data for shell {}", model_name);
-			}
 			AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
 				0,
 				input_mesh.model_positions.size(),
@@ -90,11 +80,6 @@ namespace lcs
 		void WorldData::set_pinned_verts_from_indices(const std::vector<uint>& indices,
 			const FixedPointAnimationInfo&									   fixed_info)
 		{
-			if (input_mesh.model_positions.size() == 0)
-			{
-				load_mesh_data();
-			}
-
 			for (const uint vid : indices)
 			{
 				auto   read_pos = input_mesh.model_positions[vid];
@@ -286,12 +271,21 @@ namespace lcs
 				rest_positions[vid] = output;
 			}
 		}
-		WorldData& WorldData::load_mesh_data()
+
+		// template <typename Int, typename Real>
+		WorldData& WorldData::load_mesh_from_array(const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
 		{
-			if (input_mesh.model_positions.empty())
+			input_mesh.model_positions.resize(vertices.size());
+			input_mesh.faces.resize(faces.size());
+			for (size_t i = 0; i < vertices.size(); i++)
 			{
-				bool second_read = SimMesh::read_mesh_file(model_name, input_mesh);
+				input_mesh.model_positions[i] = { float(vertices[i][0]), float(vertices[i][1]), (vertices[i][2]) };
 			}
+			for (size_t i = 0; i < faces.size(); i++)
+			{
+				input_mesh.faces[i] = { uint(faces[i][0]), uint(faces[i][1]), uint(faces[i][2]) };
+			}
+			SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.edges, input_mesh.dihedral_edges, true);
 			return *this;
 		}
 		WorldData& WorldData::load_mesh_from_path(const std::string& path)
@@ -338,10 +332,10 @@ namespace lcs
 			for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
 			{
 				auto& shell_info = world_data[meshIdx];
-				auto& input_mesh = shell_info.input_mesh;
+				auto& input_mesh = shell_info.get_mesh();
 				if (input_mesh.model_positions.empty())
 				{
-					shell_info.load_mesh_data();
+					LUISA_ERROR("Mesh {} has no vertex positions.", shell_info.get_model_name());
 				}
 
 				if (shell_info.simulation_type == SimulationType::Cloth)
@@ -369,7 +363,7 @@ namespace lcs
 						shell_info.physics_material = RigidMaterial();
 					}
 					const bool has_boundary =
-						shell_info.input_mesh.dihedral_edges.size() != shell_info.input_mesh.edges.size();
+						input_mesh.dihedral_edges.size() != input_mesh.edges.size();
 
 					auto& mat = shell_info.get_material<RigidMaterial>();
 					mat.is_shell = !mat.is_solid;
@@ -474,7 +468,7 @@ namespace lcs
 				for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
 				{
 					auto&		curr_shell_info = world_data[meshIdx];
-					const auto& curr_input_mesh = curr_shell_info.input_mesh;
+					const auto& curr_input_mesh = curr_shell_info.get_mesh();
 
 					// Model info
 					{

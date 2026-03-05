@@ -92,11 +92,12 @@ int main(int argc, char** argv)
 	{
 		LUISA_INFO("Load default scene {}", scene_json_path);
 	}
-	std::vector<lcs::Initializer::WorldData> world_data;
+	std::vector<lcs::Initializer::WorldData>& world_data = solver.get_world_data();
 	Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
+	solver.get_world_data() = world_data;
 
 	// Init Solver
-	solver.init_solver(device, stream, world_data);
+	solver.init_solver(device, stream);
 
 	auto fn_update_pinned_verts = [&](const uint curr_frame)
 	{
@@ -138,7 +139,7 @@ int main(int argc, char** argv)
 		for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
 		{
 			world_data[meshIdx].get_rest_positions(sa_rendering_vertices[meshIdx]);
-			sa_rendering_faces[meshIdx] = world_data[meshIdx].input_mesh.faces;
+			sa_rendering_faces[meshIdx] = world_data[meshIdx].get_mesh().faces;
 			face_color[meshIdx].resize(sa_rendering_faces[meshIdx].size(), { 0.7, 0.2, 0.3 });
 		}
 	}
@@ -222,7 +223,7 @@ int main(int argc, char** argv)
 
 		for (uint meshIdx = 0; meshIdx < world_data.size(); meshIdx++)
 		{
-			const std::string&		curr_mesh_name = world_data[meshIdx].model_name + std::to_string(meshIdx);
+			const std::string&		curr_mesh_name = world_data[meshIdx].get_model_name() + std::to_string(meshIdx);
 			polyscope::SurfaceMesh* curr_mesh_ptr = polyscope::registerSurfaceMesh(
 				curr_mesh_name, sa_rendering_vertices[meshIdx], sa_rendering_faces[meshIdx]);
 			curr_mesh_ptr->setEnabled(true);

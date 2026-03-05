@@ -11,7 +11,7 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "Cylinder/cylinder7K.obj",
+            "relative_path": "Cylinder/cylinder7K.obj",
             "fixed_points": [
                 {
                     "method": "Left",

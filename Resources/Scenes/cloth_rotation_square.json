@@ -9,7 +9,7 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square26K.obj",
+            "relative_path": "square26K.obj",
             "scale": 1.0,
             "fixed_points": [
                 {

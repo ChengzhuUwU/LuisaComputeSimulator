@@ -32,11 +32,13 @@ namespace Demo::Simulation
 		WorldData& down = shell_list.emplace_back(WorldData())
 							  .set_name("lower square")
 							  .set_simulation_type(lcs::Initializer::SimulationType::Cloth)
-							  .load_mesh_from_path(obj_mesh_path + "square2.obj")
+							  .load_mesh_from_array(std::vector<std::array<float, 3>>{
+														{ -0.5, 0, -0.5 }, { 0.5, 0, -0.5 },
+														{ -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } },
+								  std::vector<std::array<uint, 3>>{ { 0, 3, 1 }, { 0, 2, 3 } })
 							  .set_physics_material(ClothMaterial{ .thickness = 0.1f })
 							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
 							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
-
 		lcs::get_scene_params().use_floor = false;
 		lcs::get_scene_params().implicit_dt = 0.2;
 		lcs::get_scene_params().use_energy_linesearch = true;
@@ -241,76 +243,69 @@ namespace Demo::Simulation
 			size_t		i, n;
 			yyjson_arr_foreach(shells, i, n, shell_val)
 			{
-				if (!yyjson_is_obj(shell_val))
-					continue;
 				lcs::Initializer::WorldData info;
 
-				// model_name
-				yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
-				if (m && yyjson_is_str(m))
-				{
-					const char* s = yyjson_get_str(m);
-					std::string model_str = s ? s : "";
-					auto		file_exists = [](const std::string& p)
-					{
-						try
-						{
-							return std::filesystem::exists(p);
-						}
-						catch (...) // in case filesystem is not available or path is invalid
-						{
-							return false;
-						}
-					};
+				if (!yyjson_is_obj(shell_val))
+					continue;
 
-					if (model_str.empty())
+				// Resolve model path using absolute_dir / relative_dir rules.
+				std::string resolved_model_path;
+
+				yyjson_val* abs_dir = yyjson_obj_get(shell_val, "absolute_path");
+				if (abs_dir && yyjson_is_str(abs_dir))
+				{
+					const char* abs_s = yyjson_get_str(abs_dir);
+					if (abs_s && file_exists_safe(abs_s))
 					{
-						info.set_name(model_str);
-					}
-					else if (file_exists(model_str))
-					{
-						// user provided a path that exists (absolute or relative)
-						info.set_name(model_str);
+						resolved_model_path = abs_s;
 					}
 					else
 					{
-						// try Resources/InputMesh/<model_str>
-						std::string candidate = obj_mesh_path + model_str;
-						if (file_exists(candidate))
+						LUISA_WARNING("absolute_dir '{}' not found", abs_s ? abs_s : "");
+					}
+				}
+
+				if (resolved_model_path.empty())
+				{
+					yyjson_val* rel_dir = yyjson_obj_get(shell_val, "relative_path");
+					if (rel_dir && yyjson_is_str(rel_dir))
+					{
+						const char* rel_s = yyjson_get_str(rel_dir);
+						if (rel_s)
 						{
-							info.set_name(candidate);
-						}
-						else
-						{
-							// try basename in InputMesh (user may give subpath or just name)
-							size_t		pos = model_str.find_last_of("/\\");
-							std::string base = (pos == std::string::npos) ? model_str : model_str.substr(pos + 1);
-							candidate = obj_mesh_path + base;
-							if (file_exists(candidate))
+							std::string candidate = obj_mesh_path + std::string(rel_s);
+							if (file_exists_safe(candidate))
 							{
-								info.set_name(candidate);
+								resolved_model_path = candidate;
 							}
 							else
 							{
-								// try tet mesh path (vtks)
-								candidate = tet_mesh_path + model_str;
-								if (file_exists(candidate))
-								{
-									info.set_name(candidate);
-								}
-								else
-								{
-									// fallback: keep as provided (load_mesh_data will try to read it)
-									info.set_name(model_str);
-								}
+								LUISA_WARNING("relative_path '{}' (checked '{}') not found", rel_s, candidate);
 							}
 						}
 					}
 				}
 
-				// load mesh
-				if (!info.input_mesh.model_positions.empty())
-					info.load_mesh_data();
+				if (resolved_model_path.empty())
+				{
+					LUISA_WARNING("Neither 'absolute_path' nor 'relative_path' exist or point to a valid file for this shell; skipping shell");
+					continue;
+				}
+
+				// set display name: prefer provided model_name, otherwise use filename of resolved path
+				yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
+				if (m && yyjson_is_str(m))
+				{
+					const char* s = yyjson_get_str(m);
+					info.set_name(s ? s : "");
+				}
+				else
+				{
+					info.set_name(std::filesystem::path(resolved_model_path).filename().string());
+				}
+
+				// load mesh from resolved path
+				info.load_mesh_from_path(resolved_model_path);
 
 				// translation / rotation / scale
 				yyjson_val* t = yyjson_obj_get(shell_val, "translation");

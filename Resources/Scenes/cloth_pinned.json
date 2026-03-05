@@ -3,7 +3,7 @@
     "use_floor": false,
     "shells": [
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 0.0,
                 0.2,
@@ -28,7 +28,7 @@
             }
         },
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 0.5,
                 0.2,
@@ -52,7 +52,7 @@
             }
         },
         {
-            "model_name": "square8K.obj",
+            "relative_path": "square8K.obj",
             "translation": [
                 1.0,
                 0.2,

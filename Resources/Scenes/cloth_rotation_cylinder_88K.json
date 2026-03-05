@@ -11,7 +11,7 @@
     "stiffness_collision": 1e9,
     "shells": [
         {
-            "model_name": "Cylinder/cylinder88K.obj",
+            "relative_path": "Cylinder/cylinder88K.obj",
             "fixed_points": [
                 {
                     "method": "Left",

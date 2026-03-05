@@ -113,7 +113,8 @@ namespace lcs
 
 		struct WorldData
 		{
-			std::string model_name = "square8K.obj";
+			std::string file_path;
+			std::string model_name;
 			float3		translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
 			float3		rotation = luisa::make_float3(0.0f * lcs::Pi); // Rotation in x-channel means rotate along with x-axis
 			float3		scale = luisa::make_float3(1.0f);
@@ -125,6 +126,8 @@ namespace lcs
 
 			SimulationType			  simulation_type = SimulationType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
+
+			SimMesh::TriangleMeshData& get_mesh() { return input_mesh; }
 
 			template <typename T>
 			bool holds() const
@@ -143,18 +146,18 @@ namespace lcs
 			}
 
 			WorldData()
-				: model_name("sim_object")
+				: model_name("unnamed")
 				, simulation_type(SimulationType::None)
-			{
-			}
-			WorldData(const std::string& model_name, const SimulationType& mesh_type)
-				: model_name(model_name)
-				, simulation_type(mesh_type)
 			{
 			}
 			WorldData& set_name(const std::string& model_name)
 			{
 				this->model_name = model_name;
+				return *this;
+			}
+			WorldData& set_file_path(const std::string& file_path)
+			{
+				this->file_path = file_path;
 				return *this;
 			}
 			WorldData& set_simulation_type(const SimulationType& sim_type)
@@ -163,7 +166,9 @@ namespace lcs
 				return *this;
 			}
 			WorldData& add_fixed_point_info(const MakeFixedPointsInterface& info);
-			WorldData& load_mesh_data();
+
+			// template <typename Int, typename Real>
+			WorldData& load_mesh_from_array(const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces);
 			WorldData& load_mesh_from_path(const std::string& path);
 
 			WorldData& set_translation(const float3& t)
@@ -275,7 +280,7 @@ namespace lcs
 					}
 					else
 					{
-						LUISA_ERROR("Mesh {} should not have thickness", model_name);
+						LUISA_ERROR("Mesh {} should not have thickness", get_model_name());
 						return 0.0f;
 					}
 				}
@@ -284,9 +289,13 @@ namespace lcs
 					return 0.0f;
 				}
 			}
+			std::string get_model_path() const
+			{
+				return file_path;
+			}
 			std::string get_model_name() const
 			{
-				return std::filesystem::path(model_name).filename().string();
+				return model_name;
 			}
 
 			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,

@@ -328,7 +328,6 @@ struct WorldDataWrapper
 // Python-facing Newton-like builder that stores a vector<WorldData>
 struct PyNewtonBuilder
 {
-	std::vector<WorldData>			   shell_list;
 	std::unique_ptr<lcs::NewtonSolver> solver_ptr;
 
 	PyNewtonBuilder()
@@ -347,40 +346,41 @@ struct PyNewtonBuilder
 		if (triangles.ndim() != 2 || triangles.shape(1) != 3)
 			throw std::runtime_error("triangles must be a (M,3) array of ints");
 
-		WorldData info;
-		info.set_name(name);
+		using InputVertexType = std::array<float32_t, 3>;
+		using InputFaceType = std::array<uint32_t, 3>;
 
 		const size_t nverts = vertices.shape(0);
 		const size_t nfaces = triangles.shape(0);
 
+		std::vector<InputVertexType> input_vertices(nverts);
+		std::vector<InputFaceType>	 input_triangles(nfaces);
+
 		// copy vertices
-		info.input_mesh.model_positions.resize(nverts);
 		auto buf_v = vertices.unchecked<2>();
 		for (size_t i = 0; i < nverts; ++i)
 		{
-			SimMesh::Float3 p;
-			p[0] = static_cast<float>(buf_v(i, 0));
-			p[1] = static_cast<float>(buf_v(i, 1));
-			p[2] = static_cast<float>(buf_v(i, 2));
-			info.input_mesh.model_positions[i] = p;
+			InputVertexType p;
+			p[0] = static_cast<float32_t>(buf_v(i, 0));
+			p[1] = static_cast<float32_t>(buf_v(i, 1));
+			p[2] = static_cast<float32_t>(buf_v(i, 2));
+			input_vertices[i] = p;
 		}
 
 		// copy faces
-		info.input_mesh.faces.resize(nfaces);
 		auto buf_t = triangles.unchecked<2>();
 		for (size_t i = 0; i < nfaces; ++i)
 		{
-			SimMesh::Int3 f;
-			f[0] = static_cast<unsigned int>(buf_t(i, 0));
-			f[1] = static_cast<unsigned int>(buf_t(i, 1));
-			f[2] = static_cast<unsigned int>(buf_t(i, 2));
-			info.input_mesh.faces[i] = f;
+			InputFaceType f;
+			f[0] = static_cast<uint32_t>(buf_t(i, 0));
+			f[1] = static_cast<uint32_t>(buf_t(i, 1));
+			f[2] = static_cast<uint32_t>(buf_t(i, 2));
+			input_triangles[i] = f;
 		}
 
-		SimMesh::extract_edges_from_surface(info.input_mesh.faces, info.input_mesh.edges, info.input_mesh.dihedral_edges, true);
-
-		shell_list.emplace_back(std::move(info));
-		return WorldDataWrapper(&shell_list.back());
+		WorldData info;
+		info.set_name(name);
+		info.load_mesh_from_array(input_vertices, input_triangles);
+		return WorldDataWrapper(&solver_ptr->register_world_data(info));
 	}
 
 	// register mesh from an obj file path: read file then compute auxiliary topology
@@ -388,19 +388,17 @@ struct PyNewtonBuilder
 	{
 		WorldData info;
 		info.set_name(name);
-		SimMesh::read_mesh_file(obj_file_path, info.input_mesh);
-
-		shell_list.emplace_back(std::move(info));
-		return WorldDataWrapper(&shell_list.back());
+		info.load_mesh_from_path(obj_file_path);
+		return WorldDataWrapper(&solver_ptr->register_world_data(info));
 	}
 	// expose method to get number of registered meshes
-	size_t num_meshes() const { return shell_list.size(); }
+	size_t num_meshes() const { return solver_ptr->get_world_data().size(); }
 
 	// expose a method to export registered meshes as python lists (simple)
 	py::list get_mesh_names() const
 	{
 		py::list out;
-		for (const auto& w : shell_list)
+		for (const auto& w : solver_ptr->get_world_data())
 			out.append(w.get_model_name());
 		return out;
 	}
@@ -411,7 +409,7 @@ struct PyNewtonBuilder
 		if (!g_state.initialized)
 			throw std::runtime_error("Global luisa context/device not initialized. Call init(...) first.");
 
-		solver_ptr->init_solver(*g_state.device, *g_state.stream, shell_list);
+		solver_ptr->init_solver(*g_state.device, *g_state.stream);
 		LUISA_INFO("Solver initialized (device owned={}).", g_state.owns_resources);
 	}
 
@@ -464,20 +462,22 @@ struct PyNewtonBuilder
 		std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(num_meshes);
 		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
 
+		auto& shell_list = solver_ptr->get_world_data();
+
 		py::list py_verts;
 		py::list py_faces;
 		for (uint i = 0; i < num_meshes; ++i)
 		{
 			// vertices – contiguous std::array<float,3>, safe to memcpy
 			const auto&		   mesh_verts = sa_rendering_vertices[i];
-			py::array_t<float> v_arr({ (ssize_t)mesh_verts.size(), (ssize_t)3 });
+			py::array_t<float> v_arr({ (size_t)mesh_verts.size(), (size_t)3 });
 			if (!mesh_verts.empty())
 				std::memcpy(v_arr.mutable_data(), mesh_verts.data(), mesh_verts.size() * 3 * sizeof(float));
 			py_verts.append(v_arr);
 
 			// faces
-			const auto&			  mesh_faces = shell_list[i].input_mesh.faces;
-			py::array_t<uint32_t> f_arr({ (ssize_t)mesh_faces.size(), (ssize_t)3 });
+			const auto&			  mesh_faces = shell_list[i].get_mesh().faces;
+			py::array_t<uint32_t> f_arr({ (size_t)mesh_faces.size(), (size_t)3 });
 			if (!mesh_faces.empty())
 				std::memcpy(f_arr.mutable_data(), mesh_faces.data(), mesh_faces.size() * 3 * sizeof(uint32_t));
 			py_faces.append(f_arr);
@@ -493,13 +493,14 @@ struct PyNewtonBuilder
 		if (!solver_ptr)
 			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 
-		const uint num_meshes = solver_ptr->get_host_mesh_data().num_meshes;
+		auto&	   shell_list = solver_ptr->get_world_data();
+		const uint num_meshes = shell_list.size();
 
 		sa_rendering_vertices.resize(num_meshes);
 		sa_rendering_faces.resize(num_meshes);
 		for (uint i = 0; i < num_meshes; ++i)
 		{
-			sa_rendering_faces[i] = shell_list[i].input_mesh.faces;
+			sa_rendering_faces[i] = shell_list[i].get_mesh().faces;
 		}
 		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
 		SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, full_path);

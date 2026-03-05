@@ -5,7 +5,7 @@
     "use_energy_linesearch": true,
     "shells": [
         {
-            "model_name": "cube.obj",
+            "relative_path": "cube.obj",
             "translation": [
                 0.0,
                 1.0,
@@ -23,7 +23,7 @@
             }
         },
         {
-            "model_name": "cube.obj",
+            "relative_path": "cube.obj",
             "translation": [
                 0.2,
                 1.0,
@@ -41,7 +41,7 @@
             }
         },
         {
-            "model_name": "cube.obj",
+            "relative_path": "cube.obj",
             "translation": [
                 0.4,
                 1.0,
@@ -59,7 +59,7 @@
             }
         },
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 0.0,
                 0.8,

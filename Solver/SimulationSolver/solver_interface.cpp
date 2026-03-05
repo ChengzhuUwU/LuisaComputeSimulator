@@ -51,8 +51,7 @@ namespace lcs
 		pcg_solver = &solver_helper.pcg_solver;
 	}
 	void SolverInterface::init_data(luisa::compute::Device& device,
-		luisa::compute::Stream&								stream,
-		std::vector<lcs::Initializer::WorldData>&			world_data)
+		luisa::compute::Stream&								stream)
 	{
 		set_data_pointer(solver_data, solver_helper);
 

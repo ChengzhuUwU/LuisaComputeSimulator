@@ -59,10 +59,6 @@ namespace lcs
 			lcs::ConjugateGradientSolver pcg_solver;
 		};
 
-		// public:
-		//     template<typename T>
-		//     using Buffer = luisa::compute::Buffer<T>;
-
 	public:
 		SolverInterface() {}
 		~SolverInterface() {}
@@ -71,9 +67,7 @@ namespace lcs
 		void init_animation(const std::vector<lcs::Initializer::WorldData>& world_data);
 
 	protected:
-		void init_data(luisa::compute::Device&		  device,
-			luisa::compute::Stream&					  stream,
-			std::vector<lcs::Initializer::WorldData>& shell_list);
+		void init_data(luisa::compute::Device& device, luisa::compute::Stream& stream);
 		void compile(AsyncCompiler& compiler);
 		void set_data_pointer(SolverData& solver_data, SolverHelper& solver_helper);
 
@@ -99,6 +93,8 @@ namespace lcs
 		void physics_step_post_operation();
 
 	private:
+		std::vector<Initializer::WorldData> world_data;
+
 		SolverData	 solver_data;
 		SolverHelper solver_helper;
 
@@ -133,6 +129,9 @@ namespace lcs
 		SimulationData<std::vector>&		   get_host_sim_data() const { return *host_sim_data; }
 		CollisionData<std::vector>&			   get_host_collision_data() const { return *host_collision_data; }
 		CollisionData<luisa::compute::Buffer>& get_device_collision_data() const { return *collision_data; }
+		std::vector<Initializer::WorldData>&   get_world_data() { return world_data; }
+
+		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd) { return world_data.emplace_back(wd); }
 
 	protected:
 		// Accessors for energy objects for derived solvers

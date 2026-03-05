@@ -8,7 +8,7 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2.obj",
+            "relative_path": "square2.obj",
             "scale": 1.0,
             "material": {
                 "d_hat": 0.001,
@@ -22,7 +22,7 @@
             ]
         },
         {
-            "model_name": "square2.obj",
+            "relative_path": "square2.obj",
             "translation": [
                 0.1,
                 -0.3,

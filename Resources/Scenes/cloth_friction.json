@@ -6,7 +6,7 @@
     "contact_energy_type": 1,
     "shells": [
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 -1.1,
                 0.5,
@@ -18,7 +18,7 @@
             "scale": 1.0
         },
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 0.0,
                 0.5,
@@ -30,7 +30,7 @@
             "scale": 1.0
         },
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 1.1,
                 0.5,
@@ -42,7 +42,7 @@
             "scale": 1.0
         },
         {
-            "model_name": "square2K.obj",
+            "relative_path": "square2K.obj",
             "translation": [
                 0.0,
                 0.0,

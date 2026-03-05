@@ -6,10 +6,10 @@
     "use_energy_linesearch": true,
     "shells": [
         {
-            "model_name": "square2.obj"
+            "relative_path": "square2.obj"
         },
         {
-            "model_name": "square2.obj",
+            "relative_path": "square2.obj",
             "translation": [
                 0.1,
                 -0.3,
