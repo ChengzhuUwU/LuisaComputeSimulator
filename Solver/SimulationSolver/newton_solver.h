@@ -6,6 +6,7 @@
 #include "luisa/runtime/buffer.h"
 #include "luisa/runtime/device.h"
 #include "luisa/runtime/stream.h"
+#include <stdexcept>
 #include <vector>
 
 namespace lcs
@@ -25,11 +26,16 @@ namespace lcs
 		~NewtonSolver() {}
 
 	public:
-		void physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-		void physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream);
-		void init_solver(luisa::compute::Device& device,
-			luisa::compute::Stream&				 stream)
+		void physics_step_GPU();
+		void physics_step_CPU();
+		void init_solver()
 		{
+			if (!device_state.initialized)
+				throw std::runtime_error("Device not initialized. Call create_device() or set_device_from_pointers() first.");
+
+			luisa::compute::Device& device = *device_state.device;
+			luisa::compute::Stream& stream = *device_state.stream;
+
 			LUISA_INFO("Init mesh data...");
 			SolverInterface::init_data(device, stream);
 

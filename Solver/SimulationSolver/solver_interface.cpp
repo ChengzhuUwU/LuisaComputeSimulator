@@ -1,6 +1,7 @@
 #include "SimulationSolver/solver_interface.h"
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/friction_kernel.hpp"
+#include <stdexcept>
 #include "Core/affine_position.h"
 #include "Core/scalar.h"
 #include "Energies/abd_inertia_energy.h"
@@ -669,5 +670,86 @@ namespace lcs
 		energy_list.insert(std::make_pair("Cloth Bending", host_energy[offset_bending]));
 		energy_list.insert(std::make_pair("ABD Orthogonality", host_energy[offset_abd_ortho]));
 	};
+
+	// ---------------------------------------------------------------------------
+	// Device management methods
+	// ---------------------------------------------------------------------------
+
+	void SolverInterface::create_device(const std::string& binary_path, const std::string& backend_name)
+	{
+		if (device_state.initialized)
+			throw std::runtime_error("Device already initialized. Call cleanup_device() first.");
+
+		LUISA_INFO("Creating luisa compute context/device/stream...");
+		LUISA_INFO("  binary path: {}", binary_path.empty() ? "(empty)" : binary_path);
+
+		device_state.owned_context = std::make_unique<luisa::compute::Context>(binary_path);
+
+		std::string backend = backend_name;
+		if (backend.empty())
+		{
+#if defined(__APPLE__)
+			backend = "metal";
+#elif defined(_WIN32)
+			backend = "dx";
+#else
+			backend = "cuda";
+#endif
+		}
+
+		luisa::vector<luisa::string> device_names = device_state.owned_context->backend_device_names(backend);
+		if (device_names.empty())
+		{
+			LUISA_WARNING("No hardware device found for backend '{}'.", backend);
+			throw std::runtime_error("No hardware device found for backend: " + backend);
+		}
+		for (size_t i = 0; i < device_names.size(); ++i)
+			LUISA_INFO("Device {}: {}", i, device_names[i]);
+
+		try
+		{
+			auto dev = device_state.owned_context->create_device(backend, nullptr, true);
+			device_state.owned_device = std::make_unique<luisa::compute::Device>(std::move(dev));
+			auto st = device_state.owned_device->create_stream(luisa::compute::StreamTag::COMPUTE);
+			device_state.owned_stream = std::make_unique<luisa::compute::Stream>(std::move(st));
+
+			device_state.device = device_state.owned_device.get();
+			device_state.stream = device_state.owned_stream.get();
+			device_state.initialized = true;
+			device_state.owns_resources = true;
+		}
+		catch (const std::exception& e)
+		{
+			throw std::runtime_error(std::string("Failed to create luisa device: ") + e.what());
+		}
+	}
+
+	void SolverInterface::set_device_from_pointers(uintptr_t device_ptr, uintptr_t stream_ptr)
+	{
+		if (device_ptr == 0 || stream_ptr == 0)
+			throw std::runtime_error("device_ptr and stream_ptr must be non-null.");
+		if (device_state.initialized)
+			throw std::runtime_error("Device already initialized. Call cleanup_device() first.");
+
+		device_state.device = reinterpret_cast<luisa::compute::Device*>(device_ptr);
+		device_state.stream = reinterpret_cast<luisa::compute::Stream*>(stream_ptr);
+		device_state.initialized = true;
+		device_state.owns_resources = false;
+	}
+
+	void SolverInterface::cleanup_device()
+	{
+		device_state.cleanup();
+	}
+
+	uintptr_t SolverInterface::get_device_ptr() const
+	{
+		return reinterpret_cast<uintptr_t>(device_state.device);
+	}
+
+	uintptr_t SolverInterface::get_stream_ptr() const
+	{
+		return reinterpret_cast<uintptr_t>(device_state.stream);
+	}
 
 } // namespace lcs

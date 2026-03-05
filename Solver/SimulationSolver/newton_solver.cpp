@@ -2675,8 +2675,10 @@ namespace lcs
 		}
 		return; // Since max_p is larger than epsilon
 	}
-	void NewtonSolver::physics_step_CPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+	void NewtonSolver::physics_step_CPU()
 	{
+		luisa::compute::Device& device = *device_state.device;
+		luisa::compute::Stream& stream = *device_state.stream;
 		// Input
 		lcs::SolverInterface::physics_step_prev_operation();
 
@@ -2865,8 +2867,10 @@ namespace lcs
 		// Output
 		lcs::SolverInterface::physics_step_post_operation();
 	}
-	void NewtonSolver::physics_step_GPU(luisa::compute::Device& device, luisa::compute::Stream& stream)
+	void NewtonSolver::physics_step_GPU()
 	{
+		luisa::compute::Device& device = *device_state.device;
+		luisa::compute::Stream& stream = *device_state.stream;
 		// Read frame start position and velocity
 		lcs::SolverInterface::physics_step_prev_operation(); // => sa_q_step_start, sa_q_v
 

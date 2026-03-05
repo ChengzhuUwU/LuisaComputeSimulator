@@ -1,6 +1,7 @@
 #pragma once
 
 #include <luisa/luisa-compute.h>
+#include <cstdint>
 #include <string>
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/narrow_phase.h"
@@ -174,9 +175,22 @@ namespace lcs
 		{
 			return world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
 		}
-		void create_default_device()
-		{
-		}
+
+		// Device management: create and own a luisa device/stream.
+		// binary_path : argv[0], used by luisa::compute::Context. Empty = use current executable path.
+		// backend_name: e.g. "metal", "cuda", "dx". Empty = platform default.
+		void create_device(const std::string& binary_path, const std::string& backend_name = "");
+
+		// Device management: borrow an external device/stream (non-owning).
+		// The caller must ensure the objects outlive this solver.
+		void set_device_from_pointers(uintptr_t device_ptr, uintptr_t stream_ptr);
+
+		// Release owned device resources (no-op when using borrowed device).
+		void cleanup_device();
+
+		// Accessors for inter-module sharing.
+		uintptr_t get_device_ptr() const;
+		uintptr_t get_stream_ptr() const;
 
 	protected:
 		// Accessors for energy objects for derived solvers
@@ -215,6 +229,9 @@ namespace lcs
 
 	protected:
 		luisa::fiber::scheduler scheduler;
+
+		// Device/stream state owned or borrowed by this solver instance.
+		GlobalState device_state;
 	};
 
 } // namespace lcs

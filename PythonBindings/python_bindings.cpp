@@ -18,121 +18,6 @@ namespace py = pybind11;
 using namespace lcs;
 using namespace lcs::Initializer;
 
-GlobalState g_state;
-
-static void global_set_device(luisa::compute::Device* device, luisa::compute::Stream* stream)
-{
-	if (g_state.initialized)
-		g_state.cleanup();
-
-	g_state.device = device;
-	g_state.stream = stream;
-	g_state.initialized = true;
-}
-
-// Create a luisa device/stream owned by this module, with optional backend and binary path arguments.
-static void global_create_device(py::object backend_name_obj = py::none(), py::object binary_path_obj = py::none())
-{
-	if (g_state.initialized)
-		return;
-
-	// determine binary path
-	std::string binary_path;
-	if (!binary_path_obj.is_none())
-	{
-		binary_path = binary_path_obj.cast<std::string>();
-	}
-	else
-	{
-		try
-		{
-			// try to get this module file path
-			py::module_ self = py::module_::import("lcs_py");
-			if (py::hasattr(self, "__file__"))
-			{
-				binary_path = self.attr("__file__").cast<std::string>();
-			}
-		}
-		catch (...)
-		{
-		}
-		if (binary_path.empty())
-		{
-#if defined(__APPLE__)
-			// fallback to empty; luisa::compute may still accept an empty path
-			binary_path = "";
-#else
-			binary_path = "";
-#endif
-		}
-	}
-
-	// create context
-	LUISA_INFO("Creating luisa compute context/device/stream from Python...");
-	LUISA_INFO("  binary path: {}", binary_path);
-	g_state.owned_context = std::make_unique<luisa::compute::Context>(binary_path);
-
-	// choose backend
-	std::string backend;
-	if (!backend_name_obj.is_none())
-		backend = backend_name_obj.cast<std::string>();
-	else
-	{
-#if defined(__APPLE__)
-		backend = "metal";
-#elif defined(_WIN32)
-		backend = "dx";
-#else
-		backend = "cuda";
-#endif
-	}
-
-	luisa::vector<luisa::string> device_names = g_state.owned_context->backend_device_names(backend);
-	if (device_names.empty())
-	{
-		LUISA_WARNING("No hardware device found.");
-		exit(1);
-	}
-	for (size_t i = 0; i < device_names.size(); ++i)
-	{
-		LUISA_INFO("Device {}: {}", i, device_names[i]);
-	}
-
-	// create device (use default flags)
-	try
-	{
-		auto dev = g_state.owned_context->create_device(backend, nullptr, true);
-		g_state.owned_device = std::make_unique<luisa::compute::Device>(std::move(dev));
-		auto st = g_state.owned_device->create_stream(luisa::compute::StreamTag::COMPUTE);
-		g_state.owned_stream = std::make_unique<luisa::compute::Stream>(std::move(st));
-
-		global_set_device(g_state.owned_device.get(), g_state.owned_stream.get());
-		g_state.owns_resources = true;
-	}
-	catch (const std::exception& e)
-	{
-		throw std::runtime_error(std::string("Failed to create luisa device: ") + e.what());
-	}
-}
-
-// Use an existing device/stream from another module (non-owning).
-// The caller must ensure that the passed-in objects outlive this module's usage.
-static void global_set_device_from_pointers(uintptr_t device_ptr, uintptr_t stream_ptr)
-{
-	if (device_ptr == 0 || stream_ptr == 0)
-		throw std::runtime_error("device_ptr and stream_ptr must be non-null");
-
-	auto* device = reinterpret_cast<luisa::compute::Device*>(device_ptr);
-	auto* stream = reinterpret_cast<luisa::compute::Stream*>(stream_ptr);
-	global_set_device(device, stream);
-	g_state.owns_resources = false;
-}
-
-static void global_free_device()
-{
-	g_state.cleanup();
-}
-
 // Helper wrapper to hold WorldData pointer and expose chainable methods
 struct WorldDataWrapper
 {
@@ -379,28 +264,25 @@ struct PyNewtonBuilder
 		return out;
 	}
 
-	// Initialize underlying NewtonSolver using the global device/context created by py_init
+	// Initialize underlying NewtonSolver using the device previously set via init_device()/set_device().
 	void init_solver()
 	{
-		if (!g_state.initialized)
-			throw std::runtime_error("Global luisa context/device not initialized. Call init(...) first.");
-
-		solver_ptr->init_solver(*g_state.device, *g_state.stream);
-		LUISA_INFO("Solver initialized (device owned={}).", g_state.owns_resources);
+		solver_ptr->init_solver();
+		LUISA_INFO("Solver initialized.");
 	}
 
 	void physics_step_cpu()
 	{
 		if (!solver_ptr)
 			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-		solver_ptr->physics_step_CPU(*g_state.device, *g_state.stream);
+		solver_ptr->physics_step_CPU();
 	}
 
 	void physics_step_gpu()
 	{
 		if (!solver_ptr)
 			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-		solver_ptr->physics_step_GPU(*g_state.device, *g_state.stream);
+		solver_ptr->physics_step_GPU();
 	}
 
 	void restart_system()
@@ -480,6 +362,66 @@ struct PyNewtonBuilder
 		}
 		solver_ptr->get_simulation_results_to_host(sa_rendering_vertices);
 		SimMesh::saveToOBJ_combined(sa_rendering_vertices, sa_rendering_faces, full_path);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Device management (mirrors lcs::SolverInterface device methods)
+	// ---------------------------------------------------------------------------
+
+	// Create and own a luisa device/stream.
+	// backend_name: e.g. "metal", "cuda", "dx". None = platform default.
+	// binary_path : path used by luisa::compute::Context. None = auto-detect from lcs_py module file.
+	void init_device(py::object backend_name_obj = py::none(), py::object binary_path_obj = py::none())
+	{
+		// Resolve binary path
+		std::string binary_path;
+		if (!binary_path_obj.is_none())
+		{
+			binary_path = binary_path_obj.cast<std::string>();
+		}
+		else
+		{
+			try
+			{
+				py::module_ self = py::module_::import("lcs_py");
+				if (py::hasattr(self, "__file__"))
+					binary_path = self.attr("__file__").cast<std::string>();
+			}
+			catch (...)
+			{
+			}
+		}
+
+		// Resolve backend name
+		std::string backend;
+		if (!backend_name_obj.is_none())
+			backend = backend_name_obj.cast<std::string>();
+
+		solver_ptr->create_device(binary_path, backend);
+	}
+
+	// Borrow an external device/stream (non-owning). The caller must ensure they outlive this solver.
+	void set_device(uintptr_t device_ptr, uintptr_t stream_ptr)
+	{
+		solver_ptr->set_device_from_pointers(device_ptr, stream_ptr);
+	}
+
+	// Release owned device resources.
+	void cleanup_device()
+	{
+		solver_ptr->cleanup_device();
+	}
+
+	// Return raw pointer (as int) to the active luisa::compute::Device.
+	uintptr_t get_device_ptr() const
+	{
+		return solver_ptr->get_device_ptr();
+	}
+
+	// Return raw pointer (as int) to the active luisa::compute::Stream.
+	uintptr_t get_stream_ptr() const
+	{
+		return solver_ptr->get_stream_ptr();
 	}
 };
 
@@ -580,53 +522,31 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("register_mesh_from_file_path", &PyNewtonBuilder::register_mesh_from_file_path, py::arg("name"), py::arg("obj_file_path"))
 		.def("num_meshes", &PyNewtonBuilder::num_meshes)
 		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names)
-		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using previously created device/context")
+		.def("init_device",
+			&PyNewtonBuilder::init_device,
+			py::arg("backend_name") = py::none(),
+			py::arg("binary_path") = py::none(),
+			"Create and own a luisa compute device/stream.\n\n"
+			"backend_name: optional backend string (e.g. 'cuda','metal','dx')\n"
+			"binary_path: optional binary path passed to luisa::compute::Context")
+		.def("set_device",
+			&PyNewtonBuilder::set_device,
+			py::arg("device_ptr"),
+			py::arg("stream_ptr"),
+			"Borrow an existing luisa Device/Stream (non-owning).\n\n"
+			"device_ptr: integer address of a luisa::compute::Device object\n"
+			"stream_ptr: integer address of a luisa::compute::Stream object\n"
+			"The caller must ensure these objects outlive this solver.")
+		.def("cleanup_device", &PyNewtonBuilder::cleanup_device, "Release owned device resources (no-op for borrowed device).")
+		.def("get_device_ptr", &PyNewtonBuilder::get_device_ptr, "Return the raw pointer (as int) to the active luisa::compute::Device.")
+		.def("get_stream_ptr", &PyNewtonBuilder::get_stream_ptr, "Return the raw pointer (as int) to the active luisa::compute::Stream.")
+		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using the device set via init_device()/set_device()")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
 		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
 		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result_to, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
 		.def("save_sim_result", &PyNewtonBuilder::save_to, py::arg("obj_path"));
-
-	m.def("device_init",
-		&global_create_device,
-		py::arg("backend_name") = py::none(),
-		py::arg("binary_path") = py::none(),
-		"Initialize luisa compute context/device/stream from Python.\n\n"
-		"backend_name: optional backend string (e.g. 'cuda','metal','dx')\n"
-		"binary_path: optional binary path (argv[0]) to pass to luisa::compute::Context");
-
-	m.def("device_set",
-		&global_set_device_from_pointers,
-		py::arg("device_ptr"),
-		py::arg("stream_ptr"),
-		"Share an existing luisa Device/Stream from another module (non-owning).\n\n"
-		"device_ptr: integer address of a luisa::compute::Device object\n"
-		"stream_ptr: integer address of a luisa::compute::Stream object\n"
-		"The caller must ensure these objects outlive this module's usage.");
-
-	m.def("device_cleanup", &global_free_device, "Clean up luisa compute resources created from Python (optional; will also be called automatically at Python shutdown)");
-
-	// Expose getters so other modules can retrieve our device/stream pointers
-	m.def(
-		"get_device_ptr",
-		[]() -> uintptr_t
-		{
-			if (!g_state.initialized)
-				throw std::runtime_error("Device not initialized.");
-			return reinterpret_cast<uintptr_t>(g_state.device);
-		},
-		"Return the raw pointer (as int) to the active luisa::compute::Device.");
-
-	m.def(
-		"get_stream_ptr",
-		[]() -> uintptr_t
-		{
-			if (!g_state.initialized)
-				throw std::runtime_error("Device not initialized.");
-			return reinterpret_cast<uintptr_t>(g_state.stream);
-		},
-		"Return the raw pointer (as int) to the active luisa::compute::Stream.");
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.
 	py::class_<luisa::float3>(m, "Float3")
@@ -682,15 +602,6 @@ PYBIND11_MODULE(lcs_py, m)
 
 	m.def("init_scene_params", &lcs::init_scene_params,
 		"Initialize scene params (no-op if already initialized)");
-
-	// Capsule destructor fires during Python interpreter shutdown (before C++
-	// static destruction), ensuring owned resources are released while luisa
-	// internals are still alive.  In borrowed mode this is a harmless no-op.
-	py::capsule cleanup(new int(0), [](void* p)
-		{
-		delete static_cast<int*>(p);
-		g_state.cleanup(); });
-	m.add_object("_cleanup", cleanup);
 
 	m.doc() = "Python bindings for basic NewtonSolver scene building (lightweight)";
 }

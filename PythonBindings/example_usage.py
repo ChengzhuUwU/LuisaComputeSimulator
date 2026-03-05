@@ -8,8 +8,8 @@ import lcs_py as lcs
 
 # Initialize LuisaCompute device
 backend = "metal"  # backends: cuda, dx, vk, metal (if supported on the platform)
-lcs.device_init(backend_name=backend, binary_path=None)
 solver = lcs.NewtonSolver()
+solver.init_device(backend_name=backend)
 
 # Register meshes
 
@@ -57,4 +57,4 @@ gui.show()
 # 	solver.physics_step_gpu() # or solver.physics_step_cpu() 
 # solver.save_to(full_path=os.path.join(output_dir, "result.obj"))
 
-lcs.device_cleanup()
+solver.cleanup_device()

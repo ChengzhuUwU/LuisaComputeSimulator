@@ -56,30 +56,10 @@ int main(int argc, char** argv)
 		backend = argv[1];
 	}
 
-	const std::string			 binary_path(argv[0]);
-	luisa::compute::Context		 context{ binary_path };
-	luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
-	if (device_names.empty())
-	{
-		LUISA_WARNING("No hardware device found.");
-		exit(1);
-	}
-	for (size_t i = 0; i < device_names.size(); ++i)
-	{
-		LUISA_INFO("Device {}: {}", i, device_names[i]);
-	}
-
-	luisa::compute::Device device = context.create_device(backend,
-		nullptr,
-#ifndef NDEBUG
-		false
-#else
-		true
-#endif
-	);
-	luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
+	const std::string binary_path(argv[0]);
 
 	lcs::NewtonSolver solver;
+	solver.create_device(binary_path, backend);
 
 	// Read Mesh
 	std::string scene_json_path = "default_scene.json";
@@ -97,7 +77,7 @@ int main(int argc, char** argv)
 	solver.get_world_data() = world_data;
 
 	// Init Solver
-	solver.init_solver(device, stream);
+	solver.init_solver();
 
 	auto fn_update_pinned_verts = [&](const uint curr_frame)
 	{
@@ -121,9 +101,9 @@ int main(int argc, char** argv)
 		fn_update_pinned_verts(lcs::get_scene_params().current_frame);
 
 		if (lcs::get_scene_params().use_gpu)
-			solver.physics_step_GPU(device, stream);
+			solver.physics_step_GPU();
 		else
-			solver.physics_step_CPU(device, stream);
+			solver.physics_step_CPU();
 	};
 
 	uint		   max_frame = 0;
