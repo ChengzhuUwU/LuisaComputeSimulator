@@ -113,7 +113,7 @@ namespace lcs
 
 		struct WorldData
 		{
-			std::string file_path;
+			// std::string file_path;
 			std::string model_name;
 			float3		translation = luisa::make_float3(0.0f, 0.0f, 0.0f);
 			float3		rotation = luisa::make_float3(0.0f * lcs::Pi); // Rotation in x-channel means rotate along with x-axis
@@ -150,16 +150,16 @@ namespace lcs
 				, simulation_type(SimulationType::None)
 			{
 			}
-			WorldData& set_name(const std::string& model_name)
+			WorldData& set_name(const std::string_view& model_name)
 			{
 				this->model_name = model_name;
 				return *this;
 			}
-			WorldData& set_file_path(const std::string& file_path)
-			{
-				this->file_path = file_path;
-				return *this;
-			}
+			// WorldData& set_file_path(const std::string_view& file_path)
+			// {
+			// 	this->file_path = file_path;
+			// 	return *this;
+			// }
 			WorldData& set_simulation_type(const SimulationType& sim_type)
 			{
 				this->simulation_type = sim_type;
@@ -169,7 +169,7 @@ namespace lcs
 
 			// template <typename Int, typename Real>
 			WorldData& load_mesh_from_array(const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces);
-			WorldData& load_mesh_from_path(const std::string& path);
+			WorldData& load_mesh_from_path(const std::string_view& path);
 
 			WorldData& set_translation(const float3& t)
 			{
@@ -289,10 +289,10 @@ namespace lcs
 					return 0.0f;
 				}
 			}
-			std::string get_model_path() const
-			{
-				return file_path;
-			}
+			// std::string get_model_path() const
+			// {
+			// 	return file_path;
+			// }
 			std::string get_model_name() const
 			{
 				return model_name;
@@ -308,7 +308,8 @@ namespace lcs
 
 			void update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
 			// void get_body_animation(const float time, Animation::PerBodyAnimation& body_animation);
-			void get_rest_positions(std::vector<std::array<float, 3>>& rest_positions);
+			void							  get_rest_positions(std::vector<std::array<float, 3>>& rest_positions) const;
+			std::vector<std::array<float, 3>> get_rest_positions() const;
 		};
 
 		void init_mesh_data(std::vector<lcs::Initializer::WorldData>& shell_list, lcs::MeshData<std::vector>* mesh_data);

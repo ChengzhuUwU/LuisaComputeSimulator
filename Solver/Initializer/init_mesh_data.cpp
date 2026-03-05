@@ -255,7 +255,7 @@ namespace lcs
 		//     auto        target   = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
 		//     body_animation.set_translation(target.x, target.y, target.z);
 		// }
-		void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions)
+		void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions) const
 		{
 			rest_positions.resize(input_mesh.model_positions.size());
 			auto transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
@@ -270,6 +270,12 @@ namespace lcs
 				output[2] = rest_pos.z;
 				rest_positions[vid] = output;
 			}
+		}
+		std::vector<std::array<float, 3>> WorldData::get_rest_positions() const
+		{
+			std::vector<std::array<float, 3>> rest_positions;
+			get_rest_positions(rest_positions);
+			return rest_positions;
 		}
 
 		// template <typename Int, typename Real>
@@ -288,7 +294,7 @@ namespace lcs
 			SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.edges, input_mesh.dihedral_edges, true);
 			return *this;
 		}
-		WorldData& WorldData::load_mesh_from_path(const std::string& path)
+		WorldData& WorldData::load_mesh_from_path(const std::string_view& path)
 		{
 			bool succ = SimMesh::read_mesh_file(path, input_mesh);
 			return *this;

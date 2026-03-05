@@ -18,39 +18,7 @@ namespace py = pybind11;
 using namespace lcs;
 using namespace lcs::Initializer;
 
-// Global state for luisa device/context created from Python.
-// Supports two modes:
-//   - Owned:    created by device_init(), resources released by cleanup()
-//   - Borrowed: set by device_set(), caller retains ownership
-struct GlobalState
-{
-	// Owned resources (only populated when we create them ourselves)
-	std::unique_ptr<luisa::compute::Context> owned_context;
-	std::unique_ptr<luisa::compute::Device>	 owned_device;
-	std::unique_ptr<luisa::compute::Stream>	 owned_stream;
-
-	// Active pointers (always valid when initialized == true;
-	// point to owned_* or external objects depending on mode)
-	luisa::compute::Device* device = nullptr;
-	luisa::compute::Stream* stream = nullptr;
-
-	bool initialized = false;
-	bool owns_resources = false;
-
-	void cleanup()
-	{
-		device = nullptr;
-		stream = nullptr;
-		if (owns_resources)
-		{
-			owned_stream.reset();
-			owned_device.reset();
-			owned_context.reset();
-		}
-		initialized = false;
-		owns_resources = false;
-	}
-} g_state;
+GlobalState g_state;
 
 static void global_set_device(luisa::compute::Device* device, luisa::compute::Stream* stream)
 {
@@ -220,7 +188,11 @@ struct WorldDataWrapper
 	}
 
 	// Expose cloth material setter by accepting keyword args
-	WorldDataWrapper& set_physics_material_cloth(float thickness = 1e-3f, float youngs_modulus = 1e6f, float poisson_ratio = 0.35f, float area_bending_stiffness = 5e-3f)
+	WorldDataWrapper& set_physics_material_cloth(
+		float thickness = ClothMaterial::default_thickness(),
+		float youngs_modulus = ClothMaterial::default_youngs_modulus(),
+		float poisson_ratio = ClothMaterial::default_poisson_ratio(),
+		float area_bending_stiffness = ClothMaterial::default_area_bending_stiffness())
 	{
 		wd->set_simulation_type(lcs::Initializer::SimulationType::Cloth);
 		ClothMaterial mat;
@@ -233,7 +205,11 @@ struct WorldDataWrapper
 	}
 
 	// Expose tetrahedral material setter
-	WorldDataWrapper& set_physics_material_tet(float youngs_modulus = 1e6f, float poisson_ratio = 0.35f, float density = 1e3f, float mass = 0.0f)
+	WorldDataWrapper& set_physics_material_tet(
+		float youngs_modulus = TetMaterial::default_youngs_modulus(),
+		float poisson_ratio = TetMaterial::default_poisson_ratio(),
+		float density = TetMaterial::default_density(),
+		float mass = TetMaterial::default_mass())
 	{
 		wd->set_simulation_type(lcs::Initializer::SimulationType::Tetrahedral);
 		TetMaterial mat;
@@ -247,7 +223,11 @@ struct WorldDataWrapper
 	}
 
 	// Expose rigid material setter
-	WorldDataWrapper& set_physics_material_rigid(float thickness = 1e-3f, float stiffness = 1e6f, float density = 1e3f, float mass = 0.0f)
+	WorldDataWrapper& set_physics_material_rigid(
+		float thickness = RigidMaterial::default_thickness(),
+		float stiffness = RigidMaterial::default_stiffness(),
+		float density = RigidMaterial::default_density(),
+		float mass = RigidMaterial::default_mass())
 	{
 		wd->set_simulation_type(lcs::Initializer::SimulationType::Rigid);
 		RigidMaterial mat;
@@ -260,7 +240,12 @@ struct WorldDataWrapper
 	}
 
 	// Expose rod material setter
-	WorldDataWrapper& set_physics_material_rod(float radius = 1e-3f, float bending_stiffness = 1e4f, float twisting_stiffness = 1e4f, float density = 1e3f, float mass = 0.0f)
+	WorldDataWrapper& set_physics_material_rod(
+		float radius = RodMaterial::default_radius(),
+		float bending_stiffness = RodMaterial::default_bending_stiffness(),
+		float twisting_stiffness = RodMaterial::default_twisting_stiffness(),
+		float density = RodMaterial::default_density(),
+		float mass = RodMaterial::default_mass())
 	{
 		wd->set_simulation_type(lcs::Initializer::SimulationType::Rod);
 		RodMaterial mat;
@@ -355,8 +340,8 @@ struct PyNewtonBuilder
 		std::vector<InputVertexType> input_vertices(nverts);
 		std::vector<InputFaceType>	 input_triangles(nfaces);
 
-		// copy vertices
 		auto buf_v = vertices.unchecked<2>();
+		auto buf_t = triangles.unchecked<2>();
 		for (size_t i = 0; i < nverts; ++i)
 		{
 			InputVertexType p;
@@ -365,9 +350,6 @@ struct PyNewtonBuilder
 			p[2] = static_cast<float32_t>(buf_v(i, 2));
 			input_vertices[i] = p;
 		}
-
-		// copy faces
-		auto buf_t = triangles.unchecked<2>();
 		for (size_t i = 0; i < nfaces; ++i)
 		{
 			InputFaceType f;
@@ -377,20 +359,14 @@ struct PyNewtonBuilder
 			input_triangles[i] = f;
 		}
 
-		WorldData info;
-		info.set_name(name);
-		info.load_mesh_from_array(input_vertices, input_triangles);
-		return WorldDataWrapper(&solver_ptr->register_world_data(info));
+		return WorldDataWrapper(&solver_ptr->register_world_data_from_array(name, input_vertices, input_triangles));
 	}
-
 	// register mesh from an obj file path: read file then compute auxiliary topology
 	WorldDataWrapper register_mesh_from_file_path(const std::string& name, const std::string& obj_file_path)
 	{
-		WorldData info;
-		info.set_name(name);
-		info.load_mesh_from_path(obj_file_path);
-		return WorldDataWrapper(&solver_ptr->register_world_data(info));
+		return WorldDataWrapper(&solver_ptr->register_world_data_from_file_path(name, obj_file_path));
 	}
+
 	// expose method to get number of registered meshes
 	size_t num_meshes() const { return solver_ptr->get_world_data().size(); }
 
@@ -564,29 +540,29 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("set_simulation_type", &WorldDataWrapper::set_simulation_type)
 		.def("set_physics_material_cloth",
 			&WorldDataWrapper::set_physics_material_cloth,
-			py::arg("thickness") = 1e-3f,
-			py::arg("youngs_modulus") = 1e6f,
-			py::arg("poisson_ratio") = 0.35f,
-			py::arg("area_bending_stiffness") = 5e-3f)
+			py::arg("thickness") = ClothMaterial::default_thickness(),
+			py::arg("youngs_modulus") = ClothMaterial::default_youngs_modulus(),
+			py::arg("poisson_ratio") = ClothMaterial::default_poisson_ratio(),
+			py::arg("area_bending_stiffness") = ClothMaterial::default_area_bending_stiffness())
 		.def("set_physics_material_tet",
 			&WorldDataWrapper::set_physics_material_tet,
-			py::arg("youngs_modulus") = 1e6f,
-			py::arg("poisson_ratio") = 0.35f,
-			py::arg("density") = 1e3f,
-			py::arg("mass") = 0.0f)
+			py::arg("youngs_modulus") = TetMaterial::default_youngs_modulus(),
+			py::arg("poisson_ratio") = TetMaterial::default_poisson_ratio(),
+			py::arg("density") = TetMaterial::default_density(),
+			py::arg("mass") = TetMaterial::default_mass())
 		.def("set_physics_material_rigid",
 			&WorldDataWrapper::set_physics_material_rigid,
-			py::arg("thickness") = 1e-3f,
-			py::arg("stiffness") = 1e6f,
-			py::arg("density") = 1e3f,
-			py::arg("mass") = 0.0f)
+			py::arg("thickness") = RigidMaterial::default_thickness(),
+			py::arg("stiffness") = RigidMaterial::default_stiffness(),
+			py::arg("density") = RigidMaterial::default_density(),
+			py::arg("mass") = RigidMaterial::default_mass())
 		.def("set_physics_material_rod",
 			&WorldDataWrapper::set_physics_material_rod,
-			py::arg("radius") = 1e-3f,
-			py::arg("bending_stiffness") = 1e4f,
-			py::arg("twisting_stiffness") = 1e4f,
-			py::arg("density") = 1e3f,
-			py::arg("mass") = 0.0f)
+			py::arg("radius") = RodMaterial::default_radius(),
+			py::arg("bending_stiffness") = RodMaterial::default_bending_stiffness(),
+			py::arg("twisting_stiffness") = RodMaterial::default_twisting_stiffness(),
+			py::arg("density") = RodMaterial::default_density(),
+			py::arg("mass") = RodMaterial::default_mass())
 		.def("add_fixed_point_info", &WorldDataWrapper::add_fixed_point_info)
 		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
 		.def("add_fixed_point_indices", &WorldDataWrapper::add_fixed_point_indices, py::arg("indices"))

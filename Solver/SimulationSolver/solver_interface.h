@@ -29,6 +29,40 @@
 namespace lcs
 {
 
+	// Global state for luisa device/context created from Python.
+	// Supports two modes:
+	//   - Owned:    created by device_init(), resources released by cleanup()
+	//   - Borrowed: set by device_set(), caller retains ownership
+	struct GlobalState
+	{
+		// Owned resources (only populated when we create them ourselves)
+		std::unique_ptr<luisa::compute::Context> owned_context;
+		std::unique_ptr<luisa::compute::Device>	 owned_device;
+		std::unique_ptr<luisa::compute::Stream>	 owned_stream;
+
+		// Active pointers (always valid when initialized == true;
+		// point to owned_* or external objects depending on mode)
+		luisa::compute::Device* device = nullptr;
+		luisa::compute::Stream* stream = nullptr;
+
+		bool initialized = false;
+		bool owns_resources = false;
+
+		void cleanup()
+		{
+			device = nullptr;
+			stream = nullptr;
+			if (owns_resources)
+			{
+				owned_stream.reset();
+				owned_device.reset();
+				owned_context.reset();
+			}
+			initialized = false;
+			owns_resources = false;
+		}
+	};
+
 	class SolverInterface
 	{
 	private:
@@ -132,6 +166,17 @@ namespace lcs
 		std::vector<Initializer::WorldData>&   get_world_data() { return world_data; }
 
 		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd) { return world_data.emplace_back(wd); }
+		Initializer::WorldData& register_world_data_from_file_path(const std::string_view& name, const std::string_view& file_path)
+		{
+			return world_data.emplace_back().load_mesh_from_path(file_path).set_name(name);
+		}
+		Initializer::WorldData& register_world_data_from_array(const std::string_view& name, const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
+		{
+			return world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
+		}
+		void create_default_device()
+		{
+		}
 
 	protected:
 		// Accessors for energy objects for derived solvers
