@@ -19,8 +19,8 @@ Sample usage of python frontend:
 
 ```python
     import lcs_py as lcs
-    lcs.device_init(backend_name="metal" , binary_path=None)
     solver = lcs.NewtonSolver()
+    solver.init_device(backend_name="metal" , binary_path=None)
 
     # Register 2 meshes: A rigid cube and a soft cloth
     cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
@@ -41,7 +41,7 @@ Sample usage of python frontend:
     # Initialize the solver
     solver.init_solver()
 
-    config_ref = lcs.get_scene_params()
+    config_ref = solver.get_config()
     config_ref.use_floor = False
     config_ref.implicit_dt = 1/60
 

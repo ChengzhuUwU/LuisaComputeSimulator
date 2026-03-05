@@ -182,7 +182,7 @@ namespace lcs
 			const float3 curr_pos = host_sim_data->sa_q_outer[vid];
 			const float3 target_pos =
 				luisa::make_float3(animate.translation[0], animate.translation[1], animate.translation[2]);
-			const float3 desire_vel = (target_pos - curr_pos) / lcs::get_scene_params().implicit_dt;
+			const float3 desire_vel = (target_pos - curr_pos) / get_scene_params().implicit_dt;
 			host_sim_data->sa_q_v_outer[vid] = desire_vel;
 		}
 
@@ -207,7 +207,7 @@ namespace lcs
 				curr_q[2] = host_sim_data->sa_q_outer[dof_idx + 2];
 				curr_q[3] = host_sim_data->sa_q_outer[dof_idx + 3];
 
-				auto desire_vel = (rest_q - curr_q) / lcs::get_scene_params().implicit_dt;
+				auto desire_vel = (rest_q - curr_q) / get_scene_params().implicit_dt;
 				host_sim_data->sa_q_v_outer[dof_idx + 0] = desire_vel[0];
 				host_sim_data->sa_q_v_outer[dof_idx + 1] = desire_vel[1];
 				host_sim_data->sa_q_v_outer[dof_idx + 2] = desire_vel[2];
@@ -224,7 +224,7 @@ namespace lcs
 		buffer_copy(host_sim_data->sa_v, host_sim_data->sa_v_outer);
 		buffer_copy(host_sim_data->sa_q, host_sim_data->sa_q_outer);
 		buffer_copy(host_sim_data->sa_q_v, host_sim_data->sa_q_v_outer);
-		lcs::get_scene_params().current_frame += 1;
+		get_scene_params().current_frame += 1;
 	}
 
 	void SolverInterface::restart_system()
@@ -678,10 +678,10 @@ namespace lcs
 	void SolverInterface::create_device(const std::string& binary_path, const std::string& backend_name)
 	{
 		if (device_state.initialized)
-			throw std::runtime_error("Device already initialized. Call cleanup_device() first.");
+			throw std::runtime_error("Device already initialized. Call cleanup_device() first"
+									 "or use set_device_from_pointers() to set external device and stream.");
 
 		LUISA_INFO("Creating luisa compute context/device/stream...");
-		LUISA_INFO("  binary path: {}", binary_path.empty() ? "(empty)" : binary_path);
 
 		device_state.owned_context = std::make_unique<luisa::compute::Context>(binary_path);
 

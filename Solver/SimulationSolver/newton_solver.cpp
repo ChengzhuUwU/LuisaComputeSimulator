@@ -1056,6 +1056,10 @@ namespace lcs
 		// if constexpr (false)
 		if (get_scene_params().use_floor)
 		{
+			const float floor_y = get_scene_params().floor.y;
+			const float stiffness_ground = get_scene_params().stiffness_collision;
+			const uint	collision_type = get_scene_params().contact_energy_type;
+
 			std::vector<EigenTripletBlock<1>> hessian_blocks(host_sim_data->num_verts_soft);
 			CpuParallel::parallel_for(
 				0,
@@ -1065,16 +1069,17 @@ namespace lcs
 					sa_contact_active_verts_d_hat = host_sim_data->sa_contact_active_verts_d_hat.data(),
 					sa_is_fixed = host_mesh_data->sa_is_fixed.data(),
 					sa_rest_vert_area = host_mesh_data->sa_rest_vert_area.data(),
+					floor_y,
+					stiffness_ground,
+					collision_type,
 					&cgB,
 					&hessian_blocks](const uint vid)
 				{
 					float3 x_k = sa_x[vid];
-					float  dist = x_k.y - get_scene_params().floor.y;
+					float  dist = x_k.y - floor_y;
 
 					const float d_hat = sa_contact_active_verts_d_hat[vid];
 					const float thickness = sa_contact_active_verts_offset[vid];
-					const float stiffness_ground = get_scene_params().stiffness_collision;
-					const uint	collision_type = get_scene_params().contact_energy_type;
 
 					if (dist - thickness < d_hat)
 					{

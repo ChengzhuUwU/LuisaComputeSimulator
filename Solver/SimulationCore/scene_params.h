@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/float_n.h"
+#include <memory>
 
 namespace lcs
 {
@@ -94,8 +95,9 @@ namespace lcs
 		float get_bending_stiffness_scaling() { return stiffness_bending_ui; }
 	};
 
-	void		 init_scene_params();
-	SceneParams& get_scene_params();
+	void						 set_scene_params_ptr(const std::shared_ptr<SceneParams>& scene_params_ptr);
+	std::shared_ptr<SceneParams> get_scene_params_ptr();
+	SceneParams&				 get_scene_params();
 	// std::vector<SceneParams>& get_scene_params_array();
 
 } // namespace lcs

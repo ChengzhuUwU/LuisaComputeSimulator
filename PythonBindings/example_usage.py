@@ -39,7 +39,7 @@ solver.init_solver()
 print('Registered meshes:', solver.get_mesh_names())
 
 # Set scene parameters
-config_ref = lcs.get_scene_params()
+config_ref = solver.get_config()
 config_ref.use_floor = False
 
 # Output directory (for optional file saving)

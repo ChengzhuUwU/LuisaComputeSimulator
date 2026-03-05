@@ -26,6 +26,7 @@
 #include "Energies/bending_energy_kernel.h"
 #include "Energies/abd_inertia_energy.h"
 #include "Energies/abd_ortho_energy.h"
+#include "SimulationCore/scene_params.h"
 
 namespace lcs
 {
@@ -95,7 +96,15 @@ namespace lcs
 		};
 
 	public:
-		SolverInterface() {}
+		SolverInterface()
+		{
+			scene_params_ptr = lcs::get_scene_params_ptr();
+			if (!scene_params_ptr)
+			{
+				scene_params_ptr = std::make_shared<SceneParams>();
+				lcs::set_scene_params_ptr(scene_params_ptr);
+			}
+		}
 		~SolverInterface() {}
 
 	private:
@@ -189,8 +198,9 @@ namespace lcs
 		void cleanup_device();
 
 		// Accessors for inter-module sharing.
-		uintptr_t get_device_ptr() const;
-		uintptr_t get_stream_ptr() const;
+		uintptr_t	 get_device_ptr() const;
+		uintptr_t	 get_stream_ptr() const;
+		SceneParams& get_config() const { return *scene_params_ptr; }
 
 	protected:
 		// Accessors for energy objects for derived solvers
@@ -231,7 +241,10 @@ namespace lcs
 		luisa::fiber::scheduler scheduler;
 
 		// Device/stream state owned or borrowed by this solver instance.
-		GlobalState device_state;
+		GlobalState					 device_state;
+		std::shared_ptr<SceneParams> scene_params_ptr;
+
+		SceneParams& get_scene_params() const { return *scene_params_ptr; }
 	};
 
 } // namespace lcs

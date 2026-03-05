@@ -423,6 +423,13 @@ struct PyNewtonBuilder
 	{
 		return solver_ptr->get_stream_ptr();
 	}
+
+	lcs::SceneParams& get_config() const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized.");
+		return solver_ptr->get_config();
+	}
 };
 
 PYBIND11_MODULE(lcs_py, m)
@@ -540,6 +547,10 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("cleanup_device", &PyNewtonBuilder::cleanup_device, "Release owned device resources (no-op for borrowed device).")
 		.def("get_device_ptr", &PyNewtonBuilder::get_device_ptr, "Return the raw pointer (as int) to the active luisa::compute::Device.")
 		.def("get_stream_ptr", &PyNewtonBuilder::get_stream_ptr, "Return the raw pointer (as int) to the active luisa::compute::Stream.")
+		.def("get_config",
+			&PyNewtonBuilder::get_config,
+			py::return_value_policy::reference_internal,
+			"Return reference to solver-owned SceneParams config")
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using the device set via init_device()/set_device()")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
@@ -592,16 +603,6 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("d_hat", &lcs::SceneParams::d_hat)
 		.def("get_substep_dt", &lcs::SceneParams::get_substep_dt)
 		.def("get_bending_stiffness_scaling", &lcs::SceneParams::get_bending_stiffness_scaling);
-
-	m.def(
-		"get_scene_params",
-		[]() -> lcs::SceneParams&
-		{ return lcs::get_scene_params(); },
-		py::return_value_policy::reference,
-		"Return reference to global SceneParams singleton");
-
-	m.def("init_scene_params", &lcs::init_scene_params,
-		"Initialize scene params (no-op if already initialized)");
 
 	m.doc() = "Python bindings for basic NewtonSolver scene building (lightweight)";
 }

@@ -1,22 +1,29 @@
-#include <vector>
+#include <memory>
+#include <stdexcept>
 #include "scene_params.h"
 
 namespace lcs
 {
 
-	// std::vector<SceneParams> scene_params;
-	SceneParams scene_params;
-	// std::shared_ptr<SceneParams> scene_params = std::make_shared<SceneParams>();
+	static std::weak_ptr<SceneParams> g_scene_params_ptr;
 
-	void init_scene_params()
+	void set_scene_params_ptr(const std::shared_ptr<SceneParams>& scene_params_ptr)
 	{
-		// scene_params.resize(1);
-		// scene_params[0] = SceneParams();
+		g_scene_params_ptr = scene_params_ptr;
+	}
+
+	std::shared_ptr<SceneParams> get_scene_params_ptr()
+	{
+		return g_scene_params_ptr.lock();
 	}
 
 	SceneParams& get_scene_params()
 	{
-		return scene_params;
+		auto ptr = g_scene_params_ptr.lock();
+		if (!ptr)
+			throw std::runtime_error(
+				"SceneParams is not initialized. Create a SolverInterface/NewtonSolver instance first.");
+		return *ptr;
 	}
 
 	// std::vector<SceneParams>& get_scene_params_array()
