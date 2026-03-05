@@ -40,19 +40,24 @@ target_compile_definitions(luisa-compute-solver-lib PUBLIC LCSV_RESOURCE_PATH="$
 
 # Executable application
 if(LCS_BUILD_MAIN_APPLICATION)
-    add_executable(app-simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
-    target_link_libraries(app-simulation PRIVATE 
+    add_executable(app_simulation Application/app_simulation.cpp Application/app_simulation_demo_config.cpp Application/app_simulation_demo_config.h)
+    add_executable(app_integration Application/app_integration.cpp)
+    target_link_libraries(app_simulation PRIVATE 
         luisa::compute 
         luisa-compute-solver-lib
         luisa-compute-solver-ext-yyjson
         )
+    target_link_libraries(app_integration PRIVATE 
+        luisa::compute 
+        luisa-compute-solver-lib
+        )
     if (UNIX AND NOT APPLE)
-        target_link_libraries(app-simulation PRIVATE atomic)
+        target_link_libraries(app_simulation PRIVATE atomic)
     endif()
 
     if (LCS_ENABLE_GUI)
-        target_link_libraries(app-simulation PRIVATE polyscope)
-        target_compile_definitions(app-simulation PRIVATE SIMULATION_APP_USE_GUI=1)
+        target_link_libraries(app_simulation PRIVATE polyscope)
+        target_compile_definitions(app_simulation PRIVATE SIMULATION_APP_USE_GUI=1)
     endif()
 endif()
 

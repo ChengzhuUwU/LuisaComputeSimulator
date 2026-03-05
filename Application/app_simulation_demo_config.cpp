@@ -20,31 +20,6 @@ namespace Demo::Simulation
 
 	using namespace lcs::Initializer;
 
-	void ccd_vf_unit_case(std::vector<WorldData>& shell_list)
-	{
-		WorldData& up = shell_list.emplace_back(WorldData())
-							.set_name("upper square")
-							.set_simulation_type(lcs::Initializer::SimulationType::Cloth)
-							.load_mesh_from_path(obj_mesh_path + "square2.obj")
-							.set_physics_material(ClothMaterial{ .thickness = 0.1f })
-							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
-
-		WorldData& down = shell_list.emplace_back(WorldData())
-							  .set_name("lower square")
-							  .set_simulation_type(lcs::Initializer::SimulationType::Cloth)
-							  .load_mesh_from_array(std::vector<std::array<float, 3>>{
-														{ -0.5, 0, -0.5 }, { 0.5, 0, -0.5 },
-														{ -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } },
-								  std::vector<std::array<uint, 3>>{ { 0, 3, 1 }, { 0, 2, 3 } })
-							  .set_physics_material(ClothMaterial{ .thickness = 0.1f })
-							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
-							  .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
-		lcs::get_scene_params().use_floor = false;
-		lcs::get_scene_params().implicit_dt = 0.2;
-		lcs::get_scene_params().use_energy_linesearch = true;
-		lcs::get_scene_params().use_gpu = false;
-	}
-
 	void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::string& json_path)
 	{
 		// Determine which path to open:
