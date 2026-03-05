@@ -6,8 +6,14 @@ root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
+
+
+
+from sim_utils import parse_args
+args = parse_args()
+
 # Initialize LuisaCompute device
-backend = "metal"  # backends: cuda, dx, vk, metal (if supported on the platform)
+backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
 solver = lcs.NewtonSolver()
 solver.init_device(backend_name=backend)
 
@@ -51,15 +57,15 @@ config_ref.use_floor = False
 output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
-# Launch polyscope GUI
-from polyscope_gui import SimulationGUI
-gui = SimulationGUI(solver, config_ref, output_dir)
-gui.show()
-
-# Or run the simulation without GUI
-# solver.save_to(full_path=os.path.join(output_dir, "init.obj"))
-# for frame in range(0, 30):
-# 	solver.physics_step_gpu() # or solver.physics_step_cpu() 
-# solver.save_to(full_path=os.path.join(output_dir, "result.obj"))
+# Launch polyscope GUI or run headless
+if args.headless:
+	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
+	for frame in range(0, args.advance_frames):
+		solver.physics_step_gpu()
+	solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
+else:
+	from polyscope_gui import SimulationGUI
+	gui = SimulationGUI(solver, config_ref, output_dir)
+	gui.show()
 
 solver.cleanup_device()

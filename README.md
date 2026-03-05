@@ -18,9 +18,12 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 Sample Python-frontend code can be found at [example_usage.py](PythonBindings/example_usage.py):
 
 ```python
+    from sim_utils import parse_args
     import lcs_py as lcs
+    args = parse_args()
+
     solver = lcs.NewtonSolver()
-    solver.init_device(backend_name="metal" , binary_path=None)
+    solver.init_device(backend_name=args.backend, binary_path=None)
 
     # Register 2 meshes: A rigid cube and a soft cloth
     cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
@@ -45,12 +48,18 @@ Sample Python-frontend code can be found at [example_usage.py](PythonBindings/ex
     config_ref.use_floor = False
     config_ref.implicit_dt = 1/60
 
-    # Launch simulation
-    for frame in range(0, 30):
-        solver.physics_step_gpu() # or solver.physics_step_cpu() 
-        result = solver.get_sim_result() # simulated positions
     output_dir = os.path.join(root, "Resources", "OutputMesh")
-    solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
+
+    # Launch simulation
+    if args.headless:
+        solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
+        for frame in range(0, args.advance_frames):
+            solver.physics_step_gpu() # or solver.physics_step_cpu()
+        solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
+    else:
+        from polyscope_gui import SimulationGUI
+        gui = SimulationGUI(solver, config_ref, output_dir)
+        gui.show()
 ```
 
 ### Cpp Frontend
@@ -62,12 +71,8 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
 
     int main(int argc, char** argv)
     {
-        const std::string binary_path(argv[0]);
-        std::string	backend;
-        if (argc >= 2) backend = argv[1];
-
         lcs::NewtonSolver solver;
-        solver.create_device(binary_path, backend);
+        solver.create_device(/*binary_path =*/argv[0], /*backend =*/ "cuda");
 
         // Register mesh using file path
         auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
@@ -87,6 +92,7 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
                                 .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
                                 .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
 
+        // Scene configs
         auto config = solver.get_config();
         config.use_floor = false;
         config.implicit_dt = 0.2;
@@ -108,7 +114,6 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
 
         return 0;
     }
-
 ```
 
 ## Getting Started
@@ -157,11 +162,18 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
   	- If you are root-user, you may need `xmake lua --root setup.lua`
   - Build   : ```xmake build```
 
-- **Run the application:**  
-    `build/bin/app-simulation <backend-name> <scene-json-file>` (Linux/macOS)  
-    `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` (Windows)
+- **Launch the sample Cpp application:**  
+    - Launch on Linux/macOS: `build/bin/app-simulation <backend-name> <scene-json-file>`
+    - Launch on Windows: `build/bin/app-simulation.exe  <backend-name> <scene-json-file>` 
 
-    The launching parameters `<backend-name> <scene-json-file>` is optional, you can specify your favorite backend in `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario in `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in [Resources/Scenes](Resources/Scenes) directory).
+    - Note that: The launching parameters `<backend-name> <scene-json-file>` is optional, you can specify your favorite backend in `<backend-name>` (e.g., `metal/cuda/dx/vulkan`) and choose a simulation scenario in `<scene-json-file>` (e.g., `cloth_rigid_coupling_high_res.json`, we provide several example scenarios in [Resources/Scenes](Resources/Scenes) directory).
+
+- **Launch the sample Python application**
+    - Launch with GUI: `path_to_python PythonBindings/example_usage.py --backend <backend-name>` 
+    - Launch without GUI: `path_to_python PythonBindings/example_usage.py --backend <backend-name> --headless --advance_frames <N>`
+    - Note that: `path_to_python` should corresponds with `LCS_PYTHON_EXECUTABLE` in configuration progress.
+    - `<backend-name>` can be `cuda/dx/vk/metal`; `--headless` and `--advance_frames` are optional (`advance_frames` default is `30`).
+    - `numpy` and `trimesh` are required; `polyscope` is required when not using `--headless`.
 
 More building guidance about computing backend can be found in [the document of LuisaCompute](https://github.com/LuisaGroup/LuisaCompute/blob/stable/BUILD.md) and [Build.md](Document/Build.md).
 
