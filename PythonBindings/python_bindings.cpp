@@ -486,7 +486,7 @@ struct PyNewtonBuilder
 
 PYBIND11_MODULE(lcs_py, m)
 {
-	py::enum_<lcs::Initializer::MaterialType>(m, "SimulationType")
+	py::enum_<lcs::Initializer::MaterialType>(m, "MaterialType")
 		.value("Cloth", lcs::Initializer::MaterialType::Cloth)
 		.value("Tetrahedral", lcs::Initializer::MaterialType::Tetrahedral)
 		.value("Rigid", lcs::Initializer::MaterialType::Rigid)

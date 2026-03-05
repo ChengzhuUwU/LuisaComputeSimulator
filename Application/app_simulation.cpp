@@ -74,7 +74,6 @@ int main(int argc, char** argv)
 	}
 	std::vector<lcs::Initializer::WorldData>& world_data = solver.get_world_data();
 	Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
-	solver.get_world_data() = world_data;
 
 	// Init Solver
 	solver.init_solver();

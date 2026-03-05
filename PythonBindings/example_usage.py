@@ -6,9 +6,6 @@ root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
-
-
-
 from sim_utils import parse_args
 args = parse_args()
 
@@ -23,7 +20,7 @@ solver.init_device(backend_name=backend)
 cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
 cube_mesh = trimesh.load(cube_mesh_path, process=False)
 cube_ref = solver.register_mesh_from_array('cube', cube_mesh.vertices, cube_mesh.faces)
-cube_ref.set_simulation_type(lcs.SimulationType.Rigid)
+cube_ref.set_simulation_type(lcs.MaterialType.Rigid)
 cube_ref.set_translation(0.0, 0.34, 0.0)
 cube_ref.set_rotation(0.5235988, 0.0, 0.5235988)
 cube_ref.set_scale(0.1)
@@ -31,7 +28,7 @@ cube_ref.set_scale(0.1)
 # Load a mesh by providing the path to the obj file
 cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
 cloth_ref = solver.register_mesh_from_file_path('cloth', cloth_mesh_path)
-cloth_ref.set_simulation_type(lcs.SimulationType.Cloth)
+cloth_ref.set_simulation_type(lcs.MaterialType.Cloth)
 cloth_ref.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
 cloth_ref.set_scale(0.75)
 cloth_ref.add_fixed_point_by_method("LeftBack")
