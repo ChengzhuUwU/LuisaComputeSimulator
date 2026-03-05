@@ -357,7 +357,7 @@ namespace lcs
 		std::vector<float3> sa_q_frame_saved(host_sim_data->sa_q_outer);
 		std::vector<float3> sa_qv_frame_saved(host_sim_data->sa_q_v_outer);
 
-		std::ofstream file(full_path.data(), std::ios::out);
+		std::ofstream file(std::string(full_path), std::ios::out);
 
 		if (file.is_open())
 		{
@@ -487,7 +487,7 @@ namespace lcs
 
 	void SolverInterface::load_saved_state_from_host(const std::string_view& full_path)
 	{
-		std::ifstream file(full_path.data(), std::ios::in);
+		std::ifstream file(std::string(full_path), std::ios::in);
 		if (!file.is_open())
 		{
 			LUISA_ERROR("Unable to open state file: {}", full_path);
@@ -602,7 +602,7 @@ namespace lcs
 			}
 		}
 
-		std::ofstream file(full_path.data(), std::ios::out);
+		std::ofstream file(std::string(full_path), std::ios::out);
 
 		if (file.is_open())
 		{
