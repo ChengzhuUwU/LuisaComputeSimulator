@@ -337,7 +337,7 @@ struct PyNewtonBuilder
 	}
 
 	// register_mesh accepts numpy arrays (vertices Nx3, triangles Mx3)
-	WorldDataWrapper register_mesh(const std::string&				   name,
+	WorldDataWrapper register_mesh_from_array(const std::string&	   name,
 		py::array_t<double, py::array::c_style | py::array::forcecast> vertices,
 		py::array_t<int, py::array::c_style | py::array::forcecast>	   triangles)
 	{
@@ -384,7 +384,7 @@ struct PyNewtonBuilder
 	}
 
 	// register mesh from an obj file path: read file then compute auxiliary topology
-	WorldDataWrapper register_mesh(const std::string& name, const std::string& obj_file_path)
+	WorldDataWrapper register_mesh_from_file_path(const std::string& name, const std::string& obj_file_path)
 	{
 		WorldData info;
 		info.set_name(name);
@@ -599,20 +599,15 @@ PYBIND11_MODULE(lcs_py, m)
 
 	py::class_<PyNewtonBuilder>(m, "NewtonSolver")
 		.def(py::init<>())
-		.def("register_mesh",
-			(WorldDataWrapper(PyNewtonBuilder::*)(const std::string&, VertArr, TriArr)) & PyNewtonBuilder::register_mesh,
-			py::arg("name"), py::arg("vertices"), py::arg("triangles"))
-		.def("register_mesh",
-			(WorldDataWrapper(PyNewtonBuilder::*)(const std::string&, const std::string&)) & PyNewtonBuilder::register_mesh,
-			py::arg("name"), py::arg("obj_file_path"))
+		.def("register_mesh_from_array", &PyNewtonBuilder::register_mesh_from_array, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
+		.def("register_mesh_from_file_path", &PyNewtonBuilder::register_mesh_from_file_path, py::arg("name"), py::arg("obj_file_path"))
 		.def("num_meshes", &PyNewtonBuilder::num_meshes)
 		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names)
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using previously created device/context")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
 		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
-		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position,
-			py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
+		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result_to, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
 		.def("save_sim_result", &PyNewtonBuilder::save_to, py::arg("obj_path"));
 
@@ -679,18 +674,18 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("output_per_frame", &lcs::SceneParams::output_per_frame)
 		.def_readwrite("output_per_iteration", &lcs::SceneParams::output_per_iteration)
 		.def_readwrite("scene_id", &lcs::SceneParams::scene_id)
-		.def_readwrite("num_substep", &lcs::SceneParams::num_substep)
+		.def_readonly("num_substep", &lcs::SceneParams::num_substep)
 		.def_readwrite("nonlinear_iter_count", &lcs::SceneParams::nonlinear_iter_count)
 		.def_readwrite("pcg_iter_count", &lcs::SceneParams::pcg_iter_count)
 		.def_readwrite("current_frame", &lcs::SceneParams::current_frame)
-		.def_readwrite("current_nonlinear_iter", &lcs::SceneParams::current_nonlinear_iter)
-		.def_readwrite("current_pcg_it", &lcs::SceneParams::current_pcg_it)
-		.def_readwrite("current_substep", &lcs::SceneParams::current_substep)
+		.def_readonly("current_nonlinear_iter", &lcs::SceneParams::current_nonlinear_iter)
+		.def_readonly("current_pcg_it", &lcs::SceneParams::current_pcg_it)
+		.def_readonly("current_substep", &lcs::SceneParams::current_substep)
 		.def_readwrite("collision_detection_frequece", &lcs::SceneParams::collision_detection_frequece)
 		.def_readwrite("contact_energy_type", &lcs::SceneParams::contact_energy_type)
 		.def_readwrite("implicit_dt", &lcs::SceneParams::implicit_dt)
 		.def_readwrite("explicit_dt", &lcs::SceneParams::explicit_dt)
-		.def_readwrite("dt", &lcs::SceneParams::dt)
+		.def_readonly("dt", &lcs::SceneParams::dt)
 		.def_readwrite("floor", &lcs::SceneParams::floor)
 		.def_readwrite("gravity", &lcs::SceneParams::gravity)
 		.def_readwrite("stiffness_bending_ui", &lcs::SceneParams::stiffness_bending_ui)

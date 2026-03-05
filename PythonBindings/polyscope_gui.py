@@ -121,9 +121,6 @@ class SimulationGUI:
             _, cfg.use_ccd_linesearch = psim.Checkbox(
                 "Use CCD LineSearch", cfg.use_ccd_linesearch
             )
-            _, cfg.stiffness_bending_ui = psim.SliderFloat(
-                "Bending Stiffness", cfg.stiffness_bending_ui, v_min=0.0, v_max=10.0
-            )
             _, cfg.print_system_energy = psim.Checkbox(
                 "Print Energy", cfg.print_system_energy
             )
@@ -132,6 +129,10 @@ class SimulationGUI:
                 "Use Self-Collision", cfg.use_self_collision
             )
             psim.TreePop()
+        if cfg.print_system_energy:
+            cfg.use_energy_linesearch = True 
+            # energy = self._solver.get_system_energy()
+            # psim.TextUnformatted(f"System Energy: {energy:.6e}")
 
     # ---- Simulation panel ------------------------------------------------
 
