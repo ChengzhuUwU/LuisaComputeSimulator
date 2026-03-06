@@ -6,13 +6,10 @@ class PinnedVertexAnimator:
 	"""Manage fixed-point selection and Python-driven per-frame pinned vertex updates."""
 
 	def __init__(self, world_data):
-		self.world_data = world_data
-		self.mesh_idx = None
-		self._vertex_transform_map = {}
-		self._rest_positions = None
-
-	def set_mesh_index(self, mesh_idx: int):
-		self.mesh_idx = int(mesh_idx)
+		self.world_data: lcs.WorldData = world_data
+		self.mesh_idx: int = world_data.get_registration_index()
+		self._vertex_transform_map: Dict[int, FixedPointTransform] = {}
+		self._rest_positions: np.ndarray = np.asarray(self.world_data.get_rest_positions(), dtype=np.float32)
 
 	def add_rule_by_method(self, method: str, transform: FixedPointTransform, range_value: float = 0.001):
 		before = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
@@ -23,9 +20,6 @@ class PinnedVertexAnimator:
 			# If rules overlap, latest rule wins for that vertex.
 			self._vertex_transform_map[int(vid)] = transform
 		return new_ids
-
-	def capture_rest_positions(self):
-		self._rest_positions = np.asarray(self.world_data.get_rest_positions(), dtype=np.float32)
 
 	def update_pinned_vertices(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:

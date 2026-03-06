@@ -59,10 +59,6 @@ animator.add_rule_by_method(
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
 
-mesh_idx = cloth_ref.get_registration_index()
-animator.set_mesh_index(mesh_idx)
-animator.capture_rest_positions()
-
 # Set scene parameters
 config_ref = solver.get_config()
 config_ref.nonlinear_iter_count = 1

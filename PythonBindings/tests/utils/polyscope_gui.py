@@ -138,7 +138,18 @@ class SimulationGUI:
 
     def _panel_simulation(self):
         cfg = self._config
-        if psim.TreeNode("Simulation"):
+        # Prefer TreeNodeEx default-open; gracefully fallback for older bindings.
+        tree_node_ex = getattr(psim, "TreeNodeEx", None)
+        if tree_node_ex is not None:
+            default_open_flag = getattr(psim, "ImGuiTreeNodeFlags_DefaultOpen", 0)
+            is_open = tree_node_ex("Simulation", default_open_flag)
+        else:
+            set_next_item_open = getattr(psim, "SetNextItemOpen", None)
+            if set_next_item_open is not None:
+                set_next_item_open(True, getattr(psim, "ImGuiCond_Once", 0))
+            is_open = psim.TreeNode("Simulation")
+
+        if is_open:
             psim.TextUnformatted(f"Frame {cfg.current_frame}")
 
             if psim.Button("Reset"):
