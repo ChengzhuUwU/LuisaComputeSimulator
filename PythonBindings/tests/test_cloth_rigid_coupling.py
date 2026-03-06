@@ -2,12 +2,12 @@ import trimesh
 import numpy as np
 import os, sys
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
-import Utils.arg_parser
-args = Utils.arg_parser.parse_args()
+import utils.arg_parser
+args = utils.arg_parser.parse_args()
 
 # Initialize LuisaCompute device
 backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
@@ -61,8 +61,8 @@ if args.headless:
 		solver.physics_step_gpu()
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
 else:
-	import Utils.polyscope_gui 
-	gui = Utils.polyscope_gui.SimulationGUI(solver, config_ref, output_dir)
+	import utils.polyscope_gui 
+	gui = utils.polyscope_gui.SimulationGUI(solver, config_ref, output_dir)
 	gui.show()
 
 solver.cleanup_device()
