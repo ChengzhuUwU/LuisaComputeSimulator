@@ -33,6 +33,14 @@ namespace BufferOp
 	template <typename T>
 	static void buffer_upload(luisa::compute::Stream& stream, const std::vector<T>& src, luisa::compute::Buffer<T>& dst)
 	{
+		if (!dst.valid())
+		{
+			LUISA_ERROR("buffer_upload failed: destination buffer is invalid");
+		}
+		if (src.size() != dst.size())
+		{
+			LUISA_ERROR("buffer_upload size mismatch {} != {}", src.size(), dst.size());
+		}
 		stream << dst.copy_from(src.data());
 	}
 
@@ -42,6 +50,14 @@ namespace BufferOp
 		std::vector<T>&									dst,
 		const bool										wait = false)
 	{
+		if (!src.valid())
+		{
+			LUISA_ERROR("buffer_download failed: source buffer is invalid");
+		}
+		if (dst.size() != src.size())
+		{
+			LUISA_ERROR("buffer_download size mismatch {} != {}", dst.size(), src.size());
+		}
 		stream << src.copy_to(dst.data());
 		if (wait)
 			stream << luisa::compute::synchronize();

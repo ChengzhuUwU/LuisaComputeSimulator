@@ -811,7 +811,7 @@ namespace lcs
 
 		try
 		{
-			auto dev = device_state.owned_context->create_device(backend, nullptr, true);
+			auto dev = device_state.owned_context->create_device(backend, nullptr, false);
 			device_state.owned_device = std::make_unique<luisa::compute::Device>(std::move(dev));
 			auto st = device_state.owned_device->create_stream(luisa::compute::StreamTag::COMPUTE);
 			device_state.owned_stream = std::make_unique<luisa::compute::Stream>(std::move(st));
