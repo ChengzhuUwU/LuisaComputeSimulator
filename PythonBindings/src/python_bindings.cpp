@@ -202,6 +202,29 @@ struct WorldDataWrapper
 	{
 		return wd->get_registration_index();
 	}
+
+	py::list get_fixed_point_indices() const
+	{
+		const auto& indices = wd->fixed_point_indices;
+		py::list	out;
+		for (auto idx : indices)
+			out.append(static_cast<uint32_t>(idx));
+		return out;
+	}
+
+	py::array_t<float> get_rest_positions() const
+	{
+		const auto		   rest = wd->get_rest_positions();
+		py::array_t<float> out({ rest.size(), static_cast<size_t>(3) });
+		auto			   buf = out.mutable_unchecked<2>();
+		for (size_t i = 0; i < rest.size(); ++i)
+		{
+			buf(i, 0) = rest[i][0];
+			buf(i, 1) = rest[i][1];
+			buf(i, 2) = rest[i][2];
+		}
+		return out;
+	}
 };
 
 // Python-facing Newton-like builder that stores a vector<WorldData>
@@ -408,6 +431,11 @@ struct PyNewtonBuilder
 		return WorldDataWrapper(&solver_ptr->get_world_data()[sorted_idx]);
 	}
 
+	uint get_sorted_mesh_index_by_registration_id(uint registration_id) const
+	{
+		return solver_ptr->query_object_index_by_registration_id(registration_id);
+	}
+
 	void save_sim_result(const std::string& full_path)
 	{
 		if (!solver_ptr)
@@ -571,7 +599,11 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("set_rotation", &WorldDataWrapper::set_rotation)
 		.def("set_scale", &WorldDataWrapper::set_scale)
 		.def("get_name", &WorldDataWrapper::get_name)
-		.def("get_registration_index", &WorldDataWrapper::get_registration_index);
+		.def("get_registration_index", &WorldDataWrapper::get_registration_index)
+		.def("get_fixed_point_indices", &WorldDataWrapper::get_fixed_point_indices,
+			"Return currently registered fixed-point local vertex indices as a Python list")
+		.def("get_rest_positions", &WorldDataWrapper::get_rest_positions,
+			"Return rest positions (after object transform) as an (N,3) float32 numpy array");
 
 	// disambiguate overloaded register_mesh signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
@@ -621,6 +653,10 @@ PYBIND11_MODULE(lcs_py, m)
 			"Return one object simulation result as tuple (vertices, faces) by unique object name")
 		.def("get_object_by_registration_id", &PyNewtonBuilder::get_object_by_registration_id, py::arg("registration_id"))
 		.def("get_object_by_unique_name", &PyNewtonBuilder::get_object_by_unique_name, py::arg("unique_name"))
+		.def("get_sorted_mesh_index_by_registration_id",
+			&PyNewtonBuilder::get_sorted_mesh_index_by_registration_id,
+			py::arg("registration_id"),
+			"Map a registration id to solver internal mesh index used by update_pinned_verts_position")
 		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"));
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.
