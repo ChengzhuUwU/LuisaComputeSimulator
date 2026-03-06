@@ -118,8 +118,11 @@ namespace lcs
 
 			MaterialType			  material_type = MaterialType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
-			uint					  registration_index = std::numeric_limits<uint>::max();
 
+			uint registration_index = std::numeric_limits<uint>::max();
+			uint sorted_index = std::numeric_limits<uint>::max();
+
+		public:
 			SimMesh::TriangleMeshData& get_mesh() { return input_mesh; }
 
 			template <typename T>
@@ -293,6 +296,10 @@ namespace lcs
 			uint get_registration_index() const
 			{
 				return registration_index;
+			}
+			uint get_sorted_index() const
+			{
+				return sorted_index;
 			}
 
 			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,

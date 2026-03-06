@@ -13,6 +13,7 @@
 #include "MeshOperation/mesh_reader.h"
 #include "SimulationSolver/newton_solver.h"
 #include "SimulationCore/scene_params.h"
+#include "app_simulation_demo_config.h"
 
 namespace py = pybind11;
 using namespace lcs;
@@ -293,13 +294,31 @@ struct PyNewtonBuilder
 		py::list				 out;
 		const auto&				 world_data = solver_ptr->get_world_data();
 		std::vector<std::string> names(world_data.size());
-		for (const auto& w : world_data)
+		// for (const auto& w : world_data)
+		// {
+		// 	names[w.get_registration_index()] = w.get_model_name();
+		// }
+		for (uint registration_id = 0; registration_id < world_data.size(); ++registration_id)
 		{
-			names[w.get_registration_index()] = w.get_model_name();
+			const uint	sorted_idx = solver_ptr->query_object_index_by_registration_id(registration_id);
+			const auto& w = world_data[sorted_idx];
+			names[registration_id] = w.get_model_name();
 		}
 		for (const auto& name : names)
 			out.append(name);
 		return out;
+	}
+
+	// Debug helper to print registered meshes info in C++ logs
+	void print_registered_meshes_info() const
+	{
+		auto& world_data = solver_ptr->get_world_data();
+		for (auto& w : world_data)
+		{
+			auto& mesh = w.get_mesh();
+			LUISA_INFO("Mesh '{}': registration_id={}, num_verts={}, num_faces={}",
+				w.get_model_name(), w.get_registration_index(), mesh.model_positions.size(), mesh.faces.size());
+		}
 	}
 
 	// Initialize underlying NewtonSolver using the device previously set via init_device()/set_device().
@@ -307,6 +326,15 @@ struct PyNewtonBuilder
 	{
 		solver_ptr->init_solver();
 		LUISA_INFO("Solver initialized.");
+	}
+
+	// Load a full scene from JSON, including world_data and scene params.
+	// This should be called before init_solver().
+	void load_scene_from_json(const std::string& json_path)
+	{
+		Demo::Simulation::load_scene_params_from_json([&]() -> lcs::Initializer::WorldData&
+			{ return solver_ptr->register_world_data(lcs::Initializer::WorldData()); },
+			json_path);
 	}
 
 	void physics_step_cpu()
@@ -613,8 +641,13 @@ PYBIND11_MODULE(lcs_py, m)
 		.def(py::init<>())
 		.def("register_mesh_from_array", &PyNewtonBuilder::register_mesh_from_array, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
 		.def("register_mesh_from_file_path", &PyNewtonBuilder::register_mesh_from_file_path, py::arg("name"), py::arg("obj_file_path"))
+		.def("load_scene_from_json",
+			&PyNewtonBuilder::load_scene_from_json,
+			py::arg("json_path"),
+			"Load world_data and scene params from a JSON scene file (same format as app_simulation).")
 		.def("num_meshes", &PyNewtonBuilder::num_meshes)
 		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names)
+		.def("print_registered_meshes_info", &PyNewtonBuilder::print_registered_meshes_info, "Print registered meshes info")
 		.def("init_device",
 			&PyNewtonBuilder::init_device,
 			py::arg("backend_name") = py::none(),

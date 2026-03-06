@@ -2,13 +2,14 @@
 
 #include <vector>
 #include "Initializer/init_mesh_data.h"
+#include <functional>
 
 namespace Demo
 {
 
 	namespace Simulation
 	{
-		void load_scene_params_from_json(std::vector<lcs::Initializer::WorldData>& shell_list, const std::string& json_path);
+		void load_scene_params_from_json(const std::function<lcs::Initializer::WorldData&()>& fn_register_mesh, const std::string& json_path);
 	} // namespace Simulation
 
 } // namespace Demo

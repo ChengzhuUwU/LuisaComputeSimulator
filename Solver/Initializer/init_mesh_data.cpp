@@ -307,13 +307,7 @@ namespace lcs
 		// template<template<typename> typename BasicBuffer>
 		void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
 		{
-			for (uint i = 0; i < world_data.size(); i++)
-			{
-				if (world_data[i].registration_index == std::numeric_limits<uint>::max())
-				{
-					world_data[i].registration_index = i;
-				}
-			}
+			const uint num_meshes = world_data.size();
 
 			std::sort(world_data.begin(),
 				world_data.end(),
@@ -321,10 +315,13 @@ namespace lcs
 				{
 					if (left.material_type != right.material_type)
 						return int(left.material_type) < int(right.material_type);
-					return left.registration_index < right.registration_index;
+					return left.get_registration_index() < right.get_registration_index();
 				});
-			const uint num_meshes = world_data.size();
-			// std::vector<SimMesh::TriangleMeshData> input_meshes(num_meshes);
+
+			for (uint i = 0; i < num_meshes; i++)
+			{
+				world_data[i].sorted_index = i;
+			}
 
 			mesh_data->num_meshes = num_meshes;
 
@@ -362,7 +359,7 @@ namespace lcs
 				{
 					if (!shell_info.holds<ClothMaterial>())
 					{
-						shell_info.physics_material = ClothMaterial();
+						shell_info.set_physics_material(ClothMaterial());
 					}
 					auto& mat = shell_info.get_material<ClothMaterial>();
 					mat.is_shell = true; // Cloth material must be shell
@@ -371,16 +368,16 @@ namespace lcs
 				{
 					if (!shell_info.holds<TetMaterial>())
 					{
-						shell_info.physics_material = TetMaterial();
+						shell_info.set_physics_material(TetMaterial());
 					}
 					auto& mat = shell_info.get_material<TetMaterial>();
-					mat.is_shell = false;
+					mat.is_shell = false; // Tetrahedral mesh must be solid
 				}
 				else if (shell_info.material_type == MaterialType::Rigid)
 				{
 					if (!shell_info.holds<RigidMaterial>())
 					{
-						shell_info.physics_material = RigidMaterial();
+						shell_info.set_physics_material(RigidMaterial());
 					}
 					const bool has_boundary =
 						input_mesh.dihedral_edges.size() != input_mesh.edges.size();
@@ -408,7 +405,7 @@ namespace lcs
 				{
 					if (!shell_info.holds<RodMaterial>())
 					{
-						shell_info.physics_material = RodMaterial();
+						shell_info.set_physics_material(RodMaterial());
 					}
 					auto& mat = shell_info.get_material<RodMaterial>();
 					mat.is_shell = true;

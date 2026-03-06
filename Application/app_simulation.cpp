@@ -72,11 +72,14 @@ int main(int argc, char** argv)
 	{
 		LUISA_INFO("Load default scene {}", scene_json_path);
 	}
-	std::vector<lcs::Initializer::WorldData>& world_data = solver.get_world_data();
-	Demo::Simulation::load_scene_params_from_json(world_data, scene_json_path);
+	Demo::Simulation::load_scene_params_from_json([&]() -> lcs::Initializer::WorldData&
+		{ return solver.register_world_data(lcs::Initializer::WorldData()); },
+		scene_json_path);
 
 	// Init Solver
 	solver.init_solver();
+
+	auto& world_data = solver.get_world_data();
 
 	auto fn_update_pinned_verts = [&](const uint curr_frame)
 	{

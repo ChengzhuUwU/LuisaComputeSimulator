@@ -185,7 +185,9 @@ namespace lcs
 		SimulationData<std::vector>&		   get_host_sim_data() const { return *host_sim_data; }
 		CollisionData<std::vector>&			   get_host_collision_data() const { return *host_collision_data; }
 		CollisionData<luisa::compute::Buffer>& get_device_collision_data() const { return *collision_data; }
-		std::vector<Initializer::WorldData>&   get_world_data() { return world_data; }
+
+		// Note that: world_data will be sorted after calling `init_solver()`
+		std::vector<Initializer::WorldData>& get_world_data() { return world_data; }
 
 		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd)
 		{

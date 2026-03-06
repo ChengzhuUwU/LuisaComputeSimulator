@@ -16,9 +16,7 @@ solver.init_device(backend_name=backend)
 
 # Load a mesh by providing the path to the obj file
 cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
-# Keep registration order consistent with Resources/Scenes/default_scene.json.
-# For rigid-rigid contact, this avoids order-sensitive behavior differences
-# between Python and C++ demo paths.
+
 cube_top_ref = solver.register_mesh_from_file_path('cube', cube_mesh_path)
 cube_top_ref.set_simulation_type(lcs.MaterialType.Rigid)
 cube_top_ref.set_scale(0.1)

@@ -20,7 +20,7 @@ namespace Demo::Simulation
 
 	using namespace lcs::Initializer;
 
-	void load_scene_params_from_json(std::vector<WorldData>& shell_list, const std::string& json_path)
+	void load_scene_params_from_json(const std::function<lcs::Initializer::WorldData&()>& fn_register_mesh, const std::string& json_path)
 	{
 		// Determine which path to open:
 		// 1) If user provided an absolute path and it exists, use it.
@@ -218,8 +218,6 @@ namespace Demo::Simulation
 			size_t		i, n;
 			yyjson_arr_foreach(shells, i, n, shell_val)
 			{
-				lcs::Initializer::WorldData info;
-
 				if (!yyjson_is_obj(shell_val))
 					continue;
 
@@ -266,6 +264,8 @@ namespace Demo::Simulation
 					LUISA_WARNING("Neither 'absolute_path' nor 'relative_path' exist or point to a valid file for this shell; skipping shell");
 					continue;
 				}
+
+				lcs::Initializer::WorldData& info = fn_register_mesh();
 
 				// set display name: prefer provided model_name, otherwise use filename of resolved path
 				yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
@@ -723,9 +723,6 @@ namespace Demo::Simulation
 						info.add_fixed_point_info(mfp);
 					}
 				}
-
-				// finally add to shell_list and load mesh (and fixed points if provided)
-				auto& curr_body = shell_list.emplace_back(info);
 			}
 		}
 
