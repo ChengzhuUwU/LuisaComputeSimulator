@@ -17,7 +17,7 @@ namespace lcs
 		BufferView<float3>										   sa_x_step_start,
 		BufferView<float3>										   sa_x,
 		BufferView<float3>										   sa_scaled_model_x,
-		BufferView<uint>										   sa_x_to_dof_map,
+		BufferView<VertexToDofMap>								   sa_x_to_dof_map,
 		BufferView<float>										   sa_system_energy) noexcept
 		: _sa_rest_vert_area(sa_rest_vert_area)
 		, _sa_is_fixed(sa_is_fixed)
@@ -265,8 +265,8 @@ namespace lcs
 				Bool	 collide = calculate_per_vert_grad_hess_template(
 					vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
 
-				const Uint dof_info = sa_x_to_dof_map->read(vid);
-				const Uint dof_idx = dof_info & Attributions::RIGID_BODY_MASK;
+				const auto dof_info = sa_x_to_dof_map->read(vid);
+				const Uint dof_idx = dof_info->get_dof_idx();
 				const Uint body_idx = (dof_idx - vid_start) / 4;
 
 				const Float4 weight = make_float4(1.0f, sa_scaled_model_x->read(vid));
@@ -443,7 +443,7 @@ namespace lcs
 					bool	   collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
 					if (collide)
 					{
-						const uint dof_idx = sa_x_to_dof_map[vid] & Attributions::RIGID_BODY_MASK;
+						const uint dof_idx = sa_x_to_dof_map[vid].get_dof_idx();
 						const uint body_idx = (dof_idx - prefix_vid) / 4;
 						float3	   model_x = sa_scaled_model_x[vid];
 						float4	   weight = luisa::make_float4(1.0f, model_x);

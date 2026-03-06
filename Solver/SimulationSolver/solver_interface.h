@@ -142,7 +142,7 @@ namespace lcs
 			const std::array<float, 3>&				 pinned_verts_target_position);
 		void update_pinned_body_state(const uint body_id,
 			const std::array<float, 3>&			 translation = { 0.0f, 0.0f, 0.0f },
-			const std::array<float, 4>&			 rotation = { 0.0f, 0.0f, 0.0f, 0.0f });
+			const std::array<float, 3>&			 rotation = { 0.0f, 0.0f, 0.0f });
 
 	protected:
 		void physics_step_prev_operation();
@@ -156,6 +156,7 @@ namespace lcs
 
 		// TODO: Impl with vector
 		std::unordered_map<uint, uint>			   vid_to_animation_idx_map;
+		std::unordered_map<uint, uint>			   body_to_animation_idx_map;
 		std::vector<Animation::PerVertexAnimation> per_vertex_animations;
 		std::vector<Animation::PerBodyAnimation>   per_body_animations;
 

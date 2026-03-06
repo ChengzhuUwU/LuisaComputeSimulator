@@ -419,9 +419,9 @@ namespace lcs
 		{
 			const Uint vid = dispatch_id().x;
 			Float3	   new_dx;
-			const Uint map_info = sa_x_to_dof_map->read(vid);
-			const Uint mapped_dof = map_info & Attributions::RIGID_BODY_MASK;
-			$if((map_info & Attributions::RIGID_BODY_FLAG) == 0) // Soft body
+			const auto map_info = sa_x_to_dof_map->read(vid);
+			const Uint mapped_dof = map_info->get_dof_idx();
+			$if(map_info->is_soft_body()) // Soft body
 			{
 				new_dx = input_q->read(mapped_dof);
 			}
@@ -2415,16 +2415,16 @@ namespace lcs
 	{
 		stream << fn_apply_q_to_x_template(input_q, output_x).dispatch(output_x.size());
 	}
-	float3 fn_apply_template(const std::vector<uint>& sa_x_to_dof_map,
-		const std::vector<float3>&					  sa_scaled_model_x,
-		const std::vector<float3>&					  input_q,
-		const uint									  vid)
+	float3 fn_apply_template(const std::vector<VertexToDofMap>& sa_x_to_dof_map,
+		const std::vector<float3>&								sa_scaled_model_x,
+		const std::vector<float3>&								input_q,
+		const uint												vid)
 	{
 
 		float3	   new_dx;
-		const uint map_info = sa_x_to_dof_map[vid];
-		const uint dof_idx = map_info & (~Attributions::RIGID_BODY_FLAG);
-		if ((map_info & Attributions::RIGID_BODY_FLAG) == 0) // Soft body
+		const auto map_info = sa_x_to_dof_map[vid];
+		const uint dof_idx = map_info.get_dof_idx();
+		if (map_info.is_soft_body()) // Soft body
 		{
 			new_dx = input_q[dof_idx];
 		}

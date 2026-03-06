@@ -12,6 +12,47 @@
 
 namespace lcs
 {
+	namespace Attributions
+	{
+		static constexpr uint32_t RIGID_BODY_FLAG = 1u << 31;
+		static constexpr uint32_t RIGID_BODY_MASK = ~RIGID_BODY_FLAG;
+
+		static constexpr uint32_t ABD_Is_Translation_DOF = 1u << 30;
+
+	} // namespace Attributions
+
+	struct VertexToDofMap
+	{
+		uint map_info;
+		void set_as_soft_body(const uint dof_idx)
+		{
+			map_info = dof_idx;
+		}
+		void set_as_rigid_body(const uint affine_body_id)
+		{
+			map_info = affine_body_id | Attributions::RIGID_BODY_FLAG;
+		}
+		bool is_soft_body() const { return (map_info & Attributions::RIGID_BODY_FLAG) == 0; }
+		bool is_rigid_body() const { return (map_info & Attributions::RIGID_BODY_FLAG) != 0; }
+		uint get_soft_body_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
+		uint get_rigid_body_affine_body_id() const { return map_info & Attributions::RIGID_BODY_MASK; }
+		uint get_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
+	};
+
+} // namespace lcs
+
+// clang-format off
+LUISA_STRUCT(lcs::VertexToDofMap, map_info){
+	luisa::compute::Var<bool> is_soft_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) == 0; }
+	luisa::compute::Var<bool> is_rigid_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) != 0; }
+	luisa::compute::Var<uint> get_soft_body_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
+	luisa::compute::Var<uint> get_rigid_body_affine_body_id() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
+	luisa::compute::Var<uint> get_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
+};
+// clang-format on
+
+namespace lcs
+{
 	using ushort = uint16_t;
 	template <template <typename...> typename BufferType>
 	struct ColoredData : SimulationType
@@ -277,15 +318,6 @@ namespace lcs
 	//     BufferType<uint>               sa_vert_adj_material_force_verts_csr;
 	// };
 
-	namespace Attributions
-	{
-		static constexpr uint32_t RIGID_BODY_FLAG = 1u << 31;
-		static constexpr uint32_t RIGID_BODY_MASK = ~RIGID_BODY_FLAG;
-
-		static constexpr uint32_t ABD_Is_Translation_DOF = 1u << 30;
-
-	} // namespace Attributions
-
 	template <template <typename...> typename BufferType>
 	struct SimulationData : SimulationType
 	{
@@ -314,9 +346,9 @@ namespace lcs
 
 		// If value & (1<<31) == 0, then it's a soft body vert, map to dof directly;
 		//                 else it's a rigid body vert, map to dof by affine body id
-		BufferType<uint> sa_x_to_dof_map;
-		BufferType<uint> sa_q_is_fixed;
-		BufferType<uint> sa_q_property; // Constant
+		BufferType<VertexToDofMap> sa_x_to_dof_map;
+		BufferType<uint>		   sa_q_is_fixed;
+		BufferType<uint>		   sa_q_property; // Constant
 
 		std::vector<float3> sa_x_outer;
 		std::vector<float3> sa_v_outer;

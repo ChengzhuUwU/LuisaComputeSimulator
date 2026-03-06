@@ -21,7 +21,7 @@ namespace lcs
 			luisa::compute::BufferView<float3>					sa_x_step_start,
 			luisa::compute::BufferView<float3>					sa_x,
 			luisa::compute::BufferView<float3>					_sa_scaled_model_x,
-			luisa::compute::BufferView<uint>					_sa_x_to_dof_map,
+			luisa::compute::BufferView<VertexToDofMap>			_sa_x_to_dof_map,
 			luisa::compute::BufferView<float>					sa_system_energy) noexcept;
 
 		void compile(AsyncCompiler& compiler) override;
@@ -65,8 +65,9 @@ namespace lcs
 		luisa::compute::BufferView<float3> _sa_x;
 		luisa::compute::BufferView<float3> _sa_x_step_start;
 		luisa::compute::BufferView<float3> _sa_scaled_model_x;
-		luisa::compute::BufferView<uint>   _sa_x_to_dof_map;
 		luisa::compute::BufferView<float>  _sa_system_energy;
+
+		luisa::compute::BufferView<VertexToDofMap> _sa_x_to_dof_map;
 
 		luisa::compute::Shader<1, luisa::compute::BufferView<float3>, float, bool, float, uint>						 _shader;
 		luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>, float, bool, float, uint>		 _eval_soft_shader;

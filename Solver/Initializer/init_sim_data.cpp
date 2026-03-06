@@ -514,7 +514,7 @@ namespace lcs::Initializer
 					num_verts_soft,
 					[&](const uint vid)
 					{
-						sim_data->sa_x_to_dof_map[vid] = vid;
+						sim_data->sa_x_to_dof_map[vid].set_as_soft_body(vid);
 						sim_data->sa_q_is_fixed[vid] = mesh_data->sa_is_fixed[vid];
 						sim_data->sa_q_property[vid] = 0;
 					});
@@ -528,7 +528,7 @@ namespace lcs::Initializer
 					const uint suffix_vid = mesh_data->prefix_num_verts[meshIdx + 1];
 					for (uint vid = prefix_vid; vid < suffix_vid; vid++)
 					{
-						sim_data->sa_x_to_dof_map[vid] = dof_idx | (Attributions::RIGID_BODY_FLAG);
+						sim_data->sa_x_to_dof_map[vid].set_as_rigid_body(dof_idx);
 						sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
 					}
 					bool has_fixed_vert = std::any_of(mesh_data->sa_is_fixed.begin() + prefix_vid,
