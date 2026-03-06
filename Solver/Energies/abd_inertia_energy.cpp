@@ -87,7 +87,13 @@ namespace lcs
 					sa_q->read(affine_body[3]) - sa_q_tilde->read(affine_body[3]) };
 
 				Float4x4 mass_matrix = sa_vert_mass->read(body_idx);
-				Float3	 gradient[4] = { Zero3, Zero3, Zero3, Zero3 };
+
+				// apply dirichlet stiffness if present
+				{
+					mass_matrix = sa_stiffness_dirichlet.read(body_idx) * mass_matrix;
+				}
+
+				Float3 gradient[4] = { Zero3, Zero3, Zero3, Zero3 };
 
 				for (uint ii = 0; ii < 4; ii++)
 				{
