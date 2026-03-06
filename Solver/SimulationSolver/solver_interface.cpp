@@ -118,8 +118,14 @@ namespace lcs
 		for (uint mesh_idx = 0; mesh_idx < host_mesh_data->num_meshes; mesh_idx++)
 		{
 			const auto& world_data = world_datas[mesh_idx];
-			const uint	prefix_vid = host_mesh_data->prefix_num_verts[mesh_idx];
-			const uint	suffix_vid = host_mesh_data->prefix_num_verts[mesh_idx + 1];
+
+			if (world_data.holds<lcs::Initializer::RigidMaterial>())
+			{
+				continue;
+			}
+			const uint prefix_vid = host_mesh_data->prefix_num_verts[mesh_idx];
+			const uint suffix_vid = host_mesh_data->prefix_num_verts[mesh_idx + 1];
+
 			for (uint index = 0; index < world_data.fixed_point_indices.size(); index++)
 			{
 				const uint local_vid = world_data.fixed_point_indices[index];

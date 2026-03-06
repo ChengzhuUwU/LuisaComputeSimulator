@@ -86,6 +86,10 @@ int main(int argc, char** argv)
 		// Animation for fixed points
 		for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
 		{
+			if (world_data[mesh_idx].holds<lcs::Initializer::RigidMaterial>())
+			{
+				continue;
+			}
 			const float										curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
 			std::vector<lcs::Animation::PerVertexAnimation> per_vertex_animations;
 			std::vector<lcs::Animation::PerBodyAnimation>	per_body_animations;
