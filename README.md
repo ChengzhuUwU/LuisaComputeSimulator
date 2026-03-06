@@ -15,7 +15,7 @@ LuisaComputeSimulator is a high-performance cross-platform **Physics Simulator**
 
 ### Python Frontend
 
-Sample Python-frontend code can be found at [example_usage.py](PythonBindings/example_usage.py):
+Sample Python-frontend code can be found at [test_cloth_rigid_coupling.py](PythonBindings/test_cloth_rigid_coupling.py):
 
 ```python
     from sim_utils import parse_args
