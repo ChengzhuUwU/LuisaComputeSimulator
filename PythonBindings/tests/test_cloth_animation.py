@@ -16,13 +16,12 @@ solver.init_device(backend_name=backend)
 
 # Load a mesh by providing the path to the obj file
 cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
-cloth_ref = solver.register_mesh_from_file_path('cylinder7K', cloth_mesh_path)
-cloth_ref.set_simulation_type(lcs.MaterialType.Cloth)
+cloth = solver.register_mesh_from_file_path('cylinder7K', cloth_mesh_path)
+cloth.set_simulation_type(lcs.MaterialType.Cloth)
 
 from utils.animation_transform import FixedPointTransform
 from utils.vertex_animator import VertexAnimator
-animator = VertexAnimator(cloth_ref)
-
+animator = VertexAnimator(cloth)
 animator.add_rule_by_method(
     "Left",
     FixedPointTransform(

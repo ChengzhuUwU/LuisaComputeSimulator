@@ -18,24 +18,26 @@ solver = lcs.NewtonSolver()
 solver.init_device(backend_name=backend)
 
 # Load a mesh by providing the path to the obj file
+import trimesh
 cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
+cube_mesh = trimesh.load(cube_mesh_path, process=False)
 
 def load_top_cube():
-	cube_top_ref = solver.register_mesh_from_file_path('cube_top', cube_mesh_path)
-	cube_top_ref.set_simulation_type(lcs.MaterialType.Rigid)
-	cube_top_ref.set_scale(0.1)
-	cube_top_ref.set_translation(0.0, 0.14, 0.0)
+	cube_top = solver.register_mesh_from_array('cube1', cube_mesh.vertices, cube_mesh.faces)
+	cube_top.set_simulation_type(lcs.MaterialType.Rigid)
+	cube_top.set_scale(0.1)
+	cube_top.set_translation(0.0, 0.14, 0.0)
 
 def load_bottom_cube():
-	cube_bottom_ref = solver.register_mesh_from_file_path('cube_ref', cube_mesh_path)
-	cube_bottom_ref.set_simulation_type(lcs.MaterialType.Rigid)
-	cube_bottom_ref.set_scale(0.1)
-	cube_bottom_ref.set_translation(0.0, 0.01, 0.0)
+	cube_bottom = solver.register_mesh_from_array('cube2', cube_mesh.vertices, cube_mesh.faces)
+	cube_bottom.set_simulation_type(lcs.MaterialType.Rigid)
+	cube_bottom.set_scale(0.1)
+	cube_bottom.set_translation(0.0, 0.01, 0.0)
 
 	body_animator = BodyAnimator(
-		world_data = cube_bottom_ref, 
-		initial_translation=cube_bottom_ref.get_rest_translation(), 
-		initial_rotation=cube_bottom_ref.get_rest_rotation())
+		world_data = cube_bottom, 
+		initial_translation=cube_bottom.get_rest_translation(), 
+		initial_rotation=cube_bottom.get_rest_rotation())
 	body_animator.add_rule_by_method(
 		"All",
 		FixedPointTransform(
