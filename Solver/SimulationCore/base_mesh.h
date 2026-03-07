@@ -30,6 +30,7 @@ namespace lcs
 			uint				 dof_start;
 			std::array<float, 3> translation;
 			std::array<float, 3> rotation;
+			std::array<float, 3> scale;
 
 			void set_translation(const float x, const float y, const float z)
 			{
@@ -44,6 +45,12 @@ namespace lcs
 				rotation[2] = axis_z;
 				// rotation[3] = angle_w;
 			}
+			void set_scale(const float x, const float y, const float z)
+			{
+				scale[0] = x;
+				scale[1] = y;
+				scale[2] = z;
+			}
 			float4x4 to_transform_matrix() const
 			{
 				// auto trans = luisa::translation(translation[0], translation[1], translation[2]);
@@ -53,7 +60,7 @@ namespace lcs
 				return lcs::make_model_matrix(
 					luisa::make_float3(translation[0], translation[1], translation[2]),
 					luisa::make_float3(rotation[0], rotation[1], rotation[2]),
-					luisa::make_float3(1.0f, 1.0f, 1.0f));
+					luisa::make_float3(scale[0], scale[1], scale[2]));
 			}
 			// std::array<float, 4> rotation;  // quaternion
 			// std::array<float, 3> scale;

@@ -2,36 +2,33 @@ import numpy as np
 
 from utils.animation_transform import DefaultTransformAnimation
 
-
 class BodyAnimator:
 	"""Manage fixed rigid body selection and Python-driven per-frame body updates."""
 
-	def __init__(self, world_data, initial_translation=None, initial_rotation=None, mesh_idx=None):
-		self.world_data = world_data
-		self.mesh_idx = mesh_idx
+	def __init__(self, world_data):
 		self._transform = None
 		self._initial_translation = np.asarray(
-			[0.0, 0.0, 0.0] if initial_translation is None else initial_translation,
+			world_data.get_rest_translation(), 
 			dtype=np.float32,
 		)
 		self._initial_rotation = np.asarray(
-			[0.0, 0.0, 0.0] if initial_rotation is None else initial_rotation,
+			world_data.get_rest_rotation(),
 			dtype=np.float32,
 		)
 
 	def set_mesh_index(self, mesh_idx: int):
-		self.mesh_idx = int(mesh_idx)
+		self.body_id = int(mesh_idx)
 
-	def add_rule_by_method(self, method: str, transform: DefaultTransformAnimation, range_value: float = 0.001):
-		before_fixed_indices = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
-		self.world_data.add_fixed_point_by_method(method, range=range_value)
-		after_fixed_indices = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
+	def add_rule_by_method(self, world_data, method: str, transform: DefaultTransformAnimation, range_value: float = 0.001):
+		before_fixed_indices = np.asarray(world_data.get_fixed_point_indices(), dtype=np.uint32)
+		world_data.add_fixed_point_by_method(method, range=range_value)
+		after_fixed_indices = np.asarray(world_data.get_fixed_point_indices(), dtype=np.uint32)
 		self._transform = transform
 		added_fixed_indices = after_fixed_indices[before_fixed_indices.size :]
 		return added_fixed_indices
 
 	def update_body_animation(self, solver, curr_frame: int, dt: float):
-		if self.mesh_idx is None:
+		if self.body_id is None:
 			raise RuntimeError("mesh_idx is not set.")
 		if self._transform is None:
 			return
@@ -56,4 +53,4 @@ class BodyAnimator:
 				# Feed incremental xyz-angle style rotation expected by solver update API.
 				rotation = rotation + axis * angle_rad
 
-		solver.update_per_body_animation(self.mesh_idx, translation.astype(np.float32), rotation.astype(np.float32))
+		solver.update_per_body_animation(self.body_id, translation.astype(np.float32), rotation.astype(np.float32))

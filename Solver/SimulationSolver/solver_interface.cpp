@@ -231,9 +231,11 @@ namespace lcs
 					{
 						const auto rest_t = wd.translation;
 						const auto rest_r = wd.rotation;
+						const auto rest_s = wd.scale;
 						body_anim.dof_start = dof_idx;
 						body_anim.set_translation(rest_t.x, rest_t.y, rest_t.z);
 						body_anim.set_rotation(rest_r.x, rest_r.y, rest_r.z);
+						body_anim.set_scale(1.0f, 1.0f, 1.0f); // Since we use |AAT-I|, we don't explicitly animate scale
 					}
 					body_to_animation_idx_map[mesh_idx] = per_body_animations.size();
 					per_body_animations.push_back(body_anim);
@@ -316,11 +318,7 @@ namespace lcs
 			const uint dof_idx = animate.dof_start;
 
 			auto	 transform = animate.to_transform_matrix();
-			float4x3 target_q;
-			target_q[0] = transform[3].xyz();
-			target_q[1] = transform[0].xyz();
-			target_q[2] = transform[1].xyz();
-			target_q[3] = transform[2].xyz();
+			float4x3 target_q = AffineBodyDynamics::extract_q_from_affine_matrix(transform);
 
 			float4x3 curr_q;
 			curr_q[0] = host_sim_data->sa_q_outer[dof_idx + 0u];
@@ -450,7 +448,7 @@ namespace lcs
 		if (vid_to_animation_idx_map.contains(global_vid))
 		{
 			const uint animation_idx = vid_to_animation_idx_map[global_vid];
-			per_vertex_animations[animation_idx].translation = target_position;
+			per_vertex_animations[animation_idx].set_translation(target_position[0], target_position[1], target_position[2]);
 		}
 		else
 		{
@@ -479,26 +477,27 @@ namespace lcs
 		const uint curr_frame = get_scene_params().current_frame;
 
 		// Animation for fixed points
-		for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
+		for (uint sorted_idx = 0; sorted_idx < world_data.size(); sorted_idx++)
 		{
 			// Just sample code for animation, you can replace it with your own animation logic
 			const float curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
-			auto&		wd = world_data[mesh_idx];
+			auto&		wd = world_data[sorted_idx];
+			const uint	register_idx = wd.get_registration_index();
 			if (!wd.fixed_point_default_animations.empty())
 			{
 				if (wd.holds<Initializer::RigidMaterial>())
 				{
 					lcs::Animation::PerBodyAnimation tmp_body_animations;
-					world_data[mesh_idx].update_default_body_animations(curr_time, tmp_body_animations);
-					update_per_body_animation(mesh_idx, tmp_body_animations.translation, tmp_body_animations.rotation);
+					wd.update_default_body_animations(curr_time, tmp_body_animations);
+					update_per_body_animation(register_idx, tmp_body_animations.translation, tmp_body_animations.rotation);
 				}
 				else
 				{
 					std::vector<lcs::Animation::PerVertexAnimation> tmp_vertex_animations;
-					world_data[mesh_idx].update_default_vertex_animations(curr_time, per_vertex_animations);
-					for (const auto& animate : per_vertex_animations)
+					wd.update_default_vertex_animations(curr_time, tmp_vertex_animations);
+					for (const auto& animate : tmp_vertex_animations)
 					{
-						update_per_vertex_animation(mesh_idx, animate.vertex_id, animate.translation);
+						update_per_vertex_animation(register_idx, animate.vertex_id, animate.translation);
 					}
 				}
 			}

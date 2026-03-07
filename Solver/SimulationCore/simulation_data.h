@@ -28,14 +28,12 @@ namespace lcs
 		{
 			map_info = dof_idx;
 		}
-		void set_as_rigid_body(const uint affine_body_id)
+		void set_as_rigid_body(const uint dof_idx)
 		{
-			map_info = affine_body_id | Attributions::RIGID_BODY_FLAG;
+			map_info = dof_idx | Attributions::RIGID_BODY_FLAG;
 		}
 		bool is_soft_body() const { return (map_info & Attributions::RIGID_BODY_FLAG) == 0; }
 		bool is_rigid_body() const { return (map_info & Attributions::RIGID_BODY_FLAG) != 0; }
-		uint get_soft_body_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
-		uint get_rigid_body_affine_body_id() const { return map_info & Attributions::RIGID_BODY_MASK; }
 		uint get_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
 	};
 
@@ -45,8 +43,6 @@ namespace lcs
 LUISA_STRUCT(lcs::VertexToDofMap, map_info){
 	luisa::compute::Var<bool> is_soft_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) == 0; }
 	luisa::compute::Var<bool> is_rigid_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) != 0; }
-	luisa::compute::Var<uint> get_soft_body_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
-	luisa::compute::Var<uint> get_rigid_body_affine_body_id() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
 	luisa::compute::Var<uint> get_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
 };
 // clang-format on

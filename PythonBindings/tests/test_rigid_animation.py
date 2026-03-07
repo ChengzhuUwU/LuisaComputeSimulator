@@ -24,8 +24,22 @@ def load_top_cube():
 	cube_top = solver.create_world_data_from_array('cube1', cube_mesh.vertices, cube_mesh.faces)
 	cube_top.set_simulation_type(lcs.MaterialType.Rigid)
 	cube_top.set_scale(0.1)
-	cube_top.set_translation(0.0, 0.14, 0.0)
-	solver.register_world_data(cube_top)
+	cube_top.set_translation(0.0, 0.34, 0.0)
+
+	body_animator = None
+	# body_animator = BodyAnimator(cube_top)
+	# body_animator.add_rule_by_method(
+	# 	cube_top,
+	# 	"All",
+	# 	DefaultTransformAnimation(
+	# 		use_rotate=True,
+	# 		rot_axis=[1.0, 0.0, 0.0],
+	# 		rot_ang_vel_deg=-45.0,
+	# 	),
+	# )
+	top_cube_id = solver.register_world_data(cube_top)
+	# body_animator.set_mesh_index(top_cube_id)
+	return body_animator
 
 def load_bottom_cube():
 	cube_bottom = solver.create_world_data_from_array('cube2', cube_mesh.vertices, cube_mesh.faces)
@@ -33,15 +47,12 @@ def load_bottom_cube():
 	cube_bottom.set_scale(0.1)
 	cube_bottom.set_translation(0.0, 0.01, 0.0)
 
-	body_animator = BodyAnimator(
-		world_data = cube_bottom, 
-		initial_translation=cube_bottom.get_rest_translation(), 
-		initial_rotation=cube_bottom.get_rest_rotation())
+	body_animator = None
+	body_animator = BodyAnimator(cube_bottom)
 	body_animator.add_rule_by_method(
+		cube_bottom,
 		"All",
 		DefaultTransformAnimation(
-			use_translate=True,
-			translate=[0.0, 0.02, 0.0],
 			use_rotate=True,
 			rot_axis=[1.0, 0.0, 0.0],
 			rot_ang_vel_deg=45.0,
@@ -49,12 +60,16 @@ def load_bottom_cube():
 	)
 	bottom_cube_id = solver.register_world_data(cube_bottom)
 	body_animator.set_mesh_index(bottom_cube_id)
+	
 	return body_animator
 
-load_top_cube()
+# if args.order == 0:
+# 	load_top_cube()
+# 	buttom_cube_animator = load_bottom_cube()
+# else:
+top_cube_animator = load_top_cube()
 buttom_cube_animator = load_bottom_cube()
-
-
+animators = [buttom_cube_animator, top_cube_animator]
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
@@ -62,12 +77,18 @@ solver.init_solver()
 # Set scene parameters
 config_ref = solver.get_config()
 
+config_ref.use_floor = False
+config_ref.nonlinear_iter_count = 1
+# config_ref.use_self_collision = False
+
 # Output directory (for optional file saving)
 output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 def update_animation():
-	buttom_cube_animator.update_body_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+	for animator in animators:
+		if animator is not None:
+			animator.update_body_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
 
 # Launch polyscope GUI or run headless
 if args.headless:

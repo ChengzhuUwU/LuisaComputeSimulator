@@ -90,7 +90,7 @@ namespace lcs
 
 				// apply dirichlet stiffness if present
 				{
-					mass_matrix = sa_stiffness_dirichlet.read(body_idx) * mass_matrix;
+					mass_matrix = sa_stiffness_dirichlet->read(body_idx) * mass_matrix;
 				}
 
 				Float3 gradient[4] = { Zero3, Zero3, Zero3, Zero3 };

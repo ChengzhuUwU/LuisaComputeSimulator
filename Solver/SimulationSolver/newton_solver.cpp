@@ -2798,6 +2798,7 @@ namespace lcs
 					buffer_upload(stream, host_sim_data->sa_x_iter_start, sim_data->sa_x_iter_start);
 					buffer_upload(stream, host_sim_data->sa_q_iter_start, sim_data->sa_q_iter_start);
 					buffer_upload(stream, host_sim_data->sa_x, sim_data->sa_x);
+					// buffer_upload(stream, host_sim_data->sa_q, sim_data->sa_q);
 				}
 
 				host_reset_cgB_cgX_diagA();
@@ -2933,8 +2934,10 @@ namespace lcs
 							  host_sim_data->sa_cgA_fixtopo_offdiag_triplet.data());
 				narrow_phase_detector->download_contact_triplet(stream);
 				host_solve_eigen(stream);
-				CpuParallel::parallel_copy(host_sim_data->sa_cgX, host_sim_data->sa_dq);
-				stream << sim_data->sa_dq.copy_from(host_sim_data->sa_dq.data());
+				buffer_copy(host_sim_data->sa_cgX, host_sim_data->sa_dq);
+				host_apply_q_to_x(host_sim_data->sa_dq, host_sim_data->sa_dx);
+				buffer_upload(stream, host_sim_data->sa_dx, sim_data->sa_dx);
+				buffer_upload(stream, host_sim_data->sa_dq, sim_data->sa_dq);
 			}
 			else
 			{
@@ -2990,7 +2993,6 @@ namespace lcs
 				}
 				get_scene_params().current_nonlinear_iter = iter;
 
-				// TODO: If we use predict position, the start position may not in safe region
 				buffer_copy(stream, sim_data->sa_x, sim_data->sa_x_iter_start);
 				buffer_copy(stream, sim_data->sa_q, sim_data->sa_q_iter_start);
 				buffer_download(stream, sim_data->sa_x_iter_start, host_sim_data->sa_x_iter_start); // For host apply dx
@@ -3079,8 +3081,6 @@ namespace lcs
 					update_contact_set();
 
 					evaluate_contact();
-
-					// stream << fn_evaluate_dirichlet(substep_dt, get_scene_params().stiffness_dirichlet).dispatch(num_verts);
 				}
 
 				stream << luisa::compute::synchronize();
