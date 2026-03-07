@@ -730,6 +730,8 @@ namespace lcs::Initializer
 						luisa::make_float2(mu, lambda);
 				});
 
+			const float default_stiffness_dirichlet = 1e6f;
+
 			// Init soft inertia info
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();
 			soft_inertia_data.constraint_indices.resize(num_verts_soft);
@@ -743,7 +745,7 @@ namespace lcs::Initializer
 					const bool is_fixed = mesh_data->sa_is_fixed[orig_vid];
 					soft_inertia_data.constraint_indices[vid] = orig_vid;
 					soft_inertia_data.sa_soft_vert_mass[vid] = mesh_data->sa_vert_mass[orig_vid];
-					soft_inertia_data.sa_stiffness_dirichlet[vid] = is_fixed ? 1e9f : 1.0f;
+					soft_inertia_data.sa_stiffness_dirichlet[vid] = is_fixed ? default_stiffness_dirichlet : 1.0f;
 				});
 
 			// Rest affine body info
@@ -912,7 +914,7 @@ namespace lcs::Initializer
 				}
 
 				const bool has_fixed_vert = sim_data->sa_q_is_fixed[prefix_dof_abd + 4 * body_idx];
-				abd_inertia_data.sa_stiffness_dirichlet[body_idx] = has_fixed_vert ? 1e9f : 1.0f;
+				abd_inertia_data.sa_stiffness_dirichlet[body_idx] = has_fixed_vert ? default_stiffness_dirichlet : 1.0f;
 
 				float area = std::reduce(mesh_data->sa_rest_vert_area.begin() + prefix_vid,
 					mesh_data->sa_rest_vert_area.begin() + suffix_vid,
