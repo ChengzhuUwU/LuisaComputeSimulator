@@ -20,7 +20,7 @@ namespace Demo::Simulation
 
 	using namespace lcs::Initializer;
 
-	void load_scene_params_from_json(const std::function<lcs::Initializer::WorldData&()>& fn_register_mesh, const std::string& json_path)
+	void load_scene_params_from_json(const std::function<void(const lcs::Initializer::WorldData&)>& fn_register_mesh, const std::string& json_path)
 	{
 		// Determine which path to open:
 		// 1) If user provided an absolute path and it exists, use it.
@@ -265,7 +265,7 @@ namespace Demo::Simulation
 					continue;
 				}
 
-				lcs::Initializer::WorldData& info = fn_register_mesh();
+				lcs::Initializer::WorldData info;
 
 				// set display name: prefer provided model_name, otherwise use filename of resolved path
 				yyjson_val* m = yyjson_obj_get(shell_val, "model_name");
@@ -723,6 +723,7 @@ namespace Demo::Simulation
 						info.add_fixed_point_info(mfp);
 					}
 				}
+				fn_register_mesh(info);
 			}
 		}
 

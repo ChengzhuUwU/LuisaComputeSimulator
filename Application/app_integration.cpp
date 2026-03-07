@@ -16,24 +16,29 @@ int main(int argc, char** argv)
 	lcs::NewtonSolver solver;
 	solver.create_device(argv[0], backend);
 
-	auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
+	auto upper_square = lcs::Initializer::WorldData()
+							.set_name("upper square")
+							.load_mesh_from_path(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
 							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{
 								.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
 							})
 							.set_translation({ 0.0f, 0.4f, 0.0f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
+	uint upper_square_id = solver.register_world_data(upper_square);
 
 	std::vector<std::array<float, 3>> square_mesh_vertices{ { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } };
 	std::vector<std::array<uint, 3>>  square_mesh_faces{ { 0, 3, 1 }, { 0, 2, 3 } };
-
-	auto lower_square = solver.register_world_data_from_array("lower square", square_mesh_vertices, square_mesh_faces)
+	auto							  lower_square = lcs::Initializer::WorldData()
+							.set_name("lower square")
+							.load_mesh_from_array(square_mesh_vertices, square_mesh_faces)
 							.set_material_type(lcs::Initializer::MaterialType::Cloth)
 							.set_physics_material(lcs::Initializer::ClothMaterial{})
 							.set_scale(0.8f)
 							.set_translation({ 0.1f, 0.2f, 0.0f })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
 							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
+	uint lower_square_id = solver.register_world_data(lower_square);
 
 	auto config = solver.get_config();
 	config.use_floor = false;

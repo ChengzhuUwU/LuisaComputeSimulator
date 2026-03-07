@@ -1,17 +1,22 @@
 import numpy as np
-import os, sys
-from utils.animation_transform import FixedPointTransform
+from typing import Dict
+
+from utils.animation_transform import DefaultTransformAnimation
+
 
 class VertexAnimator:
 	"""Manage fixed-point selection and Python-driven per-frame pinned vertex updates."""
 
-	def __init__(self, world_data):
-		self.world_data: lcs.WorldData = world_data
-		self.mesh_idx: int = world_data.get_registration_index()
-		self._vertex_transform_map: Dict[int, FixedPointTransform] = {}
+	def __init__(self, world_data, mesh_idx=None):
+		self.world_data = world_data
+		self.mesh_idx = mesh_idx
+		self._vertex_transform_map: Dict[int, DefaultTransformAnimation] = {}
 		self._rest_positions: np.ndarray = np.asarray(self.world_data.get_rest_positions(), dtype=np.float32)
 
-	def add_rule_by_method(self, method: str, transform: FixedPointTransform, range_value: float = 0.001):
+	def set_mesh_index(self, mesh_idx: int):
+		self.mesh_idx = int(mesh_idx)
+
+	def add_rule_by_method(self, method: str, transform: DefaultTransformAnimation, range_value: float = 0.001):
 		before = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
 		self.world_data.add_fixed_point_by_method(method, range=range_value)
 		after = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
@@ -23,7 +28,7 @@ class VertexAnimator:
 
 	def update_vertex_animation(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:
-			raise RuntimeError("mesh_idx is not set. Call set_mesh_index() first.")
+			raise RuntimeError("mesh_idx is not set. Register world_data first and call set_mesh_index().")
 		if self._rest_positions is None:
 			raise RuntimeError("rest positions are not cached. Call capture_rest_positions() first.")
 

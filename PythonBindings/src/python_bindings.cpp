@@ -22,9 +22,9 @@ using namespace lcs::Initializer;
 // Helper wrapper to hold WorldData pointer and expose chainable methods
 struct WorldDataWrapper
 {
-	WorldData* wd;
-	WorldDataWrapper(WorldData* w)
-		: wd(w)
+	std::shared_ptr<WorldData> wd;
+	WorldDataWrapper(std::shared_ptr<WorldData> w)
+		: wd(std::move(w))
 	{
 	}
 
@@ -317,7 +317,7 @@ struct PyNewtonBuilder
 	}
 
 	// register_mesh accepts numpy arrays (vertices Nx3, triangles Mx3)
-	WorldDataWrapper register_mesh_from_array(const std::string&	   name,
+	WorldDataWrapper create_world_data_from_array(const std::string&   name,
 		py::array_t<double, py::array::c_style | py::array::forcecast> vertices,
 		py::array_t<int, py::array::c_style | py::array::forcecast>	   triangles)
 	{
@@ -355,12 +355,25 @@ struct PyNewtonBuilder
 			input_triangles[i] = f;
 		}
 
-		return WorldDataWrapper(&solver_ptr->register_world_data_from_array(name, input_vertices, input_triangles));
+		auto world_data = std::make_shared<WorldData>();
+		world_data->set_name(name);
+		world_data->load_mesh_from_array(input_vertices, input_triangles);
+		return WorldDataWrapper(world_data);
 	}
-	// register mesh from an obj file path: read file then compute auxiliary topology
-	WorldDataWrapper register_mesh_from_file_path(const std::string& name, const std::string& obj_file_path)
+	// create world data from an obj file path; call register_world_data() to add into solver
+	WorldDataWrapper create_world_data_from_file_path(const std::string& name, const std::string& obj_file_path)
 	{
-		return WorldDataWrapper(&solver_ptr->register_world_data_from_file_path(name, obj_file_path));
+		auto world_data = std::make_shared<WorldData>();
+		world_data->set_name(name);
+		world_data->load_mesh_from_path(obj_file_path);
+		return WorldDataWrapper(world_data);
+	}
+
+	uint register_world_data(const WorldDataWrapper& world_data)
+	{
+		if (!world_data.wd)
+			throw std::runtime_error("Invalid world data handle.");
+		return solver_ptr->register_world_data(*world_data.wd);
 	}
 
 	// expose method to get number of registered meshes
@@ -410,8 +423,11 @@ struct PyNewtonBuilder
 	// This should be called before init_solver().
 	void load_scene_from_json(const std::string& json_path)
 	{
-		Demo::Simulation::load_scene_params_from_json([&]() -> lcs::Initializer::WorldData&
-			{ return solver_ptr->register_world_data(lcs::Initializer::WorldData()); },
+		Demo::Simulation::load_scene_params_from_json(
+			[&](const lcs::Initializer::WorldData& wd)
+			{
+				solver_ptr->register_world_data(wd);
+			},
 			json_path);
 	}
 
@@ -453,7 +469,7 @@ struct PyNewtonBuilder
 	}
 
 	// Update a pinned body state on the solver (body id, target translation and rotation)
-	void update_per_body_animation(const unsigned int				  body_id,
+	void update_per_body_animation(const unsigned int				  mesh_idx,
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_translation,
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_rotation)
 	{
@@ -468,7 +484,7 @@ struct PyNewtonBuilder
 		std::array<float, 3> tt{ buf_t(0), buf_t(1), buf_t(2) };
 		auto				 buf_r = target_rotation.unchecked<1>();
 		std::array<float, 3> tr{ buf_r(0), buf_r(1), buf_r(2) };
-		solver_ptr->update_per_body_animation(body_id, tt, tr);
+		solver_ptr->update_per_body_animation(mesh_idx, tt, tr);
 	}
 
 	// Return simulation results as a tuple of (vertices_list, faces_list) of numpy arrays.
@@ -738,14 +754,15 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("get_rest_rotation", &ConstWorldDataWrapper::get_rest_rotation)
 		.def("get_rest_scale", &ConstWorldDataWrapper::get_rest_scale);
 
-	// disambiguate overloaded register_mesh signatures
+	// disambiguate overloaded world_data creation signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
 	using TriArr = py::array_t<int, py::array::c_style | py::array::forcecast>;
 
 	py::class_<PyNewtonBuilder>(m, "NewtonSolver")
 		.def(py::init<>())
-		.def("register_mesh_from_array", &PyNewtonBuilder::register_mesh_from_array, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
-		.def("register_mesh_from_file_path", &PyNewtonBuilder::register_mesh_from_file_path, py::arg("name"), py::arg("obj_file_path"))
+		.def("create_world_data_from_array", &PyNewtonBuilder::create_world_data_from_array, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
+		.def("create_world_data_from_file_path", &PyNewtonBuilder::create_world_data_from_file_path, py::arg("name"), py::arg("obj_file_path"))
+		.def("register_world_data", &PyNewtonBuilder::register_world_data, py::arg("world_data"), "Register configured WorldData and return object registration id")
 		.def("load_scene_from_json",
 			&PyNewtonBuilder::load_scene_from_json,
 			py::arg("json_path"),

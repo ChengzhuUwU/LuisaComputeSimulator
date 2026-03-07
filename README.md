@@ -25,21 +25,27 @@ Sample Python-frontend code can be found at [test_cloth_rigid_coupling.py](Pytho
     solver = lcs.NewtonSolver()
     solver.init_device(backend_name=args.backend, binary_path=None)
 
-    # Register 2 meshes: A rigid cube and a soft cloth
+    # Build 2 world_data objects first: a rigid cube and a soft cloth
     cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
     cube_mesh = trimesh.load(cube_mesh_path, process=False)
-    cube_ref = solver.register_mesh_from_array('cube', cube_mesh.vertices, cube_mesh.faces)
-    cube_ref.set_simulation_type(lcs.MaterialType.Rigid)
-    cube_ref.set_translation(0.0, 0.34, 0.0)
-    cube_ref.set_rotation(0.5235988, 0.0, 0.5235988)
-    cube_ref.set_scale(0.1)
+    cube_wd = solver.create_world_data_from_array('cube', cube_mesh.vertices, cube_mesh.faces)
+    cube_wd.set_simulation_type(lcs.MaterialType.Rigid)
+    cube_wd.set_translation(0.0, 0.34, 0.0)
+    cube_wd.set_rotation(0.5235988, 0.0, 0.5235988)
+    cube_wd.set_scale(0.1)
+    cube_id = solver.register_world_data(cube_wd)
 
     cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
-    cloth_ref = solver.register_mesh_from_file_path('cloth', cloth_mesh_path)
-    cloth_ref.set_simulation_type(lcs.MaterialType.Cloth)
-    cloth_ref.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
-    cloth_ref.set_scale(0.75)
-    cloth_ref.add_fixed_point_by_method("LeftBack")
+    cloth_wd = solver.create_world_data_from_file_path('cloth', cloth_mesh_path)
+    cloth_wd.set_simulation_type(lcs.MaterialType.Cloth)
+    cloth_wd.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
+    cloth_wd.set_scale(0.75)
+    cloth_wd.add_fixed_point_by_method("LeftBack")
+    cloth_id = solver.register_world_data(cloth_wd)
+
+    # register_world_data(...) returns object id.
+    # After registration, query objects via const access APIs, e.g.:
+    cube_const = solver.get_object_by_registration_id(cube_id)
 
     # Initialize the solver
     solver.init_solver()
@@ -74,23 +80,29 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
         lcs::NewtonSolver solver;
         solver.create_device(/*binary_path =*/argv[0], /*backend =*/ "cuda");
 
-        // Register mesh using file path
-        auto upper_square = solver.register_world_data_from_file_path("upper square", std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
+        // Build world_data using file path, then register
+        auto upper_square = lcs::Initializer::WorldData()
+                                .set_name("upper square")
+                                .load_mesh_from_path(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
                                 .set_material_type(lcs::Initializer::MaterialType::Cloth)
                                 .set_physics_material(lcs::Initializer::ClothMaterial{
                                     .stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
                                 })
                                 .set_translation({ 0.0f, 0.4f, 0.0f });
+        uint upper_square_id = solver.register_world_data(upper_square);
 
-        // Register mesh using array
+        // Build world_data using array, then register
         std::vector<std::array<float, 3>> square_mesh_vertices{ { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } };
         std::vector<std::array<uint, 3>>  square_mesh_faces{ { 0, 3, 1 }, { 0, 2, 3 } };
-        auto lower_square = solver.register_world_data_from_array("lower square", square_mesh_vertices, square_mesh_faces)
+        auto lower_square = lcs::Initializer::WorldData()
+                                .set_name("lower square")
+                                .load_mesh_from_array(square_mesh_vertices, square_mesh_faces)
                                 .set_physics_material(lcs::Initializer::ClothMaterial{}) 
                                 .set_scale(0.8f)
                                 .set_translation({ 0.1f, 0.2f, 0.0f })
                                 .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
                                 .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
+        uint lower_square_id = solver.register_world_data(lower_square);
 
         // Scene configs
         auto config = solver.get_config();

@@ -3,7 +3,7 @@ import os, sys
 from dataclasses import dataclass
 
 @dataclass
-class FixedPointTransform:
+class DefaultTransformAnimation:
 	"""Python-side counterpart of C++ FixedPointAnimationInfo."""
 
 	use_translate: bool = False

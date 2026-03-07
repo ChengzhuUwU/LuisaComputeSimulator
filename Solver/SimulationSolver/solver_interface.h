@@ -198,24 +198,28 @@ namespace lcs
 			return world_data[sorted_idx];
 		}
 
-		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd)
+		Initializer::WorldData create_world_data()
 		{
-			auto& data = world_data.emplace_back(wd);
-			data.registration_index = static_cast<uint>(world_data.size() - 1);
-			return data;
+			return Initializer::WorldData();
 		}
-		Initializer::WorldData& register_world_data_from_file_path(const std::string_view& name, const std::string_view& file_path)
+		uint register_world_data(const Initializer::WorldData& wd)
 		{
-			auto& data = world_data.emplace_back().load_mesh_from_path(file_path).set_name(name);
-			data.registration_index = static_cast<uint>(world_data.size() - 1);
-			return data;
+			uint new_registration_id = static_cast<uint>(world_data.size());
+			world_data.emplace_back(wd).registration_index = new_registration_id;
+			return new_registration_id;
 		}
-		Initializer::WorldData& register_world_data_from_array(const std::string_view& name, const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
-		{
-			auto& data = world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
-			data.registration_index = static_cast<uint>(world_data.size() - 1);
-			return data;
-		}
+		// uint register_world_data_from_file_path(const std::string_view& name, const std::string_view& file_path)
+		// {
+		// 	auto& data = world_data.emplace_back().load_mesh_from_path(file_path).set_name(name);
+		// 	data.registration_index = static_cast<uint>(world_data.size() - 1);
+		// 	return data;
+		// }
+		// uint register_world_data_from_array(const std::string_view& name, const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
+		// {
+		// 	auto& data = world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
+		// 	data.registration_index = static_cast<uint>(world_data.size() - 1);
+		// 	return data;
+		// }
 
 		// Device management: create and own a luisa device/stream.
 		// binary_path : argv[0], used by luisa::compute::Context. Empty = use current executable path.

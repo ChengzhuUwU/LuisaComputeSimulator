@@ -1,14 +1,14 @@
 import numpy as np
 
-from utils.animation_transform import FixedPointTransform
+from utils.animation_transform import DefaultTransformAnimation
 
 
 class BodyAnimator:
 	"""Manage fixed rigid body selection and Python-driven per-frame body updates."""
 
-	def __init__(self, world_data, initial_translation=None, initial_rotation=None):
+	def __init__(self, world_data, initial_translation=None, initial_rotation=None, mesh_idx=None):
 		self.world_data = world_data
-		self.mesh_idx = world_data.get_registration_index()
+		self.mesh_idx = mesh_idx
 		self._transform = None
 		self._initial_translation = np.asarray(
 			[0.0, 0.0, 0.0] if initial_translation is None else initial_translation,
@@ -19,12 +19,16 @@ class BodyAnimator:
 			dtype=np.float32,
 		)
 
-	def add_rule_by_method(self, method: str, transform: FixedPointTransform, range_value: float = 0.001):
-		before = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
+	def set_mesh_index(self, mesh_idx: int):
+		self.mesh_idx = int(mesh_idx)
+
+	def add_rule_by_method(self, method: str, transform: DefaultTransformAnimation, range_value: float = 0.001):
+		before_fixed_indices = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
 		self.world_data.add_fixed_point_by_method(method, range=range_value)
-		after = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
+		after_fixed_indices = np.asarray(self.world_data.get_fixed_point_indices(), dtype=np.uint32)
 		self._transform = transform
-		return after[before.size :]
+		added_fixed_indices = after_fixed_indices[before_fixed_indices.size :]
+		return added_fixed_indices
 
 	def update_body_animation(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:
@@ -38,6 +42,7 @@ class BodyAnimator:
 		translation = self._initial_translation.copy()
 		if transform.use_setting_position:
 			translation = np.asarray(transform.setting_position, dtype=np.float32).copy()
+			
 		if transform.use_translate:
 			translation = translation + np.asarray(transform.translate, dtype=np.float32) * np.float32(curr_time)
 

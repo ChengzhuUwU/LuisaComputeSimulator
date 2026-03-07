@@ -1,6 +1,4 @@
-import numpy as np
 import os, sys
-from dataclasses import dataclass
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, os.path.join(root, 'build', 'bin'))
@@ -15,31 +13,39 @@ solver = lcs.NewtonSolver()
 solver.init_device(backend_name=backend)
 
 # Load a mesh by providing the path to the obj file
-cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
-cloth = solver.register_mesh_from_file_path('cylinder7K', cloth_mesh_path)
-cloth.set_simulation_type(lcs.MaterialType.Cloth)
-
-from utils.animation_transform import FixedPointTransform
+from utils.animation_transform import DefaultTransformAnimation
 from utils.vertex_animator import VertexAnimator
-animator = VertexAnimator(cloth)
-animator.add_rule_by_method(
-    "Left",
-    FixedPointTransform(
-        use_rotate=True,
-        rot_center=[0.0, 0.0, 0.005],
-        rot_axis=[1.0, 0.0, 0.0],
-        rot_ang_vel_deg=-72.0
-    )
-)
-animator.add_rule_by_method(
-    "Right",
-    FixedPointTransform(
-        use_rotate=True,
-        rot_center=[0.0, 0.0, -0.005],
-        rot_axis=[1.0, 0.0, 0.0],
-        rot_ang_vel_deg=72.0
-    )
-)
+def load_cloth_with_vertex_animation():
+	cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
+	cloth = solver.create_world_data_from_file_path('cylinder7K', cloth_mesh_path)
+	cloth.set_simulation_type(lcs.MaterialType.Cloth)
+	cloth.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
+	cloth.set_scale(0.75)
+
+	animator = VertexAnimator(cloth)
+	animator.add_rule_by_method(
+		"Left",
+		DefaultTransformAnimation(
+			use_rotate=True,
+			rot_center=[0.0, 0.0, 0.005],
+			rot_axis=[1.0, 0.0, 0.0],
+			rot_ang_vel_deg=-72.0
+		)
+	)
+	animator.add_rule_by_method(
+		"Right",
+		DefaultTransformAnimation(
+			use_rotate=True,
+			rot_center=[0.0, 0.0, -0.005],
+			rot_axis=[1.0, 0.0, 0.0],
+			rot_ang_vel_deg=72.0
+		)
+	)
+	cloth_id = solver.register_world_data(cloth)
+	animator.set_mesh_index(cloth_id)
+	return animator
+
+animator = load_cloth_with_vertex_animation()
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
@@ -58,10 +64,13 @@ output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 # Launch polyscope GUI or run headless
+def update_animation():
+	animator.update_vertex_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+
 if args.headless:
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
 	for _ in range(0, args.advance_frames):
-		animator.update_vertex_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+		update_animation()
 		if config_ref.use_gpu:
 			solver.physics_step_gpu()
 		else:
@@ -71,15 +80,11 @@ else:
 	import utils.polyscope_gui
 
 	class AnimatedSimulationGUI(utils.polyscope_gui.SimulationGUI):
-		def __init__(self, solver_ref, cfg_ref, out_dir, pinned_animator):
-			super().__init__(solver_ref, cfg_ref, out_dir)
-			self._animator = pinned_animator
-
 		def _physics_step(self):
-			self._animator.update_vertex_animation(self._solver, self._config.current_frame, self._config.implicit_dt)
+			update_animation()
 			super()._physics_step()
 
-	gui = AnimatedSimulationGUI(solver, config_ref, output_dir, animator)
+	gui = AnimatedSimulationGUI(solver, config_ref, output_dir)
 	gui.show()
 
 solver.cleanup_device()

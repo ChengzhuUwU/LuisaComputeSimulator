@@ -73,9 +73,9 @@ int main(int argc, char** argv)
 		LUISA_INFO("Load default scene {}", scene_json_path);
 	}
 
-	auto fn_register_mesh_from_json_file = [&]() -> lcs::Initializer::WorldData&
+	auto fn_register_mesh_from_json_file = [&](const lcs::Initializer::WorldData& wd)
 	{
-		return solver.register_world_data(lcs::Initializer::WorldData());
+		return solver.register_world_data(wd);
 	};
 	Demo::Simulation::load_scene_params_from_json(fn_register_mesh_from_json_file, scene_json_path);
 
