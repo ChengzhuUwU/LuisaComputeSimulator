@@ -20,7 +20,7 @@ cloth_ref = solver.register_mesh_from_file_path('cylinder7K', cloth_mesh_path)
 cloth_ref.set_simulation_type(lcs.MaterialType.Cloth)
 
 from utils.animation_transform import FixedPointTransform
-from utils.vertex_animation import PinnedVertexAnimator
+from utils.vertex_animator import PinnedVertexAnimator
 animator = PinnedVertexAnimator(cloth_ref)
 
 # animator.add_rule_by_method(

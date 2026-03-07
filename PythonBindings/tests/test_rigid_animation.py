@@ -10,7 +10,7 @@ import utils.arg_parser
 args = utils.arg_parser.parse_args()
 
 from utils.animation_transform import FixedPointTransform
-from utils.body_animation import PinnedBodyAnimator
+from utils.body_animator import PinnedBodyAnimator
 
 # Initialize LuisaCompute device
 backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
