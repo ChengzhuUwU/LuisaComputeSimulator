@@ -40,6 +40,8 @@ namespace lcs
 
 		struct FixedPointDefaultAnimation
 		{
+			uint local_vid;
+
 			bool   use_translate = false;
 			float3 translate = luisa::make_float3(0.0f);
 
@@ -299,7 +301,6 @@ namespace lcs
 			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
 			void set_pinned_verts_from_functions(const std::function<bool(uint)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
 			void set_pinned_verts_from_indices(const std::vector<uint>& indices, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
-			void set_pinned_vert_fixed_info(const uint vid, const FixedPointDefaultAnimation& info);
 
 			void update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
 			void update_default_body_animations(const float time, Animation::PerBodyAnimation& body_animation);

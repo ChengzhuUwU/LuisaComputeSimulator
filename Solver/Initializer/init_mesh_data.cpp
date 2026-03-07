@@ -43,7 +43,7 @@ namespace lcs
 				if (func(vid))
 				{
 					fixed_point_indices.emplace_back(vid);
-					fixed_point_default_animations.push_back(fixed_info);
+					fixed_point_default_animations.emplace_back(fixed_info).local_vid = vid;
 				}
 			}
 		}
@@ -73,7 +73,7 @@ namespace lcs
 				if (func(norm_pos))
 				{
 					fixed_point_indices.emplace_back(vid);
-					fixed_point_default_animations.push_back(fixed_info);
+					fixed_point_default_animations.emplace_back(fixed_info).local_vid = vid;
 				}
 			}
 		}
@@ -82,12 +82,8 @@ namespace lcs
 		{
 			for (const uint vid : indices)
 			{
-				auto   read_pos = input_mesh.model_positions[vid];
-				float3 pos = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
-				auto   affine_pos = FixedPointDefaultAnimation::fn_affine_position(fixed_info, 0.0f, pos);
-
 				fixed_point_indices.emplace_back(vid);
-				fixed_point_default_animations.push_back(fixed_info);
+				fixed_point_default_animations.emplace_back(fixed_info).local_vid = vid;
 			}
 		}
 		WorldData& WorldData::add_fixed_point_info(const MakeFixedPointsInterface& fixed_point_func)
@@ -233,11 +229,11 @@ namespace lcs
 		}
 		void WorldData::update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animation)
 		{
-			vertex_animation.resize(fixed_point_indices.size());
-			for (uint index = 0; index < fixed_point_indices.size(); index++)
+			vertex_animation.resize(fixed_point_default_animations.size());
+			for (uint index = 0; index < fixed_point_default_animations.size(); index++)
 			{
-				const uint	local_vid = fixed_point_indices[index];
 				const auto& fixed_info = fixed_point_default_animations[index];
+				const uint	local_vid = fixed_info.local_vid;
 				const auto	model_pos = input_mesh.model_positions[local_vid];
 				auto		transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
 				const auto	rest_pos =

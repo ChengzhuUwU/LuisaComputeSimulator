@@ -144,12 +144,6 @@ struct WorldDataWrapper
 		return *this;
 	}
 
-	WorldDataWrapper& add_fixed_point_info(const MakeFixedPointsInterface& info)
-	{
-		wd->add_fixed_point_info(info);
-		return *this;
-	}
-
 	// Convenience: add fixed-point rule by name and optional numeric range/list
 	WorldDataWrapper& add_fixed_point_by_method(const std::string& method, float range)
 	{
@@ -162,7 +156,7 @@ struct WorldDataWrapper
 	}
 
 	// Convenience: add explicit vertex indices as fixed points
-	WorldDataWrapper& add_fixed_point_indices(py::array_t<int, py::array::c_style | py::array::forcecast> indices)
+	WorldDataWrapper& add_fixed_point_by_indices(py::array_t<int, py::array::c_style | py::array::forcecast> indices)
 	{
 		if (indices.ndim() != 1)
 			throw std::runtime_error("indices must be a 1-D array of ints");
@@ -726,9 +720,8 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("twisting_stiffness") = RodMaterial::default_twisting_stiffness(),
 			py::arg("density") = RodMaterial::default_density(),
 			py::arg("mass") = RodMaterial::default_mass())
-		.def("add_fixed_point_info", &WorldDataWrapper::add_fixed_point_info)
 		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
-		.def("add_fixed_point_indices", &WorldDataWrapper::add_fixed_point_indices, py::arg("indices"))
+		.def("add_fixed_point_by_indices", &WorldDataWrapper::add_fixed_point_by_indices, py::arg("indices"))
 		.def("set_translation", &WorldDataWrapper::set_translation)
 		.def("set_rotation", &WorldDataWrapper::set_rotation)
 		.def("set_scale", &WorldDataWrapper::set_scale)
