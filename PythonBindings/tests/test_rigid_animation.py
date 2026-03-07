@@ -9,6 +9,9 @@ import lcs_py as lcs
 import utils.arg_parser
 args = utils.arg_parser.parse_args()
 
+from utils.animation_transform import FixedPointTransform
+from utils.body_animation import PinnedBodyAnimator
+
 # Initialize LuisaCompute device
 backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
 solver = lcs.NewtonSolver()
@@ -18,61 +21,44 @@ solver.init_device(backend_name=backend)
 cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
 
 def load_top_cube():
-	cube_top_ref = solver.register_mesh_from_file_path('cube', cube_mesh_path)
+	cube_top_ref = solver.register_mesh_from_file_path('cube_top', cube_mesh_path)
 	cube_top_ref.set_simulation_type(lcs.MaterialType.Rigid)
 	cube_top_ref.set_scale(0.1)
 	cube_top_ref.set_translation(0.0, 0.14, 0.0)
-	return cube_top_ref
 
 def load_bottom_cube():
-	cube_bottom_ref = solver.register_mesh_from_file_path('cube', cube_mesh_path)
+	cube_bottom_ref = solver.register_mesh_from_file_path('cube_ref', cube_mesh_path)
 	cube_bottom_ref.set_simulation_type(lcs.MaterialType.Rigid)
 	cube_bottom_ref.set_scale(0.1)
 	cube_bottom_ref.set_translation(0.0, 0.01, 0.0)
-	cube_bottom_ref.add_fixed_point_by_method("All")
-	return cube_bottom_ref
 
-load_bottom_cube()
+	body_animator = PinnedBodyAnimator(
+		world_data = cube_bottom_ref, 
+		initial_translation=cube_bottom_ref.get_rest_translation(), 
+		initial_rotation=cube_bottom_ref.get_rest_rotation())
+	body_animator.add_rule_by_method(
+		"All",
+		FixedPointTransform(
+			use_translate=True,
+			translate=[0.0, 0.02, 0.0],
+			use_rotate=True,
+			rot_axis=[1.0, 0.0, 0.0],
+			rot_ang_vel_deg=45.0,
+		),
+	)
+	return body_animator
+
 load_top_cube()
+body_animator = load_bottom_cube()
 
-# load_top_cube()
-# load_bottom_cube()
 
-# from utils.animation_transform import FixedPointTransform
-# from utils.vertex_animation import PinnedVertexAnimator
-# animator = PinnedVertexAnimator(cloth_ref)
 
-# animator.add_rule_by_method(
-# 	"Left",
-# 	FixedPointTransform(
-# 		use_translate=True,
-# 		translate=[0.000, 0.1, 0.0]
-#     )
-# )
-# animator.add_rule_by_method(
-# 	"Right",
-# 	FixedPointTransform(
-# 		use_translate=True,
-# 		translate=[0.000, 0.1, 0.0]
-#     )
-# )
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
 
 # Set scene parameters
 config_ref = solver.get_config()
-# config_ref.nonlinear_iter_count = 2
-# config_ref.use_floor = True
-# config_ref.use_self_collision = True
-# config_ref.use_ccd_linesearch = True
-# config_ref.use_energy_linesearch = False
-# config_ref.implicit_dt = 1.0 / 60.0
-# config_ref.gravity = lcs.Float3(0.0, -9.8, 0.0)
-# config_ref.pcg_iter_count = 50
-# config_ref.gravity = lcs.Float3(0.0, 0.0, 0.0)
-# config_ref.use_floor = False
-
 
 # Output directory (for optional file saving)
 output_dir = os.path.join(root, "Resources", "OutputMesh")
@@ -82,6 +68,7 @@ os.makedirs(output_dir, exist_ok=True)
 if args.headless:
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
 	for _ in range(0, args.advance_frames):
+		body_animator.update_pinned_body(solver, config_ref.current_frame, config_ref.implicit_dt)
 		if config_ref.use_gpu:
 			solver.physics_step_gpu()
 		else:
@@ -91,15 +78,15 @@ else:
 	import utils.polyscope_gui
 
 	class AnimatedSimulationGUI(utils.polyscope_gui.SimulationGUI):
-		def __init__(self, solver_ref, cfg_ref, out_dir, pinned_animator):
+		def __init__(self, solver_ref, cfg_ref, out_dir, body_animator_ref):
 			super().__init__(solver_ref, cfg_ref, out_dir)
-			# self._pinned_animator = pinned_animator
+			self._body_animator = body_animator_ref
 
 		def _physics_step(self):
-			# self._pinned_animator.update_pinned_vertices(self._solver, self._config.current_frame, self._config.implicit_dt)
+			self._body_animator.update_pinned_body(self._solver, self._config.current_frame, self._config.implicit_dt)
 			super()._physics_step()
 
-	gui = AnimatedSimulationGUI(solver, config_ref, output_dir, None)
+	gui = AnimatedSimulationGUI(solver, config_ref, output_dir, body_animator)
 	gui.show()
 
 solver.cleanup_device()

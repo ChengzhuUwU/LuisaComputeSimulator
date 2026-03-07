@@ -195,6 +195,24 @@ struct WorldDataWrapper
 		return *this;
 	}
 
+	std::array<float, 3> get_rest_translation() const
+	{
+		auto t = wd->translation;
+		return std::array<float, 3>{ t.x, t.y, t.z };
+	}
+
+	std::array<float, 3> get_rest_rotation() const
+	{
+		auto r = wd->rotation;
+		return std::array<float, 3>{ r.x, r.y, r.z };
+	}
+
+	std::array<float, 3> get_rest_scale() const
+	{
+		auto s = wd->scale;
+		return std::array<float, 3>{ s.x, s.y, s.z };
+	}
+
 	std::string get_name() const
 	{
 		return wd->get_model_name();
@@ -267,6 +285,24 @@ struct ConstWorldDataWrapper
 			buf(i, 2) = rest[i][2];
 		}
 		return out;
+	}
+
+	std::array<float, 3> get_rest_translation() const
+	{
+		auto t = wd->translation;
+		return std::array<float, 3>{ t.x, t.y, t.z };
+	}
+
+	std::array<float, 3> get_rest_rotation() const
+	{
+		auto r = wd->rotation;
+		return std::array<float, 3>{ r.x, r.y, r.z };
+	}
+
+	std::array<float, 3> get_rest_scale() const
+	{
+		auto s = wd->scale;
+		return std::array<float, 3>{ s.x, s.y, s.z };
 	}
 };
 
@@ -680,6 +716,9 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("set_translation", &WorldDataWrapper::set_translation)
 		.def("set_rotation", &WorldDataWrapper::set_rotation)
 		.def("set_scale", &WorldDataWrapper::set_scale)
+		.def("get_rest_translation", &WorldDataWrapper::get_rest_translation)
+		.def("get_rest_rotation", &WorldDataWrapper::get_rest_rotation)
+		.def("get_rest_scale", &WorldDataWrapper::get_rest_scale)
 		.def("get_name", &WorldDataWrapper::get_name)
 		.def("get_registration_index", &WorldDataWrapper::get_registration_index)
 		.def("get_fixed_point_indices", &WorldDataWrapper::get_fixed_point_indices,
@@ -693,7 +732,10 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("get_fixed_point_indices", &ConstWorldDataWrapper::get_fixed_point_indices,
 			"Return currently registered fixed-point local vertex indices as a Python list")
 		.def("get_rest_positions", &ConstWorldDataWrapper::get_rest_positions,
-			"Return rest positions (after object transform) as an (N,3) float32 numpy array");
+			"Return rest positions (after object transform) as an (N,3) float32 numpy array")
+		.def("get_rest_translation", &ConstWorldDataWrapper::get_rest_translation)
+		.def("get_rest_rotation", &ConstWorldDataWrapper::get_rest_rotation)
+		.def("get_rest_scale", &ConstWorldDataWrapper::get_rest_scale);
 
 	// disambiguate overloaded register_mesh signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
