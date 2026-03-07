@@ -287,9 +287,9 @@ namespace lcs::Initializer
 		}
 	}
 
-	void init_sim_data(std::vector<lcs::Initializer::WorldData>& world_data,
-		lcs::MeshData<std::vector>*								 mesh_data,
-		lcs::SimulationData<std::vector>*						 sim_data)
+	void init_sim_data(const std::vector<lcs::Initializer::WorldData>& world_data,
+		lcs::MeshData<std::vector>*									   mesh_data,
+		lcs::SimulationData<std::vector>*							   sim_data)
 	{
 		// Calculate number of energy element
 		constexpr bool cull_unused_constraints = true;

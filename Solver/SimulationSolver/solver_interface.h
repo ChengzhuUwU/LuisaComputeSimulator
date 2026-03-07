@@ -108,7 +108,8 @@ namespace lcs
 		~SolverInterface() {}
 
 	private:
-		void init_animation(const std::vector<lcs::Initializer::WorldData>& world_data);
+		void init_world_data();
+		void init_animation();
 
 	protected:
 		void init_data(luisa::compute::Device& device, luisa::compute::Stream& stream);
@@ -137,12 +138,9 @@ namespace lcs
 		void get_object_sim_result_by_unique_name(const std::string& unique_name,
 			std::vector<std::array<float, 3>>&						 output_positions,
 			std::vector<std::array<uint, 3>>&						 output_triangles);
-		void update_pinned_verts_position(const uint meshIdx,
-			const uint								 local_vid,
-			const std::array<float, 3>&				 pinned_verts_target_position);
-		void update_pinned_body_state(const uint body_id,
-			const std::array<float, 3>&			 translation = { 0.0f, 0.0f, 0.0f },
-			const std::array<float, 3>&			 rotation = { 0.0f, 0.0f, 0.0f });
+		void update_per_vertex_animation(const uint meshIdx, const uint local_vid, const std::array<float, 3>& target_position);
+		void update_per_body_animation(const uint body_id, const std::array<float, 3>& target_translation, const std::array<float, 3>& target_rotation);
+		void update_default_animations();
 
 	protected:
 		void physics_step_prev_operation();
@@ -188,7 +186,17 @@ namespace lcs
 		CollisionData<luisa::compute::Buffer>& get_device_collision_data() const { return *collision_data; }
 
 		// Note that: world_data will be sorted after calling `init_solver()`
-		std::vector<Initializer::WorldData>& get_world_data() { return world_data; }
+		const std::vector<Initializer::WorldData>& get_sorted_world_data() const { return world_data; }
+		const Initializer::WorldData&			   get_object_by_registration_id(uint registration_id) const
+		{
+			const uint sorted_idx = query_object_index_by_registration_id(registration_id);
+			return world_data[sorted_idx];
+		}
+		const Initializer::WorldData& get_object_by_unique_name(const std::string& unique_name) const
+		{
+			const uint sorted_idx = query_object_index_by_unique_name(unique_name);
+			return world_data[sorted_idx];
+		}
 
 		Initializer::WorldData& register_world_data(const Initializer::WorldData& wd)
 		{

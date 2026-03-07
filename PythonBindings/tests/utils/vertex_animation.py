@@ -31,4 +31,4 @@ class PinnedVertexAnimator:
 		for local_vid, transform in self._vertex_transform_map.items():
 			rest_pos = self._rest_positions[local_vid]
 			target_pos = transform.apply(curr_time, rest_pos)
-			solver.update_pinned_verts_position(self.mesh_idx, local_vid, target_pos)
+			solver.update_per_vertex_animation(self.mesh_idx, local_vid, target_pos)

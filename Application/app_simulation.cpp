@@ -72,34 +72,23 @@ int main(int argc, char** argv)
 	{
 		LUISA_INFO("Load default scene {}", scene_json_path);
 	}
-	Demo::Simulation::load_scene_params_from_json([&]() -> lcs::Initializer::WorldData&
-		{ return solver.register_world_data(lcs::Initializer::WorldData()); },
-		scene_json_path);
+
+	auto fn_register_mesh_from_json_file = [&]() -> lcs::Initializer::WorldData&
+	{
+		return solver.register_world_data(lcs::Initializer::WorldData());
+	};
+	Demo::Simulation::load_scene_params_from_json(fn_register_mesh_from_json_file, scene_json_path);
 
 	// Init Solver
 	solver.init_solver();
 
-	auto& world_data = solver.get_world_data();
-
 	auto fn_update_pinned_verts = [&](const uint curr_frame)
 	{
-		// Animation for fixed points
-		for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
-		{
-			if (world_data[mesh_idx].holds<lcs::Initializer::RigidMaterial>())
-			{
-				continue;
-			}
-			const float										curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
-			std::vector<lcs::Animation::PerVertexAnimation> per_vertex_animations;
-			std::vector<lcs::Animation::PerBodyAnimation>	per_body_animations;
-			world_data[mesh_idx].update_default_vertex_animations(curr_time, per_vertex_animations);
-			for (const auto& animate : per_vertex_animations)
-			{
-				solver.update_pinned_verts_position(mesh_idx, animate.vertex_id, animate.translation);
-			}
-			// solver.update_pinned_body_state(mesh_idx);  // TODO: Fixed only
-		}
+		solver.update_default_animations();
+		// You can also set animation for specific vertices or bodies by calling
+		// 		`solver.update_per_vertex_animation()` or `solver.update_per_body_animation()`
+		// solver.update_per_vertex_animation(meshIdx, local_vid, target_position);
+		// solver.update_per_body_animation(body_id, target_translation, target_rotation);
 	};
 
 	auto fn_physics_step = [&]()
@@ -116,6 +105,8 @@ int main(int argc, char** argv)
 	uint		   optimize_frames = 20;
 	constexpr bool draw_bounding_box = false;
 	constexpr bool use_ui = true;
+
+	const auto& world_data = solver.get_sorted_world_data();
 
 	// Init rendering data
 	std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(world_data.size() + 0 + 0);

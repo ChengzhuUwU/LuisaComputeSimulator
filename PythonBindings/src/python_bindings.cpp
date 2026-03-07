@@ -228,6 +228,48 @@ struct WorldDataWrapper
 	}
 };
 
+// Read-only wrapper for APIs that return const WorldData&.
+struct ConstWorldDataWrapper
+{
+	const WorldData* wd;
+	ConstWorldDataWrapper(const WorldData* w)
+		: wd(w)
+	{
+	}
+
+	std::string get_name() const
+	{
+		return wd->get_model_name();
+	}
+	uint get_registration_index() const
+	{
+		return wd->get_registration_index();
+	}
+
+	py::list get_fixed_point_indices() const
+	{
+		const auto& indices = wd->fixed_point_indices;
+		py::list	out;
+		for (auto idx : indices)
+			out.append(static_cast<uint32_t>(idx));
+		return out;
+	}
+
+	py::array_t<float> get_rest_positions() const
+	{
+		const auto		   rest = wd->get_rest_positions();
+		py::array_t<float> out({ rest.size(), static_cast<size_t>(3) });
+		auto			   buf = out.mutable_unchecked<2>();
+		for (size_t i = 0; i < rest.size(); ++i)
+		{
+			buf(i, 0) = rest[i][0];
+			buf(i, 1) = rest[i][1];
+			buf(i, 2) = rest[i][2];
+		}
+		return out;
+	}
+};
+
 // Python-facing Newton-like builder that stores a vector<WorldData>
 struct PyNewtonBuilder
 {
@@ -286,13 +328,13 @@ struct PyNewtonBuilder
 	}
 
 	// expose method to get number of registered meshes
-	size_t num_meshes() const { return solver_ptr->get_world_data().size(); }
+	size_t num_meshes() const { return solver_ptr->get_sorted_world_data().size(); }
 
 	// expose a method to export registered meshes as python lists (simple)
 	py::list get_mesh_names() const
 	{
 		py::list				 out;
-		const auto&				 world_data = solver_ptr->get_world_data();
+		const auto&				 world_data = solver_ptr->get_sorted_world_data();
 		std::vector<std::string> names(world_data.size());
 		// for (const auto& w : world_data)
 		// {
@@ -312,7 +354,7 @@ struct PyNewtonBuilder
 	// Debug helper to print registered meshes info in C++ logs
 	void print_registered_meshes_info() const
 	{
-		auto& world_data = solver_ptr->get_world_data();
+		auto& world_data = solver_ptr->get_sorted_world_data();
 		for (auto& w : world_data)
 		{
 			auto& mesh = w.get_mesh();
@@ -359,7 +401,7 @@ struct PyNewtonBuilder
 	}
 
 	// Update a pinned vertex position on the solver (mesh local vertex id, target position)
-	void update_pinned_verts_position(const unsigned int			  mesh_idx,
+	void update_per_vertex_animation(const unsigned int				  mesh_idx,
 		const unsigned int											  local_vid,
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_pos)
 	{
@@ -371,7 +413,26 @@ struct PyNewtonBuilder
 
 		auto				 buf = target_pos.unchecked<1>();
 		std::array<float, 3> tp{ buf(0), buf(1), buf(2) };
-		solver_ptr->update_pinned_verts_position(mesh_idx, local_vid, tp);
+		solver_ptr->update_per_vertex_animation(mesh_idx, local_vid, tp);
+	}
+
+	// Update a pinned body state on the solver (body id, target translation and rotation)
+	void update_per_body_animation(const unsigned int				  body_id,
+		py::array_t<float, py::array::c_style | py::array::forcecast> target_translation,
+		py::array_t<float, py::array::c_style | py::array::forcecast> target_rotation)
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		if (target_translation.ndim() != 1 || target_translation.shape(0) != 3)
+			throw std::runtime_error("target_translation must be a 1-D array of length 3 (x,y,z)");
+		if (target_rotation.ndim() != 1 || target_rotation.shape(0) != 3)
+			throw std::runtime_error("target_rotation must be a 1-D array of length 3 (x,y,z)");
+
+		auto				 buf_t = target_translation.unchecked<1>();
+		std::array<float, 3> tt{ buf_t(0), buf_t(1), buf_t(2) };
+		auto				 buf_r = target_rotation.unchecked<1>();
+		std::array<float, 3> tr{ buf_r(0), buf_r(1), buf_r(2) };
+		solver_ptr->update_per_body_animation(body_id, tt, tr);
 	}
 
 	// Return simulation results as a tuple of (vertices_list, faces_list) of numpy arrays.
@@ -447,21 +508,14 @@ struct PyNewtonBuilder
 		return py::make_tuple(v_arr, f_arr);
 	}
 
-	WorldDataWrapper get_object_by_registration_id(uint registration_id) const
+	ConstWorldDataWrapper get_object_by_registration_id(uint registration_id) const
 	{
-		const uint sorted_idx = solver_ptr->query_object_index_by_registration_id(registration_id);
-		return WorldDataWrapper(&solver_ptr->get_world_data()[sorted_idx]);
+		return ConstWorldDataWrapper(&solver_ptr->get_object_by_registration_id(registration_id));
 	}
 
-	WorldDataWrapper get_object_by_unique_name(const std::string& unique_name) const
+	ConstWorldDataWrapper get_object_by_unique_name(const std::string& unique_name) const
 	{
-		const uint sorted_idx = solver_ptr->query_object_index_by_unique_name(unique_name);
-		return WorldDataWrapper(&solver_ptr->get_world_data()[sorted_idx]);
-	}
-
-	uint get_sorted_mesh_index_by_registration_id(uint registration_id) const
-	{
-		return solver_ptr->query_object_index_by_registration_id(registration_id);
+		return ConstWorldDataWrapper(&solver_ptr->get_object_by_unique_name(unique_name));
 	}
 
 	void save_sim_result(const std::string& full_path)
@@ -633,6 +687,14 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("get_rest_positions", &WorldDataWrapper::get_rest_positions,
 			"Return rest positions (after object transform) as an (N,3) float32 numpy array");
 
+	py::class_<ConstWorldDataWrapper>(m, "ConstWorldData")
+		.def("get_name", &ConstWorldDataWrapper::get_name)
+		.def("get_registration_index", &ConstWorldDataWrapper::get_registration_index)
+		.def("get_fixed_point_indices", &ConstWorldDataWrapper::get_fixed_point_indices,
+			"Return currently registered fixed-point local vertex indices as a Python list")
+		.def("get_rest_positions", &ConstWorldDataWrapper::get_rest_positions,
+			"Return rest positions (after object transform) as an (N,3) float32 numpy array");
+
 	// disambiguate overloaded register_mesh signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
 	using TriArr = py::array_t<int, py::array::c_style | py::array::forcecast>;
@@ -674,7 +736,8 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
 		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
 		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
-		.def("update_pinned_verts_position", &PyNewtonBuilder::update_pinned_verts_position, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
+		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
+		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"))
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
 		.def("get_object_sim_result_by_registration_id",
 			&PyNewtonBuilder::get_object_sim_result_by_registration_id,
@@ -686,10 +749,6 @@ PYBIND11_MODULE(lcs_py, m)
 			"Return one object simulation result as tuple (vertices, faces) by unique object name")
 		.def("get_object_by_registration_id", &PyNewtonBuilder::get_object_by_registration_id, py::arg("registration_id"))
 		.def("get_object_by_unique_name", &PyNewtonBuilder::get_object_by_unique_name, py::arg("unique_name"))
-		.def("get_sorted_mesh_index_by_registration_id",
-			&PyNewtonBuilder::get_sorted_mesh_index_by_registration_id,
-			py::arg("registration_id"),
-			"Map a registration id to solver internal mesh index used by update_pinned_verts_position")
 		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"));
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.

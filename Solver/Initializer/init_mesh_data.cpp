@@ -36,19 +36,19 @@ namespace lcs
 			}
 		};
 		void WorldData::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
-			const FixedPointAnimationInfo&												 fixed_info)
+			const FixedPointDefaultAnimation&											 fixed_info)
 		{
 			for (uint vid = 0; vid < input_mesh.model_positions.size(); vid++)
 			{
 				if (func(vid))
 				{
 					fixed_point_indices.emplace_back(vid);
-					fixed_point_animations.push_back(fixed_info);
+					fixed_point_default_animations.push_back(fixed_info);
 				}
 			}
 		}
 		void WorldData::set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
-			const FixedPointAnimationInfo&															  fixed_info)
+			const FixedPointDefaultAnimation&														  fixed_info)
 		{
 			AABB local_aabb = CpuParallel::parallel_for_and_reduce_sum<AABB>(
 				0,
@@ -73,27 +73,27 @@ namespace lcs
 				if (func(norm_pos))
 				{
 					fixed_point_indices.emplace_back(vid);
-					fixed_point_animations.push_back(fixed_info);
+					fixed_point_default_animations.push_back(fixed_info);
 				}
 			}
 		}
 		void WorldData::set_pinned_verts_from_indices(const std::vector<uint>& indices,
-			const FixedPointAnimationInfo&									   fixed_info)
+			const FixedPointDefaultAnimation&								   fixed_info)
 		{
 			for (const uint vid : indices)
 			{
 				auto   read_pos = input_mesh.model_positions[vid];
 				float3 pos = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
-				auto   affine_pos = FixedPointAnimationInfo::fn_affine_position(fixed_info, 0.0f, pos);
+				auto   affine_pos = FixedPointDefaultAnimation::fn_affine_position(fixed_info, 0.0f, pos);
 
 				fixed_point_indices.emplace_back(vid);
-				fixed_point_animations.push_back(fixed_info);
+				fixed_point_default_animations.push_back(fixed_info);
 			}
 		}
 		WorldData& WorldData::add_fixed_point_info(const MakeFixedPointsInterface& fixed_point_func)
 		{
 			auto from_norm_position = [&](const std::function<bool(const float3&)>& func,
-										  const FixedPointAnimationInfo&			info = FixedPointAnimationInfo())
+										  const FixedPointDefaultAnimation&			info = FixedPointDefaultAnimation())
 			{ set_pinned_verts_from_norm_position(func, info); };
 
 			{
@@ -231,30 +231,34 @@ namespace lcs
 
 			return *this;
 		}
-		void WorldData::update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& fixed_point_target_positions)
+		void WorldData::update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animation)
 		{
-			fixed_point_target_positions.resize(fixed_point_indices.size());
+			vertex_animation.resize(fixed_point_indices.size());
 			for (uint index = 0; index < fixed_point_indices.size(); index++)
 			{
 				const uint	local_vid = fixed_point_indices[index];
-				const auto& fixed_info = fixed_point_animations[index];
+				const auto& fixed_info = fixed_point_default_animations[index];
 				const auto	model_pos = input_mesh.model_positions[local_vid];
 				auto		transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
 				const auto	rest_pos =
 					(transform_matrix * luisa::make_float4(model_pos[0], model_pos[1], model_pos[2], 1.0f)).xyz();
 
-				auto target = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
-				fixed_point_target_positions[index] = { local_vid, { target.x, target.y, target.z } };
+				auto target = FixedPointDefaultAnimation::fn_affine_position(fixed_info, time, rest_pos);
+				vertex_animation[index] = { .vertex_id = local_vid, .translation = { target.x, target.y, target.z } };
 			}
 		}
-		// void WorldData::get_body_animation(const float time, Animation::PerBodyAnimation& body_animation)
-		// {
-		//     const auto& fixed_info       = fixed_point_animations.front();
-		//     auto        transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
-		//     auto        rest_pos = (transform_matrix * luisa::make_float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz();
-		//     auto        target   = FixedPointAnimationInfo::fn_affine_position(fixed_info, time, rest_pos);
-		//     body_animation.set_translation(target.x, target.y, target.z);
-		// }
+		void WorldData::update_default_body_animations(const float time, Animation::PerBodyAnimation& body_animation)
+		{
+			const auto& fixed_info = fixed_point_default_animations.front();
+			auto		transform_matrix = lcs::make_model_matrix(translation, rotation, scale);
+			auto		rest_pos = (transform_matrix * luisa::make_float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz();
+			auto		target = FixedPointDefaultAnimation::fn_affine_position(fixed_info, time, rest_pos);
+			body_animation = {
+				.dof_start = get_registration_index(),
+				.translation = { target.x, target.y, target.z },
+				.rotation = { rotation.x, rotation.y, rotation.z }
+			};
+		}
 		void WorldData::get_rest_positions(std::vector<std::array<float, 3>>& rest_positions) const
 		{
 			rest_positions.resize(input_mesh.model_positions.size());
@@ -305,24 +309,9 @@ namespace lcs
 	namespace Initializer
 	{
 		// template<template<typename> typename BasicBuffer>
-		void init_mesh_data(std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
+		void init_mesh_data(const std::vector<lcs::Initializer::WorldData>& world_data, lcs::MeshData<std::vector>* mesh_data)
 		{
 			const uint num_meshes = world_data.size();
-
-			std::sort(world_data.begin(),
-				world_data.end(),
-				[](const Initializer::WorldData& left, const Initializer::WorldData& right)
-				{
-					if (left.material_type != right.material_type)
-						return int(left.material_type) < int(right.material_type);
-					return left.get_registration_index() < right.get_registration_index();
-				});
-
-			for (uint i = 0; i < num_meshes; i++)
-			{
-				world_data[i].sorted_index = i;
-			}
-
 			mesh_data->num_meshes = num_meshes;
 
 			mesh_data->num_verts = 0;
@@ -344,73 +333,6 @@ namespace lcs
 			mesh_data->sa_rest_scale.resize(num_meshes);
 
 			mesh_data->fixed_verts_map.resize(num_meshes);
-
-			// Pre-process materials
-			for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
-			{
-				auto& shell_info = world_data[meshIdx];
-				auto& input_mesh = shell_info.get_mesh();
-				if (input_mesh.model_positions.empty())
-				{
-					LUISA_ERROR("Mesh {} has no vertex positions.", shell_info.get_model_name());
-				}
-
-				if (shell_info.material_type == MaterialType::Cloth)
-				{
-					if (!shell_info.holds<ClothMaterial>())
-					{
-						shell_info.set_physics_material(ClothMaterial());
-					}
-					auto& mat = shell_info.get_material<ClothMaterial>();
-					mat.is_shell = true; // Cloth material must be shell
-				}
-				else if (shell_info.material_type == MaterialType::Tetrahedral)
-				{
-					if (!shell_info.holds<TetMaterial>())
-					{
-						shell_info.set_physics_material(TetMaterial());
-					}
-					auto& mat = shell_info.get_material<TetMaterial>();
-					mat.is_shell = false; // Tetrahedral mesh must be solid
-				}
-				else if (shell_info.material_type == MaterialType::Rigid)
-				{
-					if (!shell_info.holds<RigidMaterial>())
-					{
-						shell_info.set_physics_material(RigidMaterial());
-					}
-					const bool has_boundary =
-						input_mesh.dihedral_edges.size() != input_mesh.edges.size();
-
-					auto& mat = shell_info.get_material<RigidMaterial>();
-					mat.is_shell = !mat.is_solid;
-					if (mat.is_shell)
-					{
-						if (has_boundary)
-						{
-							// TODO: Later we may construct a virtual volume mesh for shell
-							LUISA_ERROR("Non-closed mesh simulation is currently not supported for rigid body ");
-						}
-					}
-					else
-					{
-						if (has_boundary)
-						{
-							LUISA_ERROR("The solid mesh is not closed");
-						}
-						mat.thickness = 0.0f;
-					}
-				}
-				else if (shell_info.material_type == MaterialType::Rod)
-				{
-					if (!shell_info.holds<RodMaterial>())
-					{
-						shell_info.set_physics_material(RodMaterial());
-					}
-					auto& mat = shell_info.get_material<RodMaterial>();
-					mat.is_shell = true;
-				}
-			}
 
 			// Constant scalar and init MeshData
 			for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)

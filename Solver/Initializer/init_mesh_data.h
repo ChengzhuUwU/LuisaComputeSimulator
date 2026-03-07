@@ -38,14 +38,8 @@ namespace lcs
 			All,
 		};
 
-		struct FixedPointAnimationInfo
+		struct FixedPointDefaultAnimation
 		{
-			// IsFixedPointFunc  is_fixed_point_func;
-			// std::vector<uint> fixed_point_verts;
-			// std::vector<float3> fixed_point_target_positions;
-			// uint   fixed_vid;
-			// float3 target_position;
-
 			bool   use_translate = false;
 			float3 translate = luisa::make_float3(0.0f);
 
@@ -60,17 +54,17 @@ namespace lcs
 			bool   use_setting_position = false;
 			float3 setting_position;
 
-			static float3 fn_affine_position(const lcs::Initializer::FixedPointAnimationInfo& fixed_point,
-				const float																	  time,
-				const lcs::float3&															  pos)
+			static float3 fn_affine_position(const lcs::Initializer::FixedPointDefaultAnimation& fixed_point,
+				const float																		 time,
+				const lcs::float3&																 pos)
 			{
-				auto fn_scale = [](const lcs::Initializer::FixedPointAnimationInfo& fixed_point,
-									const float										time,
-									const lcs::float3&								pos)
+				auto fn_scale = [](const lcs::Initializer::FixedPointDefaultAnimation& fixed_point,
+									const float										   time,
+									const lcs::float3&								   pos)
 				{ return (luisa::scaling(fixed_point.scale * time) * luisa::make_float4(pos, 1.0f)).xyz(); };
-				auto fn_rotate = [](const lcs::Initializer::FixedPointAnimationInfo& fixed_point,
-									 const float									 time,
-									 const lcs::float3&								 pos)
+				auto fn_rotate = [](const lcs::Initializer::FixedPointDefaultAnimation& fixed_point,
+									 const float										time,
+									 const lcs::float3&									pos)
 				{
 					const float rotAngRad = time * fixed_point.rotAngVelDeg / 180.0f * float(lcs::Pi);
 					const auto	relative_vec = pos - fixed_point.rotCenter;
@@ -78,9 +72,9 @@ namespace lcs
 					const auto	rotated_pos = matrix * luisa::make_float4(relative_vec, 1.0f);
 					return fixed_point.rotCenter + rotated_pos.xyz();
 				};
-				auto fn_translate = [](const lcs::Initializer::FixedPointAnimationInfo& fixed_point,
-										const float										time,
-										const lcs::float3&								pos)
+				auto fn_translate = [](const lcs::Initializer::FixedPointDefaultAnimation& fixed_point,
+										const float										   time,
+										const lcs::float3&								   pos)
 				{
 					return (luisa::translation(fixed_point.translate * time) * luisa::make_float4(pos, 1.0f)).xyz();
 				};
@@ -97,10 +91,10 @@ namespace lcs
 
 		struct MakeFixedPointsInterface
 		{
-			FixedPointsType			method = FixedPointsType::All;
-			FixedPointAnimationInfo fixed_info;
-			float					range = 0.001f;
-			void*					data_ptr = nullptr;
+			FixedPointsType			   method = FixedPointsType::All;
+			FixedPointDefaultAnimation fixed_info;
+			float					   range = 0.001f;
+			void*					   data_ptr = nullptr;
 		};
 
 		struct WorldData
@@ -113,8 +107,8 @@ namespace lcs
 
 			MaterialVariant physics_material; // Maybe we can use Polymorphism
 
-			std::vector<uint>					 fixed_point_indices;
-			std::vector<FixedPointAnimationInfo> fixed_point_animations;
+			std::vector<uint>						fixed_point_indices;
+			std::vector<FixedPointDefaultAnimation> fixed_point_default_animations;
 
 			MaterialType			  material_type = MaterialType::Cloth;
 			SimMesh::TriangleMeshData input_mesh;
@@ -123,7 +117,7 @@ namespace lcs
 			uint sorted_index = std::numeric_limits<uint>::max();
 
 		public:
-			SimMesh::TriangleMeshData& get_mesh() { return input_mesh; }
+			const SimMesh::TriangleMeshData& get_mesh() const { return input_mesh; }
 
 			template <typename T>
 			bool holds() const
@@ -302,21 +296,19 @@ namespace lcs
 				return sorted_index;
 			}
 
-			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func,
-				const FixedPointAnimationInfo&												   info = FixedPointAnimationInfo());
-			void set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
-				const FixedPointAnimationInfo&									  info = FixedPointAnimationInfo());
-			void set_pinned_verts_from_indices(const std::vector<uint>& indices,
-				const FixedPointAnimationInfo&							info = FixedPointAnimationInfo());
-			void set_pinned_vert_fixed_info(const uint vid, const FixedPointAnimationInfo& info);
+			void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
+			void set_pinned_verts_from_functions(const std::function<bool(uint)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
+			void set_pinned_verts_from_indices(const std::vector<uint>& indices, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
+			void set_pinned_vert_fixed_info(const uint vid, const FixedPointDefaultAnimation& info);
 
 			void update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
-			// void get_body_animation(const float time, Animation::PerBodyAnimation& body_animation);
+			void update_default_body_animations(const float time, Animation::PerBodyAnimation& body_animation);
+
 			void							  get_rest_positions(std::vector<std::array<float, 3>>& rest_positions) const;
 			std::vector<std::array<float, 3>> get_rest_positions() const;
 		};
 
-		void init_mesh_data(std::vector<lcs::Initializer::WorldData>& shell_list, lcs::MeshData<std::vector>* mesh_data);
+		void init_mesh_data(const std::vector<lcs::Initializer::WorldData>& shell_list, lcs::MeshData<std::vector>* mesh_data);
 		void upload_mesh_buffers(luisa::compute::Device& device,
 			luisa::compute::Stream&						 stream,
 			lcs::MeshData<std::vector>*					 input_data,

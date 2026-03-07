@@ -56,6 +56,8 @@ namespace lcs
 	{
 		set_data_pointer(solver_data, solver_helper);
 
+		init_world_data();
+
 		// Init data
 		{
 			lcs::Initializer::init_mesh_data(world_data, host_mesh_data);
@@ -111,9 +113,99 @@ namespace lcs
 				true);
 		}
 
-		init_animation(world_data);
+		init_animation();
 	}
-	void SolverInterface::init_animation(const std::vector<lcs::Initializer::WorldData>& world_datas)
+	void SolverInterface::init_world_data()
+	{
+		const uint num_meshes = world_data.size();
+
+		using namespace lcs::Initializer;
+
+		// Sort world data by material type, for better memory coherence in simulation and easier management
+		{
+			std::sort(world_data.begin(),
+				world_data.end(),
+				[](const Initializer::WorldData& left, const Initializer::WorldData& right)
+				{
+					if (left.material_type != right.material_type)
+						return int(left.material_type) < int(right.material_type);
+					return left.get_registration_index() < right.get_registration_index();
+				});
+
+			for (uint i = 0; i < num_meshes; i++)
+			{
+				world_data[i].sorted_index = i;
+			}
+		}
+
+		// Pre-process materials
+		for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
+		{
+			auto&		shell_info = world_data[meshIdx];
+			const auto& input_mesh = shell_info.get_mesh();
+			if (input_mesh.model_positions.empty())
+			{
+				LUISA_ERROR("Mesh {} has no vertex positions.", shell_info.get_model_name());
+			}
+
+			if (shell_info.material_type == MaterialType::Cloth)
+			{
+				if (!shell_info.holds<ClothMaterial>())
+				{
+					shell_info.set_physics_material(ClothMaterial());
+				}
+				auto& mat = shell_info.get_material<ClothMaterial>();
+				mat.is_shell = true; // Cloth material must be shell
+			}
+			else if (shell_info.material_type == MaterialType::Tetrahedral)
+			{
+				if (!shell_info.holds<TetMaterial>())
+				{
+					shell_info.set_physics_material(TetMaterial());
+				}
+				auto& mat = shell_info.get_material<TetMaterial>();
+				mat.is_shell = false; // Tetrahedral mesh must be solid
+			}
+			else if (shell_info.material_type == MaterialType::Rigid)
+			{
+				if (!shell_info.holds<RigidMaterial>())
+				{
+					shell_info.set_physics_material(RigidMaterial());
+				}
+				const bool has_boundary =
+					input_mesh.dihedral_edges.size() != input_mesh.edges.size();
+
+				auto& mat = shell_info.get_material<RigidMaterial>();
+				mat.is_shell = !mat.is_solid;
+				if (mat.is_shell)
+				{
+					if (has_boundary)
+					{
+						// TODO: Later we may construct a virtual volume mesh for shell
+						LUISA_ERROR("Non-closed mesh simulation is currently not supported for rigid body ");
+					}
+				}
+				else
+				{
+					if (has_boundary)
+					{
+						LUISA_ERROR("The solid mesh is not closed");
+					}
+					mat.thickness = 0.0f;
+				}
+			}
+			else if (shell_info.material_type == MaterialType::Rod)
+			{
+				if (!shell_info.holds<RodMaterial>())
+				{
+					shell_info.set_physics_material(RodMaterial());
+				}
+				auto& mat = shell_info.get_material<RodMaterial>();
+				mat.is_shell = true;
+			}
+		}
+	}
+	void SolverInterface::init_animation()
 	{
 		vid_to_animation_idx_map.clear();
 		body_to_animation_idx_map.clear();
@@ -123,22 +215,22 @@ namespace lcs
 		//
 		for (uint mesh_idx = 0; mesh_idx < host_mesh_data->num_meshes; mesh_idx++)
 		{
-			const auto& world_data = world_datas[mesh_idx];
+			const auto& wd = world_data[mesh_idx];
 			const uint	prefix_vid = host_mesh_data->prefix_num_verts[mesh_idx];
 			const uint	suffix_vid = host_mesh_data->prefix_num_verts[mesh_idx + 1];
 
-			if (!world_data.fixed_point_indices.empty())
+			if (!wd.fixed_point_indices.empty())
 			{
-				if (world_data.holds<lcs::Initializer::RigidMaterial>())
+				if (wd.holds<lcs::Initializer::RigidMaterial>())
 				{
-					const uint local_vid = world_data.fixed_point_indices.front();
+					const uint local_vid = wd.fixed_point_indices.front();
 					const uint global_vid = prefix_vid + local_vid;
 					const uint dof_idx = host_sim_data->sa_x_to_dof_map[global_vid].get_dof_idx();
 
 					Animation::PerBodyAnimation body_anim;
 					{
-						const auto rest_t = world_data.translation;
-						const auto rest_r = world_data.rotation;
+						const auto rest_t = wd.translation;
+						const auto rest_r = wd.rotation;
 						body_anim.dof_start = dof_idx;
 						body_anim.set_translation(rest_t.x, rest_t.y, rest_t.z);
 						body_anim.set_rotation(rest_r.x, rest_r.y, rest_r.z);
@@ -148,11 +240,11 @@ namespace lcs
 				}
 				else
 				{
-					for (uint index = 0; index < world_data.fixed_point_indices.size(); index++)
+					for (uint index = 0; index < wd.fixed_point_indices.size(); index++)
 					{
-						const uint local_vid = world_data.fixed_point_indices[index];
+						const uint local_vid = wd.fixed_point_indices[index];
 						const uint global_vid = prefix_vid + local_vid;
-						const auto rest_pos = world_data.get_rest_position(local_vid);
+						const auto rest_pos = wd.get_rest_position(local_vid);
 
 						Animation::PerVertexAnimation vertex_anim;
 						{
@@ -348,45 +440,68 @@ namespace lcs
 			}
 		}
 	}
-	void SolverInterface::update_pinned_verts_position(const uint meshIdx,
-		const uint												  local_vid,
-		const std::array<float, 3>&								  pinned_verts_target_position)
+	void SolverInterface::update_per_vertex_animation(const uint registerIdx,
+		const uint												 local_vid,
+		const std::array<float, 3>&								 target_position)
 	{
-		const uint sortedIdx = host_mesh_data->input_to_sorted_mesh_id[meshIdx];
+		const uint sortedIdx = host_mesh_data->input_to_sorted_mesh_id[registerIdx];
 		const uint prefix = host_mesh_data->prefix_num_verts[sortedIdx];
 		const uint global_vid = prefix + local_vid;
 		if (vid_to_animation_idx_map.contains(global_vid))
 		{
 			const uint animation_idx = vid_to_animation_idx_map[global_vid];
-			per_vertex_animations[animation_idx].translation = pinned_verts_target_position;
+			per_vertex_animations[animation_idx].translation = target_position;
 		}
 		else
 		{
-			LUISA_ERROR("Vertex {} in mesh {} is not a pinned vertex. Cannot update position.", local_vid, meshIdx);
-			// uint animation_idx = per_vertex_animations.size();
-			// vid_to_animation_idx_map[vid] = animation_idx;
-			// per_vertex_animations.push_back(
-			// 	{ vid, { pinned_verts_target_position[0], pinned_verts_target_position[1], pinned_verts_target_position[2] } });
+			LUISA_ERROR("Vertex {} in mesh {} (Sorted = {}) is not a pinned vertex. Cannot update position.", local_vid, registerIdx, sortedIdx);
 		}
 	}
-	void SolverInterface::update_pinned_body_state(const uint meshIdx,
-		const std::array<float, 3>&							  translation,
-		const std::array<float, 3>&							  rotation)
+	void SolverInterface::update_per_body_animation(const uint registerIdx,
+		const std::array<float, 3>&							   target_translation,
+		const std::array<float, 3>&							   target_rotation)
 	{
-		const uint sortedIdx = host_mesh_data->input_to_sorted_mesh_id[meshIdx];
-
-		Animation::PerBodyAnimation tmp;
-		tmp.set_translation(translation[0], translation[1], translation[2]);
-		tmp.set_rotation(rotation[0], rotation[1], rotation[2]);
+		const uint sortedIdx = host_mesh_data->input_to_sorted_mesh_id[registerIdx];
 
 		if (body_to_animation_idx_map.contains(sortedIdx))
 		{
 			const uint animation_idx = body_to_animation_idx_map[sortedIdx];
-			per_body_animations[animation_idx] = tmp;
+			per_body_animations[animation_idx].set_translation(target_translation[0], target_translation[1], target_translation[2]);
+			per_body_animations[animation_idx].set_rotation(target_rotation[0], target_rotation[1], target_rotation[2]);
 		}
 		else
 		{
-			LUISA_ERROR("Mesh {} (SortedIdx = {}) is not a pinned rigid body. Cannot update state.", meshIdx, sortedIdx);
+			LUISA_ERROR("Mesh {} (SortedIdx = {}) is not a pinned rigid body. Cannot update state.", registerIdx, sortedIdx);
+		}
+	}
+	void SolverInterface::update_default_animations()
+	{
+		const uint curr_frame = get_scene_params().current_frame;
+
+		// Animation for fixed points
+		for (uint mesh_idx = 0; mesh_idx < world_data.size(); mesh_idx++)
+		{
+			// Just sample code for animation, you can replace it with your own animation logic
+			const float curr_time = curr_frame * lcs::get_scene_params().implicit_dt;
+			auto&		wd = world_data[mesh_idx];
+			if (!wd.fixed_point_default_animations.empty())
+			{
+				if (wd.holds<Initializer::RigidMaterial>())
+				{
+					lcs::Animation::PerBodyAnimation tmp_body_animations;
+					world_data[mesh_idx].update_default_body_animations(curr_time, tmp_body_animations);
+					update_per_body_animation(mesh_idx, tmp_body_animations.translation, tmp_body_animations.rotation);
+				}
+				else
+				{
+					std::vector<lcs::Animation::PerVertexAnimation> tmp_vertex_animations;
+					world_data[mesh_idx].update_default_vertex_animations(curr_time, per_vertex_animations);
+					for (const auto& animate : per_vertex_animations)
+					{
+						update_per_vertex_animation(mesh_idx, animate.vertex_id, animate.translation);
+					}
+				}
+			}
 		}
 	}
 

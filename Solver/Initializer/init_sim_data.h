@@ -7,9 +7,9 @@
 namespace lcs::Initializer
 {
 
-	void init_sim_data(std::vector<lcs::Initializer::WorldData>& shell_infos,
-		lcs::MeshData<std::vector>*								 mesh_data,
-		lcs::SimulationData<std::vector>*						 sim_data);
+	void init_sim_data(const std::vector<lcs::Initializer::WorldData>& shell_infos,
+		lcs::MeshData<std::vector>*									   mesh_data,
+		lcs::SimulationData<std::vector>*							   sim_data);
 	void upload_sim_buffers(luisa::compute::Device&	 device,
 		luisa::compute::Stream&						 stream,
 		lcs::SimulationData<std::vector>*			 input_data,
