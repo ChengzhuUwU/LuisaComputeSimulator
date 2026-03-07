@@ -720,6 +720,7 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("get_rest_rotation", &WorldDataWrapper::get_rest_rotation)
 		.def("get_rest_scale", &WorldDataWrapper::get_rest_scale)
 		.def("get_name", &WorldDataWrapper::get_name)
+		.def("get_id", &WorldDataWrapper::get_registration_index)
 		.def("get_registration_index", &WorldDataWrapper::get_registration_index)
 		.def("get_fixed_point_indices", &WorldDataWrapper::get_fixed_point_indices,
 			"Return currently registered fixed-point local vertex indices as a Python list")

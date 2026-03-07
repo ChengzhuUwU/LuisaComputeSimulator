@@ -2,7 +2,7 @@ import numpy as np
 import os, sys
 from utils.animation_transform import FixedPointTransform
 
-class PinnedVertexAnimator:
+class VertexAnimator:
 	"""Manage fixed-point selection and Python-driven per-frame pinned vertex updates."""
 
 	def __init__(self, world_data):
@@ -21,7 +21,7 @@ class PinnedVertexAnimator:
 			self._vertex_transform_map[int(vid)] = transform
 		return new_ids
 
-	def update_pinned_vertices(self, solver, curr_frame: int, dt: float):
+	def update_vertex_animation(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:
 			raise RuntimeError("mesh_idx is not set. Call set_mesh_index() first.")
 		if self._rest_positions is None:

@@ -3,7 +3,7 @@ import numpy as np
 from utils.animation_transform import FixedPointTransform
 
 
-class PinnedBodyAnimator:
+class BodyAnimator:
 	"""Manage fixed rigid body selection and Python-driven per-frame body updates."""
 
 	def __init__(self, world_data, initial_translation=None, initial_rotation=None):
@@ -26,7 +26,7 @@ class PinnedBodyAnimator:
 		self._transform = transform
 		return after[before.size :]
 
-	def update_pinned_body(self, solver, curr_frame: int, dt: float):
+	def update_body_animation(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:
 			raise RuntimeError("mesh_idx is not set.")
 		if self._transform is None:

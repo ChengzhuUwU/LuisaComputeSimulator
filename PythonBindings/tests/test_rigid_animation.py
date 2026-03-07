@@ -10,7 +10,7 @@ import utils.arg_parser
 args = utils.arg_parser.parse_args()
 
 from utils.animation_transform import FixedPointTransform
-from utils.body_animator import PinnedBodyAnimator
+from utils.body_animator import BodyAnimator
 
 # Initialize LuisaCompute device
 backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
@@ -32,7 +32,7 @@ def load_bottom_cube():
 	cube_bottom_ref.set_scale(0.1)
 	cube_bottom_ref.set_translation(0.0, 0.01, 0.0)
 
-	body_animator = PinnedBodyAnimator(
+	body_animator = BodyAnimator(
 		world_data = cube_bottom_ref, 
 		initial_translation=cube_bottom_ref.get_rest_translation(), 
 		initial_rotation=cube_bottom_ref.get_rest_rotation())
@@ -68,7 +68,7 @@ os.makedirs(output_dir, exist_ok=True)
 if args.headless:
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
 	for _ in range(0, args.advance_frames):
-		body_animator.update_pinned_body(solver, config_ref.current_frame, config_ref.implicit_dt)
+		body_animator.update_body_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
 		if config_ref.use_gpu:
 			solver.physics_step_gpu()
 		else:
@@ -83,7 +83,7 @@ else:
 			self._body_animator = body_animator_ref
 
 		def _physics_step(self):
-			self._body_animator.update_pinned_body(self._solver, self._config.current_frame, self._config.implicit_dt)
+			self._body_animator.update_body_animation(self._solver, self._config.current_frame, self._config.implicit_dt)
 			super()._physics_step()
 
 	gui = AnimatedSimulationGUI(solver, config_ref, output_dir, body_animator)

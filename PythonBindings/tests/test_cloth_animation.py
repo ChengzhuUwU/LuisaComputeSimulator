@@ -20,23 +20,9 @@ cloth_ref = solver.register_mesh_from_file_path('cylinder7K', cloth_mesh_path)
 cloth_ref.set_simulation_type(lcs.MaterialType.Cloth)
 
 from utils.animation_transform import FixedPointTransform
-from utils.vertex_animator import PinnedVertexAnimator
-animator = PinnedVertexAnimator(cloth_ref)
+from utils.vertex_animator import VertexAnimator
+animator = VertexAnimator(cloth_ref)
 
-# animator.add_rule_by_method(
-# 	"Left",
-# 	FixedPointTransform(
-# 		use_translate=True,
-# 		translate=[0.000, 0.1, 0.0]
-#     )
-# )
-# animator.add_rule_by_method(
-# 	"Right",
-# 	FixedPointTransform(
-# 		use_translate=True,
-# 		translate=[0.000, 0.1, 0.0]
-#     )
-# )
 animator.add_rule_by_method(
     "Left",
     FixedPointTransform(
@@ -76,7 +62,7 @@ os.makedirs(output_dir, exist_ok=True)
 if args.headless:
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
 	for _ in range(0, args.advance_frames):
-		animator.update_pinned_vertices(solver, config_ref.current_frame, config_ref.implicit_dt)
+		animator.update_vertex_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
 		if config_ref.use_gpu:
 			solver.physics_step_gpu()
 		else:
@@ -88,10 +74,10 @@ else:
 	class AnimatedSimulationGUI(utils.polyscope_gui.SimulationGUI):
 		def __init__(self, solver_ref, cfg_ref, out_dir, pinned_animator):
 			super().__init__(solver_ref, cfg_ref, out_dir)
-			self._pinned_animator = pinned_animator
+			self._animator = pinned_animator
 
 		def _physics_step(self):
-			self._pinned_animator.update_pinned_vertices(self._solver, self._config.current_frame, self._config.implicit_dt)
+			self._animator.update_vertex_animation(self._solver, self._config.current_frame, self._config.implicit_dt)
 			super()._physics_step()
 
 	gui = AnimatedSimulationGUI(solver, config_ref, output_dir, animator)
