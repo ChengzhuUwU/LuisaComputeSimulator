@@ -78,7 +78,7 @@ solver.init_solver()
 config_ref = solver.get_config()
 
 config_ref.use_floor = False
-config_ref.nonlinear_iter_count = 1
+# config_ref.nonlinear_iter_count = 1
 # config_ref.use_self_collision = False
 
 # Output directory (for optional file saving)
