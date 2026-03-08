@@ -18,6 +18,7 @@
 namespace py = pybind11;
 using namespace lcs;
 using namespace lcs::Initializer;
+using namespace lcs::Material;
 
 // Helper wrapper to hold WorldData pointer and expose chainable methods
 struct WorldDataWrapper
@@ -33,7 +34,7 @@ struct WorldDataWrapper
 		wd->set_name(name);
 		return *this;
 	}
-	WorldDataWrapper& set_simulation_type(lcs::Initializer::MaterialType t)
+	WorldDataWrapper& set_simulation_type(lcs::Material::MaterialType t)
 	{
 		wd->set_material_type(t);
 		return *this;
@@ -48,7 +49,7 @@ struct WorldDataWrapper
 		float					poisson_ratio = ClothMaterial::default_poisson_ratio(),
 		float					area_bending_stiffness = ClothMaterial::default_area_bending_stiffness())
 	{
-		wd->set_material_type(lcs::Initializer::MaterialType::Cloth);
+		wd->set_material_type(lcs::Material::MaterialType::Cloth);
 		ClothMaterial mat;
 		mat.stretch_model = parse_cloth_stretch_model(stretch_model);
 		mat.bending_model = parse_cloth_bending_model(bending_model);
@@ -68,7 +69,7 @@ struct WorldDataWrapper
 		float					density = TetMaterial::default_density(),
 		float					mass = TetMaterial::default_mass())
 	{
-		wd->set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
+		wd->set_material_type(lcs::Material::MaterialType::Tetrahedral);
 		TetMaterial mat;
 		mat.model = parse_tet_model(model);
 		mat.youngs_modulus = youngs_modulus;
@@ -88,7 +89,7 @@ struct WorldDataWrapper
 		float					density = RigidMaterial::default_density(),
 		float					mass = RigidMaterial::default_mass())
 	{
-		wd->set_material_type(lcs::Initializer::MaterialType::Rigid);
+		wd->set_material_type(lcs::Material::MaterialType::Rigid);
 		RigidMaterial mat;
 		mat.model = parse_rigid_model(model);
 		mat.thickness = thickness;
@@ -108,7 +109,7 @@ struct WorldDataWrapper
 		float					density = RodMaterial::default_density(),
 		float					mass = RodMaterial::default_mass())
 	{
-		wd->set_material_type(lcs::Initializer::MaterialType::Rod);
+		wd->set_material_type(lcs::Material::MaterialType::Rod);
 		RodMaterial mat;
 		mat.model = parse_rod_model(model);
 		mat.radius = radius;
@@ -618,12 +619,12 @@ struct PyNewtonBuilder
 
 PYBIND11_MODULE(lcs_py, m)
 {
-	py::enum_<lcs::Initializer::MaterialType>(m, "MaterialType")
-		.value("Particle", lcs::Initializer::MaterialType::Particle)
-		.value("Cloth", lcs::Initializer::MaterialType::Cloth)
-		.value("Tetrahedral", lcs::Initializer::MaterialType::Tetrahedral)
-		.value("Rigid", lcs::Initializer::MaterialType::Rigid)
-		.value("Rod", lcs::Initializer::MaterialType::Rod)
+	py::enum_<lcs::Material::MaterialType>(m, "MaterialType")
+		.value("Particle", lcs::Material::MaterialType::Particle)
+		.value("Cloth", lcs::Material::MaterialType::Cloth)
+		.value("Tetrahedral", lcs::Material::MaterialType::Tetrahedral)
+		.value("Rigid", lcs::Material::MaterialType::Rigid)
+		.value("Rod", lcs::Material::MaterialType::Rod)
 		.export_values();
 
 	// py::class_<ClothMaterial>(m, "ClothMaterial")

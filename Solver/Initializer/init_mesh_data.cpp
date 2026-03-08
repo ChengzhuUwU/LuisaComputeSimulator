@@ -533,7 +533,7 @@ namespace lcs
 					{
 						if (shell_info.input_mesh.tetrahedrons.empty())
 						{
-							if (shell_info.material_type == MaterialType::Tetrahedral)
+							if (shell_info.material_type == Material::MaterialType::Tetrahedral)
 							{
 								LUISA_ERROR("Mesh {} is set as Tetrahedral type but has no tetrahedron elements!", meshIdx);
 							}

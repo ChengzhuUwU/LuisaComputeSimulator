@@ -120,6 +120,7 @@ namespace lcs
 		const uint num_meshes = world_data.size();
 
 		using namespace lcs::Initializer;
+		using namespace lcs::Material;
 
 		// Sort world data by material type, for better memory coherence in simulation and easier management
 		{
@@ -221,7 +222,7 @@ namespace lcs
 
 			if (!wd.fixed_point_indices.empty())
 			{
-				if (wd.holds<lcs::Initializer::RigidMaterial>())
+				if (wd.holds<lcs::Material::RigidMaterial>())
 				{
 					const uint local_vid = wd.fixed_point_indices.front();
 					const uint global_vid = prefix_vid + local_vid;
@@ -485,7 +486,7 @@ namespace lcs
 			const uint	register_idx = wd.get_registration_index();
 			if (!wd.fixed_point_default_animations.empty())
 			{
-				if (wd.holds<Initializer::RigidMaterial>())
+				if (wd.holds<Material::RigidMaterial>())
 				{
 					lcs::Animation::PerBodyAnimation tmp_body_animations;
 					wd.update_default_body_animations(curr_time, tmp_body_animations);

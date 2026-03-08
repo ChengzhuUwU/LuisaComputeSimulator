@@ -84,8 +84,8 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
         auto upper_square = lcs::Initializer::WorldData()
                                 .set_name("upper square")
                                 .load_mesh_from_path(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
-                                .set_material_type(lcs::Initializer::MaterialType::Cloth)
-                                .set_physics_material(lcs::Initializer::ClothMaterial{
+                                .set_material_type(lcs::Material::MaterialType::Cloth)
+                                .set_physics_material(lcs::Material::ClothMaterial{
                                     .stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring,
                                 })
                                 .set_translation({ 0.0f, 0.4f, 0.0f });
@@ -97,7 +97,7 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
         auto lower_square = lcs::Initializer::WorldData()
                                 .set_name("lower square")
                                 .load_mesh_from_array(square_mesh_vertices, square_mesh_faces)
-                                .set_physics_material(lcs::Initializer::ClothMaterial{}) 
+                                .set_physics_material(lcs::Material::ClothMaterial{}) 
                                 .set_scale(0.8f)
                                 .set_translation({ 0.1f, 0.2f, 0.0f })
                                 .add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })

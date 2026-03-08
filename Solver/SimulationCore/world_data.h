@@ -106,12 +106,12 @@ namespace lcs::Initializer
 		float3		rotation = luisa::make_float3(0.0f * lcs::Pi); // Rotation in x-channel means rotate along with x-axis
 		float3		scale = luisa::make_float3(1.0f);
 
-		MaterialVariant physics_material; // Maybe we can use Polymorphism
+		Material::MaterialVariant physics_material; // Maybe we can use Polymorphism
 
 		std::vector<uint>						fixed_point_indices;
 		std::vector<FixedPointDefaultAnimation> fixed_point_default_animations;
 
-		MaterialType			  material_type = MaterialType::Cloth;
+		Material::MaterialType	  material_type = Material::MaterialType::Cloth;
 		SimMesh::TriangleMeshData input_mesh;
 
 		uint registration_index = std::numeric_limits<uint>::max();
@@ -138,7 +138,7 @@ namespace lcs::Initializer
 
 		WorldData()
 			: model_name("unnamed")
-			, material_type(MaterialType::Particle)
+			, material_type(Material::MaterialType::Particle)
 		{
 		}
 		WorldData& set_name(const std::string_view& model_name)
@@ -151,7 +151,7 @@ namespace lcs::Initializer
 		// 	this->file_path = file_path;
 		// 	return *this;
 		// }
-		WorldData& set_material_type(const MaterialType& sim_type)
+		WorldData& set_material_type(const Material::MaterialType& sim_type)
 		{
 			this->material_type = sim_type;
 			return *this;
@@ -211,7 +211,7 @@ namespace lcs::Initializer
 			const auto model_pos = input_mesh.model_positions[local_vid];
 			return get_rest_position(luisa::make_float3(model_pos[0], model_pos[1], model_pos[2]));
 		}
-		WorldData& set_physics_material(const MaterialVariant& mat)
+		WorldData& set_physics_material(const Material::MaterialVariant& mat)
 		{
 			this->physics_material = mat;
 			return *this;
@@ -257,17 +257,17 @@ namespace lcs::Initializer
 		{
 			if (get_is_shell())
 			{
-				if (holds<ClothMaterial>())
+				if (holds<Material::ClothMaterial>())
 				{
-					return get_material<ClothMaterial>().thickness;
+					return get_material<Material::ClothMaterial>().thickness;
 				}
-				else if (holds<RigidMaterial>())
+				else if (holds<Material::RigidMaterial>())
 				{
-					return get_material<RigidMaterial>().thickness;
+					return get_material<Material::RigidMaterial>().thickness;
 				}
-				else if (holds<RodMaterial>())
+				else if (holds<Material::RodMaterial>())
 				{
-					return get_material<RodMaterial>().radius * 2.0f;
+					return get_material<Material::RodMaterial>().radius * 2.0f;
 				}
 				else
 				{

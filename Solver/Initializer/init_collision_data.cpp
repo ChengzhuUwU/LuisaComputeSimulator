@@ -21,7 +21,7 @@ namespace lcs::Initializer
 			[&](const uint vid)
 			{
 				const uint mesh_type = mesh_data->sa_vert_mesh_type[vid];
-				if (mesh_type == uint(MaterialType::Tetrahedral))
+				if (mesh_type == uint(Material::MaterialType::Tetrahedral))
 				{
 					const auto& adj_faces = mesh_data->vert_adj_faces[vid];
 					if (!adj_faces.empty())
@@ -107,7 +107,7 @@ namespace lcs::Initializer
 		std::vector<float> mesh_scaled_d_hat(mesh_data->num_meshes);
 		for (uint mesh_idx = 0; mesh_idx < mesh_data->num_meshes; mesh_idx++)
 		{
-			const bool is_rigid_body = world_data[mesh_idx].holds<RigidMaterial>();
+			const bool is_rigid_body = world_data[mesh_idx].holds<Material::RigidMaterial>();
 
 			float thickness = world_data[mesh_idx].get_thickness();
 			float d_hat = world_data[mesh_idx].get_d_hat();

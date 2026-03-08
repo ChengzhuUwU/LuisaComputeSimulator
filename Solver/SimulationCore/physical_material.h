@@ -7,7 +7,7 @@
 namespace lcs
 {
 
-	namespace Initializer
+	namespace Material
 	{
 		enum class ConstitutiveStretchModelCloth
 		{
@@ -150,9 +150,9 @@ namespace lcs
 				var);
 		}
 
-	} // namespace Initializer
+	} // namespace Material
 
-	namespace Initializer
+	namespace Material
 	{
 		std::string_view cloth_stretch_model_to_string(ConstitutiveStretchModelCloth model);
 		std::string_view cloth_bending_model_to_string(ConstitutiveBendingModelCloth model);
@@ -165,6 +165,6 @@ namespace lcs
 		ConstitutiveModelTet		  parse_tet_model(const std::string_view& s);
 		ConstitutiveModelRigid		  parse_rigid_model(const std::string_view& s);
 		ConstitutiveModelRod		  parse_rod_model(const std::string_view& s);
-	} // namespace Initializer
+	} // namespace Material
 
 } // namespace lcs

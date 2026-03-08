@@ -351,13 +351,13 @@ namespace Demo::Simulation
 				{
 					const char* ss = yyjson_get_str(stype);
 					if (strcmp(ss, "Rigid") == 0)
-						info.set_material_type(lcs::Initializer::MaterialType::Rigid);
+						info.set_material_type(lcs::Material::MaterialType::Rigid);
 					else if (strcmp(ss, "Tetrahedral") == 0)
-						info.set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
+						info.set_material_type(lcs::Material::MaterialType::Tetrahedral);
 					else if (strcmp(ss, "Rod") == 0)
-						info.set_material_type(lcs::Initializer::MaterialType::Rod);
+						info.set_material_type(lcs::Material::MaterialType::Rod);
 					else
-						info.set_material_type(lcs::Initializer::MaterialType::Cloth);
+						info.set_material_type(lcs::Material::MaterialType::Cloth);
 				}
 
 				// set physical material
@@ -398,19 +398,19 @@ namespace Demo::Simulation
 						auto material_to_shell = [&](const std::string& s)
 						{
 							if (s == "Rigid")
-								return lcs::Initializer::MaterialType::Rigid;
+								return lcs::Material::MaterialType::Rigid;
 							else if (s == "Tetrahedral" || s == "Tet" || s == "TetMaterial")
-								return lcs::Initializer::MaterialType::Tetrahedral;
+								return lcs::Material::MaterialType::Tetrahedral;
 							else if (s == "Rod")
-								return lcs::Initializer::MaterialType::Rod;
-							return lcs::Initializer::MaterialType::Cloth;
+								return lcs::Material::MaterialType::Rod;
+							return lcs::Material::MaterialType::Cloth;
 						};
 
 						// Parse and fill material struct based on material_type
 						if (material_type == "Cloth")
 						{
-							lcs::Initializer::ClothMaterial mat;
-							yyjson_val*						v = nullptr;
+							lcs::Material::ClothMaterial mat;
+							yyjson_val*					 v = nullptr;
 							v = yyjson_obj_get(mat_obj, "thickness");
 							if (v && yyjson_is_num(v))
 								mat.thickness = static_cast<float>(yyjson_get_num(v));
@@ -446,7 +446,7 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									mat.stretch_model = lcs::Initializer::parse_cloth_stretch_model(s);
+									mat.stretch_model = lcs::Material::parse_cloth_stretch_model(s);
 								}
 							}
 
@@ -456,7 +456,7 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									mat.bending_model = lcs::Initializer::parse_cloth_bending_model(s);
+									mat.bending_model = lcs::Material::parse_cloth_bending_model(s);
 								}
 							}
 
@@ -464,7 +464,7 @@ namespace Demo::Simulation
 							// if material_type not provided explicitly, set from material
 							if (stype == nullptr)
 							{
-								info.set_material_type(lcs::Initializer::MaterialType::Cloth);
+								info.set_material_type(lcs::Material::MaterialType::Cloth);
 							}
 							else
 							{
@@ -475,8 +475,8 @@ namespace Demo::Simulation
 						}
 						else if (material_type == "Tetrahedral" || material_type == "Tet" || material_type == "TetMaterial")
 						{
-							lcs::Initializer::TetMaterial mat;
-							yyjson_val*					  v = nullptr;
+							lcs::Material::TetMaterial mat;
+							yyjson_val*				   v = nullptr;
 							v = yyjson_obj_get(mat_obj, "youngs_modulus");
 							if (v && yyjson_is_num(v))
 								mat.youngs_modulus = static_cast<float>(yyjson_get_num(v));
@@ -502,14 +502,14 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									mat.model = lcs::Initializer::parse_tet_model(s);
+									mat.model = lcs::Material::parse_tet_model(s);
 								}
 							}
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_material_type(lcs::Initializer::MaterialType::Tetrahedral);
+								info.set_material_type(lcs::Material::MaterialType::Tetrahedral);
 							}
 							else
 							{
@@ -519,8 +519,8 @@ namespace Demo::Simulation
 						}
 						else if (material_type == "Rigid")
 						{
-							lcs::Initializer::RigidMaterial mat;
-							yyjson_val*						v = nullptr;
+							lcs::Material::RigidMaterial mat;
+							yyjson_val*					 v = nullptr;
 							v = yyjson_obj_get(mat_obj, "thickness");
 							if (v && yyjson_is_num(v))
 								mat.thickness = static_cast<float>(yyjson_get_num(v));
@@ -552,14 +552,14 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									mat.model = lcs::Initializer::parse_rigid_model(s);
+									mat.model = lcs::Material::parse_rigid_model(s);
 								}
 							}
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_material_type(lcs::Initializer::MaterialType::Rigid);
+								info.set_material_type(lcs::Material::MaterialType::Rigid);
 							}
 							else
 							{
@@ -569,8 +569,8 @@ namespace Demo::Simulation
 						}
 						else if (material_type == "Rod")
 						{
-							lcs::Initializer::RodMaterial mat;
-							yyjson_val*					  v = nullptr;
+							lcs::Material::RodMaterial mat;
+							yyjson_val*				   v = nullptr;
 							v = yyjson_obj_get(mat_obj, "radius");
 							if (v && yyjson_is_num(v))
 								mat.radius = static_cast<float>(yyjson_get_num(v));
@@ -602,14 +602,14 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									mat.model = lcs::Initializer::parse_rod_model(s);
+									mat.model = lcs::Material::parse_rod_model(s);
 								}
 							}
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
-								info.set_material_type(lcs::Initializer::MaterialType::Rod);
+								info.set_material_type(lcs::Material::MaterialType::Rod);
 							}
 							else
 							{
@@ -620,8 +620,8 @@ namespace Demo::Simulation
 						else
 						{
 							// fallback: treat as cloth
-							lcs::Initializer::ClothMaterial mat;
-							yyjson_val*						v = yyjson_obj_get(mat_obj, "thickness");
+							lcs::Material::ClothMaterial mat;
+							yyjson_val*					 v = yyjson_obj_get(mat_obj, "thickness");
 							if (v && yyjson_is_num(v))
 								mat.thickness = static_cast<float>(yyjson_get_num(v));
 							v = yyjson_obj_get(mat_obj, "d_hat");
@@ -630,7 +630,7 @@ namespace Demo::Simulation
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
-								info.set_material_type(lcs::Initializer::MaterialType::Cloth);
+								info.set_material_type(lcs::Material::MaterialType::Cloth);
 						}
 					}
 				}

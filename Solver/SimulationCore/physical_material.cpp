@@ -3,7 +3,7 @@
 #include <array>
 #include <string_view>
 
-namespace lcs::Initializer
+namespace lcs::Material
 {
 	namespace
 	{
@@ -140,4 +140,4 @@ namespace lcs::Initializer
 		}
 		return RodMaterial::default_model();
 	}
-} // namespace lcs::Initializer
+} // namespace lcs::Material

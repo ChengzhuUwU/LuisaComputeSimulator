@@ -14,6 +14,7 @@
 
 namespace lcs::Initializer
 {
+	using namespace Material;
 
 	template <size_t N, typename TypeOffset, size_t NumOffDiag = N * (N - 1)>
 	std::array<TypeOffset, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
