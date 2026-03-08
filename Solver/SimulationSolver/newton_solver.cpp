@@ -647,6 +647,104 @@ namespace lcs
 		};
 	};
 
+	template <typename T>
+	void assembly_template4(const luisa::compute::Var<uint> parallel_idx,
+		const luisa::compute::Var<T>&						constraints,
+		const luisa::compute::BufferView<uint>&				sa_vert_adj_material_force_verts_csr,
+		const luisa::compute::BufferView<float3>&			sa_cgB,
+		const luisa::compute::BufferView<float3x3>&			sa_cgA_diag,
+		const luisa::compute::BufferView<MatrixTriplet3x3>& sa_cgA_offdiag_triplet,
+		const luisa::compute::Var<uint>						prefix_dof)
+	{
+		constexpr uint N = T::get_num_verts_per_constaint();
+
+		auto& vert_adj_constraints_csr = constraints.vert_adj_constraints_csr;
+		auto& constraint_gradients = constraints.constraint_gradients;
+		auto& constraint_hessians = constraints.constraint_hessians;
+		auto& constraint_offsets_in_adjlist = constraints.constraint_offsets_in_adjlist;
+		auto& constraint_indices = constraints.constraint_indices;
+
+		using namespace luisa::compute;
+
+		if constexpr (N == 1)
+		{
+			const Uint vid = prefix_dof + parallel_idx;
+			const Uint curr_prefix = vert_adj_constraints_csr->read(vid);
+			const Uint next_prefix = vert_adj_constraints_csr->read(vid + 1);
+
+			$for(j, curr_prefix, next_prefix)
+			{
+				const Uint	   adj_eid = vert_adj_constraints_csr->read(j);
+				const Float3   grad = constraint_gradients->read(adj_eid);
+				const Float3x3 diag_hess = constraint_hessians->read(adj_eid);
+
+				sa_cgB->atomic(vid)[0].fetch_add(-grad[0]);
+				sa_cgB->atomic(vid)[1].fetch_add(-grad[1]);
+				sa_cgB->atomic(vid)[2].fetch_add(-grad[2]);
+
+				sa_cgA_diag->atomic(vid)[0][0].fetch_add(diag_hess[0][0]);
+				sa_cgA_diag->atomic(vid)[0][1].fetch_add(diag_hess[0][1]);
+				sa_cgA_diag->atomic(vid)[0][2].fetch_add(diag_hess[0][2]);
+				sa_cgA_diag->atomic(vid)[1][0].fetch_add(diag_hess[1][0]);
+				sa_cgA_diag->atomic(vid)[1][1].fetch_add(diag_hess[1][1]);
+				sa_cgA_diag->atomic(vid)[1][2].fetch_add(diag_hess[1][2]);
+				sa_cgA_diag->atomic(vid)[2][0].fetch_add(diag_hess[2][0]);
+				sa_cgA_diag->atomic(vid)[2][1].fetch_add(diag_hess[2][1]);
+				sa_cgA_diag->atomic(vid)[2][2].fetch_add(diag_hess[2][2]);
+			};
+		}
+		else
+		{
+			constexpr uint N_row_off = N - 1u;
+			constexpr uint N_off = N * N_row_off;
+
+			const Uint adj_eid = parallel_idx / N_off;
+			const Uint slot = parallel_idx - adj_eid * N_off;
+			const Uint row_local = slot / N_row_off;
+			const Uint offdiag_slot = slot - row_local * N_row_off;
+
+			const auto edge = constraint_indices->read(adj_eid);
+			const Uint vid = edge[row_local];
+			const Uint jj = ite(offdiag_slot < row_local, offdiag_slot, offdiag_slot + 1u);
+			const Uint adj_vid = edge[jj];
+
+			$if(offdiag_slot == 0u)
+			{
+				const Float3   grad = constraint_gradients->read(adj_eid * N + row_local);
+				const Float3x3 diag_hess =
+					constraint_hessians->read(adj_eid * (N * N) + row_local * N + row_local);
+
+				sa_cgB->atomic(vid)[0].fetch_add(-grad[0]);
+				sa_cgB->atomic(vid)[1].fetch_add(-grad[1]);
+				sa_cgB->atomic(vid)[2].fetch_add(-grad[2]);
+
+				sa_cgA_diag->atomic(vid)[0][0].fetch_add(diag_hess[0][0]);
+				sa_cgA_diag->atomic(vid)[0][1].fetch_add(diag_hess[0][1]);
+				sa_cgA_diag->atomic(vid)[0][2].fetch_add(diag_hess[0][2]);
+				sa_cgA_diag->atomic(vid)[1][0].fetch_add(diag_hess[1][0]);
+				sa_cgA_diag->atomic(vid)[1][1].fetch_add(diag_hess[1][1]);
+				sa_cgA_diag->atomic(vid)[1][2].fetch_add(diag_hess[1][2]);
+				sa_cgA_diag->atomic(vid)[2][0].fetch_add(diag_hess[2][0]);
+				sa_cgA_diag->atomic(vid)[2][1].fetch_add(diag_hess[2][1]);
+				sa_cgA_diag->atomic(vid)[2][2].fetch_add(diag_hess[2][2]);
+			};
+
+			const Float3x3 offdiag_hess =
+				constraint_hessians->read(adj_eid * (N * N) + row_local * N + jj);
+			const Uint triplet_idx =
+				constraint_offsets_in_adjlist->read(adj_eid * N_off + row_local * N_row_off + offdiag_slot);
+
+			auto	   triplet = sa_cgA_offdiag_triplet->read(triplet_idx);
+			const Bool pair_match =
+				((triplet->get_row_idx() == vid) & (triplet->get_col_idx() == adj_vid))
+				| ((triplet->get_row_idx() == adj_vid) & (triplet->get_col_idx() == vid));
+			device_assert(pair_match,
+				"Error in assembly: triplet index does not match expected (vid, adj_vid) pair.");
+
+			atomic_add_triplet_matrix(sa_cgA_offdiag_triplet, triplet_idx, offdiag_hess);
+		}
+	};
+
 	void NewtonSolver::compile_assembly(AsyncCompiler& compiler, const luisa::compute::ShaderOption& default_option)
 	{
 		using namespace luisa::compute;
@@ -658,7 +756,13 @@ namespace lcs
 				sa_cgA_offdiag_triplet = sim_data->sa_cgA_fixtopo_offdiag_triplet.view()](const auto& constraint,
 				const Uint																			  prefix_dof)
 		{
-			assembly_template3(prefix_dof + dispatch_x(), constraint, sa_vert_adj_material_force_verts_csr, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
+			assembly_template4(dispatch_x(),
+				constraint,
+				sa_vert_adj_material_force_verts_csr,
+				sa_cgB,
+				sa_cgA_diag,
+				sa_cgA_offdiag_triplet,
+				prefix_dof);
 		};
 
 		// Assembly
@@ -3079,7 +3183,8 @@ namespace lcs
 					{
 						get_spring_energy()->device_evaluate(
 							stream, stretch_springs, sim_data->sa_x, stretch_springs.get_num_indices());
-						stream << fn_material_energy_assembly_stretch_spring(stretch_springs).dispatch(num_dof_soft);
+						stream << fn_material_energy_assembly_stretch_spring(stretch_springs)
+									  .dispatch(stretch_springs.constraint_offsets_in_adjlist.size());
 					}
 
 					const auto& stretch_faces = sim_data->get_stretch_face_data();
@@ -3087,7 +3192,8 @@ namespace lcs
 					{
 						get_stretch_face_energy()->device_evaluate(
 							stream, stretch_faces, sim_data->sa_x, stretch_faces.get_num_indices());
-						stream << fn_material_energy_assembly_stretch_face(stretch_faces).dispatch(num_dof_soft);
+						stream << fn_material_energy_assembly_stretch_face(stretch_faces)
+									  .dispatch(stretch_faces.constraint_offsets_in_adjlist.size());
 					}
 
 					const auto& bending_data = sim_data->get_bending_edge_data();
@@ -3098,7 +3204,8 @@ namespace lcs
 							sim_data->sa_x,
 							get_scene_params().get_bending_stiffness_scaling(),
 							bending_data.get_num_indices());
-						stream << fn_material_energy_assembly_bending(bending_data).dispatch(num_dof_soft);
+						stream << fn_material_energy_assembly_bending(bending_data)
+									  .dispatch(bending_data.constraint_offsets_in_adjlist.size());
 					}
 
 					const auto& abd_inertia_data = sim_data->get_abd_inertia_data();
@@ -3116,7 +3223,8 @@ namespace lcs
 							get_scene_params().contact_energy_type,
 							host_sim_data->num_verts_rigid);
 
-						stream << fn_material_energy_assembly_abd_inertia(abd_inertia_data, num_dof_soft).dispatch(num_dof_rigid);
+						stream << fn_material_energy_assembly_abd_inertia(abd_inertia_data, num_dof_soft)
+									  .dispatch(abd_inertia_data.constraint_offsets_in_adjlist.size());
 					}
 
 					const auto& abd_orthogonality_data = sim_data->get_abd_orthogonality_data();
@@ -3124,7 +3232,8 @@ namespace lcs
 					{
 						get_abd_ortho_energy()->device_evaluate(
 							stream, abd_orthogonality_data, sim_data->sa_q, abd_orthogonality_data.get_num_indices());
-						stream << fn_material_energy_assembly_abd_ortho(abd_orthogonality_data, num_dof_soft).dispatch(num_dof_rigid);
+						stream << fn_material_energy_assembly_abd_ortho(abd_orthogonality_data, num_dof_soft)
+									  .dispatch(abd_orthogonality_data.constraint_offsets_in_adjlist.size());
 					}
 
 					update_contact_set();
