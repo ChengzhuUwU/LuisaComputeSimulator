@@ -35,6 +35,35 @@ namespace lcs
 			{
 			}
 		};
+
+		// parse FixedPointsType from string (same names used in JSON/config)
+		FixedPointsType parse_fixed_method_py(const std::string_view& s)
+		{
+			constexpr std::array<std::pair<std::string_view, FixedPointsType>, 14> table = {
+				std::pair{ "None", FixedPointsType::None },
+				std::pair{ "FromIndices", FixedPointsType::FromIndices },
+				std::pair{ "FromFunction", FixedPointsType::FromFunction },
+				std::pair{ "Left", FixedPointsType::Left },
+				std::pair{ "Right", FixedPointsType::Right },
+				std::pair{ "Front", FixedPointsType::Front },
+				std::pair{ "Back", FixedPointsType::Back },
+				std::pair{ "Up", FixedPointsType::Up },
+				std::pair{ "Down", FixedPointsType::Down },
+				std::pair{ "LeftBack", FixedPointsType::LeftBack },
+				std::pair{ "LeftFront", FixedPointsType::LeftFront },
+				std::pair{ "RightBack", FixedPointsType::RightBack },
+				std::pair{ "RightFront", FixedPointsType::RightFront },
+				std::pair{ "All", FixedPointsType::All },
+			};
+
+			for (const auto& [name, method] : table)
+			{
+				if (name == std::string_view{ s })
+					return method;
+			}
+			return FixedPointsType::All;
+		}
+
 		void WorldData::set_pinned_verts_from_functions(const std::function<bool(uint)>& func,
 			const FixedPointDefaultAnimation&											 fixed_info)
 		{

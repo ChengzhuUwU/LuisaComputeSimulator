@@ -405,7 +405,7 @@ namespace lcs::Initializer
 				const auto& mesh_info = world_data[mesh_idx];
 				bool		use_bending = mesh_info.holds<ClothMaterial>()
 					&& mesh_info.get_material<ClothMaterial>().bending_model
-						!= ConstitutiveBendingModelCloth::None;
+						!= ConstitutiveBendingModelCloth::Empty;
 				uint4 edge = mesh_data->sa_dihedral_edges[eid];
 				bool  is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[edge[0]] || !mesh_data->sa_is_fixed[edge[1]]
 						 || !mesh_data->sa_is_fixed[edge[2]] || !mesh_data->sa_is_fixed[edge[3]]

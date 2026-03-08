@@ -91,6 +91,8 @@ namespace lcs
 			};
 		};
 
+		FixedPointsType parse_fixed_method_py(const std::string_view& s);
+
 		struct MakeFixedPointsInterface
 		{
 			FixedPointsType			   method = FixedPointsType::All;
@@ -139,7 +141,7 @@ namespace lcs
 
 			WorldData()
 				: model_name("unnamed")
-				, material_type(MaterialType::None)
+				, material_type(MaterialType::Particle)
 			{
 			}
 			WorldData& set_name(const std::string_view& model_name)

@@ -20,9 +20,8 @@ namespace lcs::Initializer
 		surface_vert_indices = fn_get_active_indices(
 			[&](const uint vid)
 			{
-				const uint	mesh_idx = mesh_data->sa_vert_mesh_id[vid];
-				const auto& shell_info = world_data[mesh_idx];
-				if (shell_info.material_type == MaterialType::Tetrahedral)
+				const uint mesh_type = mesh_data->sa_vert_mesh_type[vid];
+				if (mesh_type == uint(MaterialType::Tetrahedral))
 				{
 					const auto& adj_faces = mesh_data->vert_adj_faces[vid];
 					if (!adj_faces.empty())

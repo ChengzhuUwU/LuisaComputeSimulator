@@ -20,6 +20,20 @@ namespace Demo::Simulation
 
 	using namespace lcs::Initializer;
 
+	bool is_match(const std::string& str, const char*& target)
+	{
+		return (strcmp(str.c_str(), target) == 0);
+	}
+	bool is_match(const std::string& str, const std::vector<const char*>& targets)
+	{
+		for (const char* target : targets)
+		{
+			if (strcmp(str.c_str(), target) == 0)
+				return true;
+		}
+		return false;
+	}
+
 	void load_scene_params_from_json(const std::function<void(const lcs::Initializer::WorldData&)>& fn_register_mesh, const std::string& json_path)
 	{
 		// Determine which path to open:
@@ -432,10 +446,14 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									if (strcmp(s, "Spring") == 0)
+									if (is_match(s, { "Spring", "Linear", "Hookean" }))
 										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring;
-									else
+									else if (is_match(s, { "FEM_BW98", "BW98" }))
 										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::FEM_BW98;
+									else if (is_match(s, { "Empty", "None" }))
+										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Empty;
+									else
+										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring; // default
 								}
 								else if (yyjson_is_int(v) || yyjson_is_uint(v) || yyjson_is_num(v))
 								{
@@ -452,7 +470,7 @@ namespace Demo::Simulation
 								{
 									const char* s = yyjson_get_str(v);
 									if (strcmp(s, "None") == 0)
-										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::None;
+										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::Empty;
 									else if (strcmp(s, "QuadraticBending") == 0)
 										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::QuadraticBending;
 									else

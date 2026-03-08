@@ -570,7 +570,7 @@ namespace lcs
 		return host_mesh_data->input_to_sorted_mesh_id[registration_id];
 	}
 
-	uint SolverInterface::query_object_index_by_unique_name(const std::string& unique_name) const
+	uint SolverInterface::query_object_index_by_unique_name(const std::string_view& unique_name) const
 	{
 		auto find = std::find_if(world_data.begin(), world_data.end(), [&](const lcs::Initializer::WorldData& data)
 			{ return data.get_model_name() == unique_name; });
@@ -626,9 +626,9 @@ namespace lcs
 			output_triangles);
 	}
 
-	void SolverInterface::get_object_sim_result_by_unique_name(const std::string& unique_name,
-		std::vector<std::array<float, 3>>&										  output_positions,
-		std::vector<std::array<uint, 3>>&										  output_triangles)
+	void SolverInterface::get_object_sim_result_by_unique_name(const std::string_view& unique_name,
+		std::vector<std::array<float, 3>>&											   output_positions,
+		std::vector<std::array<uint, 3>>&											   output_triangles)
 	{
 		const uint sorted_idx = query_object_index_by_unique_name(unique_name);
 		fn_get_object_sim_result_by_sorted_index(host_mesh_data,
@@ -936,6 +936,8 @@ namespace lcs
 		if (device_state.initialized)
 			throw std::runtime_error("Device already initialized. Call cleanup_device() first"
 									 "or use set_device_from_pointers() to set external device and stream.");
+
+		luisa::log_level_info();
 
 		LUISA_INFO("Creating luisa compute context/device/stream...");
 
