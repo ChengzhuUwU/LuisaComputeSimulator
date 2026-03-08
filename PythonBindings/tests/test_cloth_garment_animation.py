@@ -138,10 +138,11 @@ def _download_with_progress(url: str, file_path: str) -> None:
 class SMPLSequenceAnimator:
 	"""Evaluate SMPL every frame and push per-vertex animation targets to the solver."""
 
-	def __init__(self, mesh_idx: int, smpl_model, sequence: dict, loop: bool = True):
+	def __init__(self, mesh_idx: int, smpl_model, sequence: dict, loop: bool = True, smooth_transition_frames: int = 100):
 		self.mesh_idx = int(mesh_idx)
 		self.smpl_model = smpl_model
 		self.loop = bool(loop)
+		self.smooth_transition_frames = int(smooth_transition_frames)  # Frames to smooth from T-pose to first frame
 
 		self.body_pose = self._as_frame_tensor(sequence["body_pose"])
 		self.global_orient = self._as_frame_tensor(sequence["global_orient"])
@@ -153,6 +154,19 @@ class SMPLSequenceAnimator:
 		self.total_frame = int(self.body_pose.shape[0])
 		if self.total_frame <= 0:
 			raise RuntimeError("SMPL sequence has no frame data.")
+		
+		# Cache the first frame pose for smooth transition
+		self.first_body_pose = self.body_pose[0:1].copy()
+		self.first_global_orient = self.global_orient[0:1].copy()
+		self.first_transl = self.transl[0:1].copy()
+		
+		# Zero pose for T-pose (all zeros)
+		self.zero_body_pose = np.zeros_like(self.first_body_pose)
+		self.zero_global_orient = np.zeros_like(self.first_global_orient)
+		self.zero_transl = np.zeros_like(self.first_transl)
+		
+		# Track the starting frame for smooth transition
+		self.start_frame = 0
 
 	@staticmethod
 	def _as_frame_tensor(data) -> np.ndarray:
@@ -166,25 +180,65 @@ class SMPLSequenceAnimator:
 			return int(curr_frame) % self.total_frame
 		return min(int(curr_frame), self.total_frame - 1)
 
-	def _eval_smpl_vertices(self, frame_idx: int) -> np.ndarray:
+	def _eval_smpl_vertices(self, frame_idx: int, transition_factor: float = 1.0) -> np.ndarray:
+		"""
+		Evaluate SMPL vertices at the given frame with optional smooth transition.
+		
+		Args:
+			frame_idx: The frame index in the sequence
+			transition_factor: Blend factor between [0, 1]. 0 = T-pose, 1 = actual pose
+		"""
 		try:
 			import torch
 		except ImportError as exc:
 			raise RuntimeError("SMPL animation requires torch. Install with: pip install torch") from exc
 
 		betas = self.betas[frame_idx : frame_idx + 1] if self.betas.shape[0] == self.total_frame else self.betas[:1]
+		
+		# Blend between zero pose and actual pose for smooth transition
+		if transition_factor < 1.0:
+			body_pose = self.zero_body_pose * (1 - transition_factor) + self.body_pose[frame_idx : frame_idx + 1] * transition_factor
+			global_orient = self.zero_global_orient * (1 - transition_factor) + self.global_orient[frame_idx : frame_idx + 1] * transition_factor
+			transl = self.zero_transl * (1 - transition_factor) + self.transl[frame_idx : frame_idx + 1] * transition_factor
+		else:
+			body_pose = self.body_pose[frame_idx : frame_idx + 1]
+			global_orient = self.global_orient[frame_idx : frame_idx + 1]
+			transl = self.transl[frame_idx : frame_idx + 1]
+		
 		with torch.no_grad():
 			out = self.smpl_model(
 				betas=torch.from_numpy(betas),
-				body_pose=torch.from_numpy(self.body_pose[frame_idx : frame_idx + 1]),
-				global_orient=torch.from_numpy(self.global_orient[frame_idx : frame_idx + 1]),
-				transl=torch.from_numpy(self.transl[frame_idx : frame_idx + 1]),
+				body_pose=torch.from_numpy(body_pose),
+				global_orient=torch.from_numpy(global_orient),
+				transl=torch.from_numpy(transl),
 			)
 		return out.vertices[0].detach().cpu().numpy().astype(np.float32)
 
+	def reset(self):
+		"""Reset the animator to start from frame 0 with smooth transition."""
+		self.start_frame = 0
+
 	def update_animation(self, solver, curr_frame: int, dt: float):
+		"""
+		Update animation for current frame.
+		
+		Args:
+			solver: The physics solver
+			curr_frame: Current frame number (from the simulation)
+			dt: Time step
+		"""
+		# Calculate frames since animation started
+		frames_elapsed = curr_frame - self.start_frame
+		
+		# Calculate smooth transition factor (0 to 1 over smooth_transition_frames)
+		if frames_elapsed < self.smooth_transition_frames:
+			transition_factor = float(frames_elapsed) / float(self.smooth_transition_frames)
+		else:
+			transition_factor = 1.0
+		
+		# Get the appropriate frame from the sequence
 		frame_idx = self._pick_frame(curr_frame)
-		target_vertices = self._eval_smpl_vertices(frame_idx)
+		target_vertices = self._eval_smpl_vertices(frame_idx, transition_factor)
 		for local_vid, target_pos in enumerate(target_vertices):
 			solver.update_per_vertex_animation(self.mesh_idx, int(local_vid), target_pos)
 
@@ -304,6 +358,15 @@ else:
 		def _physics_step(self):
 			update_animation()
 			super()._physics_step()
+		
+		def restart_system(self):
+			"""Override restart to reset animators."""
+			# Reset all animators to start from frame 0 with smooth transition
+			for animator in animators:
+				if animator is not None and hasattr(animator, 'reset'):
+					animator.reset()
+			# Call parent's restart_system
+			super().restart_system()
 
 	gui = AnimatedSimulationGUI(solver, config_ref, output_dir)
 	gui.show()
