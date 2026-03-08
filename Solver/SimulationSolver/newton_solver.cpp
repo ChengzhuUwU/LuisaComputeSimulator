@@ -510,18 +510,17 @@ namespace lcs
 				fn_predict_position,
 				[sa_q_step_start = sim_data->sa_q_step_start.view(), // Input
 					sa_q_v = sim_data->sa_q_v.view(),				 // Input
-					//  sa_q            = sim_data->sa_q.view(),             // Output
-					//  sa_q_iter_start = sim_data->sa_q_iter_start.view(),  // Output
-					sa_q_tilde = sim_data->sa_q_tilde.view(),	   // Output
-					sa_is_fixed = sim_data->sa_q_is_fixed.view(),  // Constant
-					sa_q_property = sim_data->sa_q_property.view() // Constant
+					sa_q_tilde = sim_data->sa_q_tilde.view(),		 // Output
+					sa_is_fixed = sim_data->sa_q_is_fixed.view(),	 // Constant
+					sa_q_property = sim_data->sa_q_property.view()	 // Constant
 			](const Float substep_dt, const Float3 gravity)
 				{
 					const UInt vid = dispatch_id().x;
-					const UInt property = sa_q_property->read(vid);
-					const Bool is_fixed = sa_is_fixed->read(vid);
-					const Bool is_rigid = (property & Attributions::RIGID_BODY_FLAG) != 0;
-					const Bool is_translation_dof = (property & Attributions::ABD_Is_Translation_DOF) != 0;
+					const auto property = sa_q_property->read(vid);
+					// const Bool is_fixed = sa_is_fixed->read(vid);
+					const Bool is_rigid = property->is_rigid();
+					const Bool is_translation_dof = property->is_translation_dof();
+					const Bool is_fixed = property->is_fixed();
 
 					Float3 x_prev = sa_q_step_start->read(vid);
 					Float3 v_prev = sa_q_v->read(vid);
@@ -847,15 +846,13 @@ namespace lcs
 				sa_q_tilde = std::span(host_sim_data->sa_q_tilde),
 				sa_q_step_start = std::span(host_sim_data->sa_q_step_start),
 				sa_q_property = std::span(host_sim_data->sa_q_property),
-				sa_q_is_fixed = std::span(host_sim_data->sa_q_is_fixed),
 				substep_dt = get_scene_params().get_substep_dt(),
 				gravity = get_scene_params().gravity](const uint vid)
 			{
-				const uint dof_property = sa_q_property[vid];
-				const bool is_fixed = sa_q_is_fixed[vid];
-				const bool is_rigid = (dof_property & Attributions::RIGID_BODY_FLAG) != 0;
-				const bool is_translation_dof =
-					(dof_property & Attributions::ABD_Is_Translation_DOF) != 0;
+				const auto dof_property = sa_q_property[vid];
+				const bool is_rigid = dof_property.is_rigid();
+				const bool is_translation_dof = dof_property.is_translation_dof();
+				const bool is_fixed = dof_property.is_fixed();
 
 				float3 x_prev = sa_q_step_start[vid];
 				float3 v_prev = sa_q_v[vid];

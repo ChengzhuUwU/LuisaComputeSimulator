@@ -567,6 +567,7 @@ namespace lcs::Initializer
 				CpuParallel::parallel_copy(mesh_data->sa_rest_x, sim_data->sa_rest_x);
 				CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_rest_v);
 				CpuParallel::parallel_copy(mesh_data->sa_scaled_model_x, sim_data->sa_scaled_model_x);
+				CpuParallel::parallel_set(sim_data->sa_q_property, DofAttribution());
 
 				// Soft body vertices map to dof
 				CpuParallel::parallel_for(0,
@@ -574,8 +575,11 @@ namespace lcs::Initializer
 					[&](const uint vid)
 					{
 						sim_data->sa_x_to_dof_map[vid].set_as_soft_body(vid);
-						sim_data->sa_q_is_fixed[vid] = mesh_data->sa_is_fixed[vid];
-						sim_data->sa_q_property[vid] = 0;
+						sim_data->sa_q_property[vid].set_is_soft();
+						const bool is_fixed = mesh_data->sa_is_fixed[vid];
+						sim_data->sa_q_is_fixed[vid] = is_fixed;
+						if (is_fixed)
+							sim_data->sa_q_property[vid].set_is_fixed();
 					});
 
 				// Rigid body vertices map to dof
@@ -598,10 +602,18 @@ namespace lcs::Initializer
 					sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
 					sim_data->sa_q_is_fixed[dof_idx + 2] = has_fixed_vert;
 					sim_data->sa_q_is_fixed[dof_idx + 3] = has_fixed_vert;
-					sim_data->sa_q_property[dof_idx + 0] = Attributions::RIGID_BODY_FLAG | Attributions::ABD_Is_Translation_DOF;
-					sim_data->sa_q_property[dof_idx + 1] = Attributions::RIGID_BODY_FLAG;
-					sim_data->sa_q_property[dof_idx + 2] = Attributions::RIGID_BODY_FLAG;
-					sim_data->sa_q_property[dof_idx + 3] = Attributions::RIGID_BODY_FLAG;
+					sim_data->sa_q_property[dof_idx + 0].set_is_translation_dof();
+					sim_data->sa_q_property[dof_idx + 0].set_is_rigid();
+					sim_data->sa_q_property[dof_idx + 1].set_is_rigid();
+					sim_data->sa_q_property[dof_idx + 2].set_is_rigid();
+					sim_data->sa_q_property[dof_idx + 3].set_is_rigid();
+					if (has_fixed_vert)
+					{
+						sim_data->sa_q_property[dof_idx + 0].set_is_fixed();
+						sim_data->sa_q_property[dof_idx + 1].set_is_fixed();
+						sim_data->sa_q_property[dof_idx + 2].set_is_fixed();
+						sim_data->sa_q_property[dof_idx + 3].set_is_fixed();
+					}
 				}
 			}
 		}

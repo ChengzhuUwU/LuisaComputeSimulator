@@ -37,13 +37,122 @@ namespace lcs
 		uint get_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
 	};
 
+	struct VertexAtrribution
+	{
+	private:
+		void set_attribution(const uint bit, bool value)
+		{
+			if (value)
+				attribute_info |= bit;
+			else
+				attribute_info &= ~bit;
+		}
+
+	public:
+		uint attribute_info = 0;
+		bool is_fixed() const { return (attribute_info & 0x1) != 0; }
+		bool is_soft_body() const { return (attribute_info & 0x8) == 0; }
+		bool is_rigid_body() const { return (attribute_info & 0x8) != 0; }
+		bool is_self_collision_disabled() const { return (attribute_info & 0x200) != 0; }
+		bool is_ccd_disabled() const { return (attribute_info & 0x400) != 0; }
+		bool is_friction_disabled() const { return (attribute_info & 0x800) != 0; }
+		bool is_gravity_disabled() const { return (attribute_info & 0x1000) != 0; }
+		uint get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
+
+	public:
+		void set_is_fixed()
+		{
+			set_attribution(0x1, true);
+		}
+		void set_is_soft_body()
+		{
+			set_attribution(0x8, false);
+		}
+		void set_is_rigid_body()
+		{
+			set_attribution(0x8, true);
+		}
+		void set_self_collision_disabled()
+		{
+			set_attribution(0x200, true);
+		}
+		void set_ccd_disabled()
+		{
+			set_attribution(0x400, true);
+		}
+		void set_friction_disabled()
+		{
+			set_attribution(0x800, true);
+		}
+		void set_gravity_disabled()
+		{
+			set_attribution(0x1000, true);
+		}
+	};
+
+	struct DofAttribution
+	{
+	private:
+		void set_attribution(const uint bit, bool value)
+		{
+			if (value)
+				attribute_info |= bit;
+			else
+				attribute_info &= ~bit;
+		}
+
+	public:
+		uint attribute_info = 0;
+		bool is_fixed() const { return (attribute_info & 0x1) != 0; }
+		bool is_rigid() const { return (attribute_info & 0x2) != 0; }
+		bool is_translation_dof() const { return (attribute_info & 0x4) != 0; }
+
+	public:
+		void set_is_fixed()
+		{
+			set_attribution(0x1, true);
+		}
+		void set_is_soft()
+		{
+			set_attribution(0x2, false);
+		}
+		void set_is_rigid()
+		{
+			set_attribution(0x2, true);
+		}
+		void set_is_translation_dof()
+		{
+			set_attribution(0x4, true);
+		}
+	};
+
 } // namespace lcs
 
 // clang-format off
-LUISA_STRUCT(lcs::VertexToDofMap, map_info){
+LUISA_STRUCT(lcs::VertexToDofMap, map_info)
+{
 	luisa::compute::Var<bool> is_soft_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) == 0; }
 	luisa::compute::Var<bool> is_rigid_body() const { return (map_info & lcs::Attributions::RIGID_BODY_FLAG) != 0; }
 	luisa::compute::Var<uint> get_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
+};
+
+LUISA_STRUCT(lcs::VertexAtrribution, attribute_info)
+{
+	luisa::compute::Var<bool> is_fixed() const { return (attribute_info & 0x1) != 0; }
+	luisa::compute::Var<bool> is_soft_body() const { return (attribute_info & 0x8) == 0; }
+	luisa::compute::Var<bool> is_rigid_body() const { return (attribute_info & 0x8) != 0; }
+	luisa::compute::Var<bool> is_self_collision_disabled() const { return (attribute_info & 0x200) != 0; }
+	luisa::compute::Var<bool> is_ccd_disabled() const { return (attribute_info & 0x400) != 0; }
+	luisa::compute::Var<bool> is_friction_disabled() const { return (attribute_info & 0x800) != 0; }
+	luisa::compute::Var<bool> is_gravity_disabled() const { return (attribute_info & 0x1000) != 0; }
+	luisa::compute::Var<uint> get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
+};
+
+LUISA_STRUCT(lcs::DofAttribution, attribute_info)
+{
+	luisa::compute::Var<bool> is_fixed() const { return (attribute_info & 0x1) != 0; }
+	luisa::compute::Var<bool> is_rigid() const { return (attribute_info & 0x2) != 0; }
+	luisa::compute::Var<bool> is_translation_dof() const { return (attribute_info & 0x4) != 0; }
 };
 // clang-format on
 
@@ -340,11 +449,9 @@ namespace lcs
 		BufferType<float3> sa_x_step_start;
 		BufferType<float3> sa_x_iter_start;
 
-		// If value & (1<<31) == 0, then it's a soft body vert, map to dof directly;
-		//                 else it's a rigid body vert, map to dof by affine body id
 		BufferType<VertexToDofMap> sa_x_to_dof_map;
 		BufferType<uint>		   sa_q_is_fixed;
-		BufferType<uint>		   sa_q_property; // Constant
+		BufferType<DofAttribution> sa_q_property; // Constant
 
 		std::vector<float3> sa_x_outer;
 		std::vector<float3> sa_v_outer;
