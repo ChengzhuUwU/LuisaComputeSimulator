@@ -35,7 +35,8 @@ namespace lcs
 		bool use_ccd_linesearch = true;
 
 		bool print_system_energy = false;
-		// bool print_pcg_convergence = false;
+		bool print_pcg_info = false;
+		bool print_collision_info = false;
 
 		// bool use_small_timestep = false;
 		// bool use_big_damping = false;

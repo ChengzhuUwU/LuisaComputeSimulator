@@ -1849,7 +1849,7 @@ namespace lcs
 			});
 
 		const float error = (cgB - cgA * cgX).norm();
-		LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
+		LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:.3e}, max_element(p) = {:6.5f}",
 			get_scene_params().current_nonlinear_iter,
 			error,
 			fast_infinity_norm(host_sim_data->sa_cgX));
@@ -2116,7 +2116,7 @@ namespace lcs
 	{
 		// stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
 		//        << luisa::compute::synchronize();
-		// LUISA_INFO("  Min TOI after ground collision check: {:7.6f}", host_collision_data->toi_per_vert.front());
+		// LUISA_INFO("  Min TOI after ground collision check: {:.3e}", host_collision_data->toi_per_vert.front());
 
 		if (get_scene_params().use_self_collision)
 		{
@@ -2130,7 +2130,7 @@ namespace lcs
 
 			// stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
 			//        << luisa::compute::synchronize();
-			// LUISA_INFO("  Min TOI after VF CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+			// LUISA_INFO("  Min TOI after VF CCD check: {:.3e}", host_collision_data->toi_per_vert.front());
 
 			narrow_phase_detector->ee_ccd_query(stream,
 				sim_data->sa_x_iter_start,
@@ -2143,7 +2143,7 @@ namespace lcs
 
 		// stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
 		//        << luisa::compute::synchronize();
-		// LUISA_INFO("  Min TOI after EE CCD check: {:7.6f}", host_collision_data->toi_per_vert.front());
+		// LUISA_INFO("  Min TOI after EE CCD check: {:.3e}", host_collision_data->toi_per_vert.front());
 	}
 	void NewtonSolver::device_narrowphase_dcd(luisa::compute::Stream& stream)
 	{
@@ -2500,7 +2500,7 @@ namespace lcs
 		{
 			LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
 		}
-		LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:7.6f}, max_element(p) = {:6.5f}",
+		LUISA_INFO("  In newton iter {:2}, EigenSolve error = {:.3e}, max_element(p) = {:6.5f}",
 			get_scene_params().current_nonlinear_iter,
 			(cgB - cgA * cgX).norm(),
 			infinity_norm);
@@ -2707,15 +2707,16 @@ namespace lcs
 			{
 				LUISA_ERROR("Invalid Toi {}", ccd_toi);
 			}
-			LUISA_INFO(
-				"  In newton iter {:2}: CCD toi = {:6.5f}, BroadPhase VF/EE = {} / {}, NarrowPhase = {} (Friction = {}), HessTriplet = {}",
-				iter,
-				ccd_toi,
-				host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
-				host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
-				host_collision_data->narrow_phase_collision_count.front(),
-				host_collision_data->num_pairs_in_first_iter.front(),
-				host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
+			if (get_scene_params().print_collision_info)
+				LUISA_INFO(
+					"  In newton iter {:2}: CCD toi = {:6.5f}, BroadPhase VF/EE = {} / {}, NarrowPhase = {} (Friction = {}), HessTriplet = {}",
+					iter,
+					ccd_toi,
+					host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::vf_offset()],
+					host_collision_data->broad_phase_collision_count[CollisionPair::CollisionCount::ee_offset()],
+					host_collision_data->narrow_phase_collision_count.front(),
+					host_collision_data->num_pairs_in_first_iter.front(),
+					host_collision_data->narrow_phase_collision_count[CollisionPair::CollisionCount::total_adj_verts_offset()]);
 		}
 
 		// Non-linear iteration break condition
@@ -2724,10 +2725,11 @@ namespace lcs
 			float curr_max_step = fast_infinity_norm(host_sim_data->sa_dq);
 			if (curr_max_step < max_move * get_scene_params().implicit_dt)
 			{
-				LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
-					iter,
-					curr_max_step,
-					max_move * get_scene_params().implicit_dt);
+				if (get_scene_params().print_pcg_info)
+					LUISA_INFO("  In newton iter {:2}: Iteration break for small searching direction {} < {}",
+						iter,
+						curr_max_step,
+						max_move * get_scene_params().implicit_dt);
 
 				apply_final_dx(alpha);
 				dirichlet_converged = true;

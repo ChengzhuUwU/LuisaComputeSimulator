@@ -563,12 +563,13 @@ namespace lcs
 		{
 			LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
 		}
-		LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}",
-			get_scene_params().current_nonlinear_iter,
-			iter,
-			normR / normR_0,
-			infinity_norm,
-			"");
+		if (get_scene_params().print_pcg_info)
+			LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:.3e}{}",
+				get_scene_params().current_nonlinear_iter,
+				iter,
+				normR / normR_0,
+				infinity_norm,
+				"");
 
 		/*
 		for (uint iter = 0; iter < lcs::get_scene_params().pcg_iter_count; iter++)
@@ -763,12 +764,13 @@ namespace lcs
 		{
 			LUISA_ERROR("cgX exist NAN/INF value : {}", infinity_norm);
 		}
-		LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:6.5f}{}",
-			get_scene_params().current_nonlinear_iter,
-			iter,
-			normR / normR_0,
-			infinity_norm,
-			"");
+		if (get_scene_params().print_pcg_info)
+			LUISA_INFO("  In newton iter {:2}, PCG iters = {:3}, error = {:7.6f}, max_element(p) = {:.3e}{}",
+				get_scene_params().current_nonlinear_iter,
+				iter,
+				normR / normR_0,
+				infinity_norm,
+				"");
 	}
 
 	void ConjugateGradientSolver::eigen_solve(const Eigen::SparseMatrix<float>& eigen_cgA,
@@ -813,11 +815,12 @@ namespace lcs
 					[&](const uint vid)
 					{ host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid)); });
 
-				LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:6.5f}, max_element(p) = {:6.5f}",
-					get_scene_params().current_nonlinear_iter,
-					solver.iterations(),
-					solver.error(),
-					fast_infinity_norm(host_cgX)); // from normR_0 -> normR
+				if (get_scene_params().print_pcg_info)
+					LUISA_INFO("  In newton iter {:2}, Eigen-PCG iters = {}, error = {:.3e}, max_element(p) = {:.3e}",
+						get_scene_params().current_nonlinear_iter,
+						solver.iterations(),
+						solver.error(),
+						fast_infinity_norm(host_cgX)); // from normR_0 -> normR
 			}
 		};
 		auto eigen_decompose_solve = [&]()
@@ -843,10 +846,11 @@ namespace lcs
 					num_verts,
 					[&](const uint vid)
 					{ host_cgX[vid] = eigen3_to_float3(eigen_cgX.segment<3>(3 * vid)); });
-				LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:6.5f}, max_element(p) = {:6.5f}",
-					get_scene_params().current_nonlinear_iter,
-					error,
-					fast_infinity_norm(host_cgX)); // from normR_0 -> normR
+				if (get_scene_params().print_pcg_info)
+					LUISA_INFO("  In newton iter {:2}, Eigen-Decompose : error = {:.3e}, max_element(p) = {:.3e}",
+						get_scene_params().current_nonlinear_iter,
+						error,
+						fast_infinity_norm(host_cgX)); // from normR_0 -> normR
 			}
 		};
 
