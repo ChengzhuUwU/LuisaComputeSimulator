@@ -26,7 +26,7 @@ class VertexAnimator:
 			self._vertex_transform_map[int(vid)] = transform
 		return new_ids
 
-	def update_vertex_animation(self, solver, curr_frame: int, dt: float):
+	def update_animation(self, solver, curr_frame: int, dt: float):
 		if self.mesh_idx is None:
 			raise RuntimeError("mesh_idx is not set. Register world_data first and call set_mesh_index().")
 		if self._rest_positions is None:

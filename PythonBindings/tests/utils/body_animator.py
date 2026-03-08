@@ -27,7 +27,7 @@ class BodyAnimator:
 		added_fixed_indices = after_fixed_indices[before_fixed_indices.size :]
 		return added_fixed_indices
 
-	def update_body_animation(self, solver, curr_frame: int, dt: float):
+	def update_animation(self, solver, curr_frame: int, dt: float):
 		if self.body_id is None:
 			raise RuntimeError("mesh_idx is not set.")
 		if self._transform is None:

@@ -65,7 +65,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Launch polyscope GUI or run headless
 def update_animation():
-	animator.update_vertex_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+	animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
 
 if args.headless:
 	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))

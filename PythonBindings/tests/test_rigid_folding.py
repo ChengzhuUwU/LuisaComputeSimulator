@@ -26,7 +26,7 @@ for i in range(5):
             cube = solver.create_world_data_from_array(name, cube_mesh.vertices, cube_mesh.faces)
             cube.set_simulation_type(lcs.MaterialType.Rigid)
             cube.set_scale(0.1)
-            delta = 0.105
+            delta = 0.102
             cube.set_translation(i * delta, 0.1 + j * delta, k * delta)
             solver.register_world_data(cube)
             count += 1

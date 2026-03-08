@@ -88,7 +88,7 @@ os.makedirs(output_dir, exist_ok=True)
 def update_animation():
 	for animator in animators:
 		if animator is not None:
-			animator.update_body_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+			animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
 
 # Launch polyscope GUI or run headless
 if args.headless:
