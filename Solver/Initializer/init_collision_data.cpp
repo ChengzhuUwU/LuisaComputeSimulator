@@ -71,36 +71,42 @@ namespace lcs::Initializer
 			[&](const uint eid)
 			{
 				const uint2 edge = mesh_data->sa_edges[eid];
-				const float rest_length = luisa::length(
-					mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
-				const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
-				mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_length);
-				//    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_length);
+				if (!mesh_data->sa_is_fixed[edge[0]] && !mesh_data->sa_is_fixed[edge[1]])
+				{
+					const float rest_length = luisa::length(
+						mesh_data->sa_rest_x[edge[0]] - mesh_data->sa_rest_x[edge[1]]);
+					const uint mesh_idx = mesh_data->sa_edge_mesh_id[eid];
+					mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_length);
+					//    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_length);
+				}
 			});
 		CpuParallel::single_thread_for(0,
 			mesh_data->num_faces,
 			[&](const uint fid)
 			{
 				const uint3 face = mesh_data->sa_faces[fid];
-				float3		vert_pos[3] = { mesh_data->sa_rest_x[face[0]],
-						 mesh_data->sa_rest_x[face[1]],
-						 mesh_data->sa_rest_x[face[2]] };
-
-				auto rest_dist = 10000.0f;
-				for (int i = 0; i < 3; i++)
+				if (!mesh_data->sa_is_fixed[face[0]] && !mesh_data->sa_is_fixed[face[1]] && !mesh_data->sa_is_fixed[face[2]])
 				{
-					const float3& v0 = vert_pos[i];
-					const float3& v1 = vert_pos[(i + 1) % 3];
-					const float3& v2 = vert_pos[(i + 2) % 3];
+					float3 vert_pos[3] = { mesh_data->sa_rest_x[face[0]],
+						mesh_data->sa_rest_x[face[1]],
+						mesh_data->sa_rest_x[face[2]] };
 
-					auto bary = host_distance::point_edge_distance_coeff(
-						float3_to_eigen3(v0), float3_to_eigen3(v1), float3_to_eigen3(v2));
-					const float curr_dist = length_vec(bary[0] * v1 + bary[1] * v2 - v0);
-					rest_dist = min_scalar(rest_dist, curr_dist);
+					auto rest_dist = 10000.0f;
+					for (int i = 0; i < 3; i++)
+					{
+						const float3& v0 = vert_pos[i];
+						const float3& v1 = vert_pos[(i + 1) % 3];
+						const float3& v2 = vert_pos[(i + 2) % 3];
+
+						auto bary = host_distance::point_edge_distance_coeff(
+							float3_to_eigen3(v0), float3_to_eigen3(v1), float3_to_eigen3(v2));
+						const float curr_dist = length_vec(bary[0] * v1 + bary[1] * v2 - v0);
+						rest_dist = min_scalar(rest_dist, curr_dist);
+					}
+					const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
+					mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_dist);
+					//    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_dist);
 				}
-				const uint mesh_idx = mesh_data->sa_face_mesh_id[fid];
-				mesh_min_dist[mesh_idx] = min_scalar(mesh_min_dist[mesh_idx], rest_dist);
-				//    CpuParallel::spin_atomic<float>::fetch_min(mesh_min_dist[mesh_idx], rest_dist);
 			});
 
 		std::vector<float> mesh_scaled_offset(mesh_data->num_meshes);
@@ -118,10 +124,10 @@ namespace lcs::Initializer
 			float		min_dist = mesh_min_dist[mesh_idx];
 			const float safe_dist = is_rigid_body ? 1e8f : 0.9f * min_dist;
 
-			if (safe_dist < 1e-3 && !is_rigid_body) // Soft-body exist penetration in rest state
+			if (safe_dist < 1e-4 && !is_rigid_body) // Soft-body exist penetration in rest state
 			{
 				// Note: We add this condition just for s
-				LUISA_INFO("Sub-milimeter simulation may not be stable due to scaled small gap distance (Mesh {}, Min dist = {})",
+				LUISA_WARNING("Sub-milimeter simulation is not stable, due to small distance gap (Mesh {}, Min dist = {})",
 					world_data[mesh_idx].get_model_name(),
 					safe_dist);
 			}
