@@ -37,7 +37,7 @@ namespace lcs
 		uint get_dof_idx() const { return map_info & Attributions::RIGID_BODY_MASK; }
 	};
 
-	struct VertexAtrribution
+	struct VertexProperty
 	{
 	private:
 		void set_attribution(const uint bit, bool value)
@@ -51,8 +51,8 @@ namespace lcs
 	public:
 		uint attribute_info = 0;
 		bool is_fixed() const { return (attribute_info & 0x1) != 0; }
-		bool is_soft_body() const { return (attribute_info & 0x8) == 0; }
 		bool is_rigid_body() const { return (attribute_info & 0x8) != 0; }
+		bool is_soft_body() const { return (attribute_info & 0x8) == 0; }
 		bool is_self_collision_disabled() const { return (attribute_info & 0x200) != 0; }
 		bool is_ccd_disabled() const { return (attribute_info & 0x400) != 0; }
 		bool is_friction_disabled() const { return (attribute_info & 0x800) != 0; }
@@ -88,9 +88,13 @@ namespace lcs
 		{
 			set_attribution(0x1000, true);
 		}
+		void set_object_id(const uint object_id)
+		{
+			attribute_info = (attribute_info & 0xFFFF) | ((object_id & 0x7FFF) << 16);
+		}
 	};
 
-	struct DofAttribution
+	struct DofProperty
 	{
 	private:
 		void set_attribution(const uint bit, bool value)
@@ -136,11 +140,11 @@ LUISA_STRUCT(lcs::VertexToDofMap, map_info)
 	luisa::compute::Var<uint> get_dof_idx() const { return map_info & lcs::Attributions::RIGID_BODY_MASK; }
 };
 
-LUISA_STRUCT(lcs::VertexAtrribution, attribute_info)
+LUISA_STRUCT(lcs::VertexProperty, attribute_info)
 {
 	luisa::compute::Var<bool> is_fixed() const { return (attribute_info & 0x1) != 0; }
-	luisa::compute::Var<bool> is_soft_body() const { return (attribute_info & 0x8) == 0; }
 	luisa::compute::Var<bool> is_rigid_body() const { return (attribute_info & 0x8) != 0; }
+	luisa::compute::Var<bool> is_soft_body() const { return (attribute_info & 0x8) == 0; }
 	luisa::compute::Var<bool> is_self_collision_disabled() const { return (attribute_info & 0x200) != 0; }
 	luisa::compute::Var<bool> is_ccd_disabled() const { return (attribute_info & 0x400) != 0; }
 	luisa::compute::Var<bool> is_friction_disabled() const { return (attribute_info & 0x800) != 0; }
@@ -148,7 +152,7 @@ LUISA_STRUCT(lcs::VertexAtrribution, attribute_info)
 	luisa::compute::Var<uint> get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
 };
 
-LUISA_STRUCT(lcs::DofAttribution, attribute_info)
+LUISA_STRUCT(lcs::DofProperty, attribute_info)
 {
 	luisa::compute::Var<bool> is_fixed() const { return (attribute_info & 0x1) != 0; }
 	luisa::compute::Var<bool> is_rigid() const { return (attribute_info & 0x2) != 0; }
@@ -436,6 +440,8 @@ namespace lcs
 		BufferType<float3> sa_q_tilde;		// Re-calculate every frame
 		BufferType<float3> sa_dq;			// Re-calculate every frame
 
+		BufferType<VertexProperty> sa_x_property; // Constant
+
 		std::vector<float3> sa_q_outer;	  // Input from outer
 		std::vector<float3> sa_q_v_outer; // Input from outer
 
@@ -451,7 +457,7 @@ namespace lcs
 
 		BufferType<VertexToDofMap> sa_x_to_dof_map;
 		BufferType<uint>		   sa_q_is_fixed;
-		BufferType<DofAttribution> sa_q_property; // Constant
+		BufferType<DofProperty>	   sa_q_property; // Constant
 
 		std::vector<float3> sa_x_outer;
 		std::vector<float3> sa_v_outer;

@@ -506,6 +506,7 @@ namespace lcs::Initializer
 			sim_data->sa_x_outer.resize(num_verts_total);
 			sim_data->sa_v_outer.resize(num_verts_total);
 			sim_data->sa_x_to_dof_map.resize(num_verts_total);
+			sim_data->sa_x_property.resize(num_verts_total);
 			sim_data->sa_vert_affine_bodies_id.resize(num_verts_total, -1u);
 		}
 
@@ -567,19 +568,34 @@ namespace lcs::Initializer
 				CpuParallel::parallel_copy(mesh_data->sa_rest_x, sim_data->sa_rest_x);
 				CpuParallel::parallel_copy(mesh_data->sa_rest_v, sim_data->sa_rest_v);
 				CpuParallel::parallel_copy(mesh_data->sa_scaled_model_x, sim_data->sa_scaled_model_x);
-				CpuParallel::parallel_set(sim_data->sa_q_property, DofAttribution());
+				CpuParallel::parallel_set(sim_data->sa_x_property, VertexProperty());
+				CpuParallel::parallel_set(sim_data->sa_q_property, DofProperty());
+
+				// uint attribute_info = 0;
+				// bool is_fixed() const { return (attribute_info & 0x1) != 0; }
+				// bool is_rigid_body() const { return (attribute_info & 0x8) != 0; }
+				// bool is_self_collision_disabled() const { return (attribute_info & 0x200) != 0; }
+				// bool is_ccd_disabled() const { return (attribute_info & 0x400) != 0; }
+				// bool is_friction_disabled() const { return (attribute_info & 0x800) != 0; }
+				// bool is_gravity_disabled() const { return (attribute_info & 0x1000) != 0; }
+				// uint get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
 
 				// Soft body vertices map to dof
 				CpuParallel::parallel_for(0,
 					num_verts_soft,
 					[&](const uint vid)
 					{
+						const uint mesh_idx = mesh_data->sa_vert_mesh_id[vid];
+						sim_data->sa_x_property[vid].set_object_id(mesh_idx);
 						sim_data->sa_x_to_dof_map[vid].set_as_soft_body(vid);
 						sim_data->sa_q_property[vid].set_is_soft();
 						const bool is_fixed = mesh_data->sa_is_fixed[vid];
 						sim_data->sa_q_is_fixed[vid] = is_fixed;
 						if (is_fixed)
+						{
+							sim_data->sa_x_property[vid].set_is_fixed();
 							sim_data->sa_q_property[vid].set_is_fixed();
+						}
 					});
 
 				// Rigid body vertices map to dof
@@ -589,15 +605,22 @@ namespace lcs::Initializer
 					const uint meshIdx = affine_body_indices[body_idx];
 					const uint prefix_vid = mesh_data->prefix_num_verts[meshIdx];
 					const uint suffix_vid = mesh_data->prefix_num_verts[meshIdx + 1];
-					for (uint vid = prefix_vid; vid < suffix_vid; vid++)
-					{
-						sim_data->sa_x_to_dof_map[vid].set_as_rigid_body(dof_idx);
-						sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
-					}
+
 					bool has_fixed_vert = std::any_of(mesh_data->sa_is_fixed.begin() + prefix_vid,
 						mesh_data->sa_is_fixed.begin() + suffix_vid,
 						[](const uint is_fixed)
 						{ return is_fixed; });
+					for (uint vid = prefix_vid; vid < suffix_vid; vid++)
+					{
+						sim_data->sa_x_property[vid].set_is_rigid_body();
+						sim_data->sa_x_property[vid].set_object_id(meshIdx);
+						sim_data->sa_x_to_dof_map[vid].set_as_rigid_body(dof_idx);
+						sim_data->sa_vert_affine_bodies_id[vid] = body_idx;
+						if (has_fixed_vert)
+						{
+							sim_data->sa_x_property[vid].set_is_fixed();
+						}
+					}
 					sim_data->sa_q_is_fixed[dof_idx + 0] = has_fixed_vert;
 					sim_data->sa_q_is_fixed[dof_idx + 1] = has_fixed_vert;
 					sim_data->sa_q_is_fixed[dof_idx + 2] = has_fixed_vert;
