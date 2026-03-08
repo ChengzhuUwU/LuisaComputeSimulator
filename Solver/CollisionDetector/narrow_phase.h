@@ -94,21 +94,21 @@ namespace lcs
 
 	public:
 		// CCD
-		void vf_ccd_query(Stream& stream,
-			const Buffer<float3>& sa_x_begin,
-			const Buffer<float3>& sa_x_end,
-			const Buffer<uint3>&  sa_faces,
-			const Buffer<uint>&	  sa_vert_affine_bodies_id,
-			const Buffer<float>&  d_hat,
-			const Buffer<float>&  thickness);
+		void vf_ccd_query(Stream&		  stream,
+			const Buffer<float3>&		  sa_x_begin,
+			const Buffer<float3>&		  sa_x_end,
+			const Buffer<uint3>&		  sa_faces,
+			const Buffer<VertexProperty>& sa_x_property,
+			const Buffer<float>&		  d_hat,
+			const Buffer<float>&		  thickness);
 
-		void ee_ccd_query(Stream& stream,
-			const Buffer<float3>& sa_x_begin,
-			const Buffer<float3>& sa_x_end,
-			const Buffer<uint2>&  sa_edges,
-			const Buffer<uint>&	  sa_vert_affine_bodies_id,
-			const Buffer<float>&  d_hat,
-			const Buffer<float>&  thickness);
+		void ee_ccd_query(Stream&		  stream,
+			const Buffer<float3>&		  sa_x_begin,
+			const Buffer<float3>&		  sa_x_end,
+			const Buffer<uint2>&		  sa_edges,
+			const Buffer<VertexProperty>& sa_x_property,
+			const Buffer<float>&		  d_hat,
+			const Buffer<float>&		  thickness);
 
 		void host_vf_ccd_query(Stream& stream,
 			const std::vector<float3>& sa_x_begin_left,
@@ -137,7 +137,7 @@ namespace lcs
 			const Buffer<float>&			sa_rest_vert_area,
 			const Buffer<float>&			sa_rest_face_area,
 			const Buffer<uint3>&			sa_faces,
-			const Buffer<uint>&				sa_vert_affine_bodies_id,
+			const Buffer<VertexProperty>&	sa_x_property,
 			const Buffer<float>&			d_hat,
 			const Buffer<float>&			thickness,
 			const float						kappa);
@@ -147,7 +147,7 @@ namespace lcs
 			const Buffer<float3>&			sa_rest_x,
 			const Buffer<float>&			sa_rest_edge_area,
 			const Buffer<uint2>&			sa_edges,
-			const Buffer<uint>&				sa_vert_affine_bodies_id,
+			const Buffer<VertexProperty>&	sa_x_property,
 			const Buffer<float>&			d_hat,
 			const Buffer<float>&			thickness,
 			const float						kappa);
@@ -200,7 +200,7 @@ namespace lcs
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<uint3>,
-			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<VertexProperty>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<float>,
 			uint>
@@ -211,7 +211,7 @@ namespace lcs
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<uint2>,
-			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<VertexProperty>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<float>,
 			uint>
@@ -229,7 +229,7 @@ namespace lcs
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<uint3>,
-			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<VertexProperty>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<float>,
 			float,
@@ -243,7 +243,7 @@ namespace lcs
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<uint2>,
-			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<VertexProperty>,
 			luisa::compute::Buffer<float>,
 			luisa::compute::Buffer<float>,
 			float,

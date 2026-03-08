@@ -334,6 +334,14 @@ namespace lcs // CCD
 
 	constexpr bool print_unsafe_toi = true;
 
+	Var<bool> is_invalid_combo(const Var<VertexProperty>& left, const Var<VertexProperty>& right)
+	{
+		return (left->is_fixed() & right->is_fixed())			  // Both fixed
+			| (left->is_rigid_body() & right->is_rigid_body()	  // Both from rigid body
+				& left->get_object_id() == right->get_object_id() // 	and from the same rigid body
+			);
+	}
+
 	void NarrowPhasesDetector::compile_ccd(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
@@ -360,14 +368,14 @@ namespace lcs // CCD
 
 		compiler.compile<1>(
 			fn_narrow_phase_vf_ccd_query,
-			[offset_vf](Var<CDBG> collision_data,
-				BufferVar<float3> sa_x_begin,
-				BufferVar<float3> sa_x_end,
-				BufferVar<uint3>  sa_faces_right,
-				BufferVar<uint>	  sa_vert_body_idx,
-				BufferVar<float>  sa_vert_d_hat, // Not relavent to d_hat
-				BufferVar<float>  sa_vert_offset,
-				Uint			  dispatch_prefix)
+			[offset_vf](Var<CDBG>		  collision_data,
+				BufferVar<float3>		  sa_x_begin,
+				BufferVar<float3>		  sa_x_end,
+				BufferVar<uint3>		  sa_faces_right,
+				BufferVar<VertexProperty> sa_x_property,
+				BufferVar<float>		  sa_vert_d_hat, // Not relavent to d_hat
+				BufferVar<float>		  sa_vert_offset,
+				Uint					  dispatch_prefix)
 			{
 				auto& sa_toi = collision_data->toi_per_vert;
 				auto& broadphase_count = collision_data->broad_phase_collision_count;
@@ -385,11 +393,12 @@ namespace lcs // CCD
 
 				const Uint3 face = sa_faces_right.read(fid);
 
+				const auto left_property = sa_x_property.read(vid);
+				const auto right_property = sa_x_property.read(face[0]);
+
 				Float toi = accd::line_search_max_t;
 				$if(vid == face[0] | vid == face[1] | vid == face[2]
-					| (sa_vert_body_idx.read(vid) != -1u							   // Is from rigid body
-						& sa_vert_body_idx.read(vid) == sa_vert_body_idx.read(face[0]) // From the same rigid body
-						))
+					| is_invalid_combo(left_property, right_property))
 				{
 					toi = accd::line_search_max_t;
 				}
@@ -501,14 +510,14 @@ namespace lcs // CCD
 
 		compiler.compile<1>(
 			fn_narrow_phase_ee_ccd_query,
-			[offset_ee](Var<CDBG>	collision_data,
-				Var<Buffer<float3>> sa_x_begin,
-				Var<Buffer<float3>> sa_x_end,
-				Var<Buffer<uint2>>	sa_edges,
-				BufferVar<uint>		sa_vert_body_idx,
-				BufferVar<float>	sa_vert_d_hat, // Not relavent to d_hat
-				BufferVar<float>	sa_vert_offset,
-				Uint				dispatch_prefix)
+			[offset_ee](Var<CDBG>		  collision_data,
+				Var<Buffer<float3>>		  sa_x_begin,
+				Var<Buffer<float3>>		  sa_x_end,
+				Var<Buffer<uint2>>		  sa_edges,
+				BufferVar<VertexProperty> sa_x_property,
+				BufferVar<float>		  sa_vert_d_hat, // Not relavent to d_hat
+				BufferVar<float>		  sa_vert_offset,
+				Uint					  dispatch_prefix)
 			{
 				auto& sa_toi = collision_data->toi_per_vert;
 				auto& broadphase_count = collision_data->broad_phase_collision_count;
@@ -526,12 +535,13 @@ namespace lcs // CCD
 				const Uint2 left_edge = sa_edges.read(left);
 				const Uint2 right_edge = sa_edges.read(right);
 
+				const auto left_property = sa_x_property.read(left_edge[0]);
+				const auto right_property = sa_x_property.read(right_edge[0]);
+
 				Float toi = accd::line_search_max_t;
 				$if(left_edge[0] == right_edge[0] | left_edge[0] == right_edge[1]
 					| left_edge[1] == right_edge[0] | left_edge[1] == right_edge[1]
-					| (sa_vert_body_idx.read(left_edge[0]) != -1u									  // Is from rigid body
-						& sa_vert_body_idx.read(left_edge[0]) == sa_vert_body_idx.read(right_edge[0]) // From the same rigid body
-						))
+					| is_invalid_combo(left_property, right_property))
 				{
 					toi = accd::line_search_max_t;
 				}
@@ -669,7 +679,7 @@ namespace lcs // CCD
 		const Buffer<float3>&						sa_x_begin,
 		const Buffer<float3>&						sa_x_end,
 		const Buffer<uint3>&						sa_faces,
-		const Buffer<uint>&							sa_vert_affine_bodies_id,
+		const Buffer<VertexProperty>&				sa_x_property,
 		const Buffer<float>&						d_hat,
 		const Buffer<float>&						thickness)
 	{
@@ -704,7 +714,7 @@ namespace lcs // CCD
 				[&](uint curr_dispatch_size, uint dispatch_prefix)
 				{
 					stream << fn_narrow_phase_vf_ccd_query(
-						get_collision_data(), sa_x_begin, sa_x_end, sa_faces, sa_vert_affine_bodies_id, d_hat, thickness, dispatch_prefix)
+						get_collision_data(), sa_x_begin, sa_x_end, sa_faces, sa_x_property, d_hat, thickness, dispatch_prefix)
 								  .dispatch(curr_dispatch_size);
 				},
 				num_vf_broadphase);
@@ -726,7 +736,7 @@ namespace lcs // CCD
 		const Buffer<float3>&						sa_x_begin,
 		const Buffer<float3>&						sa_x_end,
 		const Buffer<uint2>&						sa_edges,
-		const Buffer<uint>&							sa_vert_affine_bodies_id,
+		const Buffer<VertexProperty>&				sa_x_property,
 		const Buffer<float>&						d_hat,
 		const Buffer<float>&						thickness)
 	{
@@ -764,7 +774,7 @@ namespace lcs // CCD
 				[&](uint curr_dispatch_size, uint dispatch_prefix)
 				{
 					stream << fn_narrow_phase_ee_ccd_query(
-						get_collision_data(), sa_x_begin, sa_x_end, sa_edges, sa_vert_affine_bodies_id, d_hat, thickness, dispatch_prefix)
+						get_collision_data(), sa_x_begin, sa_x_end, sa_edges, sa_x_property, d_hat, thickness, dispatch_prefix)
 								  .dispatch(curr_dispatch_size);
 				},
 				num_ee_broadphase);
@@ -811,7 +821,7 @@ namespace lcs // DCD
 				BufferVar<float>					   sa_rest_vert_area,
 				BufferVar<float>					   sa_rest_face_area,
 				BufferVar<uint3>					   sa_faces,
-				BufferVar<uint>						   sa_vert_affine_bodies_id,
+				BufferVar<VertexProperty>			   sa_x_property,
 				BufferVar<float>					   sa_per_vert_d_hat,
 				BufferVar<float>					   sa_per_vert_offset,
 				Float								   kappa,
@@ -834,9 +844,11 @@ namespace lcs // DCD
 				const Uint	fid = broadphase_list->read(2 * pair_idx + 1);
 				const Uint3 face = sa_faces.read(fid);
 
+				const auto left_property = sa_x_property.read(vid);
+				const auto right_property = sa_x_property.read(face[0]);
+
 				$if(vid == face[0] | vid == face[1] | vid == face[2]
-					| (sa_vert_affine_bodies_id.read(vid) != -1u
-						& sa_vert_affine_bodies_id.read(vid) == sa_vert_affine_bodies_id.read(face[0])))
+					| is_invalid_combo(left_property, right_property))
 				{
 				}
 				$else
@@ -968,7 +980,7 @@ namespace lcs // DCD
 				BufferVar<float3>					   sa_rest_x,
 				BufferVar<float>					   sa_rest_edge_area,
 				BufferVar<uint2>					   sa_edges,
-				BufferVar<uint>						   sa_vert_affine_bodies_id,
+				BufferVar<VertexProperty>			   sa_x_property,
 				BufferVar<float>					   sa_per_vert_d_hat,
 				BufferVar<float>					   sa_per_vert_offset,
 				Float								   kappa,
@@ -991,10 +1003,13 @@ namespace lcs // DCD
 				const Uint	right = broadphase_list->read(2 * pair_idx + 1);
 				const Uint2 left_edge = sa_edges.read(left);
 				const Uint2 right_edge = sa_edges.read(right);
+
+				const auto left_property = sa_x_property.read(left_edge[0]);
+				const auto right_property = sa_x_property.read(right_edge[0]);
+
 				$if(left_edge[0] == right_edge[0] | left_edge[0] == right_edge[1]
 					| left_edge[1] == right_edge[0] | left_edge[1] == right_edge[1]
-					| (sa_vert_affine_bodies_id.read(left_edge[0]) != -1u
-						& sa_vert_affine_bodies_id.read(left_edge[0]) == sa_vert_affine_bodies_id.read(right_edge[0])))
+					| is_invalid_combo(left_property, right_property))
 				{
 				}
 				$else
@@ -1136,7 +1151,7 @@ namespace lcs // DCD
 		const Buffer<float>&								  sa_rest_vert_area,
 		const Buffer<float>&								  sa_rest_face_area,
 		const Buffer<uint3>&								  sa_faces,
-		const Buffer<uint>&									  sa_vert_affine_bodies_id,
+		const Buffer<VertexProperty>&						  sa_x_property,
 		const Buffer<float>&								  d_hat,
 		const Buffer<float>&								  thickness,
 		const float											  kappa)
@@ -1156,7 +1171,7 @@ namespace lcs // DCD
 						sa_rest_vert_area,
 						sa_rest_face_area,
 						sa_faces,
-						sa_vert_affine_bodies_id,
+						sa_x_property,
 						d_hat,
 						thickness,
 						kappa,
@@ -1172,7 +1187,7 @@ namespace lcs // DCD
 		const Buffer<float3>&								  sa_rest_x,
 		const Buffer<float>&								  sa_rest_edge_area,
 		const Buffer<uint2>&								  sa_edges,
-		const Buffer<uint>&									  sa_vert_affine_bodies_id,
+		const Buffer<VertexProperty>&						  sa_x_property,
 		const Buffer<float>&								  d_hat,
 		const Buffer<float>&								  thickness,
 		const float											  kappa)
@@ -1191,7 +1206,7 @@ namespace lcs // DCD
 						sa_rest_x,
 						sa_rest_edge_area,
 						sa_edges,
-						sa_vert_affine_bodies_id,
+						sa_x_property,
 						d_hat,
 						thickness,
 						kappa,

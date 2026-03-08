@@ -1335,7 +1335,8 @@ namespace lcs::Initializer
 			stream << upload_buffer(device, output_data->sa_rest_x, input_data->sa_rest_x)
 				   << upload_buffer(device, output_data->sa_rest_v, input_data->sa_rest_v)
 				   << upload_buffer(device, output_data->sa_scaled_model_x, input_data->sa_scaled_model_x)
-				   << upload_buffer(device, output_data->sa_x_to_dof_map, input_data->sa_x_to_dof_map);
+				   << upload_buffer(device, output_data->sa_x_to_dof_map, input_data->sa_x_to_dof_map)
+				   << upload_buffer(device, output_data->sa_x_property, input_data->sa_x_property);
 			resize_buffer(device, output_data->sa_x, num_verts_total);
 			resize_buffer(device, output_data->sa_v, num_verts_total);
 			resize_buffer(device, output_data->sa_x_step_start, num_verts_total);

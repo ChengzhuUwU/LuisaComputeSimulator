@@ -2124,7 +2124,7 @@ namespace lcs
 				sim_data->sa_x_iter_start,
 				sim_data->sa_x,
 				mesh_data->sa_faces,
-				sim_data->sa_vert_affine_bodies_id,
+				sim_data->sa_x_property,
 				sim_data->sa_contact_active_verts_d_hat,
 				sim_data->sa_contact_active_verts_offset);
 
@@ -2136,7 +2136,7 @@ namespace lcs
 				sim_data->sa_x_iter_start,
 				sim_data->sa_x,
 				mesh_data->sa_edges,
-				sim_data->sa_vert_affine_bodies_id,
+				sim_data->sa_x_property,
 				sim_data->sa_contact_active_verts_d_hat,
 				sim_data->sa_contact_active_verts_offset);
 		}
@@ -2155,7 +2155,7 @@ namespace lcs
 			mesh_data->sa_rest_vert_area,
 			mesh_data->sa_rest_face_area,
 			mesh_data->sa_faces,
-			sim_data->sa_vert_affine_bodies_id,
+			sim_data->sa_x_property,
 			sim_data->sa_contact_active_verts_d_hat,
 			sim_data->sa_contact_active_verts_offset,
 			kappa);
@@ -2165,7 +2165,7 @@ namespace lcs
 			mesh_data->sa_rest_x,
 			mesh_data->sa_rest_edge_area,
 			mesh_data->sa_edges,
-			sim_data->sa_vert_affine_bodies_id,
+			sim_data->sa_x_property,
 			sim_data->sa_contact_active_verts_d_hat,
 			sim_data->sa_contact_active_verts_offset,
 			kappa);
