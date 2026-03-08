@@ -212,7 +212,11 @@ class SMPLSequenceAnimator:
 				global_orient=torch.from_numpy(global_orient),
 				transl=torch.from_numpy(transl),
 			)
-		return out.vertices[0].detach().cpu().numpy().astype(np.float32)
+		verts = out.vertices[0].detach().cpu().numpy().astype(np.float32)
+		# SMPL with AMASS parameters outputs vertices in Z-up space.
+		# Transform to Y-up: (x, y, z)_Zup -> (x, z, -y)_Yup
+		verts = np.stack([verts[:, 0], verts[:, 2], -verts[:, 1]], axis=-1)
+		return verts
 
 	def reset(self):
 		"""Reset the animator to start from frame 0 with smooth transition."""
@@ -301,22 +305,31 @@ def load_smpl():
 	# This includes global_orient (3) + body_pose (69 for 23 joints)
 	smpl_poses = full_poses[:, :72]  
 	
+	global_orient = smpl_poses[:, :3]
+	body_pose = smpl_poses[:, 3:72]
+	
+	# Body pose is a sequence of rotation vectors for each joint (69/3 = 23 joints)
+	body_pose_reshaped = body_pose.reshape(-1, 23, 3)  # (N, 23, 3)
+	body_pose = body_pose_reshaped.reshape(-1, 69)  # (N, 69)
+	
+	transl = sequence_data["trans"].astype(np.float32)  # (N, 3)
+	
 	# Ensure betas has the correct size (SMPL requires 10 params, AMASS may have 16)
 	betas = sequence_data["betas"].astype(np.float32)  # (16,)
 	if betas.shape[0] > 10:
 		betas = betas[:10]  # Use only first 10 components for SMPL
 	
 	sequence = {
-		"body_pose": smpl_poses[:, 3:72],  # Skip first 3 (global_orient), take 69 (body_pose)
-		"global_orient": smpl_poses[:, :3],  # First 3 components
-		"transl": sequence_data["trans"].astype(np.float32),  # (N, 3)
+		"body_pose": body_pose,  # (N, 69)
+		"global_orient": global_orient,  # (N, 3)
+		"transl": transl,  # (N, 3)
 		"betas": betas,  # (10,) for SMPL
 	}
 
-	animator = SMPLSequenceAnimator(obstacle_id, smpl_model, sequence, loop=True)
+	animator = SMPLSequenceAnimator(obstacle_id, smpl_model, sequence, loop=False, smooth_transition_frames=0)
 	return animator
 
-load_garment()
+# load_garment()
 animator = load_smpl()
 
 animators = [animator]
@@ -327,7 +340,10 @@ solver.init_solver()
 # Set scene parameters
 config_ref = solver.get_config()
 
-config_ref.use_floor = False
+# config_ref.use_floor = False
+config_ref.floor = lcs.Float3(0.0, -1.6, 0.0) 
+# config_ref.print_pcg_info = True
+# config_ref.print_collision_info = True
 # config_ref.nonlinear_iter_count = 1
 # config_ref.use_self_collision = False
 
