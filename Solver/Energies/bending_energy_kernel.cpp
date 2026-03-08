@@ -92,21 +92,11 @@ namespace lcs
 
 					auto outer = [&](const uint ii, const uint jj) -> Float3x3
 					{ return stiff * outer_product(gradients[ii], gradients[jj]); };
-					output_hessian_ptr->write(eid * 16 + 0, outer(0, 0));
-					output_hessian_ptr->write(eid * 16 + 1, outer(1, 1));
-					output_hessian_ptr->write(eid * 16 + 2, outer(2, 2));
-					output_hessian_ptr->write(eid * 16 + 3, outer(3, 3));
-
-					uint idx = 4;
 					for (uint ii = 0; ii < 4; ii++)
 					{
 						for (uint jj = 0; jj < 4; jj++)
 						{
-							if (ii != jj)
-							{
-								output_hessian_ptr->write(eid * 16 + idx, outer(ii, jj));
-								idx += 1;
-							}
+							output_hessian_ptr->write(eid * 16 + ii * 4 + jj, outer(ii, jj));
 						}
 					}
 				}
@@ -177,21 +167,11 @@ namespace lcs
 				auto outer = [&gradients, stiff](uint ii, uint jj) -> float3x3
 				{ return outer_product(stiff * gradients[ii], gradients[jj]); };
 
-				output_hessian_ptr[eid * 16 + 0] = outer(0, 0);
-				output_hessian_ptr[eid * 16 + 1] = outer(1, 1);
-				output_hessian_ptr[eid * 16 + 2] = outer(2, 2);
-				output_hessian_ptr[eid * 16 + 3] = outer(3, 3);
-
-				uint idx = 4;
 				for (uint ii = 0; ii < 4; ii++)
 				{
 					for (uint jj = 0; jj < 4; jj++)
 					{
-						if (ii != jj)
-						{
-							output_hessian_ptr[eid * 16 + idx] = outer(ii, jj);
-							idx += 1;
-						}
+						output_hessian_ptr[eid * 16 + ii * 4 + jj] = outer(ii, jj);
 					}
 				}
 			});

@@ -112,22 +112,12 @@ namespace lcs
 				abd_gradients->write(4 * body_idx + 2, stiffness * gradient[2]);
 				abd_gradients->write(4 * body_idx + 3, stiffness * gradient[3]);
 
-				abd_hessians->write(16 * body_idx + 0, stiffness * mass_matrix[0][0] * make_float3x3(1.0f));
-				abd_hessians->write(16 * body_idx + 1, stiffness * mass_matrix[1][1] * make_float3x3(1.0f));
-				abd_hessians->write(16 * body_idx + 2, stiffness * mass_matrix[2][2] * make_float3x3(1.0f));
-				abd_hessians->write(16 * body_idx + 3, stiffness * mass_matrix[3][3] * make_float3x3(1.0f));
-
-				uint idx = 4;
 				for (uint ii = 0; ii < 4; ii++)
 				{
 					for (uint jj = 0; jj < 4; jj++)
 					{
-						if (ii != jj)
-						{
-							abd_hessians->write(body_idx * 16 + idx,
-								stiffness * mass_matrix[ii][jj] * make_float3x3(1.0f));
-							idx += 1;
-						}
+						abd_hessians->write(body_idx * 16 + ii * 4 + jj,
+							stiffness * mass_matrix[ii][jj] * make_float3x3(1.0f));
 					}
 				}
 			},
@@ -221,21 +211,12 @@ namespace lcs
 					abd_gradients[4 * body_idx + 2] = stiffness * gradient[2];
 					abd_gradients[4 * body_idx + 3] = stiffness * gradient[3];
 
-					abd_hessians[16 * body_idx + 0] = float3x3::eye(stiffness * mass_matrix[0][0]);
-					abd_hessians[16 * body_idx + 1] = float3x3::eye(stiffness * mass_matrix[1][1]);
-					abd_hessians[16 * body_idx + 2] = float3x3::eye(stiffness * mass_matrix[2][2]);
-					abd_hessians[16 * body_idx + 3] = float3x3::eye(stiffness * mass_matrix[3][3]);
-
-					uint idx = 4;
 					for (uint ii = 0; ii < 4; ii++)
 					{
 						for (uint jj = 0; jj < 4; jj++)
 						{
-							if (ii != jj)
-							{
-								abd_hessians[body_idx * 16 + idx] = float3x3::eye(stiffness * mass_matrix[ii][jj]);
-								idx += 1;
-							}
+							abd_hessians[body_idx * 16 + ii * 4 + jj] =
+								float3x3::eye(stiffness * mass_matrix[ii][jj]);
 						}
 					}
 				},

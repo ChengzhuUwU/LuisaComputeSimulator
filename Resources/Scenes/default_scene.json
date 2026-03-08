@@ -1,19 +1,27 @@
 {
-    "scene_id": 15,
-    "nonlinear_iter_count": 2,
+    "scene_id": 3,
+    "use_floor": false,
     "shells": [
         {
-            "relative_path": "cube.obj",
+            "relative_path": "square8K.obj",
             "translation": [
                 0.0,
-                0.01,
+                0.32,
                 0.0
             ],
-            "scale": 0.1,
-            "material_type": "Rigid",
+            "scale": 0.75,
             "fixed_points": [
                 {
-                    "method": "All"
+                    "method": "LeftBack"
+                },
+                {
+                    "method": "RightBack"
+                },
+                {
+                    "method": "LeftFront"
+                },
+                {
+                    "method": "RightFront"
                 }
             ]
         },
@@ -21,8 +29,13 @@
             "relative_path": "cube.obj",
             "translation": [
                 0.0,
-                0.14,
+                0.34,
                 0.0
+            ],
+            "rotation": [
+                0.5235988,
+                0.0,
+                0.5235988
             ],
             "scale": 0.1,
             "material_type": "Rigid"

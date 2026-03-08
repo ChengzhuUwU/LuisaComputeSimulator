@@ -293,7 +293,8 @@ namespace lcs
 			fn_pcg_spmv_offdiag_block_rbk,
 			[](Var<luisa::compute::Buffer<MatrixTriplet3x3>> sa_cgA_offdiag_triplet,
 				Var<luisa::compute::Buffer<float3>>			 sa_input_vec,
-				Var<luisa::compute::Buffer<float3>>			 sa_output_vec)
+				Var<luisa::compute::Buffer<float3>>			 sa_output_vec,
+				Var<bool>									 use_symmetry)
 			{
 				const Uint triplet_idx = dispatch_x();
 				const Uint threadIdx = triplet_idx % 256;
@@ -401,15 +402,27 @@ namespace lcs
 					};
 					const Float3 sum_contrib = curr_prefix - target_block_prefix + contrib;
 					device_assert(!is_nan_vec(sum_contrib), "Error NaN detected in SpMV block rbk!");
-					$if(MatrixTriplet::write_use_atomic(matrix_property))
+					$if(use_symmetry)
 					{
 						sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
 						sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
 						sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
+						sa_output_vec.atomic(adj_vid).x.fetch_add(contrib.x);
+						sa_output_vec.atomic(adj_vid).y.fetch_add(contrib.y);
+						sa_output_vec.atomic(adj_vid).z.fetch_add(contrib.z);
 					}
 					$else
 					{
-						sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
+						$if(MatrixTriplet::write_use_atomic(matrix_property))
+						{
+							sa_output_vec.atomic(vid).x.fetch_add(sum_contrib.x);
+							sa_output_vec.atomic(vid).y.fetch_add(sum_contrib.y);
+							sa_output_vec.atomic(vid).z.fetch_add(sum_contrib.z);
+						}
+						$else
+						{
+							sa_output_vec.write(vid, sa_output_vec.read(vid) + sum_contrib);
+						};
 					};
 				};
 			});
@@ -578,9 +591,6 @@ namespace lcs
 		using namespace luisa::compute;
 
 		// const Uint vid         = dispatch_x();
-		const Uint curr_prefix = sa_vert_adj_material_force_verts_csr->read(vid);
-		const Uint next_prefix = sa_vert_adj_material_force_verts_csr->read(vid + 1);
-
 		const Uint curr_prefix_bending = vert_adj_constraints_csr->read(vid);
 		const Uint next_prefix_bending = vert_adj_constraints_csr->read(vid + 1);
 
@@ -606,19 +616,33 @@ namespace lcs
 			}
 
 			const Float3   grad = constaint_gradients->read(adj_eid * N + offset);
-			const Float3x3 diag_hess = constaint_hessians->read(adj_eid * (N * N) + offset);
+			const Float3x3 diag_hess = constaint_hessians->read(adj_eid * (N * N) + offset * N + offset);
 
 			buffer_add(sa_cgB, vid, -grad);
 			buffer_add(sa_cgA_diag, vid, diag_hess);
 
-			const uint N_off = N - 1;
-			for (uint ii = 0; ii < N_off; ii++) // For each off-diagonal in curr row
+			if constexpr (N > 1)
 			{
-				Float3x3 offdiag_hess = constaint_hessians->read(adj_eid * (N * N) + N + offset * N_off + ii);
-				Uint	 offdiag_offset = constaint_offsets_in_adjlist->read(adj_eid * (N * N_off) + offset * N_off + ii);
-				auto	 triplet = sa_cgA_offdiag_triplet->read(curr_prefix + offdiag_offset);
-				add_triplet_matrix(triplet, offdiag_hess);
-				sa_cgA_offdiag_triplet->write(curr_prefix + offdiag_offset, triplet);
+				const uint N_off = N - 1;
+				for (uint jj = 0; jj < N; jj++) // For each off-diagonal in curr row (row-major)
+				{
+					$if(jj != offset)
+					{
+						Uint	 expected_adj_vid = edge[jj];
+						Float3x3 offdiag_hess = constaint_hessians->read(adj_eid * (N * N) + offset * N + jj);
+						Uint	 offdiag_slot = ite(jj < offset, UInt(jj), UInt(jj - 1u));
+						Uint	 triplet_idx =
+							constaint_offsets_in_adjlist->read(adj_eid * (N * N_off) + offset * N_off + offdiag_slot);
+						auto	   triplet = sa_cgA_offdiag_triplet->read(triplet_idx);
+						const Bool pair_match =
+							((triplet->get_row_idx() == vid) & (triplet->get_col_idx() == expected_adj_vid))
+							| ((triplet->get_row_idx() == expected_adj_vid) & (triplet->get_col_idx() == vid));
+						device_assert(pair_match,
+							"Error in assembly: triplet index does not match expected (vid, adj_vid) pair.");
+						add_triplet_matrix(triplet, offdiag_hess);
+						sa_cgA_offdiag_triplet->write(triplet_idx, triplet);
+					};
+				}
 			}
 		};
 	};
@@ -1751,9 +1775,6 @@ namespace lcs
 		auto& constaint_offsets_in_adjlist = constaints.get_constraint_offsets_in_adjlist();
 		auto& indices = constaints.get_indices();
 
-		const uint curr_prefix = sa_vert_adj_material_force_verts_csr[vid];
-		const uint next_prefix = sa_vert_adj_material_force_verts_csr[vid + 1];
-
 		const uint curr_prefix_bending = vert_adj_constraints_csr[vid];
 		const uint next_prefix_bending = vert_adj_constraints_csr[vid + 1];
 
@@ -1795,7 +1816,7 @@ namespace lcs
 			// LUISA_ASSERT(offset != -1u, "Error in assembly: offset not found.");
 
 			const float3&	grad = constaint_gradients[adj_eid * N + offset];
-			const float3x3& diag_hess = constaint_hessians[adj_eid * (N * N) + offset];
+			const float3x3& diag_hess = constaint_hessians[adj_eid * (N * N) + offset * N + offset];
 
 			if (is_nan_vec(grad) || is_inf_vec(grad))
 			{
@@ -1812,19 +1833,38 @@ namespace lcs
 			if constexpr (N != 1)
 			{
 				constexpr uint N_off = N - 1;
-				for (uint ii = 0; ii < N_off; ii++) // For each off-diagonal in curr row
+				uint		   offdiag_slot = 0;
+				for (uint jj = 0; jj < N; jj++) // For each off-diagonal in curr row (row-major)
 				{
-					float3x3 offdiag_hess = constaint_hessians[adj_eid * (N * N) + N + offset * N_off + ii];
-					uint	 offdiag_offset = constaint_offsets_in_adjlist[adj_eid * (N * N_off) + offset * N_off + ii];
-					uint	 triplet_idx = curr_prefix + offdiag_offset;
+					if (jj == offset)
+					{
+						continue;
+					}
+					const uint expected_adj_vid = edge[jj];
+					float3x3   offdiag_hess = constaint_hessians[adj_eid * (N * N) + offset * N + jj];
+					uint	   triplet_idx =
+						constaint_offsets_in_adjlist[adj_eid * (N * N_off) + offset * N_off + offdiag_slot];
 					if (triplet_idx >= sa_cgA_offdiag_triplet.size())
 					{
 						LUISA_ERROR("Error in assembly: triplet_idx {} out of range (size = {})",
 							triplet_idx,
 							sa_cgA_offdiag_triplet.size());
 					}
-					auto& triplet = sa_cgA_offdiag_triplet[curr_prefix + offdiag_offset];
+					auto&	   triplet = sa_cgA_offdiag_triplet[triplet_idx];
+					const bool pair_match =
+						(triplet.get_row_idx() == vid && triplet.get_col_idx() == expected_adj_vid)
+						|| (triplet.get_row_idx() == expected_adj_vid && triplet.get_col_idx() == vid);
+					if (!pair_match)
+					{
+						LUISA_ERROR("Error in assembly: triplet_idx {} points to ({}, {}), but expected pair ({}, {})",
+							triplet_idx,
+							triplet.get_row_idx(),
+							triplet.get_col_idx(),
+							vid,
+							expected_adj_vid);
+					}
 					add_triplet_matrix(triplet, offdiag_hess);
+					offdiag_slot += 1;
 				}
 			}
 		};
@@ -2148,7 +2188,7 @@ namespace lcs
 		// stream << fn_pcg_spmv_offdiag_warp_rbk(input_ptr, output_ptr)
 		//               .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
-		stream << fn_pcg_spmv_offdiag_block_rbk(sim_data->sa_cgA_fixtopo_offdiag_triplet, input_ptr, output_ptr)
+		stream << fn_pcg_spmv_offdiag_block_rbk(sim_data->sa_cgA_fixtopo_offdiag_triplet, input_ptr, output_ptr, false)
 					  .dispatch(sim_data->sa_cgA_fixtopo_offdiag_triplet.size());
 
 		// const uint num_pairs             = host_count.front();
@@ -2161,7 +2201,7 @@ namespace lcs
 		if (reduced_triplet != 0)
 		{
 			const uint aligned_diaptch_count = get_dispatch_threads(reduced_triplet, 256);
-			stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->triplet_data.sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr)
+			stream << fn_pcg_spmv_offdiag_block_rbk(collision_data->triplet_data.sa_cgA_contact_offdiag_triplet, input_ptr, output_ptr, false)
 						  .dispatch(aligned_diaptch_count);
 		}
 
@@ -2212,7 +2252,7 @@ namespace lcs
 
 			// Material Energy
 			auto fn_SpMV_reduce_by_key =
-				[&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim, const uint triplet_count)
+				[&](const std::vector<MatrixTriplet3x3>& sa_cgA_offdiag_triplet, const uint gridDim, const uint triplet_count, const bool use_symmetry = true)
 			{
 				CpuParallel::parallel_for_each_core(
 					0,
@@ -2257,19 +2297,28 @@ namespace lcs
 								// if (get_scene_params().current_pcg_it == 0)
 								//     LUISA_INFO("Triplet {} try to add to {}, with {}", triplet_idx, vid, sum_contrib);
 
-								if (MatrixTriplet::write_use_atomic(matrix_property))
+								if (use_symmetry)
 								{
 									cgMutex[vid].lock();
 									output_ptr[vid] += sum_contrib;
 									cgMutex[vid].unlock();
-									// CpuParallel::spin_atomic<float3>::fetch_add(output_ptr[vid], sum_contrib);
-									// auto atomic_view = (CpuParallel::spin_atomic<float3>*)(&output_ptr[vid]);
-									// output_ptr[vid] += sum_contrib;
+									cgMutex[adj_vid].lock();
+									output_ptr[adj_vid] += contrib;
+									cgMutex[adj_vid].unlock();
 								}
 								else
 								{
-									output_ptr[vid] += sum_contrib;
-								};
+									if (MatrixTriplet::write_use_atomic(matrix_property))
+									{
+										cgMutex[vid].lock();
+										output_ptr[vid] += sum_contrib;
+										cgMutex[vid].unlock();
+									}
+									else
+									{
+										output_ptr[vid] += sum_contrib;
+									};
+								}
 								sum_contrib = luisa::make_float3(0.0f);
 							};
 						}
@@ -2280,14 +2329,14 @@ namespace lcs
 			// LUISA_INFO("Host SpMV off-diag part with {} triplets", num_triplet_material);
 			fn_SpMV_reduce_by_key(host_sim_data->sa_cgA_fixtopo_offdiag_triplet,
 				get_dispatch_block(num_triplet_material, 256),
-				num_triplet_material);
+				num_triplet_material, false);
 
 			const auto& host_count = host_collision_data->narrow_phase_collision_count;
 			const uint	num_triplet_contact = host_count[CollisionPair::CollisionCount::total_adj_verts_offset()];
 			// LUISA_INFO("Host SpMV off-diag contact part with {} triplets", num_triplet_contact);
 			fn_SpMV_reduce_by_key(host_collision_data->triplet_data.sa_cgA_contact_offdiag_triplet,
 				get_dispatch_block(num_triplet_contact, 256),
-				num_triplet_contact);
+				num_triplet_contact, false);
 		}
 	}
 	void NewtonSolver::host_solve_eigen(luisa::compute::Stream& stream)

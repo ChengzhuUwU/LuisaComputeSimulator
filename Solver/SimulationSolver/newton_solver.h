@@ -138,10 +138,10 @@ namespace lcs
 		luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, uint>		 fn_material_energy_assembly_abd_inertia;
 		luisa::compute::Shader<1, Constitutions::AbdOrthogonality<luisa::compute::Buffer>, uint> fn_material_energy_assembly_abd_ortho;
 
-		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>											fn_pcg_spmv_diag;
-		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>											fn_pcg_spmv_offdiag_perVert;
-		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>											fn_pcg_spmv_offdiag_warp_rbk;
-		luisa::compute::Shader<1, luisa::compute::Buffer<MatrixTriplet3x3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>> fn_pcg_spmv_offdiag_block_rbk;
+		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>												  fn_pcg_spmv_diag;
+		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>												  fn_pcg_spmv_offdiag_perVert;
+		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>												  fn_pcg_spmv_offdiag_warp_rbk;
+		luisa::compute::Shader<1, luisa::compute::Buffer<MatrixTriplet3x3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, bool> fn_pcg_spmv_offdiag_block_rbk;
 
 		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>, float> fn_interpolate_template;
 		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>										 fn_apply_q_to_x_template;

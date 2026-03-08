@@ -86,10 +86,10 @@ namespace lcs
 					output_gradient_ptr->write(eid * 2 + 0, gradients[0]);
 					output_gradient_ptr->write(eid * 2 + 1, gradients[1]);
 
-					output_hessian_ptr->write(eid * 4 + 0, He);
-					output_hessian_ptr->write(eid * 4 + 1, He);
-					output_hessian_ptr->write(eid * 4 + 2, -1.0f * He);
-					output_hessian_ptr->write(eid * 4 + 3, -1.0f * He);
+					output_hessian_ptr->write(eid * 4 + 0, He);			// (0, 0)
+					output_hessian_ptr->write(eid * 4 + 1, -1.0f * He); // (0, 1)
+					output_hessian_ptr->write(eid * 4 + 2, -1.0f * He); // (1, 0)
+					output_hessian_ptr->write(eid * 4 + 3, He);			// (1, 1)
 				}
 			},
 			default_option);
@@ -162,9 +162,9 @@ namespace lcs
 				output_gradient_ptr[eid * 2 + 1] = gradients[1];
 
 				output_hessian_ptr[eid * 4 + 0] = He;
-				output_hessian_ptr[eid * 4 + 1] = He;
+				output_hessian_ptr[eid * 4 + 1] = -1.0f * He;
 				output_hessian_ptr[eid * 4 + 2] = -1.0f * He;
-				output_hessian_ptr[eid * 4 + 3] = -1.0f * He;
+				output_hessian_ptr[eid * 4 + 3] = He;
 			});
 	}
 

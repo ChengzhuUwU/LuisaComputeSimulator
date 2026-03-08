@@ -118,25 +118,38 @@ namespace lcs
 
 				auto write_to_grad = [&](const uint i)
 				{ abd_gradients->write(3 * body_idx + i, ortho_gradient[i]); };
-				auto write_to_hess = [&](const uint i, const uint j, const bool use_transpose)
+				auto read_hess_block = [&](const uint ii, const uint jj) -> Float3x3
 				{
-					Float3x3 ortho_hess = use_transpose ? transpose(ortho_hessian[j]) : ortho_hessian[j];
-					abd_hessians->write(9 * body_idx + i, ortho_hess);
+					if (ii == 0 && jj == 0)
+						return ortho_hessian[0];
+					if (ii == 0 && jj == 1)
+						return ortho_hessian[1];
+					if (ii == 0 && jj == 2)
+						return ortho_hessian[2];
+					if (ii == 1 && jj == 0)
+						return transpose(ortho_hessian[1]);
+					if (ii == 1 && jj == 1)
+						return ortho_hessian[3];
+					if (ii == 1 && jj == 2)
+						return ortho_hessian[4];
+					if (ii == 2 && jj == 0)
+						return transpose(ortho_hessian[2]);
+					if (ii == 2 && jj == 1)
+						return transpose(ortho_hessian[4]);
+					return ortho_hessian[5];
 				};
 
 				write_to_grad(0);
 				write_to_grad(1);
 				write_to_grad(2);
 
-				write_to_hess(0, 0, false);
-				write_to_hess(1, 3, false);
-				write_to_hess(2, 5, false);
-				write_to_hess(3, 1, false);
-				write_to_hess(4, 2, false);
-				write_to_hess(5, 1, true);
-				write_to_hess(6, 4, false);
-				write_to_hess(7, 2, true);
-				write_to_hess(8, 4, true);
+				for (uint ii = 0; ii < 3; ii++)
+				{
+					for (uint jj = 0; jj < 3; jj++)
+					{
+						abd_hessians->write(9 * body_idx + ii * 3 + jj, read_hess_block(ii, jj));
+					}
+				}
 			},
 			default_option);
 	}
@@ -233,20 +246,38 @@ namespace lcs
 					}
 
 					auto* body_grad_ptr = &abd_gradients[3 * body_idx];
-					auto* body_hess_ptr = &abd_hessians[9 * body_idx];
 					body_grad_ptr[0] = ortho_gradient[0];
 					body_grad_ptr[1] = ortho_gradient[1];
 					body_grad_ptr[2] = ortho_gradient[2];
 
-					body_hess_ptr[0] = ortho_hessian[0];
-					body_hess_ptr[1] = ortho_hessian[3];
-					body_hess_ptr[2] = ortho_hessian[5];
-					body_hess_ptr[3] = ortho_hessian[1];
-					body_hess_ptr[4] = ortho_hessian[2];
-					body_hess_ptr[5] = transpose(ortho_hessian[1]);
-					body_hess_ptr[6] = ortho_hessian[4];
-					body_hess_ptr[7] = transpose(ortho_hessian[2]);
-					body_hess_ptr[8] = transpose(ortho_hessian[4]);
+					auto read_hess_block = [&](const uint ii, const uint jj) -> float3x3
+					{
+						if (ii == 0 && jj == 0)
+							return ortho_hessian[0];
+						if (ii == 0 && jj == 1)
+							return ortho_hessian[1];
+						if (ii == 0 && jj == 2)
+							return ortho_hessian[2];
+						if (ii == 1 && jj == 0)
+							return transpose(ortho_hessian[1]);
+						if (ii == 1 && jj == 1)
+							return ortho_hessian[3];
+						if (ii == 1 && jj == 2)
+							return ortho_hessian[4];
+						if (ii == 2 && jj == 0)
+							return transpose(ortho_hessian[2]);
+						if (ii == 2 && jj == 1)
+							return transpose(ortho_hessian[4]);
+						return ortho_hessian[5];
+					};
+
+					for (uint ii = 0; ii < 3; ii++)
+					{
+						for (uint jj = 0; jj < 3; jj++)
+						{
+							abd_hessians[9 * body_idx + ii * 3 + jj] = read_hess_block(ii, jj);
+						}
+					}
 				},
 				32);
 		}

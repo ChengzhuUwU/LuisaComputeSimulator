@@ -132,7 +132,7 @@ namespace lcs
 		template <template <typename...> typename BufferType, typename Derived>
 		struct ConstitutionInterface : SimulationType
 		{
-			BufferType<ushort>	 constraint_offsets_in_adjlist;
+			BufferType<uint>	 constraint_offsets_in_adjlist;
 			BufferType<float3>	 constraint_gradients;
 			BufferType<float3x3> constraint_hessians;
 

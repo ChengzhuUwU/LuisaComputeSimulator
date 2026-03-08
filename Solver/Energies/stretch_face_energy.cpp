@@ -87,15 +87,14 @@ namespace lcs
 				}
 				{
 					output_hessian_ptr->write(fid * 9 + 0, hessians->block(0, 0));
-					output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 1));
-					output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 2));
-
-					output_hessian_ptr->write(fid * 9 + 3, hessians->block(1, 0));
-					output_hessian_ptr->write(fid * 9 + 4, hessians->block(2, 0));
-					output_hessian_ptr->write(fid * 9 + 5, hessians->block(0, 1));
-					output_hessian_ptr->write(fid * 9 + 6, hessians->block(2, 1));
-					output_hessian_ptr->write(fid * 9 + 7, hessians->block(0, 2));
-					output_hessian_ptr->write(fid * 9 + 8, hessians->block(1, 2));
+					output_hessian_ptr->write(fid * 9 + 1, hessians->block(1, 0));
+					output_hessian_ptr->write(fid * 9 + 2, hessians->block(2, 0));
+					output_hessian_ptr->write(fid * 9 + 3, hessians->block(0, 1));
+					output_hessian_ptr->write(fid * 9 + 4, hessians->block(1, 1));
+					output_hessian_ptr->write(fid * 9 + 5, hessians->block(2, 1));
+					output_hessian_ptr->write(fid * 9 + 6, hessians->block(0, 2));
+					output_hessian_ptr->write(fid * 9 + 7, hessians->block(1, 2));
+					output_hessian_ptr->write(fid * 9 + 8, hessians->block(2, 2));
 				}
 			},
 			default_option);
@@ -160,15 +159,14 @@ namespace lcs
 				output_gradient_ptr[fid * 3 + 2] = gradients[2];
 
 				output_hessian_ptr[fid * 9 + 0] = hessians.block(0, 0);
-				output_hessian_ptr[fid * 9 + 1] = hessians.block(1, 1);
-				output_hessian_ptr[fid * 9 + 2] = hessians.block(2, 2);
-
-				output_hessian_ptr[fid * 9 + 3] = hessians.block(1, 0);
-				output_hessian_ptr[fid * 9 + 4] = hessians.block(2, 0);
-				output_hessian_ptr[fid * 9 + 5] = hessians.block(0, 1);
-				output_hessian_ptr[fid * 9 + 6] = hessians.block(2, 1);
-				output_hessian_ptr[fid * 9 + 7] = hessians.block(0, 2);
-				output_hessian_ptr[fid * 9 + 8] = hessians.block(1, 2);
+				output_hessian_ptr[fid * 9 + 1] = hessians.block(1, 0);
+				output_hessian_ptr[fid * 9 + 2] = hessians.block(2, 0);
+				output_hessian_ptr[fid * 9 + 3] = hessians.block(0, 1);
+				output_hessian_ptr[fid * 9 + 4] = hessians.block(1, 1);
+				output_hessian_ptr[fid * 9 + 5] = hessians.block(2, 1);
+				output_hessian_ptr[fid * 9 + 6] = hessians.block(0, 2);
+				output_hessian_ptr[fid * 9 + 7] = hessians.block(1, 2);
+				output_hessian_ptr[fid * 9 + 8] = hessians.block(2, 2);
 			});
 	}
 

@@ -271,7 +271,6 @@ namespace lcs
 
 				const Float4 weight = make_float4(1.0f, sa_scaled_model_x->read(vid));
 
-				uint idx = 4;
 				for (uint ii = 0; ii < 4; ii++)
 				{
 					Float  wi = weight[ii];
@@ -281,15 +280,7 @@ namespace lcs
 					{
 						Float	 wj = weight[jj];
 						Float3x3 affine_hess = wi * wj * hess;
-						if (ii == jj)
-						{
-							BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + ii, affine_hess);
-						}
-						else
-						{
-							BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + idx, affine_hess);
-							idx += 1;
-						}
+						BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + ii * 4 + jj, affine_hess);
 					}
 				}
 			},
@@ -447,7 +438,6 @@ namespace lcs
 						const uint body_idx = (dof_idx - prefix_vid) / 4;
 						float3	   model_x = sa_scaled_model_x[vid];
 						float4	   weight = luisa::make_float4(1.0f, model_x);
-						uint	   idx = 4;
 						for (uint ii = 0; ii < 4; ii++)
 						{
 							float  wi = weight[ii];
@@ -457,15 +447,10 @@ namespace lcs
 							{
 								float	 wj = weight[jj];
 								float3x3 affine_hess = wi * wj * hessian;
-								if (ii == jj)
-								{
-									BufferOp::atomic_buffer_add(output_hessian, mtx_view, 16 * body_idx + ii, affine_hess);
-								}
-								else
-								{
-									BufferOp::atomic_buffer_add(output_hessian, mtx_view, 16 * body_idx + idx, affine_hess);
-									idx += 1;
-								}
+								BufferOp::atomic_buffer_add(output_hessian,
+									mtx_view,
+									16 * body_idx + ii * 4 + jj,
+									affine_hess);
 							}
 						}
 					}

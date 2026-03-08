@@ -15,31 +15,36 @@
 namespace lcs::Initializer
 {
 
-	template <size_t N>
-	std::array<luisa::ushort, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
-		const std::vector<std::vector<uint>>& vert_adj_verts, const luisa::Vector<uint, N>& element)
+	template <size_t N, typename TypeOffset, size_t NumOffDiag = N * (N - 1)>
+	std::array<TypeOffset, N*(N - 1)> get_offsets_in_adjlist_from_adjacent_list(
+		const std::vector<std::vector<uint>>& vert_adj_verts,
+		const std::vector<uint>&			  vert_adj_verts_csr,
+		const luisa::Vector<uint, N>&		  element)
 	{
-		std::array<luisa::ushort, N*(N - 1)> offsets = { 0 };
-		uint								 idx = 0;
+		std::array<TypeOffset, N*(N - 1)> offsets = { 0 };
+		uint							  idx = 0;
 		for (uint ii = 0; ii < N; ii++)
 		{
-			const uint				 vid = element[ii];
-			const std::vector<uint>& adj_list = vert_adj_verts[vid];
+			const uint vid = element[ii];
 			for (uint jj = 0; jj < N; jj++)
 			{
 				if (ii != jj)
 				{
 					const uint adj_vid = element[jj];
-					const uint offset =
-						std::distance(adj_list.begin(), std::find(adj_list.begin(), adj_list.end(), adj_vid));
-					if (offset >= adj_list.size())
+					// const uint				 row = min_scalar(vid, adj_vid);
+					// const uint				 col = max_scalar(vid, adj_vid);
+					const std::vector<uint>& adj_list = vert_adj_verts[vid];
+					auto					 it = std::find(adj_list.begin(), adj_list.end(), adj_vid);
+					if (it == adj_list.end())
 					{
-						LUISA_ERROR("Offset in adjlist not found! vid = {}, adj_vid = {}, adj_list_size = {}",
+						LUISA_ERROR("Offset in adjlist not found! pair = ({}, {}), adj_list of {} = {}",
 							vid,
 							adj_vid,
-							adj_list.size());
+							vid,
+							adj_list);
 					}
-					offsets[idx] = luisa::ushort(offset);
+					const uint local_offset = static_cast<uint>(std::distance(adj_list.begin(), it));
+					offsets[idx] = TypeOffset(vert_adj_verts_csr[vid] + local_offset);
 					idx += 1;
 				}
 			}
@@ -188,11 +193,14 @@ namespace lcs::Initializer
 	{
 		if (vid1 == vid2)
 			std::cerr << "Try to build connection with self vertex";
-		auto& inner_list = adj_map[vid1];
-		auto  find_result = std::find(inner_list.begin(), inner_list.end(), vid2);
-		if (find_result == inner_list.end())
+		// if (vid1 < vid2) // Only store upper-triangular part of the adjacency to avoid duplication, since the adjacency is symmetric
 		{
-			inner_list.push_back(vid2);
+			auto& inner_list = adj_map[vid1];
+			auto  find_result = std::find(inner_list.begin(), inner_list.end(), vid2);
+			if (find_result == inner_list.end())
+			{
+				inner_list.push_back(vid2);
+			}
 		}
 	};
 
@@ -259,6 +267,7 @@ namespace lcs::Initializer
 
 	template <typename Derived>
 	static void init_constitution_offsets_in_adjlist(const std::vector<std::vector<uint>>& adj_map,
+		const std::vector<uint>&														   adj_map_csr,
 		Constitutions::ConstitutionInterface<std::vector, Derived>&						   constitution_template)
 	{
 		constexpr size_t N = Derived::get_num_verts_per_constaint();
@@ -275,10 +284,59 @@ namespace lcs::Initializer
 				[&](const uint eid)
 				{
 					auto element = sa_constitution_elements[eid];
-					auto mask = get_offsets_in_adjlist_from_adjacent_list<N>(adj_map, element); // size = N*(N-1)
+					auto mask =
+						get_offsets_in_adjlist_from_adjacent_list<N, uint>(adj_map, adj_map_csr, element); // size = N*(N-1)
+
+					if constexpr (true)
+					{
+						// Validate that each stored slot maps to the expected absolute triplet index.
+						uint slot_idx = 0;
+						for (uint ii = 0; ii < N; ii++)
+						{
+							for (uint jj = 0; jj < N; jj++)
+							{
+								if (ii == jj)
+								{
+									continue;
+								}
+
+								const uint vid = element[ii];
+								const uint adj_vid = element[jj];
+								// const uint row = min_scalar(vid, adj_vid);
+								// const uint col = max_scalar(vid, adj_vid);
+
+								const auto& row_adj = adj_map[vid];
+								auto		row_it = std::find(row_adj.begin(), row_adj.end(), adj_vid);
+								if (row_it == row_adj.end())
+								{
+									LUISA_ERROR("Error in init offset map: row {} cannot find adjacent col {} (eid = {}, ii = {}, jj = {})",
+										vid,
+										adj_vid,
+										eid,
+										ii,
+										jj);
+								}
+								const uint expected_idx =
+									adj_map_csr[vid] + static_cast<uint>(std::distance(row_adj.begin(), row_it));
+								const uint actual_idx = mask[slot_idx];
+								if (actual_idx != expected_idx)
+								{
+									LUISA_ERROR("Error in init offset map: mismatch at eid = {}, slot = {}, pair ({}, {}) expected triplet_idx {}, got {}",
+										eid,
+										slot_idx,
+										vid,
+										adj_vid,
+										expected_idx,
+										actual_idx);
+								}
+								slot_idx += 1;
+							}
+						}
+					}
+
 					std::memcpy(sa_constitution_offsets_in_adjlist.data() + eid * num_offdiag,
 						mask.data(),
-						sizeof(ushort) * num_offdiag);
+						sizeof(uint) * num_offdiag);
 				});
 		}
 		else
@@ -956,17 +1014,6 @@ namespace lcs::Initializer
 			sim_data->vert_adj_material_force_verts.resize(num_dof);
 
 			auto& adj_map = sim_data->vert_adj_material_force_verts;
-			auto  insert_adj_vert = [&adj_map](const uint& vid1, const uint& vid2)
-			{
-				if (vid1 == vid2)
-					std::cerr << "Try to build connection with self vertex";
-				auto& inner_list = adj_map[vid1];
-				auto  find_result = std::find(inner_list.begin(), inner_list.end(), vid2);
-				if (find_result == inner_list.end())
-				{
-					inner_list.push_back(vid2);
-				}
-			};
 
 			// Vert adj soft-body fixed constraints
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();
@@ -1187,34 +1234,35 @@ namespace lcs::Initializer
 		// Find material-force-offset
 		{
 			const std::vector<std::vector<uint>>& adj_list = sim_data->vert_adj_material_force_verts;
+			const std::vector<uint>&			  csr = sim_data->sa_vert_adj_material_force_verts_csr;
 
 			// Spring energy
 			auto& stretch_spring_data = sim_data->get_stretch_spring_data();
-			init_constitution_offsets_in_adjlist(adj_list, stretch_spring_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, stretch_spring_data);
 
 			// Stretch face energy
 			auto& stretch_face_data = sim_data->get_stretch_face_data();
-			init_constitution_offsets_in_adjlist(adj_list, stretch_face_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, stretch_face_data);
 
 			// Bending angle energy
 			auto& bending_edge_data = sim_data->get_bending_edge_data();
-			init_constitution_offsets_in_adjlist(adj_list, bending_edge_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, bending_edge_data);
 
 			// Stress tetrahedron energy
 			auto& stress_tet_data = sim_data->get_stress_tet_data();
-			init_constitution_offsets_in_adjlist(adj_list, stress_tet_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, stress_tet_data);
 
 			// Affine body inertia & ground collision data
 			auto& abd_inertia_data = sim_data->get_abd_inertia_data();
-			init_constitution_offsets_in_adjlist(adj_list, abd_inertia_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, abd_inertia_data);
 
 			// Affine body orthogonality
 			auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
-			init_constitution_offsets_in_adjlist(adj_list, abd_ortho_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, abd_ortho_data);
 
 			// Soft body inertia & ground collision data
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();
-			init_constitution_offsets_in_adjlist(adj_list, soft_inertia_data);
+			init_constitution_offsets_in_adjlist(adj_list, csr, soft_inertia_data);
 		}
 	}
 
