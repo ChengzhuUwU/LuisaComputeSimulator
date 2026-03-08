@@ -10,8 +10,7 @@
 
 #include <luisa/luisa-compute.h>
 
-#include "Initializer/init_mesh_data.h"
-#include "MeshOperation/mesh_reader.h"
+#include "SimulationCore/world_data.h"
 #include "SimulationSolver/newton_solver.h"
 #include "SimulationCore/scene_params.h"
 #include "app_simulation_demo_config.h"
