@@ -10,12 +10,15 @@ and the continuous-simulation callback.  Usage:
 """
 
 import os
+import numpy as np
 import polyscope as ps
 import polyscope.imgui as psim
 
 
 class SimulationGUI:
     """Thin wrapper around polyscope that mirrors the C++ Polyscope GUI."""
+
+    MERGE_RENDER_THRESHOLD = 20
 
     def __init__(self, solver, config_ref, output_dir: str = "."):
         """
@@ -39,6 +42,9 @@ class SimulationGUI:
         self._surface_meshes: list = []
         self._mesh_names: list = []
 
+        # Rendering mode state
+        self._use_merged_render = False
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -58,6 +64,14 @@ class SimulationGUI:
         verts_list, faces_list = self._solver.get_sim_result()
         self._mesh_names = self._solver.get_mesh_names()
         self._surface_meshes = []
+
+        mesh_count = len(verts_list)
+        self._use_merged_render = mesh_count > self.MERGE_RENDER_THRESHOLD
+
+        if self._use_merged_render:
+            self._register_merged_mesh(verts_list, faces_list)
+            return
+
         for idx, name in enumerate(self._mesh_names):
             ps_mesh = ps.register_surface_mesh(
                 f"{name}{idx}", verts_list[idx], faces_list[idx]
@@ -65,9 +79,75 @@ class SimulationGUI:
             ps_mesh.set_enabled(True)
             self._surface_meshes.append(ps_mesh)
 
+    def _register_merged_mesh(self, verts_list, faces_list):
+        """Merge all objects into one render mesh and mark each object's faces by color."""
+        merged_verts = []
+        merged_faces = []
+        merged_face_colors = []
+
+        vertex_offset = 0
+
+        for mesh_idx, (verts, faces) in enumerate(zip(verts_list, faces_list)):
+            verts_np = np.asarray(verts)
+            faces_np = np.asarray(faces, dtype=np.int32)
+
+            merged_verts.append(verts_np)
+            merged_faces.append(faces_np + vertex_offset)
+
+            # Stable pseudo-random color per object id.
+            obj_color = self._face_color_from_index(mesh_idx)
+            merged_face_colors.append(np.tile(obj_color, (faces_np.shape[0], 1)))
+
+            vertex_offset += verts_np.shape[0]
+
+        all_verts = np.concatenate(merged_verts, axis=0)
+        all_faces = np.concatenate(merged_faces, axis=0)
+        all_face_colors = np.concatenate(merged_face_colors, axis=0)
+
+        merged_mesh = ps.register_surface_mesh("merged_scene", all_verts, all_faces)
+        merged_mesh.add_color_quantity(
+            "object_face_color", all_face_colors, defined_on="faces", enabled=True
+        )
+        merged_mesh.set_enabled(True)
+        self._surface_meshes = [merged_mesh]
+
+    def _face_color_from_index(self, idx: int):
+        """Generate a deterministic, visually-separated RGB color."""
+        # Golden-ratio hue stepping gives well-spaced colors for many objects.
+        hue = (0.61803398875 * (idx + 1)) % 1.0
+        sat = 0.65
+        val = 0.95
+        return np.asarray(self._hsv_to_rgb(hue, sat, val), dtype=np.float32)
+
+    @staticmethod
+    def _hsv_to_rgb(h, s, v):
+        i = int(h * 6.0)
+        f = h * 6.0 - i
+        p = v * (1.0 - s)
+        q = v * (1.0 - f * s)
+        t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0:
+            return [v, t, p]
+        if i == 1:
+            return [q, v, p]
+        if i == 2:
+            return [p, v, t]
+        if i == 3:
+            return [p, q, v]
+        if i == 4:
+            return [t, p, v]
+        return [v, p, q]
+
     def _update_gui_vertices(self):
         """Fetch latest simulation vertices and push them to polyscope."""
         v_list, _ = self._solver.get_sim_result()
+
+        if self._use_merged_render:
+            merged_v = np.concatenate([np.asarray(v) for v in v_list], axis=0)
+            self._surface_meshes[0].update_vertex_positions(merged_v)
+            return
+
         for idx in range(len(self._surface_meshes)):
             self._surface_meshes[idx].update_vertex_positions(v_list[idx])
 

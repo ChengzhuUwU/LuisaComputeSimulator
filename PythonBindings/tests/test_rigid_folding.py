@@ -21,13 +21,15 @@ cube_mesh = trimesh.load(cube_mesh_path, process=False)
 count = 0
 for i in range(5):
     for j in range(5):
-        cube = solver.create_world_data_from_array(f'cube{count}', cube_mesh.vertices, cube_mesh.faces)
-        cube.set_simulation_type(lcs.MaterialType.Rigid)
-        cube.set_scale(0.1)
-        cube.set_translation(0.0 + i * 0.102, 0.2 + j * 0.15, 0.0)
-        cube_id = solver.register_world_data(cube)
-        count += 1
-
+        for k in range(5):
+            name = f'cube_{i}_{j}_{k}'
+            cube = solver.create_world_data_from_array(name, cube_mesh.vertices, cube_mesh.faces)
+            cube.set_simulation_type(lcs.MaterialType.Rigid)
+            cube.set_scale(0.1)
+            delta = 0.105
+            cube.set_translation(i * delta, 0.1 + j * delta, k * delta)
+            solver.register_world_data(cube)
+            count += 1
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
 
