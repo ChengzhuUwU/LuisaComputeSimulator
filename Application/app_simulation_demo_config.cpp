@@ -446,20 +446,7 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									if (is_match(s, { "Spring", "Linear", "Hookean" }))
-										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring;
-									else if (is_match(s, { "FEM_BW98", "BW98" }))
-										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::FEM_BW98;
-									else if (is_match(s, { "Empty", "None" }))
-										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Empty;
-									else
-										mat.stretch_model = lcs::Initializer::ConstitutiveStretchModelCloth::Spring; // default
-								}
-								else if (yyjson_is_int(v) || yyjson_is_uint(v) || yyjson_is_num(v))
-								{
-									int iv = yyjson_get_int(v);
-									mat.stretch_model =
-										static_cast<lcs::Initializer::ConstitutiveStretchModelCloth>(iv);
+									mat.stretch_model = lcs::Initializer::parse_cloth_stretch_model(s);
 								}
 							}
 
@@ -469,18 +456,7 @@ namespace Demo::Simulation
 								if (yyjson_is_str(v))
 								{
 									const char* s = yyjson_get_str(v);
-									if (strcmp(s, "None") == 0)
-										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::Empty;
-									else if (strcmp(s, "QuadraticBending") == 0)
-										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::QuadraticBending;
-									else
-										mat.bending_model = lcs::Initializer::ConstitutiveBendingModelCloth::DihedralAngle;
-								}
-								else if (yyjson_is_int(v) || yyjson_is_uint(v) || yyjson_is_num(v))
-								{
-									int iv = yyjson_get_int(v);
-									mat.bending_model =
-										static_cast<lcs::Initializer::ConstitutiveBendingModelCloth>(iv);
+									mat.bending_model = lcs::Initializer::parse_cloth_bending_model(s);
 								}
 							}
 
@@ -519,6 +495,16 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "friction_mu");
 							if (v && yyjson_is_num(v))
 								mat.friction_mu = static_cast<float>(yyjson_get_num(v));
+
+							v = yyjson_obj_get(mat_obj, "model");
+							if (v)
+							{
+								if (yyjson_is_str(v))
+								{
+									const char* s = yyjson_get_str(v);
+									mat.model = lcs::Initializer::parse_tet_model(s);
+								}
+							}
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
@@ -560,6 +546,16 @@ namespace Demo::Simulation
 							if (v && yyjson_is_bool(v))
 								mat.is_shell = static_cast<bool>(yyjson_get_bool(v));
 
+							v = yyjson_obj_get(mat_obj, "model");
+							if (v)
+							{
+								if (yyjson_is_str(v))
+								{
+									const char* s = yyjson_get_str(v);
+									mat.model = lcs::Initializer::parse_rigid_model(s);
+								}
+							}
+
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 							{
@@ -599,6 +595,16 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "friction_mu");
 							if (v && yyjson_is_num(v))
 								mat.friction_mu = static_cast<float>(yyjson_get_num(v));
+
+							v = yyjson_obj_get(mat_obj, "model");
+							if (v)
+							{
+								if (yyjson_is_str(v))
+								{
+									const char* s = yyjson_get_str(v);
+									mat.model = lcs::Initializer::parse_rod_model(s);
+								}
+							}
 
 							info.set_physics_material(mat);
 							if (stype == nullptr)
