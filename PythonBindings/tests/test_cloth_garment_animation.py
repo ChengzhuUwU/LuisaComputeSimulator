@@ -67,185 +67,6 @@ def _write_obj(file_path: str, vertices: np.ndarray, faces: np.ndarray):
 			f.write(f"f {int(tri[0]) + 1} {int(tri[1]) + 1} {int(tri[2]) + 1}\n")
 
 
-def _ask_yes_no_dialog(title: str, message: str) -> bool:
-	"""Ask user with a GUI dialog when possible, then fallback to terminal input."""
-	try:
-		import tkinter as tk
-		from tkinter import messagebox
-
-		root_tk = tk.Tk()
-		root_tk.withdraw()
-		result = bool(messagebox.askyesno(title, message))
-		root_tk.destroy()
-		return result
-	except Exception:
-		answer = input(f"{message} [y/N]: ").strip().lower()
-		return answer in {"y", "yes"}
-
-def _maybe_download_smpl_model(smpl_model_path: str) -> None:
-	smpl_url = "https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPL_FEMALE.pkl"
-	message = (
-		f"SMPL model not found:\\n{smpl_model_path}\\n\\n"
-		f"Download from Hugging Face now?\\n{smpl_url}"
-	)
-	if not _ask_yes_no_dialog("SMPL Model Missing", message):
-		raise FileNotFoundError(f"SMPL model not found: {smpl_model_path}")
-
-	os.makedirs(os.path.dirname(os.path.abspath(smpl_model_path)), exist_ok=True)
-	try:
-		print(f"Downloading SMPL model to: {smpl_model_path}")
-		_download_with_progress(smpl_url, smpl_model_path)
-	except Exception as exc:
-		raise RuntimeError(f"Failed to download SMPL model from {smpl_url}") from exc
-
-def _maybe_download_sequence_model(sequence_path: str) -> None:
-	sequence_url = "https://huggingface.co/datasets/realdream-ai/AMASS/resolve/main/raw/CMU/01/01_01_poses.npz"
-	message = (
-		f"Sequence not found:\\n{sequence_path}\\n\\n"
-		f"Download from Hugging Face now?\\n{sequence_url}"
-	)
-	if not _ask_yes_no_dialog("Sequence Missing", message):
-		raise FileNotFoundError(f"Sequence not found: {sequence_path}")
-
-	os.makedirs(os.path.dirname(os.path.abspath(sequence_path)), exist_ok=True)
-	try:
-		print(f"Downloading sequence to: {sequence_path}")
-		_download_with_progress(sequence_url, sequence_path)
-	except Exception as exc:
-		raise RuntimeError(f"Failed to download sequence from {sequence_url}") from exc
-
-def _download_with_progress(url: str, file_path: str) -> None:
-	"""Download file with progress bar."""
-	try:
-		from tqdm import tqdm
-	except ImportError:
-		urllib.request.urlretrieve(url, file_path)
-		return
-
-	def reporthook(blocknum, blocksize, totalsize):
-		if totalsize <= 0:
-			return
-		downloaded = blocknum * blocksize
-		percent = min(downloaded * 100 // totalsize, 100)
-		sys.stdout.write(f"\rProgress: {percent}%")
-		sys.stdout.flush()
-
-	urllib.request.urlretrieve(url, file_path, reporthook=reporthook)
-	print()
-
-
-
-class SMPLSequenceAnimator:
-	"""Evaluate SMPL every frame and push per-vertex animation targets to the solver."""
-
-	def __init__(self, mesh_idx: int, smpl_model, sequence: dict, loop: bool = True, smooth_transition_frames: int = 100):
-		self.mesh_idx = int(mesh_idx)
-		self.smpl_model = smpl_model
-		self.loop = bool(loop)
-		self.smooth_transition_frames = int(smooth_transition_frames)  # Frames to smooth from T-pose to first frame
-
-		self.body_pose = self._as_frame_tensor(sequence["body_pose"])
-		self.global_orient = self._as_frame_tensor(sequence["global_orient"])
-		self.transl = self._as_frame_tensor(sequence["transl"])
-		self.betas = np.asarray(sequence["betas"], dtype=np.float32)
-		if self.betas.ndim == 1:
-			self.betas = self.betas[None, :]
-
-		self.total_frame = int(self.body_pose.shape[0])
-		if self.total_frame <= 0:
-			raise RuntimeError("SMPL sequence has no frame data.")
-		
-		# Cache the first frame pose for smooth transition
-		self.first_body_pose = self.body_pose[0:1].copy()
-		self.first_global_orient = self.global_orient[0:1].copy()
-		self.first_transl = self.transl[0:1].copy()
-		
-		# Zero pose for T-pose (all zeros)
-		self.zero_body_pose = np.zeros_like(self.first_body_pose)
-		self.zero_global_orient = np.zeros_like(self.first_global_orient)
-		self.zero_transl = np.zeros_like(self.first_transl)
-		
-		# Track the starting frame for smooth transition
-		self.start_frame = 0
-
-	@staticmethod
-	def _as_frame_tensor(data) -> np.ndarray:
-		arr = np.asarray(data, dtype=np.float32)
-		if arr.ndim == 1:
-			arr = arr[None, :]
-		return arr
-
-	def _pick_frame(self, curr_frame: int) -> int:
-		if self.loop:
-			return int(curr_frame) % self.total_frame
-		return min(int(curr_frame), self.total_frame - 1)
-
-	def _eval_smpl_vertices(self, frame_idx: int, transition_factor: float = 1.0) -> np.ndarray:
-		"""
-		Evaluate SMPL vertices at the given frame with optional smooth transition.
-		
-		Args:
-			frame_idx: The frame index in the sequence
-			transition_factor: Blend factor between [0, 1]. 0 = T-pose, 1 = actual pose
-		"""
-		try:
-			import torch
-		except ImportError as exc:
-			raise RuntimeError("SMPL animation requires torch. Install with: pip install torch") from exc
-
-		betas = self.betas[frame_idx : frame_idx + 1] if self.betas.shape[0] == self.total_frame else self.betas[:1]
-		
-		# Blend between zero pose and actual pose for smooth transition
-		if transition_factor < 1.0:
-			body_pose = self.zero_body_pose * (1 - transition_factor) + self.body_pose[frame_idx : frame_idx + 1] * transition_factor
-			global_orient = self.zero_global_orient * (1 - transition_factor) + self.global_orient[frame_idx : frame_idx + 1] * transition_factor
-			transl = self.zero_transl * (1 - transition_factor) + self.transl[frame_idx : frame_idx + 1] * transition_factor
-		else:
-			body_pose = self.body_pose[frame_idx : frame_idx + 1]
-			global_orient = self.global_orient[frame_idx : frame_idx + 1]
-			transl = self.transl[frame_idx : frame_idx + 1]
-		
-		with torch.no_grad():
-			out = self.smpl_model(
-				betas=torch.from_numpy(betas),
-				body_pose=torch.from_numpy(body_pose),
-				global_orient=torch.from_numpy(global_orient),
-				transl=torch.from_numpy(transl),
-			)
-		verts = out.vertices[0].detach().cpu().numpy().astype(np.float32)
-		# SMPL with AMASS parameters outputs vertices in Z-up space.
-		# Transform to Y-up: (x, y, z)_Zup -> (x, z, -y)_Yup
-		verts = np.stack([verts[:, 0], verts[:, 2], -verts[:, 1]], axis=-1)
-		return verts
-
-	def reset(self):
-		"""Reset the animator to start from frame 0 with smooth transition."""
-		self.start_frame = 0
-
-	def update_animation(self, solver, curr_frame: int, dt: float):
-		"""
-		Update animation for current frame.
-		
-		Args:
-			solver: The physics solver
-			curr_frame: Current frame number (from the simulation)
-			dt: Time step
-		"""
-		# Calculate frames since animation started
-		frames_elapsed = curr_frame - self.start_frame
-		
-		# Calculate smooth transition factor (0 to 1 over smooth_transition_frames)
-		if frames_elapsed < self.smooth_transition_frames:
-			transition_factor = float(frames_elapsed) / float(self.smooth_transition_frames)
-		else:
-			transition_factor = 1.0
-		
-		# Get the appropriate frame from the sequence
-		frame_idx = self._pick_frame(curr_frame)
-		target_vertices = self._eval_smpl_vertices(frame_idx, transition_factor)
-		for local_vid, target_pos in enumerate(target_vertices):
-			solver.update_per_vertex_animation(self.mesh_idx, int(local_vid), target_pos)
-
 # Load a mesh by providing the path to the obj file
 def load_garment():
 	cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
@@ -256,10 +77,11 @@ def load_garment():
 	cloth.set_translation(0.0, 1.0, 0.0)
 	solver.register_world_data(cloth)
 
+
+from utils.smpl_animator import SMPLSequenceAnimator, _maybe_download_smpl_model, _maybe_download_sequence_model
 def load_smpl():
 	if not hasattr(inspect, "getargspec"):
 		inspect.getargspec = inspect.getfullargspec
-
 	try:
 		import smplx
 	except ImportError as exc:
@@ -281,19 +103,6 @@ def load_smpl():
 		raise FileNotFoundError(f"SMPL sequence not found after download attemp: {sequence_path}.")
 
 	smpl_model = smplx.SMPL(smpl_model_path)
-	faces = np.asarray(smpl_model.faces, dtype=np.int32)
-	verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
-
-	generated_obj = os.path.join(output_dir, "generated_smpl.obj")
-	_write_obj(generated_obj, verts, faces)
-
-	obstacle = solver.create_world_data_from_file_path("smpl_body", generated_obj)
-	obstacle.set_simulation_type(lcs.MaterialType.Cloth)
-	obstacle.set_physics_material_cloth(stretch_model="Empty", bending_model="Empty")
-	obstacle.add_fixed_point_by_method("All", range=0.001)
-
-	obstacle_id = solver.register_world_data(obstacle)
-
 	sequence_data = np.load(sequence_path, allow_pickle=True)
 	
 	# Convert AMASS format to SMPL format
@@ -325,8 +134,19 @@ def load_smpl():
 		"transl": transl,  # (N, 3)
 		"betas": betas,  # (10,) for SMPL
 	}
+	animator = SMPLSequenceAnimator(smpl_model, sequence, loop=True, smooth_transition_frames=100)
 
-	animator = SMPLSequenceAnimator(obstacle_id, smpl_model, sequence, loop=False, smooth_transition_frames=0)
+	faces = np.asarray(smpl_model.faces, dtype=np.int32)
+	verts = animator.get_rest_pose_vertices()  # (V, 3) in T-pose
+	# verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
+
+	obstacle = solver.create_world_data_from_array("smpl_body", verts, faces)
+	obstacle.set_simulation_type(lcs.MaterialType.Cloth)
+	obstacle.set_physics_material_cloth(stretch_model="Empty", bending_model="Empty")
+	obstacle.add_fixed_point_by_method("All", range=0.001)
+	obstacle_id = solver.register_world_data(obstacle)
+
+	animator.set_mesh_index(obstacle_id)
 	return animator
 
 # load_garment()
