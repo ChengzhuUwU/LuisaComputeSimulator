@@ -7,16 +7,41 @@ except ImportError as exc:
 class SMPLSequenceAnimator:
 	"""Evaluate SMPL every frame and push per-vertex animation targets to the solver."""
 
-	def __init__(self, smpl_model: smplx.SMPL, sequence: dict, loop: bool = True, smooth_transition_frames: int = 100):
+	def __init__(self, smpl_model: smplx.SMPL, sequence_data , loop: bool = True, smooth_transition_frames: int = 100):
+
+		for key_val in sequence_data.items():
+			print(f"  => Amass Sequence data key: {key_val[0]}, shape: {key_val[1].shape}, dtype: {key_val[1].dtype}")
+
+		# Poses and Orientations
+		full_poses = sequence_data["poses"].astype(np.float32)  # (N, 156)
+		global_orient = full_poses[:, :3] # shape (N, 3) for root joint global orientation (rotation vector)
+		body_pose = full_poses[:, 3:72] # shape (N, 69) for 23 joints * 3 values each (rotation vector)
+		body_pose = body_pose.reshape(-1, 69)  # (N, 69)
+		
+		# Translation
+		transl = sequence_data["trans"].astype(np.float32)  # (N, 3)
+		
+		# Shape coefficients (betas)
+		betas = sequence_data["betas"].astype(np.float32)  # (16,)
+		if betas.shape[0] > 10: # (SMPL requires 10 params, AMASS may have 16)
+			betas = betas[:10]  # Use only first 10 components for SMPL
+		
+		sequence: dict = {
+			"body_pose": body_pose,  # (N, 69)
+			"global_orient": global_orient,  # (N, 3)
+			"transl": transl,  # (N, 3)
+			"betas": betas,  # (10,) for SMPL
+		}
+		
 		# self.mesh_idx = int(mesh_idx)
 		self.smpl_model = smpl_model
 		self.loop = bool(loop)
 		self.smooth_transition_frames = int(smooth_transition_frames)  # Frames to smooth from T-pose to first frame
 
-		self.body_pose = self._as_frame_tensor(sequence["body_pose"])
-		self.global_orient = self._as_frame_tensor(sequence["global_orient"])
-		self.transl = self._as_frame_tensor(sequence["transl"])
-		self.betas = np.asarray(sequence["betas"], dtype=np.float32)
+		self.body_pose = self._as_frame_tensor(sequence["body_pose"])  # Expects (N, 69)
+		self.global_orient = self._as_frame_tensor(sequence["global_orient"]) # Expects (N, 3)
+		self.transl = self._as_frame_tensor(sequence["transl"]) # Expects (N, 3)
+		self.betas = np.asarray(sequence["betas"], dtype=np.float32) # Expects (10,) or (N, 10)
 		if self.betas.ndim == 1:
 			self.betas = self.betas[None, :]
 
@@ -37,11 +62,6 @@ class SMPLSequenceAnimator:
 	
 	def set_mesh_index(self, mesh_idx: int):
 		self.mesh_idx = int(mesh_idx)
-
-	def get_rest_pose_vertices(self) -> np.ndarray:
-		"""Get the rest pose vertices (T-pose) for the SMPL model."""
-		# return self._transform_AMASS_axis(self.smpl_model.v_template.detach().cpu().numpy().astype(np.float32))
-		return self._eval_smpl_vertices(frame_idx=0, transition_factor=0.0)  # T-pose vertices
 
 	def _run_smpl(self, betas: np.ndarray, body_pose: np.ndarray, global_orient: np.ndarray, transl: np.ndarray) -> np.ndarray:
 		try:
@@ -95,10 +115,6 @@ class SMPLSequenceAnimator:
 		# Transform to Y-up: (x, y, z)_Zup -> (x, z, -y)_Yup
 		return np.stack([verts[:, 0], verts[:, 2], -verts[:, 1]], axis=-1)
 
-	def reset(self):
-		"""Reset the animator to start from frame 0 with smooth transition."""
-		self.start_frame = 0
-
 	def update_animation(self, solver, curr_frame: int, dt: float):
 		"""
 		Update animation for current frame.
@@ -144,7 +160,7 @@ def _maybe_download_smpl_model(smpl_model_path: str) -> None:
 	smpl_url = "https://huggingface.co/camenduru/SMPLer-X/resolve/main/SMPL_FEMALE.pkl"
 	message = (
 		f"SMPL model not found:\\n{smpl_model_path}\\n\\n"
-		f"Download from Hugging Face now?\\n{smpl_url}"
+		f"Download from Hugging Face now? (About 200 MB) \\n{smpl_url}"
 	)
 	if not _ask_yes_no_dialog("SMPL Model Missing", message):
 		raise FileNotFoundError(f"SMPL model not found: {smpl_model_path}")
@@ -160,7 +176,7 @@ def _maybe_download_sequence_model(sequence_path: str) -> None:
 	sequence_url = "https://huggingface.co/datasets/realdream-ai/AMASS/resolve/main/raw/CMU/01/01_01_poses.npz"
 	message = (
 		f"Sequence not found:\\n{sequence_path}\\n\\n"
-		f"Download from Hugging Face now?\\n{sequence_url}"
+		f"Download from Hugging Face now? (About 5 MB) \\n{sequence_url}"
 	)
 	if not _ask_yes_no_dialog("Sequence Missing", message):
 		raise FileNotFoundError(f"Sequence not found: {sequence_path}")

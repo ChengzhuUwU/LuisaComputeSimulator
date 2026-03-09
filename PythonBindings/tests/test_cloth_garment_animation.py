@@ -58,15 +58,6 @@ output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 
-def _write_obj(file_path: str, vertices: np.ndarray, faces: np.ndarray):
-	with open(file_path, "w", encoding="utf-8") as f:
-		for v in vertices:
-			f.write(f"v {float(v[0])} {float(v[1])} {float(v[2])}\n")
-		for tri in faces:
-			# OBJ uses 1-based indexing.
-			f.write(f"f {int(tri[0]) + 1} {int(tri[1]) + 1} {int(tri[2]) + 1}\n")
-
-
 # Load a mesh by providing the path to the obj file
 def load_garment():
 	cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
@@ -97,50 +88,16 @@ def load_smpl():
 		_maybe_download_smpl_model(smpl_model_path)
 	if not os.path.isfile(sequence_path):
 		_maybe_download_sequence_model(sequence_path)
-	if not os.path.isfile(smpl_model_path):
-		raise FileNotFoundError(f"SMPL model not found after download attempt: {smpl_model_path}.")
-	if not os.path.isfile(sequence_path):
-		raise FileNotFoundError(f"SMPL sequence not found after download attemp: {sequence_path}.")
 
 	smpl_model = smplx.SMPL(smpl_model_path)
 	sequence_data = np.load(sequence_path, allow_pickle=True)
 	
-	# Convert AMASS format to SMPL format
-	# AMASS: [global_orient (3), body_pose (63), hand_pose (90)] = 156 total
-	# SMPL expects: [global_orient (3), body_pose (69 for 23 joints)] = 72 total
-	full_poses = sequence_data["poses"].astype(np.float32)  # (N, 156)
-	
-	# Extract SMPL-compatible pose parameters (first 72 dimensions)
-	# This includes global_orient (3) + body_pose (69 for 23 joints)
-	smpl_poses = full_poses[:, :72]  
-	
-	global_orient = smpl_poses[:, :3]
-	body_pose = smpl_poses[:, 3:72]
-	
-	# Body pose is a sequence of rotation vectors for each joint (69/3 = 23 joints)
-	body_pose_reshaped = body_pose.reshape(-1, 23, 3)  # (N, 23, 3)
-	body_pose = body_pose_reshaped.reshape(-1, 69)  # (N, 69)
-	
-	transl = sequence_data["trans"].astype(np.float32)  # (N, 3)
-	
-	# Ensure betas has the correct size (SMPL requires 10 params, AMASS may have 16)
-	betas = sequence_data["betas"].astype(np.float32)  # (16,)
-	if betas.shape[0] > 10:
-		betas = betas[:10]  # Use only first 10 components for SMPL
-	
-	sequence = {
-		"body_pose": body_pose,  # (N, 69)
-		"global_orient": global_orient,  # (N, 3)
-		"transl": transl,  # (N, 3)
-		"betas": betas,  # (10,) for SMPL
-	}
-	animator = SMPLSequenceAnimator(smpl_model, sequence, loop=True, smooth_transition_frames=100)
+	animator = SMPLSequenceAnimator(smpl_model, sequence_data, loop=True, smooth_transition_frames=100)
 
-	faces = np.asarray(smpl_model.faces, dtype=np.int32)
-	verts = animator.get_rest_pose_vertices()  # (V, 3) in T-pose
-	# verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
+	smpl_faces = np.asarray(smpl_model.faces, dtype=np.int32)
+	smpl_verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
 
-	obstacle = solver.create_world_data_from_array("smpl_body", verts, faces)
+	obstacle = solver.create_world_data_from_array("smpl_body", smpl_verts, smpl_faces)
 	obstacle.set_simulation_type(lcs.MaterialType.Cloth)
 	obstacle.set_physics_material_cloth(stretch_model="Empty", bending_model="Empty")
 	obstacle.add_fixed_point_by_method("All", range=0.001)
@@ -195,15 +152,6 @@ else:
 			update_animation()
 			super()._physics_step()
 		
-		def restart_system(self):
-			"""Override restart to reset animators."""
-			# Reset all animators to start from frame 0 with smooth transition
-			for animator in animators:
-				if animator is not None and hasattr(animator, 'reset'):
-					animator.reset()
-			# Call parent's restart_system
-			super().restart_system()
-
 	gui = AnimatedSimulationGUI(solver, config_ref, output_dir)
 	gui.show()
 
