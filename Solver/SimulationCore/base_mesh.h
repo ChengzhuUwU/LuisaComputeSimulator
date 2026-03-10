@@ -118,6 +118,7 @@ namespace lcs
 		BufferType<float> sa_vert_mass_inv;
 		BufferType<uint>  sa_is_fixed; // TODO: uchar
 		BufferType<uint>  sa_vert_mesh_type;
+		BufferType<uint>  sa_global_vid_to_local_vid;
 		// BufferType<uint>  sa_vert_is_on_surface; // For collision detection on surface
 
 		BufferType<uint> sa_vert_mesh_id;

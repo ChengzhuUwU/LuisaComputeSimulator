@@ -45,6 +45,14 @@ class SimulationGUI:
         # Rendering mode state
         self._use_merged_render = False
 
+        # Global-vertex highlight state
+        self._global_to_local_vid = None
+        self._global_to_world_data_idx = None
+        self._highlight_global_vid = 0
+        self._highlight_mesh_idx = None
+        self._highlight_local_vid = None
+        self._highlight_cloud = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -146,10 +154,43 @@ class SimulationGUI:
         if self._use_merged_render:
             merged_v = np.concatenate([np.asarray(v) for v in v_list], axis=0)
             self._surface_meshes[0].update_vertex_positions(merged_v)
+        else:
+            for idx in range(len(self._surface_meshes)):
+                self._surface_meshes[idx].update_vertex_positions(v_list[idx])
+
+        self._update_highlight_marker(v_list)
+
+    def _resolve_global_vid(self, global_vid: int):
+        world_data_idx = int(self._solver.query_registration_vid_from_global_vid(global_vid))
+        local_vid = int(self._solver.query_local_vid_from_global_vid(global_vid))
+        return world_data_idx, local_vid
+
+    def _set_highlight_global_vid(self, global_vid: int):
+        world_data_idx, local_vid = self._resolve_global_vid(global_vid)
+        self._highlight_global_vid = int(global_vid)
+        self._highlight_mesh_idx = world_data_idx
+        self._highlight_local_vid = local_vid
+
+    def _update_highlight_marker(self, v_list):
+        if self._highlight_mesh_idx is None or self._highlight_local_vid is None:
             return
 
-        for idx in range(len(self._surface_meshes)):
-            self._surface_meshes[idx].update_vertex_positions(v_list[idx])
+        if self._highlight_mesh_idx < 0 or self._highlight_mesh_idx >= len(v_list):
+            return
+
+        verts = np.asarray(v_list[self._highlight_mesh_idx])
+        if self._highlight_local_vid < 0 or self._highlight_local_vid >= verts.shape[0]:
+            return
+
+        point = np.asarray([verts[self._highlight_local_vid]], dtype=np.float32)
+        if self._highlight_cloud is None:
+            self._highlight_cloud = ps.register_point_cloud("highlight_vertex", point)
+            color = np.asarray([[1.0, 0.15, 0.1]], dtype=np.float32)
+            self._highlight_cloud.add_color_quantity(
+                "highlight_color", color, enabled=True
+            )
+        else:
+            self._highlight_cloud.update_point_positions(point)
 
     def _physics_step(self):
         """Run one simulation step (GPU or CPU depending on config)."""
@@ -166,6 +207,7 @@ class SimulationGUI:
         self._handle_keyboard()
         self._panel_parameters()
         self._panel_simulation()
+        self._panel_highlight()
         self._panel_collision()
         self._panel_data_io()
         self._continuous_simulation_loop()
@@ -246,6 +288,32 @@ class SimulationGUI:
 
             if psim.Button("End Simulation"):
                 self._is_simulating = False
+
+            psim.TreePop()
+
+    # ---- Highlight panel ------------------------------------------------
+    def _panel_highlight(self):
+        if psim.TreeNode("Highlight Vertex"):
+            changed, global_vid = psim.InputInt(
+                "Highlight Global Vertex ID", self._highlight_global_vid
+            )
+            if changed:
+                self._highlight_global_vid = max(0, int(global_vid))
+
+            if psim.Button("Highlight Vertex"):
+                try:
+                    self._set_highlight_global_vid(self._highlight_global_vid)
+                    self._update_gui_vertices()
+                except Exception as exc:
+                    print(f"[SimulationGUI] failed to highlight vertex: {exc}")
+
+            if (
+                self._highlight_mesh_idx is not None
+                and self._highlight_local_vid is not None
+            ):
+                psim.TextUnformatted(
+                    f"global={self._highlight_global_vid}, mesh_idx={self._highlight_mesh_idx}, local_vid={self._highlight_local_vid}"
+                )
 
             psim.TreePop()
 

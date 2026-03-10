@@ -55,10 +55,20 @@ class SMPLSequenceAnimator:
 		self.first_transl = self.transl[0:1].copy()
 
 		# T-pose parameters: keep first-frame root transform, but zero-out articulated body joints.
-		self.tpose_verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
+		init_verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
+		# self.tpose_global_verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
+		self.tpose_global_verts = self._run_smpl( 
+			self.betas[:1], 
+			np.zeros_like(self.first_body_pose), 
+			self.first_global_orient, 
+			self.first_transl)
 		
 		# Track the starting frame for smooth transition
 		self.start_frame = 0
+
+	def get_rest_pose_vertices(self) -> np.ndarray:
+		"""Get the rest pose vertices (T-pose) from the SMPL model."""
+		return (self.tpose_global_verts)
 	
 	def set_mesh_index(self, mesh_idx: int):
 		self.mesh_idx = int(mesh_idx)
@@ -91,7 +101,7 @@ class SMPLSequenceAnimator:
 			return int(curr_frame) % self.total_frame
 		return min(int(curr_frame), self.total_frame - 1)
 
-	def _eval_smpl_vertices(self, frame_idx: int, transition_factor: float = 1.0) -> np.ndarray:
+	def _eval_vertices_in_frame(self, frame_idx: int, transition_factor: float = 1.0) -> np.ndarray:
 		"""
 		Evaluate SMPL vertices at the given frame with optional smooth transition.
 		
@@ -108,7 +118,7 @@ class SMPLSequenceAnimator:
 		if transition_factor >= 1.0:
 			return actual_verts
 		else:
-			return self.tpose_verts * (1.0 - transition_factor) + actual_verts * transition_factor
+			return self.tpose_global_verts * (1.0 - transition_factor) + actual_verts * transition_factor
 
 	def _transform_AMASS_axis(self, verts):
 		# AMASS with SMPL parameters outputs vertices in Z-up space.
@@ -135,7 +145,7 @@ class SMPLSequenceAnimator:
 		
 		# Get the appropriate frame from the sequence
 		frame_idx = self._pick_frame(curr_frame)
-		target_vertices = self._eval_smpl_vertices(frame_idx, transition_factor)
+		target_vertices = self._eval_vertices_in_frame(frame_idx, transition_factor)
 		for local_vid, target_pos in enumerate(target_vertices):
 			solver.update_per_vertex_animation(self.mesh_idx, int(local_vid), target_pos)
 

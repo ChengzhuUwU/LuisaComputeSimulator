@@ -2435,12 +2435,12 @@ namespace lcs // Compute Contact Gradient & Hessian & Assemble
 				{
 					Float3 delta = weight[0] * sa_x.read(indices[0]) + weight[1] * sa_x.read(indices[1])
 						+ weight[2] * sa_x.read(indices[2]) + weight[3] * sa_x.read(indices[3]);
-					device_log("Pair {} has NaN/Inf gradient: k1/k2 = {}/ {}, normal = {}, dist = {}, delta = {}",
+					device_log("Pair {} has NaN/Inf gradient: k1/k2 = {}/{}, dist = {}, indices = {}, delta = {}",
 						pair_idx,
 						k1,
 						k2,
-						normal,
 						length(delta),
+						indices,
 						delta);
 				};
 

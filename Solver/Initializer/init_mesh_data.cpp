@@ -128,6 +128,7 @@ namespace lcs
 				mesh_data->sa_edge_mesh_id.resize(num_edges);
 				mesh_data->sa_dihedral_edge_mesh_id.resize(num_dihedral_edges);
 				mesh_data->sa_tet_mesh_id.resize(num_tets);
+				mesh_data->sa_global_vid_to_local_vid.resize(num_verts);
 
 				uint prefix_num_verts = 0;
 				uint prefix_num_faces = 0;
@@ -170,6 +171,7 @@ namespace lcs
 							mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
 							mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
 							mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.material_type);
+							mesh_data->sa_global_vid_to_local_vid[prefix_num_verts + vid] = vid;
 						});
 					// Read triangle face
 					CpuParallel::parallel_for(0,
@@ -682,6 +684,7 @@ namespace lcs
 				<< upload_buffer(device, output_data->sa_edge_mesh_id, input_data->sa_edge_mesh_id)
 				<< upload_buffer(device, output_data->sa_face_mesh_id, input_data->sa_face_mesh_id)
 				<< upload_buffer(device, output_data->sa_vert_mesh_type, input_data->sa_vert_mesh_type)
+				<< upload_buffer(device, output_data->sa_global_vid_to_local_vid, input_data->sa_global_vid_to_local_vid)
 
 				<< upload_buffer(device, output_data->sa_rest_body_area, input_data->sa_rest_body_area)
 				<< upload_buffer(device, output_data->sa_rest_body_volume, input_data->sa_rest_body_volume)

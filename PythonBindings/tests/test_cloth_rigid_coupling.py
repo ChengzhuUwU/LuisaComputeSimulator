@@ -44,7 +44,6 @@ solver.init_solver()
 # Get mesh info
 solver.print_registered_meshes_info()
 cube_get_1 = solver.get_object_by_registration_id(cube_id)
-cube_get_2 = solver.get_object_by_unique_name("cube")
 
 # Set scene parameters
 config_ref = solver.get_config()

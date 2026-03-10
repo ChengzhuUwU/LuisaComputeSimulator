@@ -562,7 +562,7 @@ namespace lcs
 		return new_dx;
 	};
 
-	uint SolverInterface::query_object_index_by_registration_id(uint registration_id) const
+	uint SolverInterface::query_sorted_index_by_registration_id(uint registration_id) const
 	{
 		if (registration_id >= host_mesh_data->input_to_sorted_mesh_id.size())
 		{
@@ -571,16 +571,13 @@ namespace lcs
 		return host_mesh_data->input_to_sorted_mesh_id[registration_id];
 	}
 
-	uint SolverInterface::query_object_index_by_unique_name(const std::string_view& unique_name) const
+	uint SolverInterface::query_registration_id_by_sorted_index(uint sorted_index) const
 	{
-		auto find = std::find_if(world_data.begin(), world_data.end(), [&](const lcs::Initializer::WorldData& data)
-			{ return data.get_model_name() == unique_name; });
-		if (find == world_data.end())
+		if (sorted_index >= host_mesh_data->num_meshes)
 		{
-			LUISA_ERROR("Invalid unique name '{}'. Multiple objects found with the same name.", unique_name);
+			LUISA_ERROR("Invalid sorted index {}. Out of range.", sorted_index);
 		}
-		uint found_sorted_idx = std::distance(world_data.begin(), find);
-		return found_sorted_idx;
+		return host_mesh_data->sorted_to_input_mesh_id[sorted_index];
 	}
 
 	static void fn_get_object_sim_result_by_sorted_index(const lcs::MeshData<std::vector>* host_mesh_data,
@@ -619,19 +616,7 @@ namespace lcs
 		std::vector<std::array<float, 3>>&								output_positions,
 		std::vector<std::array<uint, 3>>&								output_triangles)
 	{
-		const uint sorted_idx = query_object_index_by_registration_id(registration_id);
-		fn_get_object_sim_result_by_sorted_index(host_mesh_data,
-			host_sim_data,
-			sorted_idx,
-			output_positions,
-			output_triangles);
-	}
-
-	void SolverInterface::get_object_sim_result_by_unique_name(const std::string_view& unique_name,
-		std::vector<std::array<float, 3>>&											   output_positions,
-		std::vector<std::array<uint, 3>>&											   output_triangles)
-	{
-		const uint sorted_idx = query_object_index_by_unique_name(unique_name);
+		const uint sorted_idx = query_sorted_index_by_registration_id(registration_id);
 		fn_get_object_sim_result_by_sorted_index(host_mesh_data,
 			host_sim_data,
 			sorted_idx,

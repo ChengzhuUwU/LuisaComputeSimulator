@@ -130,14 +130,11 @@ namespace lcs
 		void get_curr_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
 		void get_rest_vertices_to_host(std::vector<std::vector<std::array<float, 3>>>& output_positions);
 		void get_triangles_to_host(std::vector<std::vector<std::array<uint, 3>>>& output_triangles);
-		uint query_object_index_by_registration_id(uint registration_id) const;
-		uint query_object_index_by_unique_name(const std::string_view& unique_name) const;
+		uint query_sorted_index_by_registration_id(uint registration_id) const;
+		uint query_registration_id_by_sorted_index(uint sorted_idx) const;
 		void get_object_sim_result_by_registration_id(uint registration_id,
 			std::vector<std::array<float, 3>>&			   output_positions,
 			std::vector<std::array<uint, 3>>&			   output_triangles);
-		void get_object_sim_result_by_unique_name(const std::string_view& unique_name,
-			std::vector<std::array<float, 3>>&							  output_positions,
-			std::vector<std::array<uint, 3>>&							  output_triangles);
 		void update_per_vertex_animation(const uint meshIdx, const uint local_vid, const std::array<float, 3>& target_position);
 		void update_per_body_animation(const uint body_id, const std::array<float, 3>& target_translation, const std::array<float, 3>& target_rotation);
 		void update_default_animations();
@@ -189,15 +186,9 @@ namespace lcs
 		const std::vector<Initializer::WorldData>& get_sorted_world_data() const { return world_data; }
 		const Initializer::WorldData&			   get_object_by_registration_id(uint registration_id) const
 		{
-			const uint sorted_idx = query_object_index_by_registration_id(registration_id);
+			const uint sorted_idx = query_sorted_index_by_registration_id(registration_id);
 			return world_data[sorted_idx];
 		}
-		const Initializer::WorldData& get_object_by_unique_name(const std::string_view& unique_name) const
-		{
-			const uint sorted_idx = query_object_index_by_unique_name(unique_name);
-			return world_data[sorted_idx];
-		}
-
 		Initializer::WorldData create_world_data()
 		{
 			return Initializer::WorldData();

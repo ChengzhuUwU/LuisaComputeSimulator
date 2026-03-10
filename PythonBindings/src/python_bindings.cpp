@@ -362,7 +362,7 @@ struct PyNewtonBuilder
 		// }
 		for (uint registration_id = 0; registration_id < world_data.size(); ++registration_id)
 		{
-			const uint	sorted_idx = solver_ptr->query_object_index_by_registration_id(registration_id);
+			const uint	sorted_idx = solver_ptr->query_sorted_index_by_registration_id(registration_id);
 			const auto& w = world_data[sorted_idx];
 			names[registration_id] = w.get_model_name();
 		}
@@ -491,6 +491,26 @@ struct PyNewtonBuilder
 		return py::make_tuple(py_verts, py_faces);
 	}
 
+	uint query_local_vid_from_global_vid(const uint global_vid) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+
+		const auto& mapping = solver_ptr->get_host_mesh_data().sa_global_vid_to_local_vid;
+		return (global_vid < mapping.size()) ? mapping[global_vid] : std::numeric_limits<uint>::max();
+	}
+
+	uint query_registration_vid_from_global_vid(const uint global_vid) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+
+		const std::vector<uint>& mapping1 = solver_ptr->get_host_mesh_data().sa_vert_mesh_id;
+		const uint				 sorted_idx = (global_vid < mapping1.size()) ? mapping1[global_vid] : std::numeric_limits<uint>::max();
+		const uint				 registration_id = solver_ptr->query_registration_id_by_sorted_index(sorted_idx);
+		return registration_id;
+	}
+
 	py::tuple get_object_sim_result_by_registration_id(uint registration_id)
 	{
 		if (!solver_ptr)
@@ -511,34 +531,9 @@ struct PyNewtonBuilder
 		return py::make_tuple(v_arr, f_arr);
 	}
 
-	py::tuple get_object_sim_result_by_unique_name(const std::string_view& unique_name)
-	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
-		std::vector<std::array<float, 3>> object_vertices;
-		std::vector<std::array<uint, 3>>  object_triangles;
-		solver_ptr->get_object_sim_result_by_unique_name(unique_name, object_vertices, object_triangles);
-
-		py::array_t<float> v_arr({ (size_t)object_vertices.size(), (size_t)3 });
-		if (!object_vertices.empty())
-			std::memcpy(v_arr.mutable_data(), object_vertices.data(), object_vertices.size() * 3 * sizeof(float));
-
-		py::array_t<uint32_t> f_arr({ (size_t)object_triangles.size(), (size_t)3 });
-		if (!object_triangles.empty())
-			std::memcpy(f_arr.mutable_data(), object_triangles.data(), object_triangles.size() * 3 * sizeof(uint32_t));
-
-		return py::make_tuple(v_arr, f_arr);
-	}
-
 	ConstWorldDataWrapper get_object_by_registration_id(uint registration_id) const
 	{
 		return ConstWorldDataWrapper(&solver_ptr->get_object_by_registration_id(registration_id));
-	}
-
-	ConstWorldDataWrapper get_object_by_unique_name(const std::string_view& unique_name) const
-	{
-		return ConstWorldDataWrapper(&solver_ptr->get_object_by_unique_name(unique_name));
 	}
 
 	void save_sim_result(const std::string_view& full_path)
@@ -775,16 +770,17 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"))
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
+		.def("query_local_vid_from_global_vid",
+			&PyNewtonBuilder::query_local_vid_from_global_vid,
+			"Return global-vertex-id to local-vertex-id mapping as a 1-D uint32 numpy array")
+		.def("query_registration_vid_from_global_vid",
+			&PyNewtonBuilder::query_registration_vid_from_global_vid,
+			"Return global-vertex-id to world_data(sorted mesh) index mapping as a 1-D uint32 numpy array")
 		.def("get_object_sim_result_by_registration_id",
 			&PyNewtonBuilder::get_object_sim_result_by_registration_id,
 			py::arg("registration_id"),
 			"Return one object simulation result as tuple (vertices, faces) by registration id")
-		.def("get_object_sim_result_by_unique_name",
-			&PyNewtonBuilder::get_object_sim_result_by_unique_name,
-			py::arg("unique_name"),
-			"Return one object simulation result as tuple (vertices, faces) by unique object name")
 		.def("get_object_by_registration_id", &PyNewtonBuilder::get_object_by_registration_id, py::arg("registration_id"))
-		.def("get_object_by_unique_name", &PyNewtonBuilder::get_object_by_unique_name, py::arg("unique_name"))
 		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"));
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.
