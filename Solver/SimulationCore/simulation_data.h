@@ -62,7 +62,7 @@ namespace lcs
 		// bool is_ccd_disabled() const { return (attribute_info & flag_is_ccd_disabled) != 0; }
 		// bool is_friction_disabled() const { return (attribute_info & flag_is_friction_disabled) != 0; }
 		// bool is_gravity_disabled() const { return (attribute_info & flag_is_gravity_disabled) != 0; }
-		bool with_init_penetration() const { return (attribute_info & flag_is_init_penetrated) != 0; }
+		bool is_init_penetrated() const { return (attribute_info & flag_is_init_penetrated) != 0; }
 		uint get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
 
 	public:

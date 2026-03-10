@@ -2624,9 +2624,20 @@ namespace lcs
 		{
 			device_ccd_line_search(device, stream);
 
-			stream << collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
-				   << luisa::compute::synchronize();
+			stream
+				<< sim_data->sa_x_property.copy_to(host_sim_data->sa_x_property.data())
+				<< collision_data->toi_per_vert.view().copy_to(host_collision_data->toi_per_vert.data())
+				<< luisa::compute::synchronize();
 
+			std::vector<uint> invalid_verts;
+			for (uint vid = 0; vid < host_sim_data->sa_x_property.size(); ++vid)
+				if (host_sim_data->sa_x_property[vid].is_init_penetrated())
+					invalid_verts.push_back(vid);
+			uint invalid_vert_count = invalid_verts.size();
+			if (invalid_vert_count != 0)
+			{
+				LUISA_WARNING("Vertices with penetration in init state (Due to animation) (Count = {}) : {}", invalid_vert_count, invalid_verts);
+			}
 			float toi = host_collision_data->toi_per_vert.front();
 			return toi == 1.0f ? 1.0f : 0.9f * toi; // 0.9f * toi
 		};

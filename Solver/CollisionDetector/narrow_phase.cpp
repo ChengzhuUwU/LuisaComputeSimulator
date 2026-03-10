@@ -370,6 +370,10 @@ namespace lcs // CCD
 			{ 
 				auto idx = dispatch_x();
 				auto property = sa_x_property->read(idx);
+				// $if(property->is_init_penetrated())
+				// {
+				// 	device_log("Vertex {} is init penetrated", idx);
+				// };
 				property->set_is_not_init_penetrated();
 				sa_x_property->write(idx, property); },
 			option);
@@ -436,20 +440,24 @@ namespace lcs // CCD
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
 						if constexpr (ignore_init_penetration)
-							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
+						{
+							$if(left_property->is_init_penetrated() | right_property->is_init_penetrated())
 							{
 								toi = accd::line_search_max_t;
 							};
-
-						if constexpr (print_unsafe_toi)
-							device_log(
-								"VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
-								vid,
-								face,
-								toi,
-								sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
-								sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
-								thickness);
+						}
+						else
+						{
+							if constexpr (print_unsafe_toi)
+								device_log(
+									"VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
+									vid,
+									face,
+									toi,
+									sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
+									sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
+									thickness);
+						};
 
 						// if constexpr (print_unsafe_toi)
 						// 	device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
@@ -573,32 +581,37 @@ namespace lcs // CCD
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
 						if constexpr (ignore_init_penetration)
-							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
+						{
+							$if(left_property->is_init_penetrated() | right_property->is_init_penetrated())
 							{
 								toi = accd::line_search_max_t;
 							};
-						Float init_Dist =
-							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
-						Float end_Dist =
-							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
+						}
+						else
+						{
+							Float init_Dist =
+								sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
+							Float end_Dist =
+								sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
 
-						auto r0 = ea_t0_p1 - ea_t0_p0;
-						auto r1 = eb_t0_p1 - eb_t0_p0;
-						auto len0 = distance::squared_norm(r0);
-						auto len1 = distance::squared_norm(r1);
-						auto cross_r = cross(r0, r1);
-						auto parallel_measure = distance::squared_norm(cross_r) / (len0 * len1 + 1e-8f);
-						if constexpr (print_unsafe_toi)
-							device_log("EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}, parallel_measure = {}",
-								left_edge,
-								right_edge,
-								toi,
-								init_Dist,
-								end_Dist,
-								init_Dist - thickness,
-								end_Dist - thickness,
-								thickness,
-								parallel_measure);
+							auto r0 = ea_t0_p1 - ea_t0_p0;
+							auto r1 = eb_t0_p1 - eb_t0_p0;
+							auto len0 = distance::squared_norm(r0);
+							auto len1 = distance::squared_norm(r1);
+							auto cross_r = cross(r0, r1);
+							auto parallel_measure = distance::squared_norm(cross_r) / (len0 * len1 + 1e-8f);
+							if constexpr (print_unsafe_toi)
+								device_log("EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}, parallel_measure = {}",
+									left_edge,
+									right_edge,
+									toi,
+									init_Dist,
+									end_Dist,
+									init_Dist - thickness,
+									end_Dist - thickness,
+									thickness,
+									parallel_measure);
+						}
 						// if constexpr (print_unsafe_toi)
 						// 	device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
 						// 		left_edge,
@@ -864,11 +877,6 @@ namespace lcs // DCD
 
 					$if(d2 < square_scalar(thickness))
 					{
-						device_log("Exist penetration in DCD VF pair {}-{} : d = {}, thickness = {}",
-							vid,
-							face,
-							sqrt_scalar(d2),
-							thickness);
 						if constexpr (ignore_init_penetration)
 						{
 							Uint4 indices = make_uint4(vid, face[0], face[1], face[2]);
@@ -879,6 +887,14 @@ namespace lcs // DCD
 								sa_x_property.write(indices[ii], vert_property);
 							}
 							contact_energy_type = uint(ContactEnergyType::Quadratic);
+						}
+						else
+						{
+							device_log("Exist penetration in DCD VF pair {}-{} : d = {}, thickness = {}",
+								vid,
+								face,
+								sqrt_scalar(d2),
+								thickness);
 						}
 					};
 
@@ -1036,11 +1052,6 @@ namespace lcs // DCD
 
 					$if(d2 < square_scalar(thickness))
 					{
-						device_log("Exist penetration in DCD EE pair {}-{} : d = {}, thickness = {}",
-							left_edge,
-							right_edge,
-							sqrt_scalar(d2),
-							thickness);
 						if constexpr (ignore_init_penetration)
 						{
 							Uint4 indices = make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
@@ -1051,6 +1062,14 @@ namespace lcs // DCD
 								sa_x_property.write(indices[ii], vert_property);
 							}
 							contact_energy_type = uint(ContactEnergyType::Quadratic);
+						}
+						else
+						{
+							device_log("Exist penetration in DCD EE pair {}-{} : d = {}, thickness = {}",
+								left_edge,
+								right_edge,
+								sqrt_scalar(d2),
+								thickness);
 						}
 					};
 
@@ -1170,7 +1189,7 @@ namespace lcs // DCD
 		const uint max_pairs = collision_data->narrow_phase_list.size();
 		const uint contact_energy_type = uint(get_scene_params().contact_energy_type);
 
-		const bool is_first_iter = get_scene_params().nonlinear_iter_count == 0;
+		const bool is_first_iter = get_scene_params().current_nonlinear_iter == 0;
 		if (is_first_iter)
 		{
 			stream << fn_reset_vertex_property(sa_x_property).dispatch(sa_x_property.size());

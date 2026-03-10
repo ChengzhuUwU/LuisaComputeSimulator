@@ -1,4 +1,5 @@
 import numpy as np
+import os
 try:
 	import smplx
 except ImportError as exc:
@@ -248,6 +249,8 @@ def _download_with_progress(url: str, file_path: str) -> None:
 	"""Download file with progress bar."""
 	try:
 		from tqdm import tqdm
+		import urllib
+		import sys
 	except ImportError:
 		urllib.request.urlretrieve(url, file_path)
 		return
