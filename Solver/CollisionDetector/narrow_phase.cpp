@@ -24,12 +24,10 @@ namespace lcs // Data IO
 	{
 		using namespace luisa::compute;
 
-		ContactEnergyType contact_energy_type = get_scene_params().contact_energy_type == 0 ? ContactEnergyType::Quadratic : ContactEnergyType::Barrier; // Quadratic or Barrier
-
 		compile_ccd(compiler);
-		compile_dcd(compiler, contact_energy_type);
-		compile_friction(compiler, contact_energy_type);
-		compile_energy(compiler, contact_energy_type);
+		compile_dcd(compiler);
+		compile_friction(compiler);
+		compile_energy(compiler);
 		compile_construct_pervert_adj_collision_list(compiler);
 		compile_make_contact_triplet(compiler);
 		compile_assemble_atomic(compiler);
@@ -802,7 +800,7 @@ namespace lcs // DCD
 		return mask != -1u;
 	}
 
-	void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
+	void NarrowPhasesDetector::compile_dcd(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
 
@@ -815,18 +813,19 @@ namespace lcs // DCD
 
 		compiler.compile<1>(
 			fn_narrow_phase_vf_dcd_query,
-			[contact_energy_type, offset_vf](Var<CDBG> collision_data,
-				BufferVar<float3>					   sa_x,
-				BufferVar<float3>					   sa_rest_x,
-				BufferVar<float>					   sa_rest_vert_area,
-				BufferVar<float>					   sa_rest_face_area,
-				BufferVar<uint3>					   sa_faces,
-				BufferVar<VertexProperty>			   sa_x_property,
-				BufferVar<float>					   sa_per_vert_d_hat,
-				BufferVar<float>					   sa_per_vert_offset,
-				Float								   kappa,
-				Uint								   max_count,
-				Uint								   dispatch_prefix)
+			[offset_vf](Var<CDBG>		  collision_data,
+				BufferVar<float3>		  sa_x,
+				BufferVar<float3>		  sa_rest_x,
+				BufferVar<float>		  sa_rest_vert_area,
+				BufferVar<float>		  sa_rest_face_area,
+				BufferVar<uint3>		  sa_faces,
+				BufferVar<VertexProperty> sa_x_property,
+				BufferVar<float>		  sa_per_vert_d_hat,
+				BufferVar<float>		  sa_per_vert_offset,
+				Float					  kappa,
+				Uint					  contact_energy_type,
+				Uint					  max_count,
+				Uint					  dispatch_prefix)
 			{
 				auto& broadphase_count = collision_data->broad_phase_collision_count;
 				auto& broadphase_list = collision_data->broad_phase_list_vf;
@@ -910,14 +909,14 @@ namespace lcs // DCD
 								// luisa::compute::device_log("VF pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
 							}
 
-							if (contact_energy_type == ContactEnergyType::Quadratic)
+							$if(contact_energy_type == uint(ContactEnergyType::Quadratic))
 							{
 								Float C = (d - thickness) - d_hat;
 								Float stiff = avg_area * kappa;
 								k1 = stiff * C;
 								k2 = stiff;
 							}
-							else if (contact_energy_type == ContactEnergyType::Barrier)
+							$elif(contact_energy_type == uint(ContactEnergyType::Barrier))
 							{
 								// Float dBdD;
 								// Float ddBddD;
@@ -928,7 +927,7 @@ namespace lcs // DCD
 								// normal = 2.0f * x;  // Scaled by d(d2)/d(d) = 2d
 								k1 = avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
 								k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
-							}
+							};
 
 							$if(is_nan_scalar(k1) | is_nan_scalar(k2) | is_inf_scalar(k1) | is_inf_scalar(k2))
 							{
@@ -975,17 +974,18 @@ namespace lcs // DCD
 
 		compiler.compile<1>(
 			fn_narrow_phase_ee_dcd_query,
-			[contact_energy_type, offset_ee](Var<CDBG> collision_data,
-				BufferVar<float3>					   sa_x,
-				BufferVar<float3>					   sa_rest_x,
-				BufferVar<float>					   sa_rest_edge_area,
-				BufferVar<uint2>					   sa_edges,
-				BufferVar<VertexProperty>			   sa_x_property,
-				BufferVar<float>					   sa_per_vert_d_hat,
-				BufferVar<float>					   sa_per_vert_offset,
-				Float								   kappa,
-				Uint								   max_count,
-				Uint								   dispatch_prefix)
+			[offset_ee](Var<CDBG>		  collision_data,
+				BufferVar<float3>		  sa_x,
+				BufferVar<float3>		  sa_rest_x,
+				BufferVar<float>		  sa_rest_edge_area,
+				BufferVar<uint2>		  sa_edges,
+				BufferVar<VertexProperty> sa_x_property,
+				BufferVar<float>		  sa_per_vert_d_hat,
+				BufferVar<float>		  sa_per_vert_offset,
+				Float					  kappa,
+				Uint					  contact_energy_type,
+				Uint					  max_count,
+				Uint					  dispatch_prefix)
 			{
 				auto& broadphase_count = collision_data->broad_phase_collision_count;
 				auto& broadphase_list = collision_data->broad_phase_list_ee;
@@ -1072,14 +1072,14 @@ namespace lcs // DCD
 								// luisa::compute::device_log("EE pair: with diff = {}, normal = {}, d = {}, proj = {}, C = {}, stiff = {} (area = {}) bary = {}", x, normal, d, dot_vec(normal, x), C, stiff, avg_area, bary);
 							}
 
-							if (contact_energy_type == ContactEnergyType::Quadratic)
+							$if(contact_energy_type == uint(ContactEnergyType::Quadratic))
 							{
 								Float C = (d - thickness) - d_hat;
 								Float stiff = kappa * avg_area;
 								k1 = stiff * C;
 								k2 = stiff;
 							}
-							else if (contact_energy_type == ContactEnergyType::Barrier)
+							$elif(contact_energy_type == uint(ContactEnergyType::Barrier))
 							{
 								// Float dBdD;
 								// Float ddBddD;
@@ -1090,7 +1090,7 @@ namespace lcs // DCD
 								// normal = 2.0f * x;
 								k1 = avg_area * kappa * ipc::barrier_first_derivative(d - thickness, d_hat);
 								k2 = avg_area * kappa * ipc::barrier_second_derivative(d - thickness, d_hat);
-							}
+							};
 
 							$if(is_nan_scalar(k1) | is_nan_scalar(k2) | is_inf_scalar(k1) | is_inf_scalar(k2))
 							{
@@ -1159,6 +1159,7 @@ namespace lcs // DCD
 		auto&	   host_count = host_collision_data->broad_phase_collision_count;
 		const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
 		const uint max_pairs = collision_data->narrow_phase_list.size();
+		const uint contact_energy_type = uint(get_scene_params().contact_energy_type);
 
 		if (num_vf_broadphase != 0)
 		{
@@ -1175,6 +1176,7 @@ namespace lcs // DCD
 						d_hat,
 						thickness,
 						kappa,
+						contact_energy_type,
 						max_pairs,
 						dispatch_prefix)
 								  .dispatch(curr_dispatch_size);
@@ -1195,6 +1197,7 @@ namespace lcs // DCD
 		auto&	   host_count = host_collision_data->broad_phase_collision_count;
 		const uint num_ee_broadphase = host_count[collision_data->get_ee_count_offset()];
 		const uint max_pairs = collision_data->narrow_phase_list.size();
+		const uint contact_energy_type = uint(get_scene_params().contact_energy_type);
 
 		if (num_ee_broadphase != 0)
 		{
@@ -1210,6 +1213,7 @@ namespace lcs // DCD
 						d_hat,
 						thickness,
 						kappa,
+						contact_energy_type,
 						max_pairs,
 						dispatch_prefix)
 								  .dispatch(curr_dispatch_size);
@@ -1223,7 +1227,7 @@ namespace lcs // DCD
 namespace lcs // Friction
 {
 
-	void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
+	void NarrowPhasesDetector::compile_friction(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
 
@@ -1232,15 +1236,15 @@ namespace lcs // Friction
 		// Only process friction part
 		compiler.compile<1>(
 			fn_process_collision_pair_friction,
-			[contact_energy_type](Var<CDBG> collision_data,
-				BufferVar<float3>			sa_x,
-				BufferVar<float3>			sa_x_step_start,
-				BufferVar<float>			sa_vert_friction_mu,
-				BufferVar<float>			per_vert_d_hat,
-				BufferVar<float>			per_vert_offset,
-				Float						min_dx,
-				Float						kappa,
-				Bool						is_first_iter)
+			[](Var<CDBG>		  collision_data,
+				BufferVar<float3> sa_x,
+				BufferVar<float3> sa_x_step_start,
+				BufferVar<float>  sa_vert_friction_mu,
+				BufferVar<float>  per_vert_d_hat,
+				BufferVar<float>  per_vert_offset,
+				Float			  min_dx,
+				Float			  kappa,
+				Bool			  is_first_iter)
 			{
 				auto&	   narrowphase_list = collision_data->narrow_phase_list;
 				const Uint pair_idx = dispatch_x();
@@ -2849,19 +2853,20 @@ namespace lcs // Compute Contact Gradient & Hessian & Assemble
 namespace lcs // Compute Contact Energy
 {
 
-	void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type)
+	void NarrowPhasesDetector::compile_energy(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
 
 		compiler.compile<1>(
 			fn_compute_repulsion_energy,
-			[contact_energy_type](Var<CDBG> collision_data,
-				Var<BufferView<float3>>		sa_x,
-				Var<BufferView<float3>>		sa_x_step_start,
-				Var<BufferView<float>>		per_vert_d_hat,
-				Var<BufferView<float>>		per_vert_offset,
-				Var<BufferView<float>>		sa_vert_friction_mu,
-				Float						kappa)
+			[](Var<CDBG>				collision_data,
+				Var<BufferView<float3>> sa_x,
+				Var<BufferView<float3>> sa_x_step_start,
+				Var<BufferView<float>>	per_vert_d_hat,
+				Var<BufferView<float>>	per_vert_offset,
+				Var<BufferView<float>>	sa_vert_friction_mu,
+				Float					kappa,
+				Uint					contact_energy_type)
 			{
 				auto& contact_energy = collision_data->contact_energy;
 				auto& narrowphase_list = collision_data->narrow_phase_list;
@@ -2893,15 +2898,15 @@ namespace lcs // Compute Contact Energy
 					$if(d2 < square_scalar(thickness + d_hat))
 					{
 						const Float stiff = pair->get_area() * kappa;
-						if (contact_energy_type == ContactEnergyType::Quadratic)
+						$if(contact_energy_type == uint(ContactEnergyType::Quadratic))
 						{
 							Float C = d - thickness - d_hat;
 							energy_repulsion = 0.5f * stiff * C * C;
 						}
-						else if (contact_energy_type == ContactEnergyType::Barrier)
+						$elif(contact_energy_type == uint(ContactEnergyType::Barrier))
 						{
 							energy_repulsion = stiff * ipc::barrier(d - thickness, d_hat);
-						}
+						};
 					};
 				};
 
@@ -2968,10 +2973,11 @@ namespace lcs // Compute Contact Energy
 		auto&	   contact_energy = collision_data->contact_energy;
 		auto&	   host_count = host_collision_data->narrow_phase_collision_count;
 		const uint num_pairs = host_count.front();
+		const uint contact_energy_type = uint(get_scene_params().contact_energy_type);
 
 		if (num_pairs != 0)
 		{
-			stream << fn_compute_repulsion_energy(get_collision_data(), sa_x, sa_x_step_start, d_hat, thickness, friction_mu, kappa)
+			stream << fn_compute_repulsion_energy(get_collision_data(), sa_x, sa_x_step_start, d_hat, thickness, friction_mu, kappa, contact_energy_type)
 						  .dispatch(num_pairs)
 				// << contact_energy.view(2, 1).copy_to(host_contact_energy.data() + 2)
 				;

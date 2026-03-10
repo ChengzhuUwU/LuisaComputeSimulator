@@ -33,9 +33,9 @@ namespace lcs
 
 	private:
 		void compile_ccd(AsyncCompiler& compiler);
-		void compile_dcd(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-		void compile_friction(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
-		void compile_energy(AsyncCompiler& compiler, const ContactEnergyType contact_energy_type);
+		void compile_dcd(AsyncCompiler& compiler);
+		void compile_friction(AsyncCompiler& compiler);
+		void compile_energy(AsyncCompiler& compiler);
 		void compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler);
 		void compile_make_contact_triplet(AsyncCompiler& compiler);
 		void compile_assemble_atomic(AsyncCompiler& compiler);
@@ -234,6 +234,7 @@ namespace lcs
 			luisa::compute::Buffer<float>,
 			float,
 			uint,
+			uint,
 			uint>
 			fn_narrow_phase_vf_dcd_query;
 
@@ -248,12 +249,31 @@ namespace lcs
 			luisa::compute::Buffer<float>,
 			float,
 			uint,
+			uint,
 			uint>
 			fn_narrow_phase_ee_dcd_query;
 
-		luisa::compute::Shader<1, CDBG, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float3>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, luisa::compute::BufferView<float>, float>
-																																		 fn_compute_repulsion_energy;
-		luisa::compute::Shader<1, CDBG, Buffer<float3>, Buffer<float3>, Buffer<float>, Buffer<float>, Buffer<float>, float, float, bool> fn_process_collision_pair_friction;
+		luisa::compute::Shader<1,
+			CDBG,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float>,
+			luisa::compute::BufferView<float>,
+			luisa::compute::BufferView<float>,
+			float, uint>
+			fn_compute_repulsion_energy;
+
+		luisa::compute::Shader<1,
+			CDBG,
+			Buffer<float3>,
+			Buffer<float3>,
+			Buffer<float>,
+			Buffer<float>,
+			Buffer<float>,
+			float,
+			float,
+			bool>
+			fn_process_collision_pair_friction;
 
 		// Scan
 		luisa::compute::Shader<1, CDBG>											 fn_preprocess_for_affine_bodies;
