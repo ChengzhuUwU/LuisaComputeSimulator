@@ -345,12 +345,23 @@ class SimulationGUI:
     def _panel_data_io(self):
         cfg = self._config
         if psim.TreeNode("Data IO"):
-            if psim.Button("Save mesh"):
-                self._solver.save_sim_result(
-                    obj_path=os.path.join(
-                        self._output_dir, f"frame_{cfg.current_frame}.obj"
+            if psim.Button("Save mesh combined"):
+                obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}_combined.obj")
+                self._solver.save_sim_result(obj_path=obj_path)
+                print(f"Saved combined mesh to {obj_path}")
+            if psim.Button("Save mesh separate"):
+                from utils.mesh_proc import write_obj
+                v_list, f_list = self._solver.get_sim_result()
+                for idx in range(len(v_list)):
+                    verts = np.asarray(v_list[idx])
+                    faces = np.asarray(f_list[idx], dtype=np.int32)
+                    obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}_mesh{idx}.obj")
+                    write_obj(
+                        obj_path,
+                        verts,
+                        faces,
                     )
-                )
+                    print(f"Saved mesh {idx} to {obj_path}")
             _, cfg.output_per_frame = psim.Checkbox(
                 "Output Each Frame", cfg.output_per_frame
             )
@@ -365,9 +376,8 @@ class SimulationGUI:
         cfg = self._config
 
         if cfg.output_per_frame and cfg.current_frame == 0:
-            self._solver.save_sim_result(
-                obj_path=os.path.join(self._output_dir, "frame_0_init.obj")
-            )
+            obj_path = os.path.join(self._output_dir, f"frame_0_init.obj")
+            self._solver.save_sim_result(obj_path=obj_path)
 
         self._physics_step()
         self._update_gui_vertices()
@@ -376,8 +386,5 @@ class SimulationGUI:
             animation_fps = 60.0
             output_freq = max(1, int((1.0 / animation_fps) / cfg.implicit_dt))
             if cfg.current_frame % output_freq == 0:
-                self._solver.save_sim_result(
-                    obj_path=os.path.join(
-                        self._output_dir, f"frame_{cfg.current_frame}.obj"
-                    )
-                )
+                obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}.obj")
+                self._solver.save_sim_result(obj_path=obj_path)

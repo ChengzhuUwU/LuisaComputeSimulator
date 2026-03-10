@@ -60,11 +60,11 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Load a mesh by providing the path to the obj file
 def load_garment():
-	# tshirt_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
-	# tshirt = solver.create_world_data_from_file_path('tshirt', tshirt_mesh_path)
-	# tshirt.set_simulation_type(lcs.MaterialType.Cloth)
-	# tshirt.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
-	# solver.register_world_data(tshirt)
+	tshirt_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
+	tshirt = solver.create_world_data_from_file_path('tshirt', tshirt_mesh_path)
+	tshirt.set_simulation_type(lcs.MaterialType.Cloth)
+	tshirt.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
+	solver.register_world_data(tshirt)
 
 	pants_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'pants.obj')
 	pants = solver.create_world_data_from_file_path('pants', pants_mesh_path)
@@ -79,6 +79,7 @@ def load_garment():
 
 
 from utils.smpl_animator import SMPLSequenceAnimator, _maybe_download_smpl_model, _maybe_download_sequence_model
+from utils.mesh_proc import write_obj
 def load_smpl():
 	if not hasattr(inspect, "getargspec"):
 		inspect.getargspec = inspect.getfullargspec
@@ -101,11 +102,12 @@ def load_smpl():
 	smpl_model = smplx.SMPL(smpl_model_path)
 	sequence_data = np.load(sequence_path, allow_pickle=True)
 	
-	animator = SMPLSequenceAnimator(smpl_model, sequence_data, loop=True, smooth_transition_frames=0)
+	animator = SMPLSequenceAnimator(smpl_model, sequence_data, loop=True, smooth_start_frame=15, smooth_transition_frames=100)
 
 	smpl_faces = np.asarray(smpl_model.faces, dtype=np.int32)
 	# smpl_verts = smpl_model.v_template.detach().cpu().numpy().astype(np.float32)
 	smpl_verts = animator.get_rest_pose_vertices() 
+	write_obj(os.path.join(output_dir, "smpl_rest_pose.obj"), smpl_verts, smpl_faces)
 
 	obstacle = solver.create_world_data_from_array("smpl_body", smpl_verts, smpl_faces)
 	obstacle.set_simulation_type(lcs.MaterialType.Cloth)
@@ -117,9 +119,9 @@ def load_smpl():
 	return animator
 
 load_garment()
-# animator = load_smpl()
+animator = load_smpl()
 
-animators = []
+animators = [animator]
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
 solver.init_solver()
@@ -128,7 +130,8 @@ solver.init_solver()
 config_ref = solver.get_config()
 
 # config_ref.use_floor = False
-config_ref.floor = lcs.Float3(0.0, -1.6, 0.0) 
+config_ref.floor = lcs.Float3(0.0, 0.0, 0.0) 
+config_ref.contact_energy_type = 0 # 0: quadratic, 1: barrier
 # config_ref.print_pcg_info = True
 # config_ref.print_collision_info = True
 # config_ref.nonlinear_iter_count = 1

@@ -1,3 +1,5 @@
+import os
+import numpy as np
 def write_obj(file_path: str, vertices: np.ndarray, faces: np.ndarray):
 	with open(file_path, "w", encoding="utf-8") as f:
 		for v in vertices:
