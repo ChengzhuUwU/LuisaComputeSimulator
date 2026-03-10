@@ -316,7 +316,7 @@ template <typename T>
 	const T&															   sa_per_vert_offset)
 {
 	auto offset1 = sa_per_vert_offset.read(vid1);
-	auto offset2 = sa_per_vert_offset.read(vid1);
+	auto offset2 = sa_per_vert_offset.read(vid2);
 	auto thickness = offset1 + offset2;
 	return thickness;
 }
