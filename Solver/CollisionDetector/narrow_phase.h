@@ -195,6 +195,8 @@ namespace lcs
 		using CDBG = lcs::CollisionData<luisa::compute::Buffer>;	  // CollisionData Binding Group
 		using TDBG = lcs::ContactTripletData<luisa::compute::Buffer>; // ContactTripletData Binding Group
 
+		luisa::compute::Shader<1, luisa::compute::Buffer<VertexProperty>> fn_reset_vertex_property;
+
 		luisa::compute::Shader<1,
 			CDBG,
 			luisa::compute::Buffer<float3>,

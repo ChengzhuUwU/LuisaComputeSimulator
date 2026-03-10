@@ -365,6 +365,15 @@ namespace lcs // CCD
 
 		luisa::compute::ShaderOption option{ .enable_debug_info = true };
 
+		compiler.compile(
+			fn_reset_vertex_property, [](BufferVar<VertexProperty> sa_x_property)
+			{ 
+				auto idx = dispatch_x();
+				auto property = sa_x_property->read(idx);
+				property->set_is_not_init_penetrated();
+				sa_x_property->write(idx, property); },
+			option);
+
 		compiler.compile<1>(
 			fn_narrow_phase_vf_ccd_query,
 			[offset_vf](Var<CDBG>		  collision_data,
@@ -424,25 +433,12 @@ namespace lcs // CCD
 					//     sa_toi->atomic(1).fetch_min(end_dist);
 					// };
 
-					$if(toi == 0.001f)
-					{
-						device_log("VF CCD pair {} : left = {}, vid = {}, right = {}, face = {}, TOI = {}, InitDist = {}, EndDist = {}",
-							pair_idx,
-							vid,
-							vid,
-							fid,
-							face,
-							toi,
-							sqrt(distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2)),
-							sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)));
-					};
-
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
 						if constexpr (ignore_init_penetration)
 							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
 							{
-								$return();
+								toi = accd::line_search_max_t;
 							};
 
 						if constexpr (print_unsafe_toi)
@@ -455,18 +451,18 @@ namespace lcs // CCD
 								sqrt(distance::point_triangle_distance_squared_unclassified(t1_p, t1_f0, t1_f1, t1_f2)),
 								thickness);
 
-						if constexpr (print_unsafe_toi)
-							device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
-								vid,
-								face,
-								t0_p,
-								t1_p,
-								t0_f0,
-								t0_f1,
-								t0_f2,
-								t1_f0,
-								t1_f1,
-								t1_f2);
+						// if constexpr (print_unsafe_toi)
+						// 	device_log("VF CCD failed : indices = {}-{}, x from {}-{},{},{} to {}-{},{},{}",
+						// 		vid,
+						// 		face,
+						// 		t0_p,
+						// 		t1_p,
+						// 		t0_f0,
+						// 		t0_f1,
+						// 		t0_f2,
+						// 		t1_f0,
+						// 		t1_f1,
+						// 		t1_f2);
 
 						// Float init_dist_sqr =
 						//     distance::point_triangle_distance_squared_unclassified(t0_p, t0_f0, t0_f1, t0_f2);
@@ -574,44 +570,26 @@ namespace lcs // CCD
 					//     sa_toi->atomic(1).fetch_min(end_dist);
 					// };
 
-					$if(toi == 0.001f & !(left_property->is_init_penetrated() & right_property->is_init_penetrated()))
-					{
-						device_log(
-							"EE CCD pair {} : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, InitDist = {}, EndDist = {}",
-							pair_idx,
-							left,
-							left_edge,
-							right,
-							right_edge,
-							toi,
-							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1)),
-							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1)));
-
-						{
-							auto r0 = ea_t0_p1 - ea_t0_p0;
-							auto r1 = eb_t0_p1 - eb_t0_p0;
-
-							auto len0 = distance::squared_norm(r0);
-							auto len1 = distance::squared_norm(r1);
-							auto cross_r = cross(r0, r1);
-							auto parallel_measure = distance::squared_norm(cross_r) / (len0 * len1 + 1e-8f);
-							device_log("Parallel measure = {}", parallel_measure);
-						}
-					};
-
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
 						if constexpr (ignore_init_penetration)
 							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
 							{
-								$return();
+								toi = accd::line_search_max_t;
 							};
 						Float init_Dist =
 							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
 						Float end_Dist =
 							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t1_p0, ea_t1_p1, eb_t1_p0, eb_t1_p1));
+
+						auto r0 = ea_t0_p1 - ea_t0_p0;
+						auto r1 = eb_t0_p1 - eb_t0_p0;
+						auto len0 = distance::squared_norm(r0);
+						auto len1 = distance::squared_norm(r1);
+						auto cross_r = cross(r0, r1);
+						auto parallel_measure = distance::squared_norm(cross_r) / (len0 * len1 + 1e-8f);
 						if constexpr (print_unsafe_toi)
-							device_log("EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}",
+							device_log("EE CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, (Gap = {}/{}) thickness = {}, parallel_measure = {}",
 								left_edge,
 								right_edge,
 								toi,
@@ -619,19 +597,20 @@ namespace lcs // CCD
 								end_Dist,
 								init_Dist - thickness,
 								end_Dist - thickness,
-								thickness);
-						if constexpr (print_unsafe_toi)
-							device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
-								left_edge,
-								right_edge,
-								ea_t0_p0,
-								ea_t0_p1,
-								eb_t0_p0,
-								eb_t0_p1,
-								ea_t1_p0,
-								ea_t1_p1,
-								eb_t1_p0,
-								eb_t1_p1);
+								thickness,
+								parallel_measure);
+						// if constexpr (print_unsafe_toi)
+						// 	device_log("EE CCD failed : indices = {}-{}, x from {},{}-{},{} to {},{}-{},{}",
+						// 		left_edge,
+						// 		right_edge,
+						// 		ea_t0_p0,
+						// 		ea_t0_p1,
+						// 		eb_t0_p0,
+						// 		eb_t0_p1,
+						// 		ea_t1_p0,
+						// 		ea_t1_p1,
+						// 		eb_t1_p0,
+						// 		eb_t1_p1);
 
 						luisa::compute::device_assert(false, "EE CCD failed");
 						// Float init_dist_sqr =
@@ -1190,6 +1169,12 @@ namespace lcs // DCD
 		const uint num_vf_broadphase = host_count[collision_data->get_vf_count_offset()];
 		const uint max_pairs = collision_data->narrow_phase_list.size();
 		const uint contact_energy_type = uint(get_scene_params().contact_energy_type);
+
+		const bool is_first_iter = get_scene_params().nonlinear_iter_count == 0;
+		if (is_first_iter)
+		{
+			stream << fn_reset_vertex_property(sa_x_property).dispatch(sa_x_property.size());
+		}
 
 		if (num_vf_broadphase != 0)
 		{

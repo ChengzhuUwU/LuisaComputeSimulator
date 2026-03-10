@@ -98,6 +98,10 @@ namespace lcs
 		{
 			set_attribution(flag_is_init_penetrated, true);
 		}
+		void set_is_not_init_penetrated()
+		{
+			set_attribution(flag_is_init_penetrated, false);
+		}
 		void set_object_id(const uint object_id)
 		{
 			attribute_info = (attribute_info & 0xFFFF) | ((object_id & 0x7FFF) << 16);
@@ -162,7 +166,8 @@ LUISA_STRUCT(lcs::VertexProperty, attribute_info)
 	luisa::compute::Var<bool> is_soft_body() const { return (attribute_info & lcs::VertexProperty::flag_is_rigid_body) == 0; }
 	luisa::compute::Var<bool> is_init_penetrated() const { return (attribute_info & lcs::VertexProperty::flag_is_init_penetrated) != 0; }
 	luisa::compute::Var<uint> get_object_id() const { return (attribute_info >> 16) & 0x7FFF; }
-	void set_is_init_penetrated() { attribute_info |= lcs::VertexProperty::flag_is_fixex; }
+	void set_is_init_penetrated() { attribute_info |= lcs::VertexProperty::flag_is_init_penetrated; }
+	void set_is_not_init_penetrated() { attribute_info &= ~lcs::VertexProperty::flag_is_init_penetrated; }
 };
 
 LUISA_STRUCT(lcs::DofProperty, attribute_info)
