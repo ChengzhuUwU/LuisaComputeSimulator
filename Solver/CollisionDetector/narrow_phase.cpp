@@ -331,6 +331,7 @@ namespace lcs // CCD
 {
 
 	constexpr bool print_unsafe_toi = true;
+	constexpr bool ignore_init_penetration = true;
 
 	Var<bool> is_invalid_combo(const Var<VertexProperty>& left, const Var<VertexProperty>& right)
 	{
@@ -438,6 +439,12 @@ namespace lcs // CCD
 
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
+						if constexpr (ignore_init_penetration)
+							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
+							{
+								$return();
+							};
+
 						if constexpr (print_unsafe_toi)
 							device_log(
 								"VF CCD failed : indices = {}-{}, toi = {}, init_dist = {}, end_dist = {}, thickness = {}",
@@ -567,7 +574,7 @@ namespace lcs // CCD
 					//     sa_toi->atomic(1).fetch_min(end_dist);
 					// };
 
-					$if(toi == 0.001f)
+					$if(toi == 0.001f & !(left_property->is_init_penetrated() & right_property->is_init_penetrated()))
 					{
 						device_log(
 							"EE CCD pair {} : left = {}, edge1 = {}, right = {}, edge2 = {}, TOI = {}, InitDist = {}, EndDist = {}",
@@ -594,6 +601,11 @@ namespace lcs // CCD
 
 					$if(toi<0.0f | toi> accd::line_search_max_t | toi == 0.001f)
 					{
+						if constexpr (ignore_init_penetration)
+							$if(left_property->is_init_penetrated() & right_property->is_init_penetrated())
+							{
+								$return();
+							};
 						Float init_Dist =
 							sqrt(distance::edge_edge_distance_squared_unclassified(ea_t0_p0, ea_t0_p1, eb_t0_p0, eb_t0_p1));
 						Float end_Dist =
@@ -878,8 +890,17 @@ namespace lcs // DCD
 							face,
 							sqrt_scalar(d2),
 							thickness);
-						collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
-						device_assert(false, "NaN/INF stiffness in DCD VF pair");
+						if constexpr (ignore_init_penetration)
+						{
+							Uint4 indices = make_uint4(vid, face[0], face[1], face[2]);
+							for (uint ii = 0; ii < 4; ii++)
+							{
+								auto vert_property = sa_x_property.read(indices[ii]);
+								vert_property->set_is_init_penetrated();
+								sa_x_property.write(indices[ii], vert_property);
+							}
+							contact_energy_type = uint(ContactEnergyType::Quadratic);
+						}
 					};
 
 					$if(d2 < square_scalar(thickness + d_hat)
@@ -1041,8 +1062,17 @@ namespace lcs // DCD
 							right_edge,
 							sqrt_scalar(d2),
 							thickness);
-						collision_data.toi_per_vert.atomic(0).fetch_min(0.0f);
-						device_assert(false, "NaN/INF stiffness in DCD EE pair");
+						if constexpr (ignore_init_penetration)
+						{
+							Uint4 indices = make_uint4(left_edge[0], left_edge[1], right_edge[0], right_edge[1]);
+							for (uint ii = 0; ii < 4; ii++)
+							{
+								auto vert_property = sa_x_property.read(indices[ii]);
+								vert_property->set_is_init_penetrated();
+								sa_x_property.write(indices[ii], vert_property);
+							}
+							contact_energy_type = uint(ContactEnergyType::Quadratic);
+						}
 					};
 
 					$if(d2 < square_scalar(thickness + d_hat)
