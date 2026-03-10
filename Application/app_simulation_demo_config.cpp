@@ -435,6 +435,9 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "thickness");
 							if (v && yyjson_is_num(v))
 								mat.thickness = static_cast<float>(yyjson_get_num(v));
+							v = yyjson_obj_get(mat_obj, "contact_offset");
+							if (v && yyjson_is_num(v))
+								mat.contact_offset = static_cast<float>(yyjson_get_num(v));
 							v = yyjson_obj_get(mat_obj, "friction_mu");
 							if (v && yyjson_is_num(v))
 								mat.friction_mu = static_cast<float>(yyjson_get_num(v));
@@ -492,6 +495,9 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "d_hat");
 							if (v && yyjson_is_num(v))
 								mat.d_hat = static_cast<float>(yyjson_get_num(v));
+							v = yyjson_obj_get(mat_obj, "contact_offset");
+							if (v && yyjson_is_num(v))
+								mat.contact_offset = static_cast<float>(yyjson_get_num(v));
 							v = yyjson_obj_get(mat_obj, "friction_mu");
 							if (v && yyjson_is_num(v))
 								mat.friction_mu = static_cast<float>(yyjson_get_num(v));
@@ -536,6 +542,9 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "d_hat");
 							if (v && yyjson_is_num(v))
 								mat.d_hat = static_cast<float>(yyjson_get_num(v));
+							v = yyjson_obj_get(mat_obj, "contact_offset");
+							if (v && yyjson_is_num(v))
+								mat.contact_offset = static_cast<float>(yyjson_get_num(v));
 							v = yyjson_obj_get(mat_obj, "friction_mu");
 							if (v && yyjson_is_num(v))
 								mat.friction_mu = static_cast<float>(yyjson_get_num(v));
@@ -589,6 +598,9 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "d_hat");
 							if (v && yyjson_is_num(v))
 								mat.d_hat = static_cast<float>(yyjson_get_num(v));
+							v = yyjson_obj_get(mat_obj, "contact_offset");
+							if (v && yyjson_is_num(v))
+								mat.contact_offset = static_cast<float>(yyjson_get_num(v));
 							v = yyjson_obj_get(mat_obj, "radius");
 							if (v && yyjson_is_num(v))
 								mat.radius = static_cast<float>(yyjson_get_num(v));
@@ -627,7 +639,9 @@ namespace Demo::Simulation
 							v = yyjson_obj_get(mat_obj, "d_hat");
 							if (v && yyjson_is_num(v))
 								mat.d_hat = static_cast<float>(yyjson_get_num(v));
-
+							v = yyjson_obj_get(mat_obj, "contact_offset");
+							if (v && yyjson_is_num(v))
+								mat.contact_offset = static_cast<float>(yyjson_get_num(v));
 							info.set_physics_material(mat);
 							if (stype == nullptr)
 								info.set_material_type(lcs::Material::MaterialType::Cloth);

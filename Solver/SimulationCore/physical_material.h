@@ -62,9 +62,11 @@ namespace lcs
 		{
 			static constexpr float default_mass() { return 0.0f; }
 			static constexpr float default_density() { return 1e3f; }
+			static constexpr float default_contact_offset() { return 0.0f; }
 			static constexpr float default_d_hat() { return 1e-3f; }
 			static constexpr float default_friction_mu() { return 0.5f; }
 
+			float contact_offset = default_contact_offset();
 			float mass = default_mass();
 			float density = default_density();
 			float d_hat = default_d_hat();

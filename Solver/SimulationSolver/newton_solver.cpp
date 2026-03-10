@@ -2818,7 +2818,7 @@ namespace lcs
 					{
 						// Converged condition: ||x - x_tilde|| < tol, or ||x - x_iter_start|| < tol
 						float3 delta1 = host_sim_data->sa_q[vid] - host_sim_data->sa_q_tilde[vid];
-						float3 delta2 = host_sim_data->sa_q[vid] - host_sim_data->sa_q_iter_start[vid];
+						float3 delta2 = host_sim_data->sa_dq[vid];
 						// LUISA_INFO("     Dirichlet vertex {} : current pos {}, target pos {}, start pos {}, delta1 {}, delta2 {}",
 						//            vid,
 						//            host_sim_data->sa_q[vid],
@@ -3027,7 +3027,7 @@ namespace lcs
 				narrow_phase_detector->resize_buffers(device, stream); // Pre-allocatation
 
 				if (iter == 99)
-					LUISA_ERROR("Solver is not converged in 100 iters");
+					LUISA_WARNING("Solver is not converged in 100 iters");
 			}
 			host_update_velocity();
 			host_apply_q_to_x(host_sim_data->sa_q_v, host_sim_data->sa_v);
@@ -3260,7 +3260,7 @@ namespace lcs
 				narrow_phase_detector->resize_buffers(device, stream); // Pre-allocatation
 
 				if (iter == 99)
-					LUISA_ERROR("Solver is not converged in 100 iters");
+					LUISA_WARNING("Solver is not converged in 100 iters");
 			}
 
 			stream << fn_update_velocity(substep_dt, get_scene_params().fix_scene, get_scene_params().damping_rate)

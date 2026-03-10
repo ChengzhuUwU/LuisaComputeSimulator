@@ -47,7 +47,9 @@ struct WorldDataWrapper
 		float					thickness = ClothMaterial::default_thickness(),
 		float					youngs_modulus = ClothMaterial::default_youngs_modulus(),
 		float					poisson_ratio = ClothMaterial::default_poisson_ratio(),
-		float					area_bending_stiffness = ClothMaterial::default_area_bending_stiffness())
+		float					area_bending_stiffness = ClothMaterial::default_area_bending_stiffness(),
+		float					d_hat = ClothMaterial::default_d_hat(),
+		float					contact_offset = ClothMaterial::default_contact_offset())
 	{
 		wd->set_material_type(lcs::Material::MaterialType::Cloth);
 		ClothMaterial mat;
@@ -57,6 +59,8 @@ struct WorldDataWrapper
 		mat.youngs_modulus = youngs_modulus;
 		mat.poisson_ratio = poisson_ratio;
 		mat.area_bending_stiffness = area_bending_stiffness;
+		mat.d_hat = d_hat;
+		mat.contact_offset = contact_offset;
 		wd->set_physics_material(mat);
 		return *this;
 	}
@@ -67,7 +71,9 @@ struct WorldDataWrapper
 		float					youngs_modulus = TetMaterial::default_youngs_modulus(),
 		float					poisson_ratio = TetMaterial::default_poisson_ratio(),
 		float					density = TetMaterial::default_density(),
-		float					mass = TetMaterial::default_mass())
+		float					mass = TetMaterial::default_mass(),
+		float					d_hat = ClothMaterial::default_d_hat(),
+		float					contact_offset = ClothMaterial::default_contact_offset())
 	{
 		wd->set_material_type(lcs::Material::MaterialType::Tetrahedral);
 		TetMaterial mat;
@@ -77,6 +83,8 @@ struct WorldDataWrapper
 		mat.density = density;
 		mat.mass = mass;
 		mat.is_shell = false;
+		mat.d_hat = d_hat;
+		mat.contact_offset = contact_offset;
 		wd->set_physics_material(mat);
 		return *this;
 	}
@@ -87,7 +95,9 @@ struct WorldDataWrapper
 		float					thickness = RigidMaterial::default_thickness(),
 		float					stiffness = RigidMaterial::default_stiffness(),
 		float					density = RigidMaterial::default_density(),
-		float					mass = RigidMaterial::default_mass())
+		float					mass = RigidMaterial::default_mass(),
+		float					d_hat = ClothMaterial::default_d_hat(),
+		float					contact_offset = ClothMaterial::default_contact_offset())
 	{
 		wd->set_material_type(lcs::Material::MaterialType::Rigid);
 		RigidMaterial mat;
@@ -96,6 +106,8 @@ struct WorldDataWrapper
 		mat.stiffness = stiffness;
 		mat.density = density;
 		mat.mass = mass;
+		mat.d_hat = d_hat;
+		mat.contact_offset = contact_offset;
 		wd->set_physics_material(mat);
 		return *this;
 	}
@@ -107,7 +119,9 @@ struct WorldDataWrapper
 		float					bending_stiffness = RodMaterial::default_bending_stiffness(),
 		float					twisting_stiffness = RodMaterial::default_twisting_stiffness(),
 		float					density = RodMaterial::default_density(),
-		float					mass = RodMaterial::default_mass())
+		float					mass = RodMaterial::default_mass(),
+		float					d_hat = ClothMaterial::default_d_hat(),
+		float					contact_offset = ClothMaterial::default_contact_offset())
 	{
 		wd->set_material_type(lcs::Material::MaterialType::Rod);
 		RodMaterial mat;
@@ -675,21 +689,27 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("thickness") = ClothMaterial::default_thickness(),
 			py::arg("youngs_modulus") = ClothMaterial::default_youngs_modulus(),
 			py::arg("poisson_ratio") = ClothMaterial::default_poisson_ratio(),
-			py::arg("area_bending_stiffness") = ClothMaterial::default_area_bending_stiffness())
+			py::arg("area_bending_stiffness") = ClothMaterial::default_area_bending_stiffness(),
+			py::arg("d_hat") = ClothMaterial::default_d_hat(),
+			py::arg("contact_offset") = ClothMaterial::default_contact_offset())
 		.def("set_physics_material_tet",
 			&WorldDataWrapper::set_physics_material_tet,
 			py::arg("model") = std::string(tet_model_to_string(TetMaterial::default_model())),
 			py::arg("youngs_modulus") = TetMaterial::default_youngs_modulus(),
 			py::arg("poisson_ratio") = TetMaterial::default_poisson_ratio(),
 			py::arg("density") = TetMaterial::default_density(),
-			py::arg("mass") = TetMaterial::default_mass())
+			py::arg("mass") = TetMaterial::default_mass(),
+			py::arg("d_hat") = ClothMaterial::default_d_hat(),
+			py::arg("contact_offset") = ClothMaterial::default_contact_offset())
 		.def("set_physics_material_rigid",
 			&WorldDataWrapper::set_physics_material_rigid,
 			py::arg("model") = std::string(rigid_model_to_string(RigidMaterial::default_model())),
 			py::arg("thickness") = RigidMaterial::default_thickness(),
 			py::arg("stiffness") = RigidMaterial::default_stiffness(),
 			py::arg("density") = RigidMaterial::default_density(),
-			py::arg("mass") = RigidMaterial::default_mass())
+			py::arg("mass") = RigidMaterial::default_mass(),
+			py::arg("d_hat") = ClothMaterial::default_d_hat(),
+			py::arg("contact_offset") = ClothMaterial::default_contact_offset())
 		.def("set_physics_material_rod",
 			&WorldDataWrapper::set_physics_material_rod,
 			py::arg("model") = std::string(rod_model_to_string(RodMaterial::default_model())),
@@ -697,7 +717,9 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("bending_stiffness") = RodMaterial::default_bending_stiffness(),
 			py::arg("twisting_stiffness") = RodMaterial::default_twisting_stiffness(),
 			py::arg("density") = RodMaterial::default_density(),
-			py::arg("mass") = RodMaterial::default_mass())
+			py::arg("mass") = RodMaterial::default_mass(),
+			py::arg("d_hat") = ClothMaterial::default_d_hat(),
+			py::arg("contact_offset") = ClothMaterial::default_contact_offset())
 		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
 		.def("add_fixed_point_by_indices", &WorldDataWrapper::add_fixed_point_by_indices, py::arg("indices"))
 		.def("set_translation", &WorldDataWrapper::set_translation)

@@ -12,7 +12,7 @@
             "scale": 1.0,
             "material": {
                 "d_hat": 0.001,
-                "thickness": 0.1,
+                "contact_offset": 0.1,
                 "density": 1e5
             },
             "fixed_points": [
@@ -30,7 +30,7 @@
             ],
             "material": {
                 "d_hat": 0.001,
-                "thickness": 0.1,
+                "contact_offset": 0.1,
                 "density": 1e5
             },
             "fixed_points": [
