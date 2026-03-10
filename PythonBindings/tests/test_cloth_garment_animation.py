@@ -60,16 +60,16 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Load a mesh by providing the path to the obj file
 def load_garment():
-	tshirt_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
-	tshirt = solver.create_world_data_from_file_path('tshirt', tshirt_mesh_path)
-	tshirt.set_simulation_type(lcs.MaterialType.Cloth)
-	tshirt.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
-	solver.register_world_data(tshirt)
+	# tshirt_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
+	# tshirt = solver.create_world_data_from_file_path('tshirt', tshirt_mesh_path)
+	# tshirt.set_simulation_type(lcs.MaterialType.Cloth)
+	# tshirt.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
+	# solver.register_world_data(tshirt)
 
 	pants_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'pants.obj')
 	pants = solver.create_world_data_from_file_path('pants', pants_mesh_path)
 	pants.set_simulation_type(lcs.MaterialType.Cloth)
-	tshirt.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
+	pants.set_physics_material_cloth(stretch_model="Spring", bending_model="Empty")
 	solver.register_world_data(pants)
 
 	# smpl2_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'smpl.obj')
