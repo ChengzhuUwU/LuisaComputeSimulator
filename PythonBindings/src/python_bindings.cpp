@@ -367,9 +367,9 @@ struct PyNewtonBuilder
 	// expose a method to export registered meshes as python lists (simple)
 	py::list get_mesh_names() const
 	{
-		py::list					  out;
-		const auto&					  world_data = solver_ptr->get_sorted_world_data();
-		std::vector<std::string_view> names(world_data.size());
+		py::list				 out;
+		const auto&				 world_data = solver_ptr->get_sorted_world_data();
+		std::vector<std::string> names(world_data.size());
 		// for (const auto& w : world_data)
 		// {
 		// 	names[w.get_registration_index()] = w.get_model_name();
