@@ -15,6 +15,7 @@ namespace lcs
 	public:
 		GroundCollisionEnergy(luisa::compute::BufferView<float> sa_rest_vert_area,
 			luisa::compute::BufferView<uint>					sa_is_fixed,
+			luisa::compute::BufferView<uint>					sa_contact_active_verts,
 			luisa::compute::BufferView<float>					sa_contact_active_verts_offset,
 			luisa::compute::BufferView<float>					sa_contact_active_verts_d_hat,
 			luisa::compute::BufferView<float>					sa_contact_active_verts_friction_coeff,
@@ -59,6 +60,7 @@ namespace lcs
 	private:
 		luisa::compute::BufferView<float>  _sa_rest_vert_area;
 		luisa::compute::BufferView<uint>   _sa_is_fixed;
+		luisa::compute::BufferView<uint>   _sa_contact_active_verts;
 		luisa::compute::BufferView<float>  _sa_contact_active_verts_offset;
 		luisa::compute::BufferView<float>  _sa_contact_active_verts_d_hat;
 		luisa::compute::BufferView<float>  _sa_contact_active_verts_friction_coeff;

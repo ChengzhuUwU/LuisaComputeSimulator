@@ -211,6 +211,17 @@ namespace lcs
 			const Buffer<uint>&					  broad_phase_list,
 			const Buffer<float>&				  d_hat,
 			const Buffer<float>&				  thickness);
+
+		// Overload: only query from active (surface) vertices given by index list.
+		void broad_phase_query_from_verts(Stream& stream,
+			const Buffer<float3>&				  sa_x_begin,
+			const Buffer<float3>&				  sa_x_end,
+			const Buffer<uint>&					  sa_verts,
+			const BufferView<uint>&				  broadphase_count,
+			const Buffer<uint>&					  broad_phase_list,
+			const Buffer<float>&				  d_hat,
+			const Buffer<float>&				  thickness);
+
 		void broad_phase_query_from_edges(Stream& stream,
 			const Buffer<float3>&				  sa_x_begin,
 			const Buffer<float3>&				  sa_x_end,
@@ -285,13 +296,29 @@ namespace lcs
 			luisa::compute::Buffer<float>,
 			uint>
 			fn_query_from_verts_v2;
+
 		luisa::compute::Shader<1,
 			luisa::compute::Buffer<CompressedAABB>,
 			luisa::compute::Buffer<uint2>,
 			luisa::compute::Buffer<uint>,
 			luisa::compute::Buffer<float3>,
 			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<uint>, // sa_active_vert_indices
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float>,
+			luisa::compute::Buffer<float>,
+			uint>
+			fn_query_from_active_verts_v2;
+
+		luisa::compute::Shader<1,
+			luisa::compute::Buffer<CompressedAABB>,
 			luisa::compute::Buffer<uint2>,
+			luisa::compute::Buffer<uint>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<float3>,
+			luisa::compute::Buffer<uint2>, // sa_active_vert_edges
 			luisa::compute::Buffer<uint>,
 			luisa::compute::Buffer<uint>,
 			luisa::compute::Buffer<uint>,

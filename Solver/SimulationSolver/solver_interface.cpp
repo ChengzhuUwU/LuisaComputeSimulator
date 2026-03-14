@@ -811,6 +811,7 @@ namespace lcs
 		ground_collision_energy =
 			std::make_unique<GroundCollisionEnergy>(mesh_data->sa_rest_vert_area.view(),
 				mesh_data->sa_is_fixed.view(),
+				sim_data->sa_contact_active_verts.view(),
 				sim_data->sa_contact_active_verts_offset.view(),
 				sim_data->sa_contact_active_verts_d_hat.view(),
 				sim_data->sa_contact_active_verts_friction_coeff.view(),
@@ -873,7 +874,7 @@ namespace lcs
 				get_scene_params().use_floor,
 				get_scene_params().stiffness_collision,
 				get_scene_params().contact_energy_type,
-				mesh_data->num_verts);
+				sim_data->sa_contact_active_verts.size());
 		}
 
 		const auto& stretch_spring_constitution = sim_data->get_stretch_spring_data();

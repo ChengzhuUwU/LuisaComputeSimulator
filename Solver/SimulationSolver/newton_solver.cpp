@@ -802,12 +802,15 @@ namespace lcs
 			fn_gound_collision_ccd,
 			[sa_x_iter_start = sim_data->sa_x_iter_start.view(),
 				sa_x = sim_data->sa_x.view(),
+				sa_contact_active_verts = sim_data->sa_contact_active_verts.view(),
 				sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
 				sa_contact_active_verts_d_hat = sim_data->sa_contact_active_verts_d_hat.view(),
 				toi_per_vert = collision_data->toi_per_vert.view(),
 				sa_is_fixed = mesh_data->sa_is_fixed.view()](Float floor_y, Bool use_ground_collision)
 			{
-				const UInt vid = dispatch_id().x;
+				// Indirect index: each thread handles one active (surface) vertex
+				const UInt active_idx = dispatch_id().x;
+				const UInt vid = sa_contact_active_verts->read(active_idx);
 
 				Float toi = 1.0f;
 				$if(use_ground_collision)
@@ -2045,8 +2048,8 @@ namespace lcs
 	// Device functions
 	void NewtonSolver::device_construct_lbvh(luisa::compute::Stream& stream)
 	{
-		lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_faces);
-		lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, mesh_data->sa_edges);
+		lbvh_face->reduce_face_tree_aabb(stream, sim_data->sa_x_step_start, sim_data->sa_contact_active_faces);
+		lbvh_edge->reduce_edge_tree_aabb(stream, sim_data->sa_x_step_start, sim_data->sa_contact_active_edges);
 		lbvh_face->construct_tree(stream);
 		lbvh_edge->construct_tree(stream);
 	}
@@ -2058,12 +2061,13 @@ namespace lcs
 			sim_data->sa_contact_active_verts_offset,
 			sim_data->sa_x_iter_start,
 			sim_data->sa_x,
-			mesh_data->sa_faces);
+			sim_data->sa_contact_active_faces);
 		lbvh_face->refit(stream);
 		lbvh_face->broad_phase_query_from_verts(
 			stream,
 			sim_data->sa_x_iter_start,
 			sim_data->sa_x,
+			sim_data->sa_contact_active_verts,
 			collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1),
 			collision_data->broad_phase_list_vf,
 			sim_data->sa_contact_active_verts_d_hat,
@@ -2073,13 +2077,13 @@ namespace lcs
 			sim_data->sa_contact_active_verts_offset,
 			sim_data->sa_x_iter_start,
 			sim_data->sa_x,
-			mesh_data->sa_edges);
+			sim_data->sa_contact_active_edges);
 		lbvh_edge->refit(stream);
 		lbvh_edge->broad_phase_query_from_edges(
 			stream,
 			sim_data->sa_x_iter_start,
 			sim_data->sa_x,
-			mesh_data->sa_edges,
+			sim_data->sa_contact_active_edges,
 			collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1),
 			collision_data->broad_phase_list_ee,
 			sim_data->sa_contact_active_verts_d_hat,
@@ -2088,25 +2092,26 @@ namespace lcs
 	void NewtonSolver::device_broadphase_dcd(luisa::compute::Stream& stream)
 	{
 		lbvh_face->update_face_tree_leave_aabb(
-			stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_faces);
+			stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, sim_data->sa_contact_active_faces);
 		lbvh_face->refit(stream);
 		lbvh_face->broad_phase_query_from_verts(
 			stream,
 			sim_data->sa_x,
 			sim_data->sa_x,
+			sim_data->sa_contact_active_verts,
 			collision_data->broad_phase_collision_count.view(collision_data->get_vf_count_offset(), 1),
 			collision_data->broad_phase_list_vf,
 			sim_data->sa_contact_active_verts_d_hat,
 			sim_data->sa_contact_active_verts_offset);
 
 		lbvh_edge->update_edge_tree_leave_aabb(
-			stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, mesh_data->sa_edges);
+			stream, sim_data->sa_contact_active_verts_offset, sim_data->sa_x, sim_data->sa_x, sim_data->sa_contact_active_edges);
 		lbvh_edge->refit(stream);
 		lbvh_edge->broad_phase_query_from_edges(
 			stream,
 			sim_data->sa_x,
 			sim_data->sa_x,
-			mesh_data->sa_edges,
+			sim_data->sa_contact_active_edges,
 			collision_data->broad_phase_collision_count.view(collision_data->get_ee_count_offset(), 1),
 			collision_data->broad_phase_list_ee,
 			sim_data->sa_contact_active_verts_d_hat,
@@ -2123,7 +2128,7 @@ namespace lcs
 			narrow_phase_detector->vf_ccd_query(stream,
 				sim_data->sa_x_iter_start,
 				sim_data->sa_x,
-				mesh_data->sa_faces,
+				sim_data->sa_contact_active_faces,
 				sim_data->sa_x_property,
 				sim_data->sa_contact_active_verts_d_hat,
 				sim_data->sa_contact_active_verts_offset);
@@ -2135,7 +2140,7 @@ namespace lcs
 			narrow_phase_detector->ee_ccd_query(stream,
 				sim_data->sa_x_iter_start,
 				sim_data->sa_x,
-				mesh_data->sa_edges,
+				sim_data->sa_contact_active_edges,
 				sim_data->sa_x_property,
 				sim_data->sa_contact_active_verts_d_hat,
 				sim_data->sa_contact_active_verts_offset);
@@ -2154,7 +2159,7 @@ namespace lcs
 			mesh_data->sa_rest_x,
 			mesh_data->sa_rest_vert_area,
 			mesh_data->sa_rest_face_area,
-			mesh_data->sa_faces,
+			sim_data->sa_contact_active_faces,
 			sim_data->sa_x_property,
 			sim_data->sa_contact_active_verts_d_hat,
 			sim_data->sa_contact_active_verts_offset,
@@ -2164,7 +2169,7 @@ namespace lcs
 			sim_data->sa_x,
 			mesh_data->sa_rest_x,
 			mesh_data->sa_rest_edge_area,
-			mesh_data->sa_edges,
+			sim_data->sa_contact_active_edges,
 			sim_data->sa_x_property,
 			sim_data->sa_contact_active_verts_d_hat,
 			sim_data->sa_contact_active_verts_offset,
@@ -2222,7 +2227,7 @@ namespace lcs
 		if (get_scene_params().use_floor)
 		{
 			stream << fn_gound_collision_ccd(get_scene_params().floor.y, get_scene_params().use_floor)
-						  .dispatch(sim_data->sa_x.size());
+						  .dispatch(sim_data->sa_contact_active_verts.size());
 		}
 
 		if (get_scene_params().use_self_collision)

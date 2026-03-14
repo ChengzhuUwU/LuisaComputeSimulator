@@ -496,8 +496,8 @@ namespace lcs
 		// BufferType<float3> sa_affine_bodies_gravity;
 
 		BufferType<uint>  sa_contact_active_verts;
-		BufferType<uint>  sa_contact_active_edges;
-		BufferType<uint>  sa_contact_active_faces;
+		BufferType<uint2> sa_contact_active_edges;
+		BufferType<uint3> sa_contact_active_faces;
 		BufferType<float> sa_contact_active_verts_d_hat;
 		BufferType<float> sa_contact_active_verts_offset;
 		BufferType<float> sa_contact_active_verts_friction_coeff;

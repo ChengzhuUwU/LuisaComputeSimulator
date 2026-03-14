@@ -11,6 +11,7 @@ namespace lcs
 {
 	GroundCollisionEnergy::GroundCollisionEnergy(BufferView<float> sa_rest_vert_area,
 		BufferView<uint>										   sa_is_fixed,
+		BufferView<uint>										   sa_contact_active_verts,
 		BufferView<float>										   sa_contact_active_verts_offset,
 		BufferView<float>										   sa_contact_active_verts_d_hat,
 		BufferView<float>										   sa_contact_active_verts_friction_coeff,
@@ -21,6 +22,7 @@ namespace lcs
 		BufferView<float>										   sa_system_energy) noexcept
 		: _sa_rest_vert_area(sa_rest_vert_area)
 		, _sa_is_fixed(sa_is_fixed)
+		, _sa_contact_active_verts(sa_contact_active_verts)
 		, _sa_contact_active_verts_offset(sa_contact_active_verts_offset)
 		, _sa_contact_active_verts_d_hat(sa_contact_active_verts_d_hat)
 		, _sa_contact_active_verts_friction_coeff(sa_contact_active_verts_friction_coeff)
@@ -40,7 +42,7 @@ namespace lcs
 		uint																  collision_type,
 		size_t																  dispatch_count)
 	{
-		stream << _eval_soft_shader(constraint, floor_y, use_ground_collision, stiffness, collision_type).dispatch(dispatch_count);
+		stream << _eval_soft_shader(constraint, floor_y, use_ground_collision, stiffness, collision_type).dispatch(_sa_contact_active_verts.size());
 	}
 
 	void GroundCollisionEnergy::device_compute_energy(luisa::compute::Stream& stream,
@@ -53,7 +55,7 @@ namespace lcs
 		size_t																  dispatch_count)
 	{
 		stream << _eval_abd_shader(constraint, floor_y, use_ground_collision, stiffness, vid_start, collision_type)
-					  .dispatch(dispatch_count);
+					  .dispatch(_sa_contact_active_verts.size());
 	}
 
 	void GroundCollisionEnergy::compile(AsyncCompiler& compiler)
@@ -220,7 +222,9 @@ namespace lcs
 
 		compiler.compile<1>(
 			_eval_soft_shader,
-			[calculate_per_vert_grad_hess_template](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> contraint,
+			[calculate_per_vert_grad_hess_template,
+				sa_contact_active_verts = _sa_contact_active_verts,
+				sa_x_to_dof_map = _sa_x_to_dof_map](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> contraint,
 				Float																						floor_y,
 				Bool																						use_ground_collision,
 				Float																						stiffness,
@@ -229,24 +233,31 @@ namespace lcs
 				auto& output_gradient = contraint.constraint_gradients;
 				auto& output_hessian = contraint.constraint_hessians;
 
-				const UInt vid = dispatch_id().x;
-
-				Float3	 grad = make_float3(0.0f);
-				Float3x3 hess = make_float3x3(0.0f);
-				Bool	 collide = calculate_per_vert_grad_hess_template(
-					vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
-
-				$if(collide)
+				const UInt index = dispatch_id().x;
+				const UInt vid = sa_contact_active_verts->read(index);
+				const auto dof_info = sa_x_to_dof_map->read(vid);
+				$if(dof_info->is_soft_body())
 				{
-					BufferOp::buffer_add(output_gradient, vid, grad);
-					BufferOp::buffer_add(output_hessian, vid, hess);
+					const Uint dof_idx = dof_info->get_dof_idx();
+
+					Float3	 grad = make_float3(0.0f);
+					Float3x3 hess = make_float3x3(0.0f);
+					Bool	 collide = calculate_per_vert_grad_hess_template(
+						vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
+
+					$if(collide)
+					{
+						BufferOp::buffer_add(output_gradient, vid, grad);
+						BufferOp::buffer_add(output_hessian, vid, hess);
+					};
 				};
 			},
 			default_option);
 
 		compiler.compile<1>(
 			_eval_abd_shader,
-			[sa_scaled_model_x = _sa_scaled_model_x,
+			[sa_contact_active_verts = _sa_contact_active_verts,
+				sa_scaled_model_x = _sa_scaled_model_x,
 				sa_x_to_dof_map = _sa_x_to_dof_map,
 				calculate_per_vert_grad_hess_template](Var<Constitutions::AbdInertia<luisa::compute::Buffer>> constraint,
 				Float																						  floor_y,
@@ -258,31 +269,36 @@ namespace lcs
 				auto& abd_gradients = constraint.constraint_gradients;
 				auto& abd_hessians = constraint.constraint_hessians;
 
-				const UInt vid = vid_start + dispatch_id().x;
-
-				Float3	 grad = make_float3(0.0f);
-				Float3x3 hess = make_float3x3(0.0f);
-				Bool	 collide = calculate_per_vert_grad_hess_template(
-					vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
+				// const UInt vid = vid_start + dispatch_id().x;
+				const UInt index = dispatch_id().x;
+				const UInt vid = sa_contact_active_verts->read(index);
 
 				const auto dof_info = sa_x_to_dof_map->read(vid);
-				const Uint dof_idx = dof_info->get_dof_idx();
-				const Uint body_idx = (dof_idx - vid_start) / 4;
-
-				const Float4 weight = make_float4(1.0f, sa_scaled_model_x->read(vid));
-
-				for (uint ii = 0; ii < 4; ii++)
+				$if(dof_info->is_rigid_body())
 				{
-					Float  wi = weight[ii];
-					Float3 affine_grad = wi * grad;
-					BufferOp::atomic_buffer_add(abd_gradients, 4 * body_idx + ii, affine_grad);
-					for (uint jj = 0; jj < 4; jj++)
+					const Uint dof_idx = dof_info->get_dof_idx();
+					const Uint body_idx = (dof_idx - vid_start) / 4;
+
+					Float3	 grad = make_float3(0.0f);
+					Float3x3 hess = make_float3x3(0.0f);
+					Bool	 collide = calculate_per_vert_grad_hess_template(
+						vid, grad, hess, floor_y, use_ground_collision, stiffness, collision_type);
+
+					const Float4 weight = make_float4(1.0f, sa_scaled_model_x->read(vid));
+
+					for (uint ii = 0; ii < 4; ii++)
 					{
-						Float	 wj = weight[jj];
-						Float3x3 affine_hess = wi * wj * hess;
-						BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + ii * 4 + jj, affine_hess);
+						Float  wi = weight[ii];
+						Float3 affine_grad = wi * grad;
+						BufferOp::atomic_buffer_add(abd_gradients, 4 * body_idx + ii, affine_grad);
+						for (uint jj = 0; jj < 4; jj++)
+						{
+							Float	 wj = weight[jj];
+							Float3x3 affine_hess = wi * wj * hess;
+							BufferOp::atomic_buffer_add(abd_hessians, 16 * body_idx + ii * 4 + jj, affine_hess);
+						}
 					}
-				}
+				};
 			},
 			default_option);
 	}
@@ -390,14 +406,21 @@ namespace lcs
 		};
 
 		auto& inertia_data = host_sim_data.get_soft_inertia_data();
+		auto  active_verts = std::span(host_sim_data.sa_contact_active_verts);
 		if (inertia_data.is_valid())
 		{
 			CpuParallel::parallel_for(0,
-				inertia_data.get_num_indices(),
+				active_verts.size(),
 				[output_gradient = std::span(inertia_data.constraint_gradients),
 					output_hessian = std::span(inertia_data.constraint_hessians),
-					&calculate_per_vert_grad_hess_template](const uint vid)
+					sa_contact_active_verts = active_verts,
+					sa_x_to_dof_map = std::span(host_sim_data.sa_x_to_dof_map),
+					&calculate_per_vert_grad_hess_template](const uint index)
 				{
+					const uint vid = sa_contact_active_verts[index];
+					if (!sa_x_to_dof_map[vid].is_soft_body())
+						return;
+
 					float3	 gradient = Zero3;
 					float3x3 hessian = Zero3x3;
 					bool	 collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
@@ -409,8 +432,7 @@ namespace lcs
 				});
 		}
 
-		const uint prefix = host_sim_data.num_verts_soft;
-		auto&	   abd_data = host_sim_data.get_abd_inertia_data();
+		auto& abd_data = host_sim_data.get_abd_inertia_data();
 
 		if (abd_data.is_valid())
 		{
@@ -419,9 +441,10 @@ namespace lcs
 
 			CpuParallel::parallel_for(
 				0,
-				host_sim_data.num_verts_rigid,
+				active_verts.size(),
 				[output_gradient = std::span(abd_data.constraint_gradients),
 					output_hessian = std::span(abd_data.constraint_hessians),
+					sa_contact_active_verts = active_verts,
 					sa_scaled_model_x = std::span(host_sim_data.sa_scaled_model_x),
 					sa_x_to_dof_map = std::span(host_sim_data.sa_x_to_dof_map),
 					prefix_vid = host_sim_data.num_verts_soft,
@@ -430,8 +453,11 @@ namespace lcs
 				{
 					float3	   gradient = Zero3;
 					float3x3   hessian = Zero3x3;
-					const uint vid = prefix_vid + index;
-					bool	   collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
+					const uint vid = sa_contact_active_verts[index];
+					if (!sa_x_to_dof_map[vid].is_rigid_body())
+						return;
+
+					bool collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
 					if (collide)
 					{
 						const uint dof_idx = sa_x_to_dof_map[vid].get_dof_idx();

@@ -13,11 +13,8 @@ namespace lcs::Initializer
 		lcs::SimulationData<std::vector>*							   sim_data,
 		lcs::CollisionData<std::vector>*							   collision_data)
 	{
-		std::vector<uint>& surface_vert_indices = sim_data->sa_contact_active_verts;
-		std::vector<uint>& surface_face_indices = sim_data->sa_contact_active_faces;
-		std::vector<uint>& surface_edge_indices = sim_data->sa_contact_active_edges;
 
-		surface_vert_indices = fn_get_active_indices(
+		std::vector<uint> surface_vert_indices = fn_get_active_indices(
 			[&](const uint vid)
 			{
 				const uint mesh_type = mesh_data->sa_vert_mesh_type[vid];
@@ -34,7 +31,6 @@ namespace lcs::Initializer
 				}
 			},
 			mesh_data->num_verts);
-		const uint num_surface_verts = static_cast<uint>(surface_vert_indices.size());
 
 		std::vector<bool> is_surface_vert(mesh_data->num_verts, false);
 		for (const auto vid : surface_vert_indices)
@@ -42,7 +38,18 @@ namespace lcs::Initializer
 			is_surface_vert[vid] = true;
 		}
 
-		surface_face_indices = fn_get_active_indices(
+		std::vector<uint> surface_edge_indices = fn_get_active_indices(
+			[&](const uint eid)
+			{
+				const uint2 edge = mesh_data->sa_edges[eid];
+				if (is_surface_vert[edge[0]] && is_surface_vert[edge[1]])
+					return 1; // Surface edge
+				else
+					return 0; // Internal edge
+			},
+			mesh_data->num_edges);
+
+		std::vector<uint> surface_face_indices = fn_get_active_indices(
 			[&](const uint fid)
 			{
 				const uint	mesh_idx = mesh_data->sa_face_mesh_id[fid];
@@ -50,18 +57,29 @@ namespace lcs::Initializer
 				return 1; // All faces are surface faces
 			},
 			mesh_data->num_faces);
+
+		const uint num_surface_verts = static_cast<uint>(surface_vert_indices.size());
+		const uint num_surface_edges = static_cast<uint>(surface_edge_indices.size());
 		const uint num_surface_faces = static_cast<uint>(surface_face_indices.size());
 
-		surface_edge_indices = fn_get_active_indices(
-			[&](const uint eid)
-			{
-				const uint2 edge = mesh_data->sa_edges[eid];
-				if (!is_surface_vert[edge[0]] || !is_surface_vert[edge[1]])
-					return 0; // Internal edge
-				return 1;	  // Surface edge
-			},
-			mesh_data->num_edges);
-		const uint num_surface_edges = static_cast<uint>(surface_edge_indices.size());
+		sim_data->sa_contact_active_verts.resize(num_surface_verts);
+		sim_data->sa_contact_active_edges.resize(num_surface_edges);
+		sim_data->sa_contact_active_faces.resize(num_surface_faces);
+		std::transform(surface_vert_indices.begin(),
+			surface_vert_indices.end(),
+			sim_data->sa_contact_active_verts.begin(),
+			[&](uint vid)
+			{ return vid; });
+		std::transform(surface_edge_indices.begin(),
+			surface_edge_indices.end(),
+			sim_data->sa_contact_active_edges.begin(),
+			[&](uint eid)
+			{ return mesh_data->sa_edges[eid]; });
+		std::transform(surface_face_indices.begin(),
+			surface_face_indices.end(),
+			sim_data->sa_contact_active_faces.begin(),
+			[&](uint fid)
+			{ return mesh_data->sa_faces[fid]; });
 
 		// TODO: Replace contact list with active contact lists
 
