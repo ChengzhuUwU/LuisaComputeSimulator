@@ -777,6 +777,10 @@ namespace lcs
 			[perform_assembly_interface](Var<Constitutions::BendingEdge<luisa::compute::Buffer>> constraint)
 			{ perform_assembly_interface(constraint, 0); });
 
+		compiler.compile(fn_material_energy_assembly_stress_tet,
+			[perform_assembly_interface](Var<Constitutions::StressTet<luisa::compute::Buffer>> constraint)
+			{ perform_assembly_interface(constraint, 0); });
+
 		compiler.compile(fn_material_energy_assembly_soft_inertia,
 			[perform_assembly_interface](Var<Constitutions::SoftInertia<luisa::compute::Buffer>> constraint)
 			{ perform_assembly_interface(constraint, 0); });
@@ -2023,6 +2027,15 @@ namespace lcs
 						assembly_template2(vid, bending_edges, adj_verts, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
 					});
 
+			auto& stress_tets = host_sim_data->get_stress_tet_data();
+			if (stress_tets.is_valid())
+				CpuParallel::parallel_for(0,
+					num_dof_soft,
+					[&](const uint vid)
+					{
+						assembly_template2(vid, stress_tets, adj_verts, sa_cgB, sa_cgA_diag, sa_cgA_offdiag_triplet);
+					});
+
 			auto& abd_inertia = host_sim_data->get_abd_inertia_data();
 			if (abd_inertia.is_valid())
 				CpuParallel::parallel_for(0,
@@ -3221,6 +3234,15 @@ namespace lcs
 							bending_data.get_num_indices());
 						stream << fn_material_energy_assembly_bending(bending_data)
 									  .dispatch(bending_data.constraint_offsets_in_adjlist.size());
+					}
+
+					const auto& stress_tet_data = sim_data->get_stress_tet_data();
+					if (stress_tet_data.is_valid())
+					{
+						get_tet_elastic_energy()->device_evaluate(
+							stream, stress_tet_data, sim_data->sa_x, stress_tet_data.get_num_indices());
+						stream << fn_material_energy_assembly_stress_tet(stress_tet_data)
+									  .dispatch(stress_tet_data.constraint_offsets_in_adjlist.size());
 					}
 
 					const auto& abd_inertia_data = sim_data->get_abd_inertia_data();

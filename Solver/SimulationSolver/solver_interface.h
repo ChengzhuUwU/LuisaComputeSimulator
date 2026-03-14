@@ -26,6 +26,7 @@
 #include "Energies/bending_energy_kernel.h"
 #include "Energies/abd_inertia_energy.h"
 #include "Energies/abd_ortho_energy.h"
+#include "Energies/tet_elastic_energy.h"
 #include "SimulationCore/scene_params.h"
 
 namespace lcs
@@ -238,6 +239,7 @@ namespace lcs
 		StretchFaceEnergy*	   get_stretch_face_energy() const { return stretch_face_energy.get(); }
 		BendingEnergy*		   get_bending_energy() const { return bending_energy.get(); }
 		AbdOrthoEnergy*		   get_abd_ortho_energy() const { return abd_ortho_energy.get(); }
+		TetElasticEnergy*	   get_tet_elastic_energy() const { return tet_elastic_energy.get(); }
 
 	private:
 		luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
@@ -249,6 +251,7 @@ namespace lcs
 		std::unique_ptr<StretchFaceEnergy>	   stretch_face_energy;
 		std::unique_ptr<BendingEnergy>		   bending_energy;
 		std::unique_ptr<AbdOrthoEnergy>		   abd_ortho_energy;
+		std::unique_ptr<TetElasticEnergy>	   tet_elastic_energy;
 		// luisa::compute::Shader<1,
 		//     luisa::compute::BufferView<float3>,
 		//     luisa::compute::BufferView<float3>,

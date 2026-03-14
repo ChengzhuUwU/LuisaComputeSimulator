@@ -162,6 +162,24 @@ namespace lcs::Initializer
 		WorldData& load_mesh_from_array(const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces);
 		WorldData& load_mesh_from_path(const std::string_view& path);
 
+		WorldData& load_tet_mesh_from_array(
+			const std::vector<std::array<float, 3>>& vertices,
+			const std::vector<std::array<uint, 4>>&	 tets);
+		WorldData& load_tet_mesh_from_path(const std::string_view& path);
+		WorldData& set_physics_material_tet(
+			float						   youngs_modulus = Material::TetMaterial::default_youngs_modulus(),
+			float						   poisson_ratio = Material::TetMaterial::default_poisson_ratio(),
+			Material::ConstitutiveModelTet model = Material::TetMaterial::default_model())
+		{
+			material_type = Material::MaterialType::Tetrahedral;
+			Material::TetMaterial mat;
+			mat.model = model;
+			mat.youngs_modulus = youngs_modulus;
+			mat.poisson_ratio = poisson_ratio;
+			physics_material = mat;
+			return *this;
+		}
+
 		WorldData& set_translation(const float3& t)
 		{
 			this->translation = t;

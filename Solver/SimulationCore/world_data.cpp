@@ -326,4 +326,75 @@ namespace lcs::Initializer // WorldData
 		return *this;
 	}
 
+	// ---------------------------------------------------------------------------
+	// Tetrahedral mesh loaders
+	// ---------------------------------------------------------------------------
+
+	WorldData& WorldData::load_tet_mesh_from_array(
+		const std::vector<std::array<float, 3>>& vertices,
+		const std::vector<std::array<uint,  4>>& tets)
+	{
+		// 1. Copy vertex positions into input_mesh (same field used for all types)
+		input_mesh.model_positions.resize(vertices.size());
+		for (size_t i = 0; i < vertices.size(); i++)
+			input_mesh.model_positions[i] = { vertices[i][0], vertices[i][1], vertices[i][2] };
+
+		// 2. Copy tetrahedra
+		input_mesh.tetrahedrons.resize(tets.size());
+		for (size_t i = 0; i < tets.size(); i++)
+			input_mesh.tetrahedrons[i] = { tets[i][0], tets[i][1], tets[i][2], tets[i][3] };
+
+		// 3. Extract surface faces, surface verts from tet topology
+		std::vector<uint> inner_tets, outer_tets;
+		SimMesh::extract_surface_face_and_vert_from_tets(
+			input_mesh.model_positions,
+			input_mesh.tetrahedrons,
+			inner_tets,
+			outer_tets,
+			input_mesh.surface_faces,
+			input_mesh.surface_verts);
+
+		// 4. Use surface_faces as the triangle mesh faces (for rendering, collision, etc.)
+		input_mesh.faces = input_mesh.surface_faces;
+
+		// 5. Extract edges (including dihedral/bending edges) from surface faces
+		SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.edges, input_mesh.dihedral_edges, true);
+
+		// 6. Mark material type
+		material_type = Material::MaterialType::Tetrahedral;
+
+		LUISA_INFO("Loaded tet mesh from array: {} verts, {} tets, {} surface faces, {} edges",
+			vertices.size(), tets.size(), input_mesh.faces.size(), input_mesh.edges.size());
+
+		return *this;
+	}
+
+	WorldData& WorldData::load_tet_mesh_from_path(const std::string_view& path)
+	{
+		std::vector<SimMesh::Float3> positions;
+		std::vector<SimMesh::Int4>   raw_tets;
+
+		// Try .t format first, then .vtk
+		bool succ = SimMesh::read_tet_file_t(path, positions, raw_tets);
+		if (!succ)
+			succ = SimMesh::read_tet_file_vtk(path, positions, raw_tets);
+
+		if (!succ)
+		{
+			LUISA_ERROR("Failed to read tetrahedral mesh from path: {}", path);
+			return *this;
+		}
+
+		// Convert to the array format expected by load_tet_mesh_from_array
+		std::vector<std::array<float, 3>> verts(positions.size());
+		for (size_t i = 0; i < positions.size(); i++)
+			verts[i] = { positions[i][0], positions[i][1], positions[i][2] };
+
+		std::vector<std::array<uint, 4>> tets(raw_tets.size());
+		for (size_t i = 0; i < raw_tets.size(); i++)
+			tets[i] = { raw_tets[i][0], raw_tets[i][1], raw_tets[i][2], raw_tets[i][3] };
+
+		return load_tet_mesh_from_array(verts, tets);
+	}
+
 } // namespace lcs::Initializer

@@ -434,7 +434,7 @@ namespace lcs
 			q33 = (-1 + 2 * sh22) * (-1 + 2 * sh32);
 		}
 
-		static static inline void svd_built_in( // input A
+		static inline void svd_built_in( // input A
 			float a11,
 			float a12,
 			float a13,

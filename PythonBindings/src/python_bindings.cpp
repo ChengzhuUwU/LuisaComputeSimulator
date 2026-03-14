@@ -345,6 +345,55 @@ struct PyNewtonBuilder
 		world_data->load_mesh_from_array(input_vertices, input_triangles);
 		return WorldDataWrapper(world_data);
 	}
+	// register_tet_mesh accepts numpy arrays (vertices Nx3, tets Mx4)
+	WorldDataWrapper create_world_data_from_tet_array(const std::string_view& name,
+		py::array_t<double, py::array::c_style | py::array::forcecast>		  vertices,
+		py::array_t<int, py::array::c_style | py::array::forcecast>			  tets)
+	{
+		// Validate shapes
+		if (vertices.ndim() != 2 || vertices.shape(1) != 3)
+			throw std::runtime_error("vertices must be a (N,3) array of floats");
+		if (tets.ndim() != 2 || tets.shape(1) != 4)
+			throw std::runtime_error("tets must be a (M,4) array of ints");
+
+		using InputVertexType = std::array<float32_t, 3>;
+		using InputTetType = std::array<uint32_t, 4>;
+
+		const size_t nverts = vertices.shape(0);
+		const size_t ntets = tets.shape(0);
+
+		std::vector<InputVertexType> input_vertices(nverts);
+		std::vector<InputTetType>	 input_tets(ntets);
+
+		auto buf_v = vertices.unchecked<2>();
+		auto buf_t = tets.unchecked<2>();
+		for (size_t i = 0; i < nverts; ++i)
+		{
+			InputVertexType p;
+			p[0] = static_cast<float32_t>(buf_v(i, 0));
+			p[1] = static_cast<float32_t>(buf_v(i, 1));
+			p[2] = static_cast<float32_t>(buf_v(i, 2));
+			input_vertices[i] = p;
+		}
+		for (size_t i = 0; i < ntets; ++i)
+		{
+			InputTetType t;
+			t[0] = static_cast<uint32_t>(buf_t(i, 0));
+			t[1] = static_cast<uint32_t>(buf_t(i, 1));
+			t[2] = static_cast<uint32_t>(buf_t(i, 2));
+			t[3] = static_cast<uint32_t>(buf_t(i, 3));
+			input_tets[i] = t;
+		}
+
+		auto world_data = std::make_shared<WorldData>();
+		world_data->set_name(name);
+		world_data->load_tet_mesh_from_array(input_vertices, input_tets);
+		// Automatically mark as Tetrahedral type; user can still call set_physics_material_tet()
+		// to override the material parameters before registering.
+		world_data->set_material_type(lcs::Material::MaterialType::Tetrahedral);
+		return WorldDataWrapper(world_data);
+	}
+
 	// create world data from an obj file path; call register_world_data() to add into solver
 	WorldDataWrapper create_world_data_from_file_path(const std::string_view& name, const std::string_view& obj_file_path)
 	{
@@ -754,6 +803,17 @@ PYBIND11_MODULE(lcs_py, m)
 	py::class_<PyNewtonBuilder>(m, "NewtonSolver")
 		.def(py::init<>())
 		.def("create_world_data_from_array", &PyNewtonBuilder::create_world_data_from_array, py::arg("name"), py::arg("vertices"), py::arg("triangles"))
+		.def("create_world_data_from_tet_array",
+			&PyNewtonBuilder::create_world_data_from_tet_array,
+			py::arg("name"),
+			py::arg("vertices"),
+			py::arg("tets"),
+			"Create a tetrahedral-mesh WorldData from numpy arrays.\n\n"
+			"vertices: (N,3) float array of rest-pose positions\n"
+			"tets:     (M,4) int array of tetrahedron vertex indices\n"
+			"Surface topology (faces, edges, surface_verts) is extracted automatically.\n"
+			"Call set_physics_material_tet() on the returned object to set material params,\n"
+			"then register_world_data() to add it to the solver.")
 		.def("create_world_data_from_file_path", &PyNewtonBuilder::create_world_data_from_file_path, py::arg("name"), py::arg("obj_file_path"))
 		.def("register_world_data", &PyNewtonBuilder::register_world_data, py::arg("world_data"), "Register configured WorldData and return object registration id")
 		.def("load_scene_from_json",

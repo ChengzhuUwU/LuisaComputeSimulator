@@ -134,6 +134,7 @@ namespace lcs
 		luisa::compute::Shader<1, Constitutions::StretchSpring<luisa::compute::Buffer>>			 fn_material_energy_assembly_stretch_spring;
 		luisa::compute::Shader<1, Constitutions::StretchFace<luisa::compute::Buffer>>			 fn_material_energy_assembly_stretch_face;
 		luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>>			 fn_material_energy_assembly_bending;
+		luisa::compute::Shader<1, Constitutions::StressTet<luisa::compute::Buffer>>				 fn_material_energy_assembly_stress_tet;
 		luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>>			 fn_material_energy_assembly_soft_inertia;
 		luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, uint>		 fn_material_energy_assembly_abd_inertia;
 		luisa::compute::Shader<1, Constitutions::AbdOrthogonality<luisa::compute::Buffer>, uint> fn_material_energy_assembly_abd_ortho;

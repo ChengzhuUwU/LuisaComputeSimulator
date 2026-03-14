@@ -420,11 +420,13 @@ namespace lcs::Initializer
 			{
 				const uint	mesh_idx = mesh_data->sa_tet_mesh_id[tid];
 				const auto& mesh_info = world_data[mesh_idx];
-				bool		use_stress = mesh_info.holds<TetMaterial>();
-				uint4		tet = mesh_data->sa_tetrahedrons[tid];
-				bool		is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
-						   || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]]
-																 : true;
+				bool		use_stress = mesh_info.holds<TetMaterial>()
+					&& mesh_info.get_material<TetMaterial>().model != ConstitutiveModelTet::Empty
+					&& mesh_info.get_material<TetMaterial>().model != ConstitutiveModelTet::Spring;
+				uint4 tet = mesh_data->sa_tetrahedrons[tid];
+				bool  is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
+						 || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]]
+														   : true;
 				return (use_stress && is_dynamic) ? 1 : 0;
 			},
 			mesh_data->num_tets);

@@ -586,10 +586,10 @@ namespace SimMesh
 
 		return true;
 	}
-	bool read_tet_file_t(std::string mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets)
+	bool read_tet_file_t(std::string_view mesh_name, std::vector<Float3>& position, std::vector<Int4>& tets)
 	{
 		std::string err, warn;
-		std::string full_path = mesh_name;
+		std::string full_path = std::string(mesh_name);
 
 		bool load = true;
 		{

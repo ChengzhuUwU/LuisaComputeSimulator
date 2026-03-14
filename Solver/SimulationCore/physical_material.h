@@ -105,6 +105,7 @@ namespace lcs
 			ConstitutiveModelTet model = default_model();
 			float				 youngs_modulus = default_youngs_modulus();
 			float				 poisson_ratio = default_poisson_ratio();
+			TetMaterial() { is_shell = false; }
 		};
 		struct RigidMaterial : MaterialBase
 		{
