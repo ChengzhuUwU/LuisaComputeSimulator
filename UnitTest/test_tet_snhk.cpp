@@ -2,7 +2,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <iomanip>
-#include "../Solver/Energy/tet_elastic_energy.h"
+#include "Energies/tet_elastic_energy.h"
 
 // Use implementations from tet_elastic_energy.h (SVD singular-value space functions)
 using namespace lcs::TetElasticEnergyUtils;

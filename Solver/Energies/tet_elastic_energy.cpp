@@ -1,4 +1,4 @@
-#include "tet_elastic_energy.h"
+#include "Energies/tet_elastic_energy.h"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
