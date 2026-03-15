@@ -5,6 +5,7 @@
 /.cache
 __pycache__
 .pytest_cache
+CODEBUDDY.md
 output
 eval
 config.json

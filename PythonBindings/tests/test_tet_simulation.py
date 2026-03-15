@@ -79,8 +79,9 @@ def main():
     config.use_floor = False
     config.floor = lcs.Float3(0.0, 0.0, 0.0)
     config.use_self_collision = False    # keep it simple for smoke test
-    config.nonlinear_iter_count = 1
+    config.nonlinear_iter_count = 3  # Increased for stability
     config.use_ccd_linesearch = False
+    config.use_gpu = False  # Force CPU mode
 
     # ---- Register tet body -----------------------------------------------
     verts, tets = make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.2)
@@ -88,8 +89,8 @@ def main():
 
     tet_body = solver.create_world_data_from_tet_array("tet_cube", verts, tets)
     tet_body.set_physics_material_tet(
-        model="ARAP",
-        youngs_modulus=1e5,
+        model="StableNeoHookean",
+        youngs_modulus=1e6,
         poisson_ratio=0.4,
     )
     tet_body.add_fixed_point_by_method("Left") 

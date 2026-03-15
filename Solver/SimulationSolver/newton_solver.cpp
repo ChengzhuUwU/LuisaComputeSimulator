@@ -3019,6 +3019,10 @@ namespace lcs
 						if (get_scene_params().use_floor)
 							e->host_evaluate(*host_sim_data, *host_mesh_data);
 					}
+					if (auto* e = get_tet_elastic_energy())
+					{
+						e->host_evaluate(*host_sim_data, *host_mesh_data);
+					}
 
 					host_material_energy_assembly();
 
