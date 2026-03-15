@@ -4,8 +4,70 @@
 #include "Energies/energy_offsets.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
-#include "Energy/stretch_energy.h"
+#include "Energies/fem_utils.h"
 #include <luisa/dsl/builtin.h>
+
+namespace lcs
+{
+	namespace StretchEnergy
+	{
+		namespace detail
+		{
+			float	   stretch_energy(const float2x3& F, float mu);
+			float	   shear_energy(const float2x3& F, float lmd);
+			Var<float> stretch_energy(const Var<float2x3>& F, Var<float> mu);
+			Var<float> shear_energy(const Var<float2x3>& F, Var<float> lmd);
+
+			float2x3 stretch_gradient(const float2x3& F, const float mu);
+			float2x3 shear_gradient(const float2x3& F, const float lmd);
+
+			float6x6 stretch_hessian(const float2x3& F, float mu);
+			float6x6 shear_hessian(const float2x3& F, float mu);
+
+			Var<float2x3> stretch_gradient(const Var<float2x3>& F, const Var<float> mu);
+			Var<float2x3> shear_gradient(const Var<float2x3>& F, const Var<float> lmd);
+			Var<float6x6> stretch_hessian(const Var<float2x3>& F, Var<float> mu);
+			Var<float6x6> shear_hessian(const Var<float2x3>& F, Var<float> mu);
+
+		} // namespace detail
+
+		void compute_gradient_hessian(const float3& x0,
+			const float3&							x1,
+			const float3&							x2,
+			const float2x2&							Dm,
+			const float								mu,
+			const float								lambda,
+			const float								area,
+			float3x3&								dedx,
+			float9x9&								d2edx2);
+		void compute_gradient_hessian(const Var<float3>& x0,
+			const Var<float3>&							 x1,
+			const Var<float3>&							 x2,
+			const Var<float2x2>&						 Dm,
+			const Var<float>							 mu,
+			const Var<float>							 lambda,
+			const Var<float>							 area,
+			Var<float3x3>&								 dedx,
+			Var<float9x9>&								 d2edx2);
+
+		float	   compute_energy(const float3& x0,
+				 const float3&					x1,
+				 const float3&					x2,
+				 const float2x2&				Dm,
+				 const float					mu,
+				 const float					lambda,
+				 const float					area);
+		Var<float> compute_energy(const Var<float3>& x0,
+			const Var<float3>&						 x1,
+			const Var<float3>&						 x2,
+			const Var<float2x2>&					 Dm,
+			const Var<float>						 mu,
+			const Var<float>						 lambda,
+			const Var<float>						 area);
+
+	}; // namespace StretchEnergy
+
+} // namespace lcs
 
 namespace lcs
 {

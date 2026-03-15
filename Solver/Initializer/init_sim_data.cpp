@@ -5,7 +5,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Energies/bending_energy_kernel.h"
-#include "Energy/stretch_energy.h"
+#include "Energies/fem_utils.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
@@ -670,7 +670,7 @@ namespace lcs::Initializer
 
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
-					auto [mu, lambda] = StretchEnergy::convert_prop_cloth_plane_stress(E, nu);
+					auto [mu, lambda] = FemUtils::convert_lame_params_2d(E, nu);
 					mu = mu * material.thickness; // scale by thickness
 					stretch_spring_data.sa_stretch_spring_stiffness[eid] = mu;
 				});
@@ -694,7 +694,7 @@ namespace lcs::Initializer
 					const float3& x_1 = vert_pos[1];
 					const float3& x_2 = vert_pos[2];
 
-					const float2x2 inv_duv = StretchEnergy::get_Dm_inv(x_0, x_1, x_2);
+					const float2x2 inv_duv = FemUtils::get_Dm_inv(x_0, x_1, x_2);
 					const float	   area = compute_face_area(x_0, x_1, x_2);
 
 					const auto& mesh_info = world_data[mesh_data->sa_face_mesh_id[orig_fid]];
@@ -703,7 +703,7 @@ namespace lcs::Initializer
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
 
-					auto [mu, lambda] = StretchEnergy::convert_prop_cloth_plane_stress(E, nu);
+					auto [mu, lambda] = FemUtils::convert_lame_params_2d(E, nu);
 					mu = material.thickness * mu; // scale by thickness
 					lambda = material.thickness * lambda;
 					stretch_face_data.sa_stretch_faces_mu_lambda[fid] =
@@ -830,7 +830,7 @@ namespace lcs::Initializer
 					const auto& material = mesh_info.get_material<TetMaterial>();
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
-					auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
+					auto [mu, lambda] = FemUtils::convert_lame_params_3d(E, nu);
 					stress_tet_data.constraint_indices[tid] = tet;
 					stress_tet_data.sa_stress_tets_rest_volume[tid] = volume;
 					stress_tet_data.sa_stress_tets_Dm_inv[tid] = Dm_inv;

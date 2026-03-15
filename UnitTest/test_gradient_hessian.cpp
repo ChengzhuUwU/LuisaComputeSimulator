@@ -5,7 +5,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Energies/bending_energy_kernel.h"
-#include "Energy/stretch_energy.h"
+#include "Energies/stretch_face_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>
 #include <vector>
@@ -446,8 +446,8 @@ int main(int argc, char** argv)
 				* Dm_inv;
 			auto	 dedF = StretchEnergy::detail::stretch_gradient(F, mu);
 			auto	 d2eF = StretchEnergy::detail::stretch_hessian(F, mu);
-			float3x3 dedx = area * StretchEnergy::detail::convert_force(dedF, Dm_inv);
-			float9x9 d2edx2 = area * StretchEnergy::detail::convert_hessian(d2eF, Dm_inv);
+			float3x3 dedx = area * FemUtils::convert_force(dedF, Dm_inv);
+			float9x9 d2edx2 = area * FemUtils::convert_hessian(d2eF, Dm_inv);
 
 			Eigen::VectorXf g_ana(9);
 			Eigen::MatrixXf H_ana = d2edx2.to_eigen_matrix();
@@ -498,8 +498,8 @@ int main(int argc, char** argv)
 				* Dm_inv;
 			auto	 dedF_sh = StretchEnergy::detail::shear_gradient(Fsh, lambda);
 			auto	 d2eF_sh = StretchEnergy::detail::shear_hessian(Fsh, lambda);
-			float3x3 dedx_sh = area * StretchEnergy::detail::convert_force(dedF_sh, Dm_inv);
-			float9x9 d2edx2_sh = area * StretchEnergy::detail::convert_hessian(d2eF_sh, Dm_inv);
+			float3x3 dedx_sh = area * FemUtils::convert_force(dedF_sh, Dm_inv);
+			float9x9 d2edx2_sh = area * FemUtils::convert_hessian(d2eF_sh, Dm_inv);
 
 			Eigen::VectorXf g_ana_sh(9);
 			Eigen::MatrixXf H_ana_sh = d2edx2_sh.to_eigen_matrix();

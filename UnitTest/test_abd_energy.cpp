@@ -5,7 +5,8 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Core/svd_3x3.h"
-#include "Energy/stretch_energy.h"
+#include "Energies/fem_utils.h"
+#include "Energies/stretch_face_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>
 #include <vector>
@@ -167,7 +168,7 @@ inline float6x6 shear_hessian(const float2x3& F, float mu)
 	H.scalar<3, 0>() = H.scalar<4, 1>() = H.scalar<5, 2>() = H.scalar<0, 3>() = H.scalar<1, 4>() =
 		H.scalar<2, 5>() = 1.0f;
 
-	const float6 g = StretchEnergy::detail::flatten(F * luisa::make_float2x2(0, 1, 1, 0)); // F * (a b^T + b a^T)
+	const float6 g = FemUtils::flatten(F * luisa::make_float2x2(0, 1, 1, 0)); // F * (a b^T + b a^T)
 
 	const float I2 = luisa::dot(Fu, Fu) + luisa::dot(Fv, Fv); // F.squaredNorm();
 	const float lambda0 = 0.5f * (I2 + luisa::sqrt(I2 * I2 + 12.0f * I6 * I6));
@@ -271,7 +272,7 @@ void test_FEM_BW98(luisa::compute::Device& device, luisa::compute::Stream& strea
 
 	const float youngs = 1e4f;
 	const float possion_rate = 0.2f;
-	auto [mu_tmp, lambda_tmp] = StretchEnergy::convert_prop(youngs, possion_rate);
+	auto [mu_tmp, lambda_tmp] = FemUtils::convert_lame_params_3d(youngs, possion_rate);
 	const float mu = mu_tmp;
 	const float lambda = lambda_tmp;
 
@@ -279,7 +280,7 @@ void test_FEM_BW98(luisa::compute::Device& device, luisa::compute::Stream& strea
 	{
 		float2x2 Dm_inv = luisa::inverse(Dm1);
 		{
-			auto dfdx = StretchEnergy::detail::get_dFdx(Dm_inv);
+			auto dfdx = FemUtils::get_dFdx(Dm_inv);
 			std::cout << "dFdx1 = \n"
 					  << dfdx.to_eigen_matrix() << std::endl;
 		}
