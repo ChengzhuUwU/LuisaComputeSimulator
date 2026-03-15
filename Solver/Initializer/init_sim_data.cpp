@@ -4,7 +4,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
-#include "Energy/bending_energy.h"
+#include "Energies/bending_energy_kernel.h"
 #include "Energy/stretch_energy.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"

@@ -4,7 +4,6 @@
 #include "Energies/energy_offsets.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
-#include "Energy/bending_energy.h"
 #include <luisa/dsl/builtin.h>
 
 namespace lcs
@@ -35,4 +34,19 @@ namespace lcs
 		luisa::compute::Shader<1, Constitutions::BendingEdge<luisa::compute::Buffer>, luisa::compute::BufferView<float3>, float> _eval_shader;
 	};
 
+} // namespace lcs
+
+namespace lcs
+{
+	namespace BendingEnergyUtils
+	{
+		using Float3 = luisa::compute::Float3;
+		using Float = luisa::compute::Float;
+
+		float compute_d_theta_d_x(const float3& x2, const float3& x1, const float3& x0, const float3& x3, float3 gradient[4]);
+		Float compute_d_theta_d_x(const Float3& x2, const Float3& x1, const Float3& x0, const Float3& x3, Float3 gradient[4]);
+		float compute_theta(const float3& x2, const float3& x1, const float3& x0, const float3& x3);
+		Float compute_theta(const Float3& x2, const Float3& x1, const Float3& x0, const Float3& x3);
+
+	}; // namespace BendingEnergyUtils
 } // namespace lcs

@@ -1,7 +1,6 @@
 #include "world_data.h"
 #include "Core/affine_position.h"
 #include "Core/float_nxn.h"
-#include "Energy/bending_energy.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
 #include "Utils/cpu_parallel.h"
@@ -332,7 +331,7 @@ namespace lcs::Initializer // WorldData
 
 	WorldData& WorldData::load_tet_mesh_from_array(
 		const std::vector<std::array<float, 3>>& vertices,
-		const std::vector<std::array<uint,  4>>& tets)
+		const std::vector<std::array<uint, 4>>&	 tets)
 	{
 		// 1. Copy vertex positions into input_mesh (same field used for all types)
 		input_mesh.model_positions.resize(vertices.size());
@@ -372,7 +371,7 @@ namespace lcs::Initializer // WorldData
 	WorldData& WorldData::load_tet_mesh_from_path(const std::string_view& path)
 	{
 		std::vector<SimMesh::Float3> positions;
-		std::vector<SimMesh::Int4>   raw_tets;
+		std::vector<SimMesh::Int4>	 raw_tets;
 
 		// Try .t format first, then .vtk
 		bool succ = SimMesh::read_tet_file_t(path, positions, raw_tets);

@@ -4,7 +4,7 @@
 #include <Eigen/Eigenvalues>
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
-#include "Energy/bending_energy.h"
+#include "Energies/bending_energy_kernel.h"
 #include "Energy/stretch_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>

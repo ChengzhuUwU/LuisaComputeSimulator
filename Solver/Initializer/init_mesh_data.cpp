@@ -1,7 +1,6 @@
 #include "Initializer/init_mesh_data.h"
 #include "Core/affine_position.h"
 #include "Core/float_nxn.h"
-#include "Energy/bending_energy.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
 #include "Utils/cpu_parallel.h"

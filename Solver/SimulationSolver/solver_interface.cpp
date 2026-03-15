@@ -12,8 +12,6 @@
 #include "Energies/spring_energy.h"
 #include "Energies/stretch_face_energy.h"
 #include "Energies/tet_elastic_energy.h"
-#include "Energy/bending_energy.h"
-#include "Energy/stretch_energy.h"
 #include "Initializer/init_collision_data.h"
 #include "Initializer/init_sim_data.h"
 #include "Utils/cpu_parallel.h"
