@@ -290,7 +290,7 @@ namespace lcs
 			float& v33)
 		{
 			float rho1 = dist2(b11, b21, b31);
-			float rho2 = dist2(b12, b22, b23);
+			float rho2 = dist2(b12, b22, b32);
 			float rho3 = dist2(b13, b23, b33);
 			bool  c;
 			c = rho1 < rho2;
@@ -504,45 +504,69 @@ namespace lcs
 
 	inline void svd(const float3x3& F, float3x3& U, float3& Sigma, float3x3& V)
 	{
-		float3x3 tmpSigma;
-		Local::svd_built_in(F[0][0],
-			F[0][1],
-			F[0][2],
-			F[1][0],
-			F[1][1],
-			F[1][2],
-			F[2][0],
-			F[2][1],
-			F[2][2],
-			U[0][0],
-			U[0][1],
-			U[0][2],
-			U[1][0],
-			U[1][1],
-			U[1][2],
-			U[2][0],
-			U[2][1],
-			U[2][2],
-			tmpSigma[0][0],
-			tmpSigma[0][1],
-			tmpSigma[0][2],
-			tmpSigma[1][0],
-			tmpSigma[1][1],
-			tmpSigma[1][2],
-			tmpSigma[2][0],
-			tmpSigma[2][1],
-			tmpSigma[2][2],
-			V[0][0],
-			V[0][1],
-			V[0][2],
-			V[1][0],
-			V[1][1],
-			V[1][2],
-			V[2][0],
-			V[2][1],
-			V[2][2]);
+		float u11, u12, u13, u21, u22, u23, u31, u32, u33;
+		float s11, s12, s13, s21, s22, s23, s31, s32, s33;
+		float v11, v12, v13, v21, v22, v23, v31, v32, v33;
 
-		Sigma = luisa::make_float3(tmpSigma[0][0], tmpSigma[1][1], tmpSigma[2][2]);
+		// float3x3 uses column-major indexing M[col][row], while svd_built_in expects row-major scalars.
+		Local::svd_built_in(F[0][0],
+			F[1][0],
+			F[2][0],
+			F[0][1],
+			F[1][1],
+			F[2][1],
+			F[0][2],
+			F[1][2],
+			F[2][2],
+			u11,
+			u12,
+			u13,
+			u21,
+			u22,
+			u23,
+			u31,
+			u32,
+			u33,
+			s11,
+			s12,
+			s13,
+			s21,
+			s22,
+			s23,
+			s31,
+			s32,
+			s33,
+			v11,
+			v12,
+			v13,
+			v21,
+			v22,
+			v23,
+			v31,
+			v32,
+			v33);
+
+		U[0][0] = u11;
+		U[1][0] = u12;
+		U[2][0] = u13;
+		U[0][1] = u21;
+		U[1][1] = u22;
+		U[2][1] = u23;
+		U[0][2] = u31;
+		U[1][2] = u32;
+		U[2][2] = u33;
+
+		V[0][0] = v11;
+		V[1][0] = v12;
+		V[2][0] = v13;
+		V[0][1] = v21;
+		V[1][1] = v22;
+		V[2][1] = v23;
+		V[0][2] = v31;
+		V[1][2] = v32;
+		V[2][2] = v33;
+
+		Sigma = luisa::make_float3(s11, s22, s33);
 	}
 
 } // namespace lcs

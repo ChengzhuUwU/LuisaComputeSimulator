@@ -4,6 +4,7 @@
 #include <Eigen/Eigenvalues>
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
+#include "Core/svd_3x3.h"
 #include "Energy/stretch_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>
@@ -409,6 +410,73 @@ void test_FEM_BW98(luisa::compute::Device& device, luisa::compute::Stream& strea
 	}
 }
 
+void test_snhk(luisa::compute::Device& device, luisa::compute::Stream& stream)
+{
+	float3x3																   F = luisa::make_float3x3(luisa::make_float3(1.10f, 0.30f, -0.50f),
+																		  luisa::make_float3(0.20f, 0.90f, 0.40f),
+																		  luisa::make_float3(-0.40f, 0.70f, 1.30f));
+	luisa::float3x3															   U1, V1;
+	luisa::float3															   S1;
+	Eigen::JacobiSVD<EigenFloat3x3, Eigen::ComputeFullU | Eigen::ComputeFullV> svd;
+	svd.compute(float3x3_to_eigen3x3(F));
+	U1 = eigen3x3_to_float3x3(svd.matrixU());
+	V1 = eigen3x3_to_float3x3(svd.matrixV());
+	auto singular_values = svd.singularValues();
+	S1 = luisa::make_float3(singular_values(0), singular_values(1), singular_values(2));
+
+	luisa::float3x3 U2, V2;
+	luisa::float3	S2;
+	lcs::svd(F, U2, S2, V2);
+
+	EigenFloat3x3 U1_e = float3x3_to_eigen3x3(U1);
+	EigenFloat3x3 V1_e = float3x3_to_eigen3x3(V1);
+	EigenFloat3x3 U2_e = float3x3_to_eigen3x3(U2);
+	EigenFloat3x3 V2_e = float3x3_to_eigen3x3(V2);
+	for (int c = 0; c < 3; ++c)
+	{
+		if (U1_e.col(c).dot(U2_e.col(c)) < 0.0f)
+		{
+			U2_e.col(c) *= -1.0f;
+			V2_e.col(c) *= -1.0f;
+		}
+	}
+	const auto U2_aligned = eigen3x3_to_float3x3(U2_e);
+	const auto V2_aligned = eigen3x3_to_float3x3(V2_e);
+
+	LUISA_INFO("U1 = {}", U1);
+	LUISA_INFO("U2 = {}", U2);
+	LUISA_INFO("Delta U = {}", U1 - U2);
+	LUISA_INFO("S1 = {}", S1);
+	LUISA_INFO("S2 = {}", S2);
+	LUISA_INFO("Delta S = {}", S1 - S2);
+	LUISA_INFO("V1 = {}", V1);
+	LUISA_INFO("V2 = {}", V2);
+	LUISA_INFO("Delta V = {}", V1 - V2);
+	LUISA_INFO("Delta U (sign-aligned) = {}", U1 - U2_aligned);
+	LUISA_INFO("Delta V (sign-aligned) = {}", V1 - V2_aligned);
+
+	EigenFloat3x3 F_eigen = float3x3_to_eigen3x3(F);
+	EigenFloat3x3 S1_diag = EigenFloat3x3::Zero();
+	S1_diag(0, 0) = S1[0];
+	S1_diag(1, 1) = S1[1];
+	S1_diag(2, 2) = S1[2];
+	EigenFloat3x3 S2_diag = EigenFloat3x3::Zero();
+	S2_diag(0, 0) = S2[0];
+	S2_diag(1, 1) = S2[1];
+	S2_diag(2, 2) = S2[2];
+
+	EigenFloat3x3 F_recon_eigen = U1_e * S1_diag * V1_e.transpose();
+	EigenFloat3x3 F_recon_custom = float3x3_to_eigen3x3(U2) * S2_diag * float3x3_to_eigen3x3(V2).transpose();
+
+	LUISA_INFO("Recon error Eigen = {}", (F_eigen - F_recon_eigen).norm());
+	LUISA_INFO("Recon error Custom = {}", (F_eigen - F_recon_custom).norm());
+	LUISA_INFO("U2 orthogonality error = {}", (float3x3_to_eigen3x3(U2).transpose() * float3x3_to_eigen3x3(U2) - EigenFloat3x3::Identity()).norm());
+	LUISA_INFO("V2 orthogonality error = {}", (float3x3_to_eigen3x3(V2).transpose() * float3x3_to_eigen3x3(V2) - EigenFloat3x3::Identity()).norm());
+	// LUISA_INFO("delta U = \n{}", delta_U);
+	// LUISA_INFO("delta S = \n{}", delta_S);
+	// LUISA_INFO("delta V = \n{}", delta_V);
+}
+
 int main(int argc, char** argv)
 {
 	luisa::log_level_info();
@@ -457,7 +525,9 @@ int main(int argc, char** argv)
 	// std::cout << "Ortho gradient: " << std::endl << result.first << std::endl;
 	// std::cout << "Ortho hessian: " << std::endl << result.second << std::endl;
 
-	test_FEM_BW98(device, stream);
+	// test_FEM_BW98(device, stream);
+
+	test_snhk(device, stream);
 
 	// float6 vec1;
 	// vec1.vec[0] = luisa::make_float3(0, 1, 2);
