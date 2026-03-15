@@ -420,22 +420,117 @@ namespace lcs
 			double lambda = young_mod * poiss_rat / ((1.0 + poiss_rat) * (1.0 - 2.0 * poiss_rat));
 			return { mu, lambda };
 		}
+
+		// 2D cloth uses a surface model; plane-stress lambda is typically more stable/physical than 3D lambda.
+		inline std::array<double, 2> convert_prop_cloth_plane_stress(const float young_mod, const float poiss_rat)
+		{
+			double mu = young_mod / (2.0 * (1.0 + poiss_rat));
+			double lambda = young_mod * poiss_rat / (1.0 - poiss_rat * poiss_rat);
+			return { mu, lambda };
+		}
+		// inline float2x2 get_Dm_inv(const float3& x_0, const float3& x_1, const float3& x_2)
+		// {
+		// 	float3		   r_1 = x_1 - x_0;
+		// 	float3		   r_2 = x_2 - x_0;
+		// 	float3		   cross = cross_vec(r_1, r_2);
+		// 	float3		   axis_1 = normalize_vec(r_1);
+		// 	float3		   axis_2 = normalize_vec(cross_vec(cross, axis_1));
+		// 	float2		   uv0 = float2(dot_vec(axis_1, x_0), dot_vec(axis_2, x_0));
+		// 	float2		   uv1 = float2(dot_vec(axis_1, x_1), dot_vec(axis_2, x_1));
+		// 	float2		   uv2 = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
+		// 	float2		   duv0 = uv1 - uv0;
+		// 	float2		   duv1 = uv2 - uv0;
+		// 	const float2x2 duv = float2x2(duv0, duv1);
+		// 	const float2x2 inv_duv = luisa::inverse(duv);
+		// 	return inv_duv;
+		// }
+
+		// ========================================================================
+		// IMPROVED IMPLEMENTATION (coordinate-system-independent)
+		// ========================================================================
+
 		inline float2x2 get_Dm_inv(const float3& x_0, const float3& x_1, const float3& x_2)
 		{
-			float3		   r_1 = x_1 - x_0;
-			float3		   r_2 = x_2 - x_0;
-			float3		   cross = cross_vec(r_1, r_2);
-			float3		   axis_1 = normalize_vec(r_1);
-			float3		   axis_2 = normalize_vec(cross_vec(cross, axis_1));
-			float2		   uv0 = float2(dot_vec(axis_1, x_0), dot_vec(axis_2, x_0));
-			float2		   uv1 = float2(dot_vec(axis_1, x_1), dot_vec(axis_2, x_1));
-			float2		   uv2 = float2(dot_vec(axis_1, x_2), dot_vec(axis_2, x_2));
-			float2		   duv0 = uv1 - uv0;
-			float2		   duv1 = uv2 - uv0;
+			// STRATEGY: Use the longest edge as the primary axis instead of arbitrarily
+			// choosing first & second edges. This makes Dm_inv independent of vertex labeling.
+
+			// Step 1: Compute all three edge vectors
+			float3 e01 = x_1 - x_0;
+			float3 e02 = x_2 - x_0;
+			float3 e12 = x_2 - x_1;
+
+			// Step 2: Find the longest edge (order-independent and physically meaningful)
+			float len01 = luisa::length(e01);
+			float len02 = luisa::length(e02);
+			float len12 = luisa::length(e12);
+
+			float3 longest_edge;
+			if (len01 >= len02 && len01 >= len12)
+			{
+				longest_edge = e01;
+			}
+			else if (len02 >= len01 && len02 >= len12)
+			{
+				longest_edge = e02;
+			}
+			else
+			{
+				longest_edge = e12; // e12 is longest
+			}
+
+			// Step 3: Compute surface normal
+			float3 normal = luisa::cross(e01, e02);
+			float3 normal_normalized = normalize_vec(normal);
+
+			// Step 4: Build orthonormal coordinate frame
+			// axis1: along the longest edge
+			float3 axis_1 = normalize_vec(longest_edge);
+			// axis2: perpendicular to both normal and axis1
+			float3 axis_2 = normalize_vec(cross_vec(normal_normalized, axis_1));
+
+			// Step 5: Project all vertices onto the plane
+			// Use triangle centroid as origin for symmetry
+			float3 centroid = (x_0 + x_1 + x_2) / 3.0f;
+
+			float2 uv0 = float2(
+				dot_vec(axis_1, x_0 - centroid),
+				dot_vec(axis_2, x_0 - centroid));
+			float2 uv1 = float2(
+				dot_vec(axis_1, x_1 - centroid),
+				dot_vec(axis_2, x_1 - centroid));
+			float2 uv2 = float2(
+				dot_vec(axis_1, x_2 - centroid),
+				dot_vec(axis_2, x_2 - centroid));
+
+			// Step 6: Build Dm matrix from edge vectors in the new basis
+			float2		   duv0 = uv1 - uv0; // Edge from vertex 0 to 1 in material space
+			float2		   duv1 = uv2 - uv0; // Edge from vertex 0 to 2 in material space
 			const float2x2 duv = float2x2(duv0, duv1);
+
+			// Step 7: Invert to get Dm_inv
 			const float2x2 inv_duv = luisa::inverse(duv);
 			return inv_duv;
 		}
+
+		// ========================================================================
+		// ALTERNATIVE HELPER: For debugging / verification
+		// ========================================================================
+		// This function can be used to verify that the improved version works correctly
+
+		inline void verify_dm_inv_invariance(const float3& x_0, const float3& x_1, const float3& x_2)
+		{
+			// Compute Dm_inv for original ordering
+			float2x2 dm_inv_012 = get_Dm_inv(x_0, x_1, x_2);
+
+			// Compute Dm_inv for different ordering
+			float2x2 dm_inv_021 = get_Dm_inv(x_0, x_2, x_1); // Swapped x_1 and x_2
+
+			// Ideally, these should be identical (or close up to numerical precision)
+			// Print for verification:
+			LUISA_INFO("DMInv original (0,1,2): [{}, {}]", dm_inv_012[0], dm_inv_012[1]);
+			LUISA_INFO("DMInv swapped  (0,2,1): [{}, {}]", dm_inv_021[0], dm_inv_021[1]);
+		}
+
 		inline void compute_gradient_hessian(const float3& x0,
 			const float3&								   x1,
 			const float3&								   x2,
@@ -462,6 +557,10 @@ namespace lcs
 
 			dedx = area * detail::convert_force(dedF, Dm);
 			d2edx2 = area * detail::convert_hessian(d2edF2, Dm);
+
+			// LUISA_INFO("BW98 Info: F = [{}, {}], Area = {}", F.cols[0], F.cols[1], area);
+			// LUISA_INFO("		 : Stretch Force = {}", detail::convert_force(de0dF, Dm));
+			// LUISA_INFO("		 : Shear   Force = {}", detail::convert_force(de1dF, Dm));
 
 			// gradient[0] = dedx[0];
 			// gradient[1] = dedx[1];

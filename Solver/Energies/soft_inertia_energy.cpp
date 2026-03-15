@@ -125,7 +125,7 @@ namespace lcs
 				host_sim_data.num_verts_soft,
 				[sa_x = std::span(host_sim_data.sa_x),
 					sa_x_tilde = std::span(host_sim_data.sa_q_tilde),
-					sa_q_is_fixed = std::span(host_sim_data.sa_q_is_fixed),
+					sa_q_property = std::span(host_sim_data.sa_q_property),
 					sa_vert_mass = std::span(inertia_data.sa_soft_vert_mass),
 					sa_stiffness_dirichlet = std::span(inertia_data.sa_stiffness_dirichlet),
 					output_gradient = std::span(inertia_data.constraint_gradients),
@@ -137,6 +137,8 @@ namespace lcs
 
 					float3 x_k = sa_x[vid];
 					float3 x_tilde = sa_x_tilde[vid];
+
+					// LUISA_INFO("Soft Inertia Energy: vid = {}, dof is fixed = {} , diff = {}", vid, sa_q_property[vid].is_fixed(), x_k - x_tilde);
 
 					float	 mass = sa_vert_mass[vid];
 					float3	 gradient = mass * h_2_inv * (x_k - x_tilde);

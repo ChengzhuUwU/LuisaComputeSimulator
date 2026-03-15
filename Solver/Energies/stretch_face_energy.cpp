@@ -37,6 +37,7 @@ namespace lcs
 					Float2 mu_lambda = sa_stretch_faces_mu_lambda->read(fid);
 					Float  mu_cloth = mu_lambda[0];
 					Float  lambda_cloth = mu_lambda[1];
+					// lambda_cloth = 0.0f;
 
 					energy = StretchEnergy::compute_energy(
 						vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area);
@@ -75,6 +76,7 @@ namespace lcs
 				Float2 mu_lambda = sa_stretch_faces_mu_lambda->read(fid);
 				Float  mu_cloth = mu_lambda[0];
 				Float  lambda_cloth = mu_lambda[1];
+				// lambda_cloth = 0.0f;
 
 				StretchEnergy::compute_gradient_hessian(
 					vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
@@ -150,7 +152,9 @@ namespace lcs
 				float	 area = sa_stretch_faces_rest_area[fid];
 
 				auto [mu_cloth, lambda_cloth] = sa_stretch_faces_mu_lambda[fid];
+				// lambda_cloth = 0.0f;
 
+				// LUISA_INFO("BW98 Info: Fid = {}, Face = {}, lambda = {}, mu = {}", fid, face, lambda_cloth, mu_cloth);
 				StretchEnergy::compute_gradient_hessian(
 					vert_pos[0], vert_pos[1], vert_pos[2], Dm_inv, mu_cloth, lambda_cloth, area, gradients, hessians);
 

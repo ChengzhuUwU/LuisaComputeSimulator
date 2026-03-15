@@ -1037,8 +1037,8 @@ namespace lcs
 					// }
 					float2x2	Dm_inv = sa_stretch_faces_Dm_inv[fid];
 					float2		mu_lambda = sa_stretch_faces_mu_lambda[fid]; // {lambda, mu}
-					const float lambda = mu_lambda[1];
 					const float mu = mu_lambda[0];
+					const float lambda = mu_lambda[1];
 					float		area = sa_stretch_faces_rest_area[fid];
 
 					Eigen::Matrix<float, 9, 1> G;

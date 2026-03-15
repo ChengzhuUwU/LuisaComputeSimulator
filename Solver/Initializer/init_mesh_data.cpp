@@ -227,6 +227,7 @@ namespace lcs
 							const uint local_vid =
 								curr_shell_info.fixed_point_indices[index];
 							const uint global_vid = prefix_num_verts + local_vid;
+							// LUISA_INFO("Mesh {:<2} : fixed vert index in mesh = {}, global vert index = {}", meshIdx, local_vid, global_vid);
 							mesh_data->sa_is_fixed[global_vid] = true;
 							mesh_data->fixed_verts.push_back(global_vid);
 							mesh_data->fixed_verts_map[meshIdx][index] = global_vid;

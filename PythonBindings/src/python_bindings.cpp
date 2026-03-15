@@ -607,6 +607,17 @@ struct PyNewtonBuilder
 		solver_ptr->save_mesh_to_obj(full_path);
 	}
 
+	float get_vert_mass(uint global_vid) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+
+		const auto& mesh_data = solver_ptr->get_host_mesh_data();
+		const auto& src_masses = mesh_data.sa_vert_mass;
+
+		return (global_vid < src_masses.size()) ? src_masses[global_vid] : 0.f;
+	}
+
 	// ---------------------------------------------------------------------------
 	// Device management (mirrors lcs::SolverInterface device methods)
 	// ---------------------------------------------------------------------------
@@ -863,6 +874,7 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("registration_id"),
 			"Return one object simulation result as tuple (vertices, faces) by registration id")
 		.def("get_object_by_registration_id", &PyNewtonBuilder::get_object_by_registration_id, py::arg("registration_id"))
+		.def("get_vert_mass", &PyNewtonBuilder::get_vert_mass, py::arg("global_vid"), "Return mass of a vertex by global vertex id")
 		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"));
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.

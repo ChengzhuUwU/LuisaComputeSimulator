@@ -670,7 +670,7 @@ namespace lcs::Initializer
 
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
-					auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
+					auto [mu, lambda] = StretchEnergy::convert_prop_cloth_plane_stress(E, nu);
 					mu = mu * material.thickness; // scale by thickness
 					stretch_spring_data.sa_stretch_spring_stiffness[eid] = mu;
 				});
@@ -703,7 +703,7 @@ namespace lcs::Initializer
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
 
-					auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
+					auto [mu, lambda] = StretchEnergy::convert_prop_cloth_plane_stress(E, nu);
 					mu = material.thickness * mu; // scale by thickness
 					lambda = material.thickness * lambda;
 					stretch_face_data.sa_stretch_faces_mu_lambda[fid] =
@@ -839,7 +839,7 @@ namespace lcs::Initializer
 				{
 					const uint orig_vid = soft_vert_indices[vid];
 					const bool is_fixed = mesh_data->sa_is_fixed[orig_vid];
-					soft_inertia_data.constraint_indices[vid] = orig_vid;
+					soft_inertia_data.constraint_indices[vid] = vid;
 					soft_inertia_data.sa_soft_vert_mass[vid] = mesh_data->sa_vert_mass[orig_vid];
 					soft_inertia_data.sa_stiffness_dirichlet[vid] = is_fixed ? default_stiffness_dirichlet : 1.0f;
 				});
