@@ -94,8 +94,10 @@ def main():
         poisson_ratio=0.4,
     )
     tet_body.add_fixed_point_by_method("Left") 
+    fixed_vids = tet_body.get_fixed_point_indices()
+    free_vids = [vid for vid in range(len(verts)) if vid not in fixed_vids]
     reg_id = solver.register_world_data(tet_body)
-    print(f"Registered tet_cube with id={reg_id}")
+    print(f"Registered tet_cube with id={reg_id}, fixed vertices={fixed_vids}")
 
     # ---- Initialize solver -----------------------------------------------
     solver.init_solver()
@@ -114,6 +116,12 @@ def main():
                 solver.physics_step_cpu()
             # if (frame + 1) % 10 == 0:
             verts_out, faces_out = solver.get_object_sim_result_by_registration_id(reg_id)
+
+            for vid in free_vids:
+                print(f"  Free vertex {vid}: {verts_out[vid]}")
+            for vid in fixed_vids:
+                print(f"  Fixed vertex {vid}: {verts_out[vid]}")
+            
             min_y = verts_out[:, 1].min() if len(verts_out) else float('nan')
             max_y = verts_out[:, 1].max() if len(verts_out) else float('nan')
             avg_y = verts_out[:, 1].mean() if len(verts_out) else float('nan')
