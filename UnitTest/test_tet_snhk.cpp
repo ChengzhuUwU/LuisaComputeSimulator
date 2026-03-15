@@ -76,10 +76,19 @@ int main()
 {
 	// Create a proper 3D tetrahedron
 	// Regular tet: vertices forming a real 3D volume
-	Vec3 x0(0.0f, 0.0f, 0.0f);
-	Vec3 x1(1.0f, 0.0f, 0.0f);
-	Vec3 x2(0.5f, 1.0f, 0.0f);
-	Vec3 x3(0.5f, 0.5f, 1.0f); // z != 0 for real 3D
+	// Vec3 x0(0.0f, 0.0f, 0.0f);
+	// Vec3 x1(1.0f, 0.0f, 0.0f);
+	// Vec3 x2(0.5f, 1.0f, 0.0f);
+	// Vec3 x3(0.5f, 0.5f, 1.0f); // z != 0 for real 3D
+	// Vec3 x0(0.2, 0.3, -0.2);
+	// Vec3 x1(-0.2, 0.7, -0.2);
+	// Vec3 x2(-0.2, 0.3, 0.2);
+	// Vec3 x3(0.2, 0.7, 0.2);
+
+	Vec3 x0(-0.2, 0.7, -0.2);
+	Vec3 x1(-0.2, 0.3, 0.2);
+	Vec3 x2(0.2, 0.7, 0.2);
+	Vec3 x3(-0.2, 0.7, 0.2);
 
 	// Compute Ds (rest configuration)
 	Mat3 Ds;

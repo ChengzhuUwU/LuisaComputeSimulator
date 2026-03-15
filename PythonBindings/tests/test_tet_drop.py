@@ -65,6 +65,27 @@ def make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.4):
 
     return verts, tets
 
+def make_unit_tet_cube2(center=(0.0, 0.5, 0.0), scale=0.4):
+    """Return (vertices [4,3], tets [1,4]) for a unit regular tetrahedron."""
+    cx, cy, cz = center
+    s = scale
+
+    # Regular tetrahedron around origin, then scaled and translated.
+    # Edge length of the unscaled tetra is 2*sqrt(2), so scale controls size.
+    verts = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float64)
+    verts = verts * s + np.array([cx, cy, cz], dtype=np.float64)
+
+    tets = np.array([
+        [0, 1, 2, 3],
+    ], dtype=np.int32)
+
+    return verts, tets
+
 
 # --------------------------------------------------------------------------
 # Main
@@ -76,28 +97,67 @@ def main():
     solver.init_device(backend_name=args.backend)
 
     config = solver.get_config()
-    config.use_floor = False
-    config.floor = lcs.Float3(0.0, 0.0, 0.0)
-    config.use_self_collision = False    # keep it simple for smoke test
+    # config.use_floor = True
+    # config.floor = lcs.Float3(0.0, 0.0, 0.0)
+    # config.use_ccd_linesearch = True
+    # config.use_self_collision = False    # keep it simple for smoke test
     config.nonlinear_iter_count = 3  # Increased for stability
-    config.use_ccd_linesearch = False
     config.use_gpu = False  # Force CPU mode
 
-    # ---- Register tet body -----------------------------------------------
-    verts, tets = make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.2)
-    print(f"Tet mesh: {len(verts)} vertices, {len(tets)} tets")
+    # ---- Register random tet bodies (non-overlapping at init) ------------
+    num_bodies = 30
+    tet_scale = 0.2
+    rng = np.random.default_rng(42)
 
-    tet_body = solver.create_world_data_from_tet_array("tet_cube", verts, tets)
-    tet_body.set_physics_material_tet(
-        model="StableNeoHookean",
-        youngs_modulus=1e6,
-        poisson_ratio=0.4,
+    base_verts, tets = make_unit_tet_cube2(center=(0.0, 0.0, 0.0), scale=tet_scale)
+    tet_centroid = base_verts.mean(axis=0)
+    tet_radius = np.linalg.norm(base_verts - tet_centroid, axis=1).max()
+    min_center_dist = 2.2 * tet_radius
+
+    centers = []
+    max_trials = 20000
+    for _ in range(max_trials):
+        if len(centers) >= num_bodies:
+            break
+        candidate = np.array([
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(0.8, 3.0),
+            rng.uniform(-1.0, 1.0),
+        ], dtype=np.float64)
+        if all(np.linalg.norm(candidate - c) >= min_center_dist for c in centers):
+            centers.append(candidate)
+
+    if len(centers) < num_bodies:
+        raise RuntimeError(
+            f"Could only place {len(centers)} / {num_bodies} tet bodies without overlap."
+        )
+
+    reg_ids = []
+    for i, c in enumerate(centers):
+        verts, _ = make_unit_tet_cube2(center=tuple(c.tolist()), scale=tet_scale)
+        tet_body = solver.create_world_data_from_tet_array(f"tet_{i:02d}", verts, tets)
+        tet_body.set_physics_material_tet(
+            model="StableNeoHookean",
+            youngs_modulus=1e4,
+            poisson_ratio=0.4,
+        )
+        reg_id = solver.register_world_data(tet_body)
+        reg_ids.append(reg_id)
+
+    print(
+        f"Registered {len(reg_ids)} tet bodies, each with {len(base_verts)} vertices and {len(tets)} tet."
     )
-    tet_body.add_fixed_point_by_method("Left") 
-    fixed_vids = tet_body.get_fixed_point_indices()
-    free_vids = [vid for vid in range(len(verts)) if vid not in fixed_vids]
-    reg_id = solver.register_world_data(tet_body)
-    print(f"Registered tet_cube with id={reg_id}, fixed vertices={fixed_vids}")
+
+
+    bowl_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'bowl', 'bowl.obj')
+    bowl = solver.create_world_data_from_file_path('bowl', bowl_mesh_path)
+    bowl.set_simulation_type(lcs.MaterialType.Cloth)
+    bowl.set_physics_material_cloth(thickness=0.001)
+    bowl.set_scale(10.0)
+    bowl.set_translation(0.0, 1.1, 0.0)
+    bowl.add_fixed_point_by_method("All") 
+    bowl_id = solver.register_world_data(bowl)
+
 
     # ---- Initialize solver -----------------------------------------------
     solver.init_solver()
@@ -114,19 +174,7 @@ def main():
                 solver.physics_step_gpu()
             else:
                 solver.physics_step_cpu()
-            # if (frame + 1) % 10 == 0:
-            verts_out, faces_out = solver.get_object_sim_result_by_registration_id(reg_id)
-
-            for vid in free_vids:
-                print(f"  Free vertex {vid}: {verts_out[vid]}")
-            for vid in fixed_vids:
-                print(f"  Fixed vertex {vid}: {verts_out[vid]}")
-            
-            min_y = verts_out[:, 1].min() if len(verts_out) else float('nan')
-            max_y = verts_out[:, 1].max() if len(verts_out) else float('nan')
-            avg_y = verts_out[:, 1].mean() if len(verts_out) else float('nan')
-            print(f"  frame {frame+1:3d}: min_y={min_y:.4f}, max_y={max_y:.4f}, avg_y={avg_y:.4f}")
-
+                
         solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_result.obj"))
         print(f"Saved result to {output_dir}")
     else:

@@ -1,122 +1,45 @@
-
-#include <any>
 #include <luisa/luisa-compute.h>
-
-struct Arguments
-{
-	luisa::compute::Buffer<uint>			buffer1;
-	luisa::compute::Buffer<float>			buffer2;
-	luisa::compute::Buffer<luisa::float3>	buffer3;
-	luisa::compute::Buffer<luisa::float3x3> buffer4;
-};
-LUISA_BINDING_GROUP(Arguments, buffer1, buffer2, buffer3, buffer4){};
-
-void test_dynamic_resize(luisa::compute::Device& device, luisa::compute::Stream& stream)
-{
-	using namespace luisa::compute;
-	using Uint = UInt;
-	using Uint2 = UInt2;
-
-	Arguments args;
-	auto	  fn_from_ref = device.compile<1>(
-		 [&](Var<Arguments> args, const Uint iter)
-		 {
-			 const Uint lid = dispatch_id().x;
-			 args.buffer1.write(lid, iter);
-		 });
-
-	auto fn_lc_test = [&](const uint loop)
-	{
-		const uint num_leaves = 1 << loop;
-		// buffer                = device.create_sparse_buffer<uint>(num_leaves);
-		args.buffer1 = device.create_buffer<uint>(num_leaves);
-		args.buffer2 = device.create_buffer<float>(num_leaves);
-		args.buffer3 = device.create_buffer<float3>(num_leaves);
-		args.buffer4 = device.create_buffer<float3x3>(num_leaves);
-		stream << fn_from_ref(args, loop).dispatch(num_leaves) << synchronize();
-
-		std::vector<uint> host_array(num_leaves);
-		stream << args.buffer1.copy_to(host_array.data()) << synchronize();
-		if (!std::all_of(host_array.begin(), host_array.end(), [loop](uint v)
-				{ return v == loop; }))
-		{
-			LUISA_ERROR("Values mismatch at loop = {}", loop);
-			return -1;
-		}
-		LUISA_INFO("LC Test successed.");
-		return 0;
-	};
-
-	const uint test_times = 10;
-	for (uint i = 1; i <= test_times; i++)
-	{
-		if (fn_lc_test(i) != 0)
-		{
-			LUISA_ERROR("Test failed at loop = {}", i);
-			return;
-		}
-	}
-}
-
 int main(int argc, char** argv)
 {
-	luisa::log_level_verbose();
-	LUISA_INFO("Test LC features");
+	// Initialize devices
+	luisa::compute::Context context{ argv[0] };
+	luisa::compute::Device	device = context.create_device("cuda" /*or: dx, metal, vk, fallback(CPU)*/, nullptr, false);
+	luisa::compute::Stream	stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
 
-	// Init GPU system
-#if defined(__APPLE__)
-	std::string backend = "metal";
-#else
-	std::string backend = "cuda";
-#endif
-	const std::string			 binary_path(argv[0]);
-	luisa::compute::Context		 context{ binary_path };
-	luisa::vector<luisa::string> device_names = context.backend_device_names(backend);
-	if (device_names.empty())
-	{
-		LUISA_WARNING("No hardware device found.");
-		exit(1);
-	}
-	if (argc >= 2)
-	{
-		backend = argv[1];
-	}
-	luisa::compute::Device device = context.create_device(backend, nullptr, true);
-	luisa::compute::Stream stream = device.create_stream(luisa::compute::StreamTag::COMPUTE);
+	uint buffer_size = 1000;
+	// Initialize resources
+	luisa::compute::Buffer<float> buffer_in1;
+	luisa::compute::Buffer<float> buffer_in2;
+	luisa::compute::Buffer<float> buffer_out;
+	buffer_in1 = device.create_buffer<float>(buffer_size);
+	buffer_in2 = device.create_buffer<float>(buffer_size);
+	buffer_out = device.create_buffer<float>(buffer_size);
 
-	{
-		auto If = [](auto cond, auto&& true_branch) noexcept
+	// Data upload
+	std::vector<float> host_vector_1(buffer_size, 1.0f);
+	std::vector<float> host_vector_2(buffer_size, 2.0f);
+	stream << buffer_in1.copy_from(host_vector_1.data())
+		   << buffer_in2.copy_from(host_vector_2.data())
+		   << luisa::compute::synchronize(); // Optional synchronization
+
+	// Kernel implemtation
+	luisa::compute::Shader<1, float> fn_add_float = device.compile<1>(
+		[&](const luisa::compute::Var<float> other_params)
 		{
-			return ::luisa::compute::detail::IfStmtBuilder::create_with_comment(
-					   ::luisa ::compute::dsl_detail::format_source_location(__FILE__, __LINE__),
-					   cond)
-				% std::forward<decltype(true_branch)>(true_branch);
-		};
+			using Index = luisa::compute::Var<uint>;
+			using Real = luisa::compute::Var<float>;
+			Index index = luisa::compute::dispatch_id().x;
+			Real  input_val1 = buffer_in1->read(index);
+			Real  input_val2 = buffer_in2->read(index);
+			Real  result = input_val1 + input_val2;
+			buffer_out->write(index, result);
+		});
 
-		using namespace luisa::compute;
+	// Launch kernel
+	stream << fn_add_float(0.0f).dispatch(buffer_size);
 
-		auto kernel = device.compile<1>(
-			[If](Var<Arguments> args, const UInt iter)
-			{
-				const UInt lid = dispatch_id().x;
-
-				$if(lid < 4){};
-
-				If(lid < 4, [&]()
-					{ args.buffer1.write(lid, iter); });
-
-				// ::luisa::compute::detail::IfStmtBuilder::create_with_comment(
-				// 	::luisa ::compute::dsl_detail::format_source_location(__FILE__, __LINE__),
-				// 	lid < 4)
-				// 	%
-				// 	[&]() noexcept -> void
-				// {
-				// 	args.buffer1.write(lid, iter);
-				// };
-			});
-	}
-
-	test_dynamic_resize(device, stream);
-
-	return 0;
+	// Data download
+	std::vector<float> host_vector_3(buffer_size, 1.0f);
+	stream << buffer_out.copy_to(host_vector_3.data())
+		   << luisa::compute::synchronize();
 }

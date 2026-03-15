@@ -28,6 +28,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
+#include "Core/svd_3x3.h"
 #include <luisa/luisa-compute.h>
 #include <cmath>
 
@@ -67,15 +68,17 @@ namespace lcs
 		inline void snhk_d2ed2a(float a, float b, float c, float mu, float lmd, float d2[3][3])
 		{
 			float I3 = a * b * c;
-			float coeff = lmd * (I3 - 1.0f) - mu; // [λ(I₃-1) - μ]
+			float coeff_raw = lmd * (I3 - 1.0f) - mu; // [λ(I3-1) - μ]
+			// Safety truncation: suppress negative geometric coupling in strong compression.
+			// This keeps Hessian blocks closer to PSD for Newton-type solvers.
+			float coeff = std::max(coeff_raw, 0.0f);
 
 			// Diagonal:  d2Psi/da^2 = μ + λ*(bc)^2
 			d2[0][0] = mu + lmd * (b * c) * (b * c);
 			d2[1][1] = mu + lmd * (a * c) * (a * c);
 			d2[2][2] = mu + lmd * (a * b) * (a * b);
 
-			// Off-diagonal:  d2Psi/(da*db) = λ*I3*c + coeff*c
-			//   This can also be written as: λ*a*b*c*c + [λ(I₃-1)-μ]*c
+			// Off-diagonal with truncated geometric coupling term.
 			d2[0][1] = d2[1][0] = lmd * I3 * c + coeff * c;
 			d2[0][2] = d2[2][0] = lmd * I3 * b + coeff * b;
 			d2[1][2] = d2[2][1] = lmd * I3 * a + coeff * a;
@@ -436,14 +439,15 @@ namespace lcs
 			luisa::float3x3 Ds = luisa::make_float3x3(x1 - x0, x2 - x0, x3 - x0);
 			luisa::float3x3 F = Ds * Dm_inv;
 
-			luisa::float3x3															   U, V;
-			luisa::float3															   S;
-			Eigen::JacobiSVD<EigenFloat3x3, Eigen::ComputeFullU | Eigen::ComputeFullV> svd;
-			svd.compute(float3x3_to_eigen3x3(F));
-			U = eigen3x3_to_float3x3(svd.matrixU());
-			V = eigen3x3_to_float3x3(svd.matrixV());
-			auto singular_values = svd.singularValues();
-			S = luisa::make_float3(singular_values(0), singular_values(1), singular_values(2));
+			luisa::float3x3 U, V;
+			luisa::float3	S;
+			// Eigen::JacobiSVD<EigenFloat3x3, Eigen::ComputeFullU | Eigen::ComputeFullV> svd;
+			// svd.compute(float3x3_to_eigen3x3(F));
+			// U = eigen3x3_to_float3x3(svd.matrixU());
+			// V = eigen3x3_to_float3x3(svd.matrixV());
+			// auto singular_values = svd.singularValues();
+			// S = luisa::make_float3(singular_values(0), singular_values(1), singular_values(2));
+			lcs::svd(F, U, S, V);
 
 			return volume * snhk_energy(S[0], S[1], S[2], mu, lambda);
 		}
@@ -465,14 +469,15 @@ namespace lcs
 			// Note: float3x3 is column-major; float3x3_to_eigen3x3 converts it to
 			// row-major for Eigen's SVD. The result U, V from Eigen correspond to
 			// the transposed F. This is corrected in eigenanalysis_force indexing.
-			luisa::float3x3															   U, V;
-			luisa::float3															   S;
-			Eigen::JacobiSVD<EigenFloat3x3, Eigen::ComputeFullU | Eigen::ComputeFullV> svd;
-			svd.compute(float3x3_to_eigen3x3(F));
-			U = eigen3x3_to_float3x3(svd.matrixU());
-			V = eigen3x3_to_float3x3(svd.matrixV());
-			auto singular_values = svd.singularValues();
-			S = luisa::make_float3(singular_values(0), singular_values(1), singular_values(2));
+			luisa::float3x3 U, V;
+			luisa::float3	S;
+			// Eigen::JacobiSVD<EigenFloat3x3, Eigen::ComputeFullU | Eigen::ComputeFullV> svd;
+			// svd.compute(float3x3_to_eigen3x3(F));
+			// U = eigen3x3_to_float3x3(svd.matrixU());
+			// V = eigen3x3_to_float3x3(svd.matrixV());
+			// auto singular_values = svd.singularValues();
+			// S = luisa::make_float3(singular_values(0), singular_values(1), singular_values(2));
+			lcs::svd(F, U, S, V);
 
 			// 3. SNHk derivatives in singular-value space
 			float deda[3];

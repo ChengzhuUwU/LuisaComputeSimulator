@@ -814,10 +814,22 @@ namespace lcs::Initializer
 
 					const float3x3 Dm = luisa::make_float3x3(x1 - x0, x2 - x0, x3 - x0);
 					const float3x3 Dm_inv = luisa::inverse(Dm);
-					const auto&	   mesh_info = world_data[mesh_data->sa_tet_mesh_id[orig_tid]];
-					const auto&	   material = mesh_info.get_material<TetMaterial>();
-					const float	   E = material.youngs_modulus;
-					const float	   nu = material.poisson_ratio;
+					{
+						if (luisa::determinant(Dm) <= 0.0f)
+						{
+							LUISA_ERROR("Tet {} has non-positive volume: {}, rest positions = {}, {}, {}, {}",
+								orig_tid,
+								volume,
+								x0,
+								x1,
+								x2,
+								x3);
+						}
+					}
+					const auto& mesh_info = world_data[mesh_data->sa_tet_mesh_id[orig_tid]];
+					const auto& material = mesh_info.get_material<TetMaterial>();
+					const float E = material.youngs_modulus;
+					const float nu = material.poisson_ratio;
 					auto [mu, lambda] = StretchEnergy::convert_prop(E, nu);
 					stress_tet_data.constraint_indices[tid] = tet;
 					stress_tet_data.sa_stress_tets_rest_volume[tid] = volume;
