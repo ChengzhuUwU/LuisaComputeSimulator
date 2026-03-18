@@ -312,7 +312,7 @@ struct PyNewtonBuilder
 		if (triangles.ndim() != 2 || triangles.shape(1) != 3)
 			throw std::runtime_error("triangles must be a (M,3) array of ints");
 
-		using InputVertexType = std::array<float32_t, 3>;
+		using InputVertexType = std::array<float, 3>;
 		using InputFaceType = std::array<uint32_t, 3>;
 
 		const size_t nverts = vertices.shape(0);
@@ -326,9 +326,9 @@ struct PyNewtonBuilder
 		for (size_t i = 0; i < nverts; ++i)
 		{
 			InputVertexType p;
-			p[0] = static_cast<float32_t>(buf_v(i, 0));
-			p[1] = static_cast<float32_t>(buf_v(i, 1));
-			p[2] = static_cast<float32_t>(buf_v(i, 2));
+			p[0] = static_cast<float>(buf_v(i, 0));
+			p[1] = static_cast<float>(buf_v(i, 1));
+			p[2] = static_cast<float>(buf_v(i, 2));
 			input_vertices[i] = p;
 		}
 		for (size_t i = 0; i < nfaces; ++i)
@@ -356,7 +356,7 @@ struct PyNewtonBuilder
 		if (tets.ndim() != 2 || tets.shape(1) != 4)
 			throw std::runtime_error("tets must be a (M,4) array of ints");
 
-		using InputVertexType = std::array<float32_t, 3>;
+		using InputVertexType = std::array<float, 3>;
 		using InputTetType = std::array<uint32_t, 4>;
 
 		const size_t nverts = vertices.shape(0);
@@ -370,9 +370,9 @@ struct PyNewtonBuilder
 		for (size_t i = 0; i < nverts; ++i)
 		{
 			InputVertexType p;
-			p[0] = static_cast<float32_t>(buf_v(i, 0));
-			p[1] = static_cast<float32_t>(buf_v(i, 1));
-			p[2] = static_cast<float32_t>(buf_v(i, 2));
+			p[0] = static_cast<float>(buf_v(i, 0));
+			p[1] = static_cast<float>(buf_v(i, 1));
+			p[2] = static_cast<float>(buf_v(i, 2));
 			input_vertices[i] = p;
 		}
 		for (size_t i = 0; i < ntets; ++i)
