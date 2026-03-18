@@ -364,10 +364,10 @@ namespace lcs::Initializer
 					use_spring = mesh_info.get_material<ClothMaterial>().stretch_model
 						== ConstitutiveStretchModelCloth::Spring;
 				}
-				// else if (mesh_info.holds<TetMaterial>())
-				// {
-				//     use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
-				// }
+				else if (mesh_info.holds<TetMaterial>())
+				{
+					use_spring = mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Spring;
+				}
 				// else if (shell_info.holds<RigidMaterial>())
 				// {
 				//     use_spring = shell_info.get<RigidMaterial>().model == ConstitutiveModelRigid::Spring;
@@ -421,8 +421,10 @@ namespace lcs::Initializer
 				const uint	mesh_idx = mesh_data->sa_tet_mesh_id[tid];
 				const auto& mesh_info = world_data[mesh_idx];
 				bool		use_stress = mesh_info.holds<TetMaterial>()
-					&& mesh_info.get_material<TetMaterial>().model != ConstitutiveModelTet::Empty
-					&& mesh_info.get_material<TetMaterial>().model != ConstitutiveModelTet::Spring;
+					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::ARAP
+					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Corotated
+					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::StVK
+					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::StableNeoHookean;
 				uint4 tet = mesh_data->sa_tetrahedrons[tid];
 				bool  is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
 						 || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]]
@@ -666,13 +668,28 @@ namespace lcs::Initializer
 						lcs::length_vec(x1 - x2);
 
 					const auto& mesh_info = world_data[mesh_data->sa_edge_mesh_id[orig_eid]];
-					const auto& material = mesh_info.get_material<ClothMaterial>();
-
-					const float E = material.youngs_modulus;
-					const float nu = material.poisson_ratio;
-					auto [mu, lambda] = FemUtils::convert_lame_params_2d(E, nu);
-					mu = mu * material.thickness; // scale by thickness
-					stretch_spring_data.sa_stretch_spring_stiffness[eid] = mu;
+					float		stiffness = 1.0f;
+					if (mesh_info.holds<ClothMaterial>())
+					{
+						const auto& material = mesh_info.get_material<ClothMaterial>();
+						const float E = material.youngs_modulus;
+						const float nu = material.poisson_ratio;
+						auto [mu, lambda] = FemUtils::convert_lame_params_2d(E, nu);
+						stiffness = mu * material.thickness; // scale by thickness
+					}
+					else if (mesh_info.holds<TetMaterial>())
+					{
+						const auto& material = mesh_info.get_material<TetMaterial>();
+						const float E = material.youngs_modulus;
+						const float nu = material.poisson_ratio;
+						auto [mu, lambda] = FemUtils::convert_lame_params_3d(E, nu);
+						stiffness = mu;
+					}
+					else if (mesh_info.holds<RodMaterial>())
+					{
+						stiffness = mesh_info.get_material<RodMaterial>().bending_stiffness;
+					}
+					stretch_spring_data.sa_stretch_spring_stiffness[eid] = stiffness;
 				});
 
 			// Rest stretch face length

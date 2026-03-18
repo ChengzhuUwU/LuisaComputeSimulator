@@ -27,8 +27,10 @@ import lcs_py as lcs
 # CLI
 # --------------------------------------------------------------------------
 def parse_args():
+    import platform
     p = argparse.ArgumentParser(description="Tet simulation smoke test")
-    p.add_argument("--backend", default="metal",
+    default_backend = "metal" if platform.system() == "Darwin" else "cuda"
+    p.add_argument("--backend", default=default_backend,
                    choices=["cuda", "dx", "vk", "metal"])
     p.add_argument("--advance_frames", type=int, default=30)
     p.add_argument("--mesh", default="cube", choices=["single", "cube"],
@@ -48,12 +50,12 @@ def make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.4):
     s = scale
     # 8 corners of a cube
     verts = np.array([
-        # [cx - s, cy - s, cz - s],  # 0
-        # [cx + s, cy - s, cz - s],  # 1
-        # [cx + s, cy + s, cz - s],  # 2
+        [cx - s, cy - s, cz - s],  # 0
+        [cx + s, cy - s, cz - s],  # 1
+        [cx + s, cy + s, cz - s],  # 2
         [cx - s, cy + s, cz - s],  # 3
         [cx - s, cy - s, cz + s],  # 4
-        # [cx + s, cy - s, cz + s],  # 5
+        [cx + s, cy - s, cz + s],  # 5
         [cx + s, cy + s, cz + s],  # 6
         [cx - s, cy + s, cz + s],  # 7
     ], dtype=np.float64)
@@ -62,12 +64,12 @@ def make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.4):
 
     # Standard 5-tet decomposition of a cube
     tets = np.array([
-        [0, 1, 2, 3],
-        # [0, 1, 3, 4],
-        # [1, 4, 5, 6],
-        # [1, 3, 4, 6],
-        # [3, 4, 6, 7],
-        # [1, 2, 3, 6],
+        # [0, 1, 2, 3],
+        [0, 1, 3, 4],
+        [1, 4, 5, 6],
+        [1, 3, 4, 6],
+        [3, 4, 6, 7],
+        [1, 2, 3, 6],
     ], dtype=np.int32)
 
     return verts, tets
@@ -147,7 +149,7 @@ def main():
 
     tet_body = solver.create_world_data_from_tet_array("tet_cube", verts, tets)
     tet_body.set_physics_material_tet(
-        model="StableNeoHookean",
+        model="Spring",
         youngs_modulus=1e5,
         poisson_ratio=0.4,
     )

@@ -27,8 +27,10 @@ import lcs_py as lcs
 # CLI
 # --------------------------------------------------------------------------
 def parse_args():
+    import platform
     p = argparse.ArgumentParser(description="Tet simulation smoke test")
-    p.add_argument("--backend", default="metal",
+    default_backend = "metal" if platform.system() == "Darwin" else "cuda"
+    p.add_argument("--backend", default=default_backend,
                    choices=["cuda", "dx", "vk", "metal"])
     p.add_argument("--advance_frames", type=int, default=30)
     p.add_argument("--headless", action="store_true")
@@ -105,11 +107,11 @@ def main():
     config.use_gpu = False  # Force CPU mode
 
     # ---- Register random tet bodies (non-overlapping at init) ------------
-    num_bodies = 30
+    num_bodies = 20
     tet_scale = 0.2
     rng = np.random.default_rng(42)
 
-    base_verts, tets = make_unit_tet_cube2(center=(0.0, 0.0, 0.0), scale=tet_scale)
+    base_verts, tets = make_unit_tet_cube(center=(0.0, 0.0, 0.0), scale=tet_scale)
     tet_centroid = base_verts.mean(axis=0)
     tet_radius = np.linalg.norm(base_verts - tet_centroid, axis=1).max()
     min_center_dist = 2.2 * tet_radius
@@ -121,7 +123,7 @@ def main():
             break
         candidate = np.array([
             rng.uniform(-1.0, 1.0),
-            rng.uniform(0.8, 3.0),
+            rng.uniform(1.5, 7.0),
             rng.uniform(-1.0, 1.0),
         ], dtype=np.float64)
         if all(np.linalg.norm(candidate - c) >= min_center_dist for c in centers):
@@ -134,11 +136,11 @@ def main():
 
     reg_ids = []
     for i, c in enumerate(centers):
-        verts, _ = make_unit_tet_cube2(center=tuple(c.tolist()), scale=tet_scale)
+        verts, _ = make_unit_tet_cube(center=tuple(c.tolist()), scale=tet_scale)
         tet_body = solver.create_world_data_from_tet_array(f"tet_{i:02d}", verts, tets)
         tet_body.set_physics_material_tet(
-            model="StableNeoHookean",
-            youngs_modulus=1e4,
+            model="Spring",
+            youngs_modulus=1e5,
             poisson_ratio=0.4,
         )
         reg_id = solver.register_world_data(tet_body)

@@ -256,7 +256,7 @@ namespace lcs
 								})
 							/ float(curr_num_edges);
 
-						LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, numTets = {:5} avgEdgeLength = {:2.4f}, AABB range = {}",
+						LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, numTets = {:5}, avgEdgeLength = {:2.4f}, AABB range = {}",
 							meshIdx,
 							curr_num_verts,
 							curr_num_faces,

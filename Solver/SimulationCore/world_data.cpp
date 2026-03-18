@@ -9,6 +9,45 @@
 
 namespace lcs::Initializer // WorldData
 {
+	static std::vector<SimMesh::Int2> extract_all_edges_from_tets(const std::vector<SimMesh::Int4>& tets)
+	{
+		std::vector<SimMesh::Int2> edges;
+		edges.reserve(tets.size() * 6);
+
+		auto push_edge = [&](uint v0, uint v1)
+		{
+			if (v0 > v1)
+				std::swap(v0, v1);
+			edges.push_back({ v0, v1 });
+		};
+
+		for (const auto& tet : tets)
+		{
+			push_edge(tet[0], tet[1]);
+			push_edge(tet[0], tet[2]);
+			push_edge(tet[0], tet[3]);
+			push_edge(tet[1], tet[2]);
+			push_edge(tet[1], tet[3]);
+			push_edge(tet[2], tet[3]);
+		}
+
+		std::sort(edges.begin(),
+			edges.end(),
+			[](const SimMesh::Int2& lhs, const SimMesh::Int2& rhs)
+			{
+				if (lhs[0] != rhs[0])
+					return lhs[0] < rhs[0];
+				return lhs[1] < rhs[1];
+			});
+		edges.erase(std::unique(edges.begin(),
+						edges.end(),
+						[](const SimMesh::Int2& lhs, const SimMesh::Int2& rhs)
+						{ return lhs[0] == rhs[0] && lhs[1] == rhs[1]; }),
+			edges.end());
+
+		return edges;
+	}
+
 	struct AABB
 	{
 		float3 packed_min;
@@ -356,14 +395,17 @@ namespace lcs::Initializer // WorldData
 		// 4. Use surface_faces as the triangle mesh faces (for rendering, collision, etc.)
 		input_mesh.faces = input_mesh.surface_faces;
 
-		// 5. Extract edges (including dihedral/bending edges) from surface faces
-		SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.edges, input_mesh.dihedral_edges, true);
+		// 5. Extract surface edges from surface faces (for collision/rendering adjacency)
+		SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.surface_edges, input_mesh.dihedral_edges, true);
 
-		// 6. Mark material type
+		// 6. Extract full tet edges (including interior edges) for spring constraints
+		input_mesh.edges = extract_all_edges_from_tets(input_mesh.tetrahedrons);
+
+		// 7. Mark material type
 		material_type = Material::MaterialType::Tetrahedral;
 
-		LUISA_INFO("Loaded tet mesh from array: {} verts, {} tets, {} surface faces, {} edges",
-			vertices.size(), tets.size(), input_mesh.faces.size(), input_mesh.edges.size());
+		LUISA_INFO("Loaded tet mesh from array: {} verts, {} tets, {} edges, {} surface faces, {} surface edges",
+			vertices.size(), tets.size(), input_mesh.edges.size(), input_mesh.surface_faces.size(), input_mesh.surface_edges.size());
 
 		return *this;
 	}
