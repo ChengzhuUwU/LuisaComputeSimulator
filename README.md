@@ -17,16 +17,16 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 ## ✨ Features
 
-| Feature | Description |
-|---------|-------------|
-| **Cloth Simulation** | High-resolution cloth with various constitutive models (Spring, Finite-Element, etc.) |
-| **Rigid Body Dynamics** | Rigid body simulation with collision and friction |
-| **Cloth-Rigid Coupling** | Seamless interaction between soft and rigid bodies |
-| **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions |
-| **Affine Body Dynamics (ABD)** | Efficient reduced-space simulation for rigid bodies |
-| **Multi-Backend Support** | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback) |
-| **Python & C++ APIs** | Flexible programming interfaces for different use cases |
-| **Interactive GUI** | Real-time visualization with Polyscope |
+| Feature                            | Description                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| **Cloth Simulation**               | High-resolution cloth with various constitutive models (Spring, Finite-Element, etc.) |
+| **Rigid Body Dynamics**            | Rigid body simulation with collision and friction                                     |
+| **Cloth-Rigid Coupling**           | Seamless interaction between soft and rigid bodies                                    |
+| **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions                                     |
+| **Affine Body Dynamics (ABD)**     | Efficient reduced-space simulation for rigid bodies                                   |
+| **Multi-Backend Support**          | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback)                                       |
+| **Python & C++ APIs**              | Flexible programming interfaces for different use cases                               |
+| **Interactive GUI**                | Real-time visualization with Polyscope                                                |
 
 ### Supported Physics
 
@@ -37,7 +37,7 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 - ✅ Frictional Contact
 - ✅ Continuous Collision Detection (CCD)
 - ✅ Fixed Point / Pinned Constraints
-- 🔄 Tetrahedral Mesh (In Development)
+- ✅ Tetrahedral Mesh (In Development)
 - 🔄 Joint Constraints (Planned)
 
 ## Usage
@@ -280,51 +280,51 @@ int main(int argc, char** argv) {
 
 Pre-built scenes in `Resources/Scenes/`:
 
-| Scene File | Description | Mesh Size |
-|------------|-------------|-----------|
-| `cloth_rigid_coupling_high_res.json` | High-res cloth dropping on rigid cube | 88K vertices |
-| `cloth_rigid_coupling_drop.json` | Cloth falling onto cube | ~2K vertices |
-| `cloth_rotation_cylinder.json` | Cloth wrapping around rotating cylinder | 7K / 88K / 260K |
-| `cloth_pinned.json` | Pinned cloth with different materials | ~2K vertices |
-| `cloth_friction.json` | Cloth with frictional contact | ~2K vertices |
-| `rigid_folding_cubes.json` | Multiple folding rigid cubes | 3 cubes |
-| `rigid_multi_folding_cubes.json` | Many folding cubes | 8 cubes |
-| `rigid_bucket.json` | Rigid objects in bucket | ~1K vertices |
-| `rigid_frictional_test.json` | Frictional sliding test | - |
+| Scene File                           | Description                             | Mesh Size       |
+| ------------------------------------ | --------------------------------------- | --------------- |
+| `cloth_rigid_coupling_high_res.json` | High-res cloth dropping on rigid cube   | 88K vertices    |
+| `cloth_rigid_coupling_drop.json`     | Cloth falling onto cube                 | ~2K vertices    |
+| `cloth_rotation_cylinder.json`       | Cloth wrapping around rotating cylinder | 7K / 88K / 260K |
+| `cloth_pinned.json`                  | Pinned cloth with different materials   | ~2K vertices    |
+| `cloth_friction.json`                | Cloth with frictional contact           | ~2K vertices    |
+| `rigid_folding_cubes.json`           | Multiple folding rigid cubes            | 3 cubes         |
+| `rigid_multi_folding_cubes.json`     | Many folding cubes                      | 8 cubes         |
+| `rigid_bucket.json`                  | Rigid objects in bucket                 | ~1K vertices    |
+| `rigid_frictional_test.json`         | Frictional sliding test                 | -               |
 
 ---
 
 ## 🖥️ Supported Backends
 
-|   Backend |  Windows   | Linux     |  MacOS  | Description |
-|  -----    |  ------    |  ------   |  ------ |      ------ |
-| CUDA      | Supported  | Supported |         | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0) | 
-| Vulkan    | Supported  | Experimental | Developing  | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development | 
-| DirectX12 | Supported  |           |           |   | 
-| Metal     |            |           | Supported |   | 
-| Fallback  | Supported  | Supported | Supported | CPU fallback via TBB/Embree. Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
+| Backend   | Windows   | Linux        | MacOS      | Description                                                                                                                                                       |
+| --------- | --------- | ------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CUDA      | Supported | Supported    |            | Requires [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) (CUDA > 12.0)                                                                          |
+| Vulkan    | Supported | Experimental | Developing | Requires [vulkan SDK](https://vulkan.lunarg.com/). Linux (currently for x86_64 only) and Macos is in development                                                  |
+| DirectX12 | Supported |              |            |                                                                                                                                                                   |
+| Metal     |           |              | Supported  |                                                                                                                                                                   |
+| Fallback  | Supported | Supported    | Supported  | CPU fallback via TBB/Embree. Requires [llvm](https://llvm.org/), [TBB](https://github.com/uxlfoundation/oneTBB) and [Embree](https://github.com/RenderKit/embree) |
 
 ---
 
 ## 📊 Gallery
 
 ### Rotation Cylinder Demo
-| 88K vertices, 174K triangles, 3M+ collision pairs |
-|  -----   |
-| ![Rotation](Document/Images/RotationCylinder60s.gif)  |
+| 88K vertices, 174K triangles, 3M+ collision pairs           |
+| ----------------------------------------------------------- |
+| ![Rotation](Document/Images/RotationCylinder60s.gif)        |
 | **~3 FPS on RTX 3090 (CUDA)**, **~2 FPS on M2 Max (Metal)** |
 
 ### More Examples
 
-| Scene | Preview | Description |
-|-------|---------|-------------|
-| [Cloth-Rigid Coupling](Resources/Scenes/cloth_rigid_coupling_high_res.json) | ![](Document/Images/4.png) | High-res cloth on rigid cube |
-| [Rotation Cylinder 7K](Resources/Scenes/cloth_rotation_cylinder_7K.json) | ![](Document/Images/5.png) | Cloth wrapping cylinder |
-| [Pinned Cloth](Resources/Scenes/cloth_pinned.json) | ![](Document/Images/1.png) | Different material properties |
-| [Moving Boundary](Resources/Scenes/cloth_moving_boundary.json) | ![](Document/Images/0_ed.png) | Dynamic Dirichlet boundary |
-| [Rigid Bucket](Resources/Scenes/rigid_bucket.json) | ![](Document/Images/11.png) | Multi-body collision |
-| [Folding Cubes](Resources/Scenes/rigid_multi_folding_cubes.json) | ![](Document/Images/13.png) | Self-collision folding |
-| [Friction Test](Resources/Scenes/rigid_frictional_test.json) | ![](Document/Images/18.png) | Frictional contact |
+| Scene                                                                       | Preview                       | Description                   |
+| --------------------------------------------------------------------------- | ----------------------------- | ----------------------------- |
+| [Cloth-Rigid Coupling](Resources/Scenes/cloth_rigid_coupling_high_res.json) | ![](Document/Images/4.png)    | High-res cloth on rigid cube  |
+| [Rotation Cylinder 7K](Resources/Scenes/cloth_rotation_cylinder_7K.json)    | ![](Document/Images/5.png)    | Cloth wrapping cylinder       |
+| [Pinned Cloth](Resources/Scenes/cloth_pinned.json)                          | ![](Document/Images/1.png)    | Different material properties |
+| [Moving Boundary](Resources/Scenes/cloth_moving_boundary.json)              | ![](Document/Images/0_ed.png) | Dynamic Dirichlet boundary    |
+| [Rigid Bucket](Resources/Scenes/rigid_bucket.json)                          | ![](Document/Images/11.png)   | Multi-body collision          |
+| [Folding Cubes](Resources/Scenes/rigid_multi_folding_cubes.json)            | ![](Document/Images/13.png)   | Self-collision folding        |
+| [Friction Test](Resources/Scenes/rigid_frictional_test.json)                | ![](Document/Images/18.png)   | Frictional contact            |
 
 ---
 

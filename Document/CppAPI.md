@@ -127,12 +127,12 @@ WorldData& load_tet_mesh_from_array(
 
 ### Enum: `lcs::Material::MaterialType`
 
-| Type | Description |
-|------|-------------|
-| `Cloth` | Cloth/soft body simulation |
-| `Rigid` | Rigid body simulation |
+| Type          | Description                 |
+| ------------- | --------------------------- |
+| `Cloth`       | Cloth/soft body simulation  |
+| `Rigid`       | Rigid body simulation       |
 | `Tetrahedral` | Tetrahedral volumetric mesh |
-| `Rod` | Elastic rod simulation |
+| `Rod`         | Elastic rod simulation      |
 
 **Usage:**
 ```cpp
@@ -281,15 +281,15 @@ auto config = solver.get_config();
 
 ### Configurable Properties
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `use_floor` | bool | `true` | Enable ground collision |
-| `implicit_dt` | float | `1/60` | Time step (seconds) |
-| `use_energy_linesearch` | bool | `true` | Enable line search |
-| `gravity` | float3 | `{0, -9.8, 0}` | Gravity vector |
-| `contact_stiffness` | float | `1e2` | Contact stiffness |
-| `dhat` | float | `0.001` | Barrier parameter |
-| `max_iterations` | int | `100` | Newton iterations |
+| Property                | Type   | Default        | Description             |
+| ----------------------- | ------ | -------------- | ----------------------- |
+| `use_floor`             | bool   | `true`         | Enable ground collision |
+| `implicit_dt`           | float  | `1/60`         | Time step (seconds)     |
+| `use_energy_linesearch` | bool   | `true`         | Enable line search      |
+| `gravity`               | float3 | `{0, -9.8, 0}` | Gravity vector          |
+| `contact_stiffness`     | float  | `1e2`          | Contact stiffness       |
+| `dhat`                  | float  | `0.001`        | Barrier parameter       |
+| `max_iterations`        | int    | `100`          | Newton iterations       |
 
 **Example:**
 ```cpp

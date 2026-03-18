@@ -4,13 +4,13 @@ This guide covers building LuisaComputeSimulator on different platforms and conf
 
 ## Requirements
 
-| Requirement | Minimum Version | Notes |
-|-------------|-----------------|-------|
-| CMake | 3.26+ | |
-| C++ Compiler | C++20 capable | Clang 15+, GCC 13+ |
-| CUDA (optional) | 12.0+ | For CUDA backend |
-| Vulkan SDK (optional) | 1.3+ | For Vulkan backend |
-| Python 3.8+ | | For Python bindings |
+| Requirement           | Minimum Version | Notes               |
+| --------------------- | --------------- | ------------------- |
+| CMake                 | 3.26+           |                     |
+| C++ Compiler          | C++20 capable   | Clang 15+, GCC 13+  |
+| CUDA (optional)       | 12.0+           | For CUDA backend    |
+| Vulkan SDK (optional) | 1.3+            | For Vulkan backend  |
+| Python 3.8+           |                 | For Python bindings |
 
 ### Platform-Specific Requirements
 
@@ -69,19 +69,19 @@ xmake build
 
 ### CMake Flags
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-DCMAKE_BUILD_TYPE` | Build type: `Release`/`Debug` | `Release` |
-| `-DCMAKE_C_COMPILER` | C compiler | auto-detect |
-| `-DCMAKE_CXX_COMPILER` | C++ compiler | auto-detect |
-| `-G Ninja` | Use Ninja generator | |
-| `-D LUISA_COMPUTE_ENABLE_CUDA` | Enable CUDA backend | `ON` |
-| `-D LUISA_COMPUTE_ENABLE_VULKAN` | Enable Vulkan backend | `OFF` |
-| `-D LUISA_COMPUTE_ENABLE_METAL` | Enable Metal backend | `ON` (macOS) |
-| `-D LUISA_COMPUTE_ENABLE_DX` | Enable DirectX backend | `ON` (Windows) |
-| `-D LCS_BUILD_PYBINDINGS` | Build Python bindings | `OFF` |
-| `-D LCS_PYTHON_EXECUTABLE` | Python interpreter path | |
-| `-D LCS_ENABLE_GUI` | Enable GUI (Polyscope) | `ON` |
+| Option                           | Description                   | Default        |
+| -------------------------------- | ----------------------------- | -------------- |
+| `-DCMAKE_BUILD_TYPE`             | Build type: `Release`/`Debug` | `Release`      |
+| `-DCMAKE_C_COMPILER`             | C compiler                    | auto-detect    |
+| `-DCMAKE_CXX_COMPILER`           | C++ compiler                  | auto-detect    |
+| `-G Ninja`                       | Use Ninja generator           |                |
+| `-D LUISA_COMPUTE_ENABLE_CUDA`   | Enable CUDA backend           | `ON`           |
+| `-D LUISA_COMPUTE_ENABLE_VULKAN` | Enable Vulkan backend         | `OFF`          |
+| `-D LUISA_COMPUTE_ENABLE_METAL`  | Enable Metal backend          | `ON` (macOS)   |
+| `-D LUISA_COMPUTE_ENABLE_DX`     | Enable DirectX backend        | `ON` (Windows) |
+| `-D LCS_BUILD_PYBINDINGS`        | Build Python bindings         | `OFF`          |
+| `-D LCS_PYTHON_EXECUTABLE`       | Python interpreter path       |                |
+| `-D LCS_ENABLE_GUI`              | Enable GUI (Polyscope)        | `ON`           |
 
 ### Build Examples
 

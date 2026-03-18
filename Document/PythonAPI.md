@@ -269,15 +269,15 @@ config = solver.get_config()
 
 **Configurable Properties:**
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `use_floor` | bool | `True` | Enable ground collision |
-| `implicit_dt` | float | `1/60` | Time step size (seconds) |
-| `use_energy_linesearch` | bool | `True` | Enable line search |
-| `gravity` | tuple | `(0, -9.8, 0)` | Gravity vector |
-| `contact_stiffness` | float | `1e2` | Contact barrier stiffness |
-| `dhat` | float | `0.001` | Barrier function parameter |
-| `max_iterations` | int | `100` | Newton solver iterations |
+| Property                | Type  | Default        | Description                |
+| ----------------------- | ----- | -------------- | -------------------------- |
+| `use_floor`             | bool  | `True`         | Enable ground collision    |
+| `implicit_dt`           | float | `1/60`         | Time step size (seconds)   |
+| `use_energy_linesearch` | bool  | `True`         | Enable line search         |
+| `gravity`               | tuple | `(0, -9.8, 0)` | Gravity vector             |
+| `contact_stiffness`     | float | `1e2`          | Contact barrier stiffness  |
+| `dhat`                  | float | `0.001`        | Barrier function parameter |
+| `max_iterations`        | int   | `100`          | Newton solver iterations   |
 
 **Example:**
 ```python
@@ -463,8 +463,8 @@ When running Python scripts, the following arguments are supported:
 python script.py --backend cuda --headless --advance_frames 60
 ```
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--backend` | Backend to use (`cuda`, `dx`, `vk`, `metal`) | `cuda` |
-| `--headless` | Run without GUI | `False` |
-| `--advance_frames` | Number of frames to simulate | `30` |
+| Argument           | Description                                  | Default |
+| ------------------ | -------------------------------------------- | ------- |
+| `--backend`        | Backend to use (`cuda`, `dx`, `vk`, `metal`) | `cuda`  |
+| `--headless`       | Run without GUI                              | `False` |
+| `--advance_frames` | Number of frames to simulate                 | `30`    |
