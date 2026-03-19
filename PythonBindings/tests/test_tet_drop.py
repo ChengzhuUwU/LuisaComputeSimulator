@@ -139,7 +139,7 @@ def main():
         verts, _ = make_unit_tet_cube(center=tuple(c.tolist()), scale=tet_scale)
         tet_body = solver.create_world_data_from_tet_array(f"tet_{i:02d}", verts, tets)
         tet_body.set_physics_material_tet(
-            model="Spring",
+            model="ARAP",
             youngs_modulus=1e5,
             poisson_ratio=0.4,
         )
