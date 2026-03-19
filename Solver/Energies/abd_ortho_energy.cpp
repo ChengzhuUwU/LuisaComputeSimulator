@@ -1,4 +1,5 @@
 #include "abd_ortho_energy.h"
+#include "Energies/detail/abd_ortho_energy.hpp"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -36,17 +37,8 @@ namespace lcs
 					A[0] = sa_q->read(indices[0]);
 					A[1] = sa_q->read(indices[1]);
 					A[2] = sa_q->read(indices[2]);
-					for (uint ii = 0; ii < 3; ii++)
-					{
-						for (uint jj = 0; jj < 3; jj++)
-						{
-							Float term = dot(A[ii], A[jj]) - (ii == jj ? 1.0f : 0.0f);
-							energy += term * term;
-						}
-					}
-					Float stiffness_ortho = abd_kappa->read(body_idx);
-					Float volume = abd_volume->read(body_idx);
-					energy *= stiffness_ortho * volume;
+					const Float stiffness = abd_kappa->read(body_idx) * abd_volume->read(body_idx);
+					energy = detail::abd_ortho_energy::compute_energy(A, stiffness);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
@@ -71,83 +63,24 @@ namespace lcs
 
 				const UInt body_idx = dispatch_id().x;
 
-				Float3	 ortho_gradient[3] = { Zero3 };
-				Float3x3 ortho_hessian[6] = { Zero3x3 };
-
 				const Uint3 indices = abd_indices->read(body_idx);
 
 				Float3x3 A = make_float3x3(sa_q->read(indices[0]), sa_q->read(indices[1]), sa_q->read(indices[2]));
 
 				const Float kappa = abd_kappa->read(body_idx);
 				const Float V = abd_volume->read(body_idx);
+				const Float stiffness = kappa * V;
+				auto		eval = detail::abd_ortho_energy::evaluate<Float, Float3, Float3x3>(A, stiffness, make_float3x3(1.0f));
 
-				Float stiff = kappa * V;
-				for (uint ii = 0; ii < 3; ii++)
-				{
-					Float3 grad = (-1.0f) * A[ii];
-					for (uint jj = 0; jj < 3; jj++)
-					{
-						grad += dot_vec(A[ii], A[jj]) * A[jj];
-					}
-					ortho_gradient[ii] += 4.0f * stiff * grad;
-				}
-				uint idx = 0;
-				for (uint ii = 0; ii < 3; ii++)
-				{
-					for (uint jj = ii; jj < 3; jj++)
-					{
-						Float3x3 hessian = Zero3x3;
-						if (ii == jj)
-						{
-							Float3x3 qiqiT = outer_product(A[ii], A[ii]);
-							Float3x3 qiTqi = (dot_vec(A[ii], A[ii]) - 1.0f) * Identity3x3;
-							hessian = qiqiT + qiTqi;
-							for (uint kk = 0; kk < 3; kk++)
-							{
-								hessian = hessian + outer_product(A[kk], A[kk]);
-							}
-						}
-						else
-						{
-							hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
-						}
-						ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
-						idx += 1;
-					}
-				}
-
-				auto write_to_grad = [&](const uint i)
-				{ abd_gradients->write(3 * body_idx + i, ortho_gradient[i]); };
-				auto read_hess_block = [&](const uint ii, const uint jj) -> Float3x3
-				{
-					if (ii == 0 && jj == 0)
-						return ortho_hessian[0];
-					if (ii == 0 && jj == 1)
-						return ortho_hessian[1];
-					if (ii == 0 && jj == 2)
-						return ortho_hessian[2];
-					if (ii == 1 && jj == 0)
-						return transpose(ortho_hessian[1]);
-					if (ii == 1 && jj == 1)
-						return ortho_hessian[3];
-					if (ii == 1 && jj == 2)
-						return ortho_hessian[4];
-					if (ii == 2 && jj == 0)
-						return transpose(ortho_hessian[2]);
-					if (ii == 2 && jj == 1)
-						return transpose(ortho_hessian[4]);
-					return ortho_hessian[5];
-				};
-
-				write_to_grad(0);
-				write_to_grad(1);
-				write_to_grad(2);
+				abd_gradients->write(3 * body_idx + 0, eval.gradients[0]);
+				abd_gradients->write(3 * body_idx + 1, eval.gradients[1]);
+				abd_gradients->write(3 * body_idx + 2, eval.gradients[2]);
 
 				for (uint ii = 0; ii < 3; ii++)
 				{
 					for (uint jj = 0; jj < 3; jj++)
 					{
-						abd_hessians->write(9 * body_idx + ii * 3 + jj, read_hess_block(ii, jj));
+						abd_hessians->write(9 * body_idx + ii * 3 + jj, eval.hessians[ii * 3 + jj]);
 					}
 				}
 			},
@@ -197,9 +130,6 @@ namespace lcs
 					sa_affine_bodies_volume = std::span(abd_data.abd_volume),
 					abd_ortho_indices = std::span(abd_data.constraint_indices)](const uint body_idx)
 				{
-					float3	 ortho_gradient[3] = { Zero3 };
-					float3x3 ortho_hessian[6] = { Zero3x3 };
-
 					const float substep_dt = get_scene_params().get_substep_dt();
 					const float h = substep_dt;
 					const float h_2_inv = 1.f / (h * h);
@@ -210,72 +140,19 @@ namespace lcs
 					const float kappa = sa_affine_bodies_kappa[body_idx];
 					const float V = sa_affine_bodies_volume[body_idx];
 
-					float stiff = kappa * V;
-					for (uint ii = 0; ii < 3; ii++)
-					{
-						float3 grad = (-1.0f) * A[ii];
-						for (uint jj = 0; jj < 3; jj++)
-						{
-							grad += dot_vec(A[ii], A[jj]) * A[jj];
-						}
-						ortho_gradient[ii] += 4.0f * stiff * grad;
-					}
-					uint idx = 0;
-					for (uint ii = 0; ii < 3; ii++)
-					{
-						for (uint jj = ii; jj < 3; jj++)
-						{
-							float3x3 hessian = Zero3x3;
-							if (ii == jj)
-							{
-								float3x3 qiqiT = outer_product(A[ii], A[ii]);
-								float3x3 qiTqi = (dot_vec(A[ii], A[ii]) - 1.0f) * Identity3x3;
-								hessian = qiqiT + qiTqi;
-								for (uint kk = 0; kk < 3; kk++)
-								{
-									hessian = hessian + outer_product(A[kk], A[kk]);
-								}
-							}
-							else
-							{
-								hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
-							}
-							ortho_hessian[idx] = ortho_hessian[idx] + 4.0f * stiff * hessian;
-							idx += 1;
-						}
-					}
+					const float stiff = kappa * V;
+					auto		eval = detail::abd_ortho_energy::evaluate<float, float3, float3x3>(A, stiff, float3x3::eye(1.0f));
 
 					auto* body_grad_ptr = &abd_gradients[3 * body_idx];
-					body_grad_ptr[0] = ortho_gradient[0];
-					body_grad_ptr[1] = ortho_gradient[1];
-					body_grad_ptr[2] = ortho_gradient[2];
-
-					auto read_hess_block = [&](const uint ii, const uint jj) -> float3x3
-					{
-						if (ii == 0 && jj == 0)
-							return ortho_hessian[0];
-						if (ii == 0 && jj == 1)
-							return ortho_hessian[1];
-						if (ii == 0 && jj == 2)
-							return ortho_hessian[2];
-						if (ii == 1 && jj == 0)
-							return transpose(ortho_hessian[1]);
-						if (ii == 1 && jj == 1)
-							return ortho_hessian[3];
-						if (ii == 1 && jj == 2)
-							return ortho_hessian[4];
-						if (ii == 2 && jj == 0)
-							return transpose(ortho_hessian[2]);
-						if (ii == 2 && jj == 1)
-							return transpose(ortho_hessian[4]);
-						return ortho_hessian[5];
-					};
+					body_grad_ptr[0] = eval.gradients[0];
+					body_grad_ptr[1] = eval.gradients[1];
+					body_grad_ptr[2] = eval.gradients[2];
 
 					for (uint ii = 0; ii < 3; ii++)
 					{
 						for (uint jj = 0; jj < 3; jj++)
 						{
-							abd_hessians[9 * body_idx + ii * 3 + jj] = read_hess_block(ii, jj);
+							abd_hessians[9 * body_idx + ii * 3 + jj] = eval.hessians[ii * 3 + jj];
 						}
 					}
 				},

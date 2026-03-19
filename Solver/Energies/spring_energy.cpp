@@ -1,4 +1,5 @@
 #include "spring_energy.h"
+#include "Energies/detail/stretch_spring_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 
@@ -26,14 +27,13 @@ namespace lcs
 				const Uint eid = dispatch_id().x;
 				Float	   energy = 0.0f;
 				{
-					const Uint2 edge = sa_edges->read(eid);
-					const Float rest_edge_length = sa_edge_rest_state_length->read(eid);
-					Float3		diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
-					Float		orig_lengthsqr = length_squared_vec(diff);
-					Float		l = sqrt_scalar(orig_lengthsqr);
-					Float		l0 = rest_edge_length;
-					Float		C = l - l0;
-					energy = 0.5f * sa_stretch_spring_stiffness->read(eid) * C * C;
+					const Uint2	 edge = sa_edges->read(eid);
+					const Float	 rest_edge_length = sa_edge_rest_state_length->read(eid);
+					const Float3 diff = sa_x->read(edge[1]) - sa_x->read(edge[0]);
+					const Float	 l = sqrt_scalar(length_squared_vec(diff));
+					const Float	 C = l - rest_edge_length;
+					const Float	 stiffness = sa_stretch_spring_stiffness->read(eid);
+					energy = detail::stretch_spring_energy::compute_energy(stiffness, C);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -59,37 +59,36 @@ namespace lcs
 				const UInt eid = dispatch_id().x;
 				UInt2	   edge = sa_edges->read(eid);
 
-				Float3	 vert_pos[2] = { sa_x_in->read(edge.x), sa_x_in->read(edge.y) };
-				Float3	 gradients[2] = { make_float3(0.0f), make_float3(0.0f) };
-				Float3x3 He = make_float3x3(0.0f);
+				Float3 vert_pos[2] = { sa_x_in->read(edge.x), sa_x_in->read(edge.y) };
 
 				const Float L = sa_rest_length->read(eid);
 				const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
 
 				Float3 diff = vert_pos[0] - vert_pos[1];
 				Float  l = max(length(diff), Epsilon);
-				Float  l0 = L;
-				Float  C = l - l0;
+				Float  C = l - L;
 
-				Float3	 dir = diff / l;
-				Float3x3 xxT = outer_product(diff, diff);
-				Float	 x_inv = 1.f / l;
-				Float	 x_squared_inv = x_inv * x_inv;
+				Float3 dir = diff / l;
+				Float  x_inv = 1.f / l;
+				Float  tangent_weight = max(1.0f - L * x_inv, 0.0f);
 
-				gradients[0] = stiffness_spring * dir * C;
-				gradients[1] = -gradients[0];
-				He = stiffness_spring * x_squared_inv * xxT
-					+ stiffness_spring * max(1.0f - L * x_inv, 0.0f) * (make_float3x3(1.0f) - x_squared_inv * xxT);
+				const detail::stretch_spring_energy::Input<Float, Float3> input{
+					.direction = dir,
+					.stretch_constraint = C,
+					.stiffness = stiffness_spring,
+					.tangent_weight = tangent_weight
+				};
+				auto eval = detail::stretch_spring_energy::evaluate(input, make_float3x3(1.0f));
 
 				// Output
 				{
-					output_gradient_ptr->write(eid * 2 + 0, gradients[0]);
-					output_gradient_ptr->write(eid * 2 + 1, gradients[1]);
+					output_gradient_ptr->write(eid * 2 + 0, eval.gradients[0]);
+					output_gradient_ptr->write(eid * 2 + 1, eval.gradients[1]);
 
-					output_hessian_ptr->write(eid * 4 + 0, He);			// (0, 0)
-					output_hessian_ptr->write(eid * 4 + 1, -1.0f * He); // (0, 1)
-					output_hessian_ptr->write(eid * 4 + 2, -1.0f * He); // (1, 0)
-					output_hessian_ptr->write(eid * 4 + 3, He);			// (1, 1)
+					output_hessian_ptr->write(eid * 4 + 0, eval.hessians[0]); // (0, 0)
+					output_hessian_ptr->write(eid * 4 + 1, eval.hessians[1]); // (0, 1)
+					output_hessian_ptr->write(eid * 4 + 2, eval.hessians[2]); // (1, 0)
+					output_hessian_ptr->write(eid * 4 + 3, eval.hessians[3]); // (1, 1)
 				}
 			},
 			default_option);
@@ -136,35 +135,34 @@ namespace lcs
 			{
 				uint2 edge = sa_edges[eid];
 
-				float3	 vert_pos[2] = { sa_x[edge[0]], sa_x[edge[1]] };
-				float3	 gradients[2] = { Zero3, Zero3 };
-				float3x3 He = luisa::make_float3x3(0.0f);
+				float3 vert_pos[2] = { sa_x[edge[0]], sa_x[edge[1]] };
 
 				const float L = sa_rest_length[eid];
 				const float stiffness_stretch_spring = sa_stretch_spring_stiffness[eid];
 
 				float3 diff = vert_pos[0] - vert_pos[1];
 				float  l = max_scalar(length_vec(diff), Epsilon);
-				float  l0 = L;
-				float  C = l - l0;
+				float  C = l - L;
 
-				float3	 dir = diff / l;
-				float3x3 nnT = outer_product(dir, dir);
-				float	 x_inv = 1.f / l;
+				float3 dir = diff / l;
+				float  x_inv = 1.f / l;
+				float  tangent_weight = max_scalar(1.0f - L * x_inv, 0.0f);
 
-				gradients[0] = stiffness_stretch_spring * dir * C;
-				gradients[1] = -gradients[0];
-				He = stiffness_stretch_spring * nnT
-					+ stiffness_stretch_spring * max_scalar(1.0f - L * x_inv, 0.0f)
-						* (luisa::make_float3x3(1.0f) - nnT);
+				const detail::stretch_spring_energy::Input<float, float3> input{
+					.direction = dir,
+					.stretch_constraint = C,
+					.stiffness = stiffness_stretch_spring,
+					.tangent_weight = tangent_weight
+				};
+				auto eval = detail::stretch_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
 
-				output_gradient_ptr[eid * 2 + 0] = gradients[0];
-				output_gradient_ptr[eid * 2 + 1] = gradients[1];
+				output_gradient_ptr[eid * 2 + 0] = eval.gradients[0];
+				output_gradient_ptr[eid * 2 + 1] = eval.gradients[1];
 
-				output_hessian_ptr[eid * 4 + 0] = He;
-				output_hessian_ptr[eid * 4 + 1] = -1.0f * He;
-				output_hessian_ptr[eid * 4 + 2] = -1.0f * He;
-				output_hessian_ptr[eid * 4 + 3] = He;
+				output_hessian_ptr[eid * 4 + 0] = eval.hessians[0];
+				output_hessian_ptr[eid * 4 + 1] = eval.hessians[1];
+				output_hessian_ptr[eid * 4 + 2] = eval.hessians[2];
+				output_hessian_ptr[eid * 4 + 3] = eval.hessians[3];
 			});
 	}
 

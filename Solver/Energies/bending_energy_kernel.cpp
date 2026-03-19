@@ -1,4 +1,5 @@
 #include "bending_energy_kernel.h"
+#include "Energies/detail/bending_energy.hpp"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -37,7 +38,8 @@ namespace lcs
 						BendingEnergyUtils::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
 					Float delta_angle = angle - rest_angle;
 					Float area = sa_bending_edges_rest_area->read(eid);
-					energy = 0.5f * sa_bending_edges_stiffness->read(eid) * scaling * area * delta_angle * delta_angle;
+					Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
+					energy = detail::bending_energy::compute_energy(delta_angle, stiff);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -84,19 +86,18 @@ namespace lcs
 				const Float area = sa_bending_edges_rest_area->read(eid);
 				const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
 
+				auto eval = detail::bending_energy::evaluate<Float, Float3, Float3x3>(gradients, delta_angle, stiff);
 				{
-					output_gradient_ptr->write(eid * 4 + 0, stiff * delta_angle * gradients[0]);
-					output_gradient_ptr->write(eid * 4 + 1, stiff * delta_angle * gradients[1]);
-					output_gradient_ptr->write(eid * 4 + 2, stiff * delta_angle * gradients[2]);
-					output_gradient_ptr->write(eid * 4 + 3, stiff * delta_angle * gradients[3]);
+					output_gradient_ptr->write(eid * 4 + 0, eval.gradients[0]);
+					output_gradient_ptr->write(eid * 4 + 1, eval.gradients[1]);
+					output_gradient_ptr->write(eid * 4 + 2, eval.gradients[2]);
+					output_gradient_ptr->write(eid * 4 + 3, eval.gradients[3]);
 
-					auto outer = [&](const uint ii, const uint jj) -> Float3x3
-					{ return stiff * outer_product(gradients[ii], gradients[jj]); };
 					for (uint ii = 0; ii < 4; ii++)
 					{
 						for (uint jj = 0; jj < 4; jj++)
 						{
-							output_hessian_ptr->write(eid * 16 + ii * 4 + jj, outer(ii, jj));
+							output_hessian_ptr->write(eid * 16 + ii * 4 + jj, eval.hessians[ii * 4 + jj]);
 						}
 					}
 				}
@@ -159,19 +160,15 @@ namespace lcs
 
 				const float area = sa_bending_edges_rest_area[eid];
 				const float stiff = sa_bending_edges_stiffness[eid] * scaling * area;
-				output_gradient_ptr[eid * 4 + 0] = stiff * delta_angle * gradients[0];
-				output_gradient_ptr[eid * 4 + 1] = stiff * delta_angle * gradients[1];
-				output_gradient_ptr[eid * 4 + 2] = stiff * delta_angle * gradients[2];
-				output_gradient_ptr[eid * 4 + 3] = stiff * delta_angle * gradients[3];
 
-				auto outer = [&gradients, stiff](uint ii, uint jj) -> float3x3
-				{ return outer_product(stiff * gradients[ii], gradients[jj]); };
+				auto eval = detail::bending_energy::evaluate<float, float3, float3x3>(gradients, delta_angle, stiff);
 
 				for (uint ii = 0; ii < 4; ii++)
 				{
+					output_gradient_ptr[eid * 4 + ii] = eval.gradients[ii];
 					for (uint jj = 0; jj < 4; jj++)
 					{
-						output_hessian_ptr[eid * 16 + ii * 4 + jj] = outer(ii, jj);
+						output_hessian_ptr[eid * 16 + ii * 4 + jj] = eval.hessians[ii * 4 + jj];
 					}
 				}
 			});

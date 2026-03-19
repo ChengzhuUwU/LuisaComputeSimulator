@@ -1,4 +1,5 @@
 #include "ground_collision_energy.h"
+#include "Energies/detail/ground_collision_energy.hpp"
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/friction_kernel.hpp"
 #include "SimulationCore/scene_params.h"
@@ -95,12 +96,13 @@ namespace lcs
 					{
 						$if(collision_type == 0)
 						{
-							Float C = curr_dist - d_hat - thickness;
-							energy_repulsive = 0.5f * stiff * C * C;
+							energy_repulsive = detail::ground_collision_energy::repulsive_energy(
+								curr_dist, thickness, d_hat, stiff, 0u);
 						}
 						$else
 						{
-							energy_repulsive = stiff * ipc::barrier(curr_dist - thickness, d_hat);
+							energy_repulsive = detail::ground_collision_energy::repulsive_energy(
+								curr_dist, thickness, d_hat, stiff, 1u);
 						};
 					};
 
@@ -112,20 +114,21 @@ namespace lcs
 						Float k1 = 0.0f;
 						$if(collision_type == 0)
 						{
-							Float C = init_dist - thickness - d_hat;
-							k1 = stiff * C;
+							k1 = detail::ground_collision_energy::repulsive_first_derivative(
+								init_dist, thickness, d_hat, stiff, 0u);
 						}
 						$else
 						{
-							k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+							k1 = detail::ground_collision_energy::repulsive_first_derivative(
+								init_dist, thickness, d_hat, stiff, 1u);
 						};
 
 						Float friction_mu = sa_contact_active_verts_friction_coeff->read(vid);
 						Float friction_eps = Friction::ando_barrier::friction_eps;
 
 						auto lambda = -k1 * friction_mu;
-						energy_friction =
-							Friction::ipc_barrier::compute_friction_energy(lambda, normal, rel_dx, friction_eps);
+						energy_friction = detail::ground_collision_energy::friction_energy(
+							lambda, normal, rel_dx, friction_eps);
 					};
 				};
 
@@ -178,13 +181,17 @@ namespace lcs
 					Float k2;
 					$if(collision_type == 0)
 					{
-						k1 = stiff * (curr_dist - thickness - d_hat);
-						k2 = stiff;
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(
+							curr_dist, thickness, d_hat, stiff, 0u);
+						k2 = detail::ground_collision_energy::repulsive_second_derivative(
+							curr_dist, thickness, d_hat, stiff, 0u);
 					}
 					$else
 					{
-						k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
-						k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(
+							curr_dist, thickness, d_hat, stiff, 1u);
+						k2 = detail::ground_collision_energy::repulsive_second_derivative(
+							curr_dist, thickness, d_hat, stiff, 1u);
 					};
 
 					out_gradient = k1 * normal;
@@ -199,19 +206,21 @@ namespace lcs
 					Float k1;
 					$if(collision_type == 0)
 					{
-						k1 = stiff * (init_dist - thickness - d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(
+							init_dist, thickness, d_hat, stiff, 0u);
 					}
 					$else
 					{
-						k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(
+							init_dist, thickness, d_hat, stiff, 1u);
 					};
 
 					Float3 rel_dx = x_k - x_0;
 					Float  friction_mu = sa_contact_active_verts_friction_coeff->read(vid);
 					Float  friction_eps = Friction::ando_barrier::friction_eps;
 					auto   lambda_mu = -k1 * friction_mu;
-					auto   friction_grad_hess =
-						Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+					auto   friction_grad_hess = detail::ground_collision_energy::friction_gradient_hessian<Float, Float3, Float3x3>(
+						  lambda_mu, normal, rel_dx, friction_eps);
 					out_gradient += friction_grad_hess.first;
 					out_hessian += friction_grad_hess.second;
 					collide = true;
@@ -364,13 +373,13 @@ namespace lcs
 					float k2;
 					if (collision_type == 0)
 					{
-						k1 = stiff * (curr_dist - thickness - d_hat);
-						k2 = stiff;
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(curr_dist, thickness, d_hat, stiff, 0u);
+						k2 = detail::ground_collision_energy::repulsive_second_derivative(curr_dist, thickness, d_hat, stiff, 0u);
 					}
 					else
 					{
-						k1 = stiff * ipc::barrier_first_derivative(curr_dist - thickness, d_hat);
-						k2 = stiff * ipc::barrier_second_derivative(curr_dist - thickness, d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(curr_dist, thickness, d_hat, stiff, 1u);
+						k2 = detail::ground_collision_energy::repulsive_second_derivative(curr_dist, thickness, d_hat, stiff, 1u);
 					}
 					if (luisa::isnan(k1 * k2) || luisa::isinf(k1 * k2))
 					{
@@ -385,18 +394,18 @@ namespace lcs
 					float k1;
 					if (collision_type == 0)
 					{
-						k1 = stiff * (init_dist - thickness - d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(init_dist, thickness, d_hat, stiff, 0u);
 					}
 					else
 					{
-						k1 = stiff * ipc::barrier_first_derivative(init_dist - thickness, d_hat);
+						k1 = detail::ground_collision_energy::repulsive_first_derivative(init_dist, thickness, d_hat, stiff, 1u);
 					}
 					float3 rel_dx = x_k - x_0;
 					float  friction_mu = sa_contact_active_verts_friction_coeff[vid];
 					float  friction_eps = Friction::ando_barrier::friction_eps;
 					auto   lambda_mu = -k1 * friction_mu;
-					auto   friction_grad_hess =
-						Friction::ipc_barrier::compute_friction_gradient_hessian(lambda_mu, normal, rel_dx, friction_eps);
+					auto   friction_grad_hess = detail::ground_collision_energy::friction_gradient_hessian<float, float3, float3x3>(
+						  lambda_mu, normal, rel_dx, friction_eps);
 					out_gradient += friction_grad_hess.first;
 					out_hessian = out_hessian + friction_grad_hess.second;
 					collide = true;

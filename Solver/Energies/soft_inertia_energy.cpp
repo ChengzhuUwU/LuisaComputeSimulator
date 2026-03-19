@@ -1,4 +1,5 @@
 #include "soft_inertia_energy.h"
+#include "Energies/detail/soft_inertia_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
@@ -31,15 +32,20 @@ namespace lcs
 
 				Float energy = 0.0f;
 				{
-					Float3		x_new = sa_q->read(vid);
-					Float3		x_tilde = sa_q_tilde->read(vid);
-					Float		mass = sa_vert_mass->read(vid);
-					const Float squared_inv_dt = 1.0f / (substep_dt * substep_dt);
-					energy = squared_inv_dt * length_squared_vec(x_new - x_tilde) * mass / (2.0f);
-					{
-						Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
-						energy = stiffness_dirichlet * energy;
+					const Float3 x_new = sa_q->read(vid);
+					const Float3 x_tilde = sa_q_tilde->read(vid);
+					const Float	 mass = sa_vert_mass->read(vid);
+					const Float	 stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
+					const Float	 inv_h2 = 1.0f / (substep_dt * substep_dt);
+
+					const detail::soft_inertia_energy::Input<Float, Float3> input{
+						.x_new = x_new,
+						.x_tilde = x_tilde,
+						.mass = mass,
+						.inv_h2 = inv_h2,
+						.stiffness_dirichlet = stiffness_dirichlet
 					};
+					energy = detail::soft_inertia_energy::compute_energy(input);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -66,22 +72,22 @@ namespace lcs
 				const Float h = substep_dt;
 				const Float h_2_inv = 1.0f / (h * h);
 
-				Float3 x_k = sa_q->read(vid);
-				Float3 x_tilde = sa_q_tilde->read(vid);
-				Float  mass = sa_vert_mass->read(vid);
+				const Float3 x_k = sa_q->read(vid);
+				const Float3 x_tilde = sa_q_tilde->read(vid);
+				const Float	 mass = sa_vert_mass->read(vid);
+				const Float	 stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
 
-				Float3	 gradient = mass * h_2_inv * (x_k - x_tilde);
-				Float3x3 hessian = make_float3x3(1.0f) * mass * h_2_inv;
-
-				{
-					const Float stiffness_dirichlet = sa_stiffness_dirichlet->read(vid);
-
-					gradient = stiffness_dirichlet * gradient;
-					hessian = stiffness_dirichlet * hessian;
+				const detail::soft_inertia_energy::Input<Float, Float3> input{
+					.x_new = x_k,
+					.x_tilde = x_tilde,
+					.mass = mass,
+					.inv_h2 = h_2_inv,
+					.stiffness_dirichlet = stiffness_dirichlet
 				};
+				auto eval = detail::soft_inertia_energy::evaluate(input, make_float3x3(1.0f));
 
-				output_gradient->write(vid, gradient);
-				output_hessian->write(vid, hessian);
+				output_gradient->write(vid, eval.gradients[0]);
+				output_hessian->write(vid, eval.hessians[0]);
 			},
 			default_option);
 	}
@@ -135,23 +141,25 @@ namespace lcs
 					const float h = substep_dt;
 					const float h_2_inv = 1.f / (h * h);
 
-					float3 x_k = sa_x[vid];
-					float3 x_tilde = sa_x_tilde[vid];
+					const float3 x_k = sa_x[vid];
+					const float3 x_tilde = sa_x_tilde[vid];
 
 					// LUISA_INFO("Soft Inertia Energy: vid = {}, dof is fixed = {} , diff = {}", vid, sa_q_property[vid].is_fixed(), x_k - x_tilde);
 
-					float	 mass = sa_vert_mass[vid];
-					float3	 gradient = mass * h_2_inv * (x_k - x_tilde);
-					float3x3 hessian = mass * h_2_inv * luisa::float3x3::eye(1.0f);
+					const float mass = sa_vert_mass[vid];
+					const float stiffness_dirichlet = sa_stiffness_dirichlet[vid];
 
+					const detail::soft_inertia_energy::Input<float, float3> input{
+						.x_new = x_k,
+						.x_tilde = x_tilde,
+						.mass = mass,
+						.inv_h2 = h_2_inv,
+						.stiffness_dirichlet = stiffness_dirichlet
+					};
+					auto eval = detail::soft_inertia_energy::evaluate(input, luisa::float3x3::eye(1.0f));
 					{
-						const float stiffness_dirichlet = sa_stiffness_dirichlet[vid];
-						gradient = stiffness_dirichlet * gradient;
-						hessian = stiffness_dirichlet * hessian;
-					}
-					{
-						output_gradient[vid] = gradient;
-						output_hessian[vid] = hessian;
+						output_gradient[vid] = eval.gradients[0];
+						output_hessian[vid] = eval.hessians[0];
 					}
 				});
 		}

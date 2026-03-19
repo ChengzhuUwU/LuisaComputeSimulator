@@ -1,4 +1,5 @@
 #include "abd_inertia_energy.h"
+#include "Energies/detail/abd_inertia_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/scene_params.h"
 #include "Utils/cpu_parallel.h"
@@ -31,10 +32,6 @@ namespace lcs
 
 				Float energy = 0.0f;
 				{
-					const Float h = substep_dt;
-					const Float squared_inv_dt = 1.0f / (h * h);
-					Float		stiffness_dirichlet = sa_stiffness_dirichlet->read(body_idx);
-
 					auto   mass_matrix = sa_vert_mass->read(body_idx);
 					Float3 delta[4] = {
 						sa_q.read(affine_body[0]) - sa_q_tilde->read(affine_body[0]),
@@ -42,17 +39,8 @@ namespace lcs
 						sa_q.read(affine_body[2]) - sa_q_tilde->read(affine_body[2]),
 						sa_q.read(affine_body[3]) - sa_q_tilde->read(affine_body[3]),
 					};
-
-					for (uint ii = 0; ii < 4; ii++)
-					{
-						for (uint jj = 0; jj < 4; jj++)
-						{
-							Float mass = mass_matrix[ii][jj];
-							energy += squared_inv_dt * dot(delta[ii], delta[jj]) * mass / (2.0f);
-						}
-					}
-
-					energy *= stiffness_dirichlet;
+					const Float scaled_stiffness = sa_stiffness_dirichlet->read(body_idx) / (substep_dt * substep_dt);
+					energy = detail::abd_inertia_energy::compute_energy(delta, mass_matrix, scaled_stiffness);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
@@ -86,38 +74,23 @@ namespace lcs
 					sa_q->read(affine_body[2]) - sa_q_tilde->read(affine_body[2]),
 					sa_q->read(affine_body[3]) - sa_q_tilde->read(affine_body[3]) };
 
-				Float4x4 mass_matrix = sa_vert_mass->read(body_idx);
-
-				// apply dirichlet stiffness if present
-				Float stiffness = h_2_inv;
-				{
-					stiffness = sa_stiffness_dirichlet->read(body_idx) * stiffness;
-				}
-
-				Float3 gradient[4] = { Zero3, Zero3, Zero3, Zero3 };
-
-				for (uint ii = 0; ii < 4; ii++)
-				{
-					for (uint jj = 0; jj < 4; jj++)
-					{
-						gradient[ii] += mass_matrix[ii][jj] * delta[jj];
-					}
-				}
+				Float4x4	mass_matrix = sa_vert_mass->read(body_idx);
+				const Float scaled_stiffness = sa_stiffness_dirichlet->read(body_idx) * h_2_inv;
+				auto		eval = detail::abd_inertia_energy::evaluate(delta, mass_matrix, scaled_stiffness, make_float3x3(1.0f));
 
 				auto& abd_gradients = constraint.constraint_gradients;
 				auto& abd_hessians = constraint.constraint_hessians;
 
-				abd_gradients->write(4 * body_idx + 0, stiffness * gradient[0]);
-				abd_gradients->write(4 * body_idx + 1, stiffness * gradient[1]);
-				abd_gradients->write(4 * body_idx + 2, stiffness * gradient[2]);
-				abd_gradients->write(4 * body_idx + 3, stiffness * gradient[3]);
+				abd_gradients->write(4 * body_idx + 0, eval.gradients[0]);
+				abd_gradients->write(4 * body_idx + 1, eval.gradients[1]);
+				abd_gradients->write(4 * body_idx + 2, eval.gradients[2]);
+				abd_gradients->write(4 * body_idx + 3, eval.gradients[3]);
 
 				for (uint ii = 0; ii < 4; ii++)
 				{
 					for (uint jj = 0; jj < 4; jj++)
 					{
-						abd_hessians->write(body_idx * 16 + ii * 4 + jj,
-							stiffness * mass_matrix[ii][jj] * make_float3x3(1.0f));
+						abd_hessians->write(body_idx * 16 + ii * 4 + jj, eval.hessians[ii * 4 + jj]);
 					}
 				}
 			},
@@ -185,38 +158,24 @@ namespace lcs
 
 					const uint4 indices = abd_indices[body_idx];
 
-					float3	 delta_q[4] = { abd_q[indices[0]] - abd_q_tilde[indices[0]],
-						  abd_q[indices[1]] - abd_q_tilde[indices[1]],
-						  abd_q[indices[2]] - abd_q_tilde[indices[2]],
-						  abd_q[indices[3]] - abd_q_tilde[indices[3]] };
-					float4x4 mass_matrix = abd_mass_matrix[body_idx];
-					float3	 gradient[4] = { Zero3, Zero3, Zero3, Zero3 };
+					float3		delta_q[4] = { abd_q[indices[0]] - abd_q_tilde[indices[0]],
+							 abd_q[indices[1]] - abd_q_tilde[indices[1]],
+							 abd_q[indices[2]] - abd_q_tilde[indices[2]],
+							 abd_q[indices[3]] - abd_q_tilde[indices[3]] };
+					float4x4	mass_matrix = abd_mass_matrix[body_idx];
+					const float scaled_stiffness = abd_stiffness_dirichlet[body_idx] * h_2_inv;
+					auto		eval = detail::abd_inertia_energy::evaluate(delta_q, mass_matrix, scaled_stiffness, float3x3::eye(1.0f));
 
-					// apply dirichlet stiffness if present
-					float stiffness = h_2_inv;
-					{
-						stiffness = abd_stiffness_dirichlet[body_idx] * stiffness;
-					}
-
-					for (uint ii = 0; ii < 4; ii++)
-					{
-						for (uint jj = 0; jj < 4; jj++)
-						{
-							gradient[ii] += mass_matrix[ii][jj] * delta_q[jj];
-						}
-					}
-
-					abd_gradients[4 * body_idx + 0] = stiffness * gradient[0];
-					abd_gradients[4 * body_idx + 1] = stiffness * gradient[1];
-					abd_gradients[4 * body_idx + 2] = stiffness * gradient[2];
-					abd_gradients[4 * body_idx + 3] = stiffness * gradient[3];
+					abd_gradients[4 * body_idx + 0] = eval.gradients[0];
+					abd_gradients[4 * body_idx + 1] = eval.gradients[1];
+					abd_gradients[4 * body_idx + 2] = eval.gradients[2];
+					abd_gradients[4 * body_idx + 3] = eval.gradients[3];
 
 					for (uint ii = 0; ii < 4; ii++)
 					{
 						for (uint jj = 0; jj < 4; jj++)
 						{
-							abd_hessians[body_idx * 16 + ii * 4 + jj] =
-								float3x3::eye(stiffness * mass_matrix[ii][jj]);
+							abd_hessians[body_idx * 16 + ii * 4 + jj] = eval.hessians[ii * 4 + jj];
 						}
 					}
 				},

@@ -2,10 +2,10 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <iomanip>
-#include "Energies/tet_elastic_energy.h"
+#include "Energies/detail/stable_neo_hookean_energy.hpp"
 
 // Use implementations from tet_elastic_energy.h (SVD singular-value space functions)
-using namespace lcs::TetElasticEnergyUtils;
+using namespace lcs::detail::TetElasticEnergyUtils;
 
 using Vec3 = Eigen::Vector3f;
 using Mat3 = Eigen::Matrix3f;

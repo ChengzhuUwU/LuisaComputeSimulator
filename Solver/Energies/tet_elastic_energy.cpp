@@ -1,4 +1,5 @@
 #include "Energies/tet_elastic_energy.h"
+#include "Energies/detail/stable_neo_hookean_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -42,7 +43,17 @@ namespace lcs
 				Float	 mu = mu_lambda[0];
 				Float	 lam = mu_lambda[1];
 
-				Float energy = TetElasticEnergyUtils::compute_energy_gpu(x0, x1, x2, x3, Dm_inv, mu, lam, volume);
+				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+				Float energy = detail::stable_neo_hookean_energy::compute_energy(input);
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
 					tid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -80,19 +91,26 @@ namespace lcs
 				Float	 mu = mu_lambda[0];
 				Float	 lam = mu_lambda[1];
 
-				Float3	 gradient[4];
-				Float3x3 hessian[16];
-				TetElasticEnergyUtils::compute_gradient_hessian_gpu(
-					x0, x1, x2, x3, Dm_inv, mu, lam, volume, gradient, hessian);
+				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+				auto eval = detail::stable_neo_hookean_energy::evaluate(input);
 
 				// Write gradients: 4 entries per tet
 				for (uint v = 0; v < 4; v++)
-					out_gradient->write(tid * 4 + v, gradient[v]);
+					out_gradient->write(tid * 4 + v, eval.gradients[v]);
 
 				// Write hessians: 16 blocks per tet
 				for (uint i = 0; i < 4; i++)
 					for (uint j = 0; j < 4; j++)
-						out_hessian->write(tid * 16 + i * 4 + j, hessian[i * 4 + j]);
+						out_hessian->write(tid * 16 + i * 4 + j, eval.hessians[i * 4 + j]);
 			},
 			default_option);
 	}
@@ -150,15 +168,22 @@ namespace lcs
 				const float			   volume = sa_volume[tid];
 				const auto [mu, lam] = sa_mu_lambda[tid];
 
-				luisa::float3	gradient[4];
-				luisa::float3x3 hessian[16];
-				TetElasticEnergyUtils::compute_gradient_hessian(
-					x0, x1, x2, x3, Dm_inv, mu, lam, volume, gradient, hessian);
+				const detail::stable_neo_hookean_energy::Input<float3, float3x3, float> input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+				auto eval = detail::stable_neo_hookean_energy::evaluate_host(input);
 
 				for (uint v = 0; v < 4; v++)
-					out_gradient[tid * 4 + v] = gradient[v];
+					out_gradient[tid * 4 + v] = eval.gradients[v];
 				for (uint i = 0; i < 16; i++)
-					out_hessian[tid * 16 + i] = hessian[i];
+					out_hessian[tid * 16 + i] = eval.hessians[i];
 			});
 	}
 

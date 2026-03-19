@@ -2,9 +2,10 @@
 
 #include "Energies/energy.h"
 #include "Energies/energy_offsets.h"
+#include "Energies/fem_utils.h"
+#include "Energies/detail/stretch_face_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"
-#include "Energies/fem_utils.h"
 #include <luisa/dsl/builtin.h>
 
 namespace lcs
@@ -13,64 +14,122 @@ namespace lcs
 	{
 		namespace detail
 		{
-			float	   stretch_energy(const float2x3& F, float mu);
-			float	   shear_energy(const float2x3& F, float lmd);
-			Var<float> stretch_energy(const Var<float2x3>& F, Var<float> mu);
-			Var<float> shear_energy(const Var<float2x3>& F, Var<float> lmd);
-
-			float2x3 stretch_gradient(const float2x3& F, const float mu);
-			float2x3 shear_gradient(const float2x3& F, const float lmd);
-
-			float6x6 stretch_hessian(const float2x3& F, float mu);
-			float6x6 shear_hessian(const float2x3& F, float mu);
-
-			Var<float2x3> stretch_gradient(const Var<float2x3>& F, const Var<float> mu);
-			Var<float2x3> shear_gradient(const Var<float2x3>& F, const Var<float> lmd);
-			Var<float6x6> stretch_hessian(const Var<float2x3>& F, Var<float> mu);
-			Var<float6x6> shear_hessian(const Var<float2x3>& F, Var<float> mu);
-
+			using lcs::detail::stretch_face_energy::shear_energy;
+			using lcs::detail::stretch_face_energy::shear_gradient;
+			using lcs::detail::stretch_face_energy::shear_hessian;
+			using lcs::detail::stretch_face_energy::stretch_energy;
+			using lcs::detail::stretch_face_energy::stretch_gradient;
+			using lcs::detail::stretch_face_energy::stretch_hessian;
 		} // namespace detail
 
-		void compute_gradient_hessian(const float3& x0,
-			const float3&							x1,
-			const float3&							x2,
-			const float2x2&							Dm,
-			const float								mu,
-			const float								lambda,
-			const float								area,
-			float3x3&								dedx,
-			float9x9&								d2edx2);
-		void compute_gradient_hessian(const Var<float3>& x0,
-			const Var<float3>&							 x1,
-			const Var<float3>&							 x2,
-			const Var<float2x2>&						 Dm,
-			const Var<float>							 mu,
-			const Var<float>							 lambda,
-			const Var<float>							 area,
-			Var<float3x3>&								 dedx,
-			Var<float9x9>&								 d2edx2);
+		inline void compute_gradient_hessian(const float3& x0,
+			const float3&								   x1,
+			const float3&								   x2,
+			const float2x2&								   Dm,
+			const float									   mu,
+			const float									   lambda,
+			const float									   area,
+			float3x3&									   dedx,
+			float9x9&									   d2edx2)
+		{
+			const lcs::detail::stretch_face_energy::Input<float3, float2x2, float> input{
+				.x0 = x0,
+				.x1 = x1,
+				.x2 = x2,
+				.dm_inv = Dm,
+				.mu = mu,
+				.lambda = lambda,
+				.area = area
+			};
+			auto eval = lcs::detail::stretch_face_energy::evaluate(input);
+			dedx = make_float3x3(eval.gradients[0], eval.gradients[1], eval.gradients[2]);
+			d2edx2.set_zero();
+			d2edx2.block(0, 0) = eval.hessians[0];
+			d2edx2.block(1, 0) = eval.hessians[1];
+			d2edx2.block(2, 0) = eval.hessians[2];
+			d2edx2.block(0, 1) = eval.hessians[3];
+			d2edx2.block(1, 1) = eval.hessians[4];
+			d2edx2.block(2, 1) = eval.hessians[5];
+			d2edx2.block(0, 2) = eval.hessians[6];
+			d2edx2.block(1, 2) = eval.hessians[7];
+			d2edx2.block(2, 2) = eval.hessians[8];
+		}
 
-		float	   compute_energy(const float3& x0,
-				 const float3&					x1,
-				 const float3&					x2,
-				 const float2x2&				Dm,
-				 const float					mu,
-				 const float					lambda,
-				 const float					area);
-		Var<float> compute_energy(const Var<float3>& x0,
-			const Var<float3>&						 x1,
-			const Var<float3>&						 x2,
-			const Var<float2x2>&					 Dm,
-			const Var<float>						 mu,
-			const Var<float>						 lambda,
-			const Var<float>						 area);
+		inline void compute_gradient_hessian(const Var<float3>& x0,
+			const Var<float3>&									x1,
+			const Var<float3>&									x2,
+			const Var<float2x2>&								Dm,
+			const Var<float>									mu,
+			const Var<float>									lambda,
+			const Var<float>									area,
+			Var<float3x3>&										dedx,
+			Var<float9x9>&										d2edx2)
+		{
+			const lcs::detail::stretch_face_energy::Input<Var<float3>, Var<float2x2>, Var<float>> input{
+				.x0 = x0,
+				.x1 = x1,
+				.x2 = x2,
+				.dm_inv = Dm,
+				.mu = mu,
+				.lambda = lambda,
+				.area = area
+			};
+			auto eval = lcs::detail::stretch_face_energy::evaluate(input);
+			dedx = make_float3x3(eval.gradients[0], eval.gradients[1], eval.gradients[2]);
+			d2edx2->set_zero();
+			d2edx2->block(0, 0) = eval.hessians[0];
+			d2edx2->block(1, 0) = eval.hessians[1];
+			d2edx2->block(2, 0) = eval.hessians[2];
+			d2edx2->block(0, 1) = eval.hessians[3];
+			d2edx2->block(1, 1) = eval.hessians[4];
+			d2edx2->block(2, 1) = eval.hessians[5];
+			d2edx2->block(0, 2) = eval.hessians[6];
+			d2edx2->block(1, 2) = eval.hessians[7];
+			d2edx2->block(2, 2) = eval.hessians[8];
+		}
 
-	}; // namespace StretchEnergy
+		inline float compute_energy(const float3& x0,
+			const float3&						  x1,
+			const float3&						  x2,
+			const float2x2&						  Dm,
+			const float							  mu,
+			const float							  lambda,
+			const float							  area)
+		{
+			const lcs::detail::stretch_face_energy::Input<float3, float2x2, float> input{
+				.x0 = x0,
+				.x1 = x1,
+				.x2 = x2,
+				.dm_inv = Dm,
+				.mu = mu,
+				.lambda = lambda,
+				.area = area
+			};
+			return lcs::detail::stretch_face_energy::compute_energy(input);
+		}
 
-} // namespace lcs
+		inline Var<float> compute_energy(const Var<float3>& x0,
+			const Var<float3>&								x1,
+			const Var<float3>&								x2,
+			const Var<float2x2>&							Dm,
+			const Var<float>								mu,
+			const Var<float>								lambda,
+			const Var<float>								area)
+		{
+			const lcs::detail::stretch_face_energy::Input<Var<float3>, Var<float2x2>, Var<float>> input{
+				.x0 = x0,
+				.x1 = x1,
+				.x2 = x2,
+				.dm_inv = Dm,
+				.mu = mu,
+				.lambda = lambda,
+				.area = area
+			};
+			return lcs::detail::stretch_face_energy::compute_energy(input);
+		}
 
-namespace lcs
-{
+	} // namespace StretchEnergy
+
 	class StretchFaceEnergy : public Energy
 	{
 	public:
