@@ -153,7 +153,7 @@ def main():
     tet_spring = solver.create_world_data_from_tet_array("tet_spring", spring_verts, tets)
     tet_spring.set_physics_material_tet(
         model="Spring",
-        youngs_modulus=1e5,
+        youngs_modulus=1e4,
         poisson_ratio=0.4,
     )
     tet_spring.add_fixed_point_by_method("Left")
@@ -167,7 +167,7 @@ def main():
     tet_arap = solver.create_world_data_from_tet_array("tet_arap", arap_verts, tets)
     tet_arap.set_physics_material_tet(
         model="ARAP",
-        youngs_modulus=1e5,
+        youngs_modulus=1e4,
         poisson_ratio=0.4,
     )
     tet_arap.add_fixed_point_by_method("Left")

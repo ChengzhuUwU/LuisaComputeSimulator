@@ -3,16 +3,29 @@
 #include "Energies/detail/energy_detail_common.hpp"
 #include "SimulationCore/base_mesh.h"
 #include <type_traits>
+#include <algorithm>
 
 namespace lcs::detail::stretch_spring_energy
 {
+	[[nodiscard]] inline float scalar_max(float a, float b) noexcept
+	{
+		return std::max(a, b);
+	}
+
+	[[nodiscard]] inline luisa::compute::Float scalar_max(
+		const luisa::compute::Float& a,
+		const luisa::compute::Float& b) noexcept
+	{
+		return luisa::compute::max(a, b);
+	}
+
 	template <typename ScalarT, typename Vec3T>
 	struct Input
 	{
-		Vec3T	direction;
-		ScalarT stretch_constraint;
+		Vec3T	x0;
+		Vec3T	x1;
+		ScalarT rest_length;
 		ScalarT stiffness;
-		ScalarT tangent_weight;
 	};
 
 	template <typename ScalarT>
@@ -26,12 +39,19 @@ namespace lcs::detail::stretch_spring_energy
 		const Input<ScalarT, Vec3T>& in,
 		const Mat3T&				 identity)
 	{
-		const auto g0 = in.stiffness * in.direction * in.stretch_constraint;
-		const auto g1 = -g0;
+		const ScalarT eps = 1e-8f;
+		const Vec3T	  diff = in.x0 - in.x1;
+		const ScalarT l = scalar_max(length(diff), eps);
+		const ScalarT stretch_constraint = l - in.rest_length;
+		const Vec3T	  direction = diff / l;
+		const ScalarT tangent_weight = scalar_max(1.0f - in.rest_length / l, 0.0f);
 
-		const auto nn_t = outer_product(in.direction, in.direction);
-		const auto he = in.stiffness * nn_t
-			+ in.stiffness * in.tangent_weight * (identity - nn_t);
+		const Vec3T g0 = in.stiffness * direction * stretch_constraint;
+		const Vec3T g1 = -g0;
+
+		const Mat3T nn_t = outer_product(direction, direction);
+		const Mat3T he = in.stiffness * nn_t
+			+ in.stiffness * tangent_weight * (identity - nn_t);
 
 		using GradientOutT = std::decay_t<decltype(g0)>;
 		using HessianOutT = std::decay_t<decltype(he)>;

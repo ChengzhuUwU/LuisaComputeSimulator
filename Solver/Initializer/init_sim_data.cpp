@@ -820,12 +820,14 @@ namespace lcs::Initializer
 				num_stress_tets,
 				[&](const uint tid)
 				{
-					const uint	  orig_tid = stress_tet_indices[tid];
-					uint4		  tet = mesh_data->sa_tetrahedrons[orig_tid];
-					const float3  vert_pos[4] = { mesh_data->sa_rest_x[tet[0]],
-						 mesh_data->sa_rest_x[tet[1]],
-						 mesh_data->sa_rest_x[tet[2]],
-						 mesh_data->sa_rest_x[tet[3]] };
+					const uint	 orig_tid = stress_tet_indices[tid];
+					uint4		 tet = mesh_data->sa_tetrahedrons[orig_tid];
+					const float3 vert_pos[4] = {
+						mesh_data->sa_rest_x[tet[0]],
+						mesh_data->sa_rest_x[tet[1]],
+						mesh_data->sa_rest_x[tet[2]],
+						mesh_data->sa_rest_x[tet[3]]
+					};
 					const float3& x0 = vert_pos[0];
 					const float3& x1 = vert_pos[1];
 					const float3& x2 = vert_pos[2];
@@ -860,7 +862,7 @@ namespace lcs::Initializer
 						luisa::make_float2(mu, lambda);
 				});
 
-			const float default_stiffness_dirichlet = 1e6f;
+			const float default_stiffness_dirichlet = 1e5f;
 
 			// Init soft inertia info
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();

@@ -76,7 +76,8 @@ namespace lcs
 
 				Float4x4	mass_matrix = sa_vert_mass->read(body_idx);
 				const Float scaled_stiffness = sa_stiffness_dirichlet->read(body_idx) * h_2_inv;
-				auto		eval = detail::abd_inertia_energy::evaluate(delta, mass_matrix, scaled_stiffness, make_float3x3(1.0f));
+				Float3x3	identity = identity3x3;
+				auto		eval = detail::abd_inertia_energy::evaluate(delta, mass_matrix, scaled_stiffness, identity);
 
 				auto& abd_gradients = constraint.constraint_gradients;
 				auto& abd_hessians = constraint.constraint_hessians;

@@ -28,7 +28,7 @@ namespace lcs
 		// | 0 0 1 z |
 		// | 0 0 0 1 |
 
-		// luisa::float4x4 result = Identity4x4;
+		// luisa::float4x4 result = identity4x4;
 		// set(result, 0, 0, 1.0f);
 		// set(result, 1, 1, 1.0f);
 		// set(result, 2, 2, 1.0f);

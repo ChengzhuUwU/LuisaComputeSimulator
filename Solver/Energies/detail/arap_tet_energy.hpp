@@ -70,6 +70,51 @@ namespace lcs::detail::arap_tet_energy
 		return v;
 	}
 
+	[[nodiscard]] inline int levi_civita(int a, int b, int c)
+	{
+		if (a == b || b == c || a == c)
+		{
+			return 0;
+		}
+		if ((a == 0 && b == 1 && c == 2)
+			|| (a == 1 && b == 2 && c == 0)
+			|| (a == 2 && b == 0 && c == 1))
+		{
+			return 1;
+		}
+		return -1;
+	}
+
+	[[nodiscard]] inline float9x9 det_hessian_F_space(const float3x3& F)
+	{
+		float9x9 H;
+		H.set_zero();
+		for (int c = 0; c < 3; ++c)
+		{
+			for (int r = 0; r < 3; ++r)
+			{
+				int p = r + 3 * c; // F_{r,c}
+				for (int d = 0; d < 3; ++d)
+				{
+					for (int s = 0; s < 3; ++s)
+					{
+						int	  q = s + 3 * d; // F_{s,d}
+						float val = 0.0f;
+						for (int m = 0; m < 3; ++m)
+						{
+							for (int n = 0; n < 3; ++n)
+							{
+								val += static_cast<float>(levi_civita(r, s, m) * levi_civita(c, d, n)) * F[n][m];
+							}
+						}
+						H.scalar(p, q) = val;
+					}
+				}
+			}
+		}
+		return H;
+	}
+
 	[[nodiscard]] inline float3x3 polar_rotation(const float3x3& F)
 	{
 		float3x3 U, V;
@@ -146,9 +191,8 @@ namespace lcs::detail::arap_tet_energy
 		const float eps = 1e-8f;
 		auto		safe_coeff = [&](float denom)
 		{
-			float c = 4.0f / std::max(denom, eps);
-			// Keep 2I - c * t t^T positive semidefinite along each mode.
-			return std::min(c, 2.0f);
+			// Reference form: 4 / (s_i + s_j), with small denominator guard.
+			return 4.0f / std::max(denom, eps);
 		};
 		subtract_mode(H, t0, safe_coeff(s0 + s1));
 		subtract_mode(H, t1, safe_coeff(s1 + s2));
@@ -232,7 +276,7 @@ namespace lcs::detail::arap_tet_energy
 		float3x3 dEdF = in.mu * in.volume * (F - R)
 			+ in.lambda * in.volume * (J - 1.0f) * cofF;
 
-		// d2E/dF2 = kappa * v * H_arap
+		// d2E/dF2 (ARAP part)
 		float9x9 H9 = arap_hessian_F_space(F);
 		for (int i = 0; i < 9; i++)
 		{
@@ -242,31 +286,24 @@ namespace lcs::detail::arap_tet_energy
 			}
 		}
 
+		// d2E/dF2 (volumetric part): lambda * v * (vec(cofF)vec(cofF)^T + (J-1) * d2J/dF2)
+		float9	 vec_cof = vec_col_major(cofF);
+		float9x9 HJ = det_hessian_F_space(F);
+		for (int i = 0; i < 9; ++i)
+		{
+			for (int j = 0; j < 9; ++j)
+			{
+				H9.scalar(i, j) += in.lambda * in.volume
+					* (vec_cof.scalar(i) * vec_cof.scalar(j) + (J - 1.0f) * HJ.scalar(i, j));
+			}
+		}
+
 		float B[4][3];
 		compute_B(in.dm_inv, B);
 
 		EnergyEvalResult<4, 16, float3, float3x3> out{};
 		convert_force(dEdF, B, out.gradients.data());
 		convert_hessian(H9, B, out.hessians.data());
-
-		for (int a = 0; a < 4; a++)
-		{
-			for (int b = 0; b < 4; b++)
-			{
-				float3 cof_a = luisa::make_float3(0.0f);
-				float3 cof_b = luisa::make_float3(0.0f);
-				for (int i = 0; i < 3; i++)
-				{
-					for (int c = 0; c < 3; c++)
-					{
-						cof_a[i] += cofF[c][i] * B[a][c];
-						cof_b[i] += cofF[c][i] * B[b][c];
-					}
-				}
-				out.hessians[a * 4 + b] = out.hessians[a * 4 + b]
-					+ in.lambda * in.volume * outer_product(cof_a, cof_b);
-			}
-		}
 		return out;
 	}
 

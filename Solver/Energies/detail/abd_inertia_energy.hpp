@@ -28,19 +28,19 @@ namespace lcs::detail::abd_inertia_energy
 		const ScalarT scaled_stiffness,
 		const Mat3T&  identity)
 	{
-		const auto g0 = scaled_stiffness
+		const Vec3T g0 = scaled_stiffness
 			* (mass_matrix[0][0] * delta[0] + mass_matrix[0][1] * delta[1] + mass_matrix[0][2] * delta[2]
 				+ mass_matrix[0][3] * delta[3]);
-		const auto g1 = scaled_stiffness
+		const Vec3T g1 = scaled_stiffness
 			* (mass_matrix[1][0] * delta[0] + mass_matrix[1][1] * delta[1] + mass_matrix[1][2] * delta[2]
 				+ mass_matrix[1][3] * delta[3]);
-		const auto g2 = scaled_stiffness
+		const Vec3T g2 = scaled_stiffness
 			* (mass_matrix[2][0] * delta[0] + mass_matrix[2][1] * delta[1] + mass_matrix[2][2] * delta[2]
 				+ mass_matrix[2][3] * delta[3]);
-		const auto g3 = scaled_stiffness
+		const Vec3T g3 = scaled_stiffness
 			* (mass_matrix[3][0] * delta[0] + mass_matrix[3][1] * delta[1] + mass_matrix[3][2] * delta[2]
 				+ mass_matrix[3][3] * delta[3]);
-		const auto h00 = scaled_stiffness * mass_matrix[0][0] * identity;
+		const Mat3T h00 = scaled_stiffness * mass_matrix[0][0] * identity;
 
 		using GradientOutT = std::decay_t<decltype(g0)>;
 		using HessianOutT = std::decay_t<decltype(h00)>;

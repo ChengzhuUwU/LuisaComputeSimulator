@@ -19,7 +19,7 @@ namespace lcs::detail::soft_inertia_energy
 	template <typename ScalarT, typename Vec3T>
 	[[nodiscard]] inline ScalarT compute_energy(const Input<ScalarT, Vec3T>& in)
 	{
-		const auto diff = in.x_new - in.x_tilde;
+		const Vec3T diff = in.x_new - in.x_tilde;
 		return 0.5f * in.stiffness_dirichlet * in.mass * in.inv_h2 * length_squared_vec(diff);
 	}
 
@@ -28,9 +28,9 @@ namespace lcs::detail::soft_inertia_energy
 		const Input<ScalarT, Vec3T>& in,
 		const Mat3T&				 identity)
 	{
-		const auto scaled = in.stiffness_dirichlet * in.mass * in.inv_h2;
-		const auto gradient = scaled * (in.x_new - in.x_tilde);
-		const auto hessian = scaled * identity;
+		const ScalarT scaled = in.stiffness_dirichlet * in.mass * in.inv_h2;
+		const Vec3T	  gradient = scaled * (in.x_new - in.x_tilde);
+		const Mat3T	  hessian = scaled * identity;
 
 		using GradientOutT = std::decay_t<decltype(gradient)>;
 		using HessianOutT = std::decay_t<decltype(hessian)>;

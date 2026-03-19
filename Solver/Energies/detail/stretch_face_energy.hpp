@@ -60,8 +60,8 @@ namespace lcs::detail::stretch_face_energy
 		const float3& Fu = F.cols[0];
 		const float3& Fv = F.cols[1];
 
-		const auto I5u = luisa::dot(Fu, Fu);
-		const auto I5v = luisa::dot(Fv, Fv);
+		const float I5u = luisa::dot(Fu, Fu);
+		const float I5v = luisa::dot(Fv, Fv);
 
 		float sqrtI5u = luisa::sqrt(I5u);
 		float sqrtI5v = luisa::sqrt(I5v);
@@ -90,8 +90,8 @@ namespace lcs::detail::stretch_face_energy
 		const float3& Fu = F.cols[0];
 		const float3& Fv = F.cols[1];
 
-		const auto I5u = luisa::dot(Fu, Fu);
-		const auto I5v = luisa::dot(Fv, Fv);
+		const float I5u = luisa::dot(Fu, Fu);
+		const float I5v = luisa::dot(Fv, Fv);
 
 		float sqrtI5u = luisa::sqrt(I5u);
 		float sqrtI5v = luisa::sqrt(I5v);
@@ -101,8 +101,8 @@ namespace lcs::detail::stretch_face_energy
 		H.scalar(0, 0) = H.scalar(1, 1) = H.scalar(2, 2) = luisa::max(0.0f, 1.0f - invSqrtI5u);
 		H.scalar(3, 3) = H.scalar(4, 4) = H.scalar(5, 5) = luisa::max(0.0f, 1.0f - invSqrtI5v);
 
-		auto fu = F.cols[0] * invSqrtI5u;
-		auto fv = F.cols[1] * invSqrtI5v;
+		float3 fu = F.cols[0] * invSqrtI5u;
+		float3 fv = F.cols[1] * invSqrtI5v;
 
 		float uCoeff = (invSqrtI5u < 1.0f) ? invSqrtI5u : 1.0f;
 		float vCoeff = (invSqrtI5v < 1.0f) ? invSqrtI5v : 1.0f;
@@ -177,25 +177,29 @@ namespace lcs::detail::stretch_face_energy
 		const luisa::compute::Var<float2x3>& F,
 		luisa::compute::Var<float>			 mu)
 	{
+		using Float6x6 = luisa::compute::Var<float6x6>;
+		using Float3 = luisa::compute::Var<float3>;
+		using Float = luisa::compute::Var<float>;
+
 		luisa::compute::Var<float6x6> H;
 		H->set_zero();
 
-		const auto& Fu = F.cols[0];
-		const auto& Fv = F.cols[1];
+		const Float3& Fu = F.cols[0];
+		const Float3& Fv = F.cols[1];
 
-		const auto I5u = luisa::compute::dot(Fu, Fu);
-		const auto I5v = luisa::compute::dot(Fv, Fv);
+		const Float I5u = luisa::compute::dot(Fu, Fu);
+		const Float I5v = luisa::compute::dot(Fv, Fv);
 
-		const auto sqrtI5u = luisa::compute::sqrt(I5u);
-		const auto sqrtI5v = luisa::compute::sqrt(I5v);
-		const auto invSqrtI5u = 1.0f / sqrtI5u;
-		const auto invSqrtI5v = 1.0f / sqrtI5v;
+		const Float sqrtI5u = luisa::compute::sqrt(I5u);
+		const Float sqrtI5v = luisa::compute::sqrt(I5v);
+		const Float invSqrtI5u = 1.0f / sqrtI5u;
+		const Float invSqrtI5v = 1.0f / sqrtI5v;
 
 		H->scalar(0, 0) = H->scalar(1, 1) = H->scalar(2, 2) = luisa::compute::max(0.0f, 1.0f - invSqrtI5u);
 		H->scalar(3, 3) = H->scalar(4, 4) = H->scalar(5, 5) = luisa::compute::max(0.0f, 1.0f - invSqrtI5v);
 
-		auto fu = F.cols[0] * invSqrtI5u;
-		auto fv = F.cols[1] * invSqrtI5v;
+		Float3 fu = F.cols[0] * invSqrtI5u;
+		Float3 fv = F.cols[1] * invSqrtI5v;
 
 		luisa::compute::Var<float> uCoeff = luisa::compute::min(invSqrtI5u, 1.0f);
 		luisa::compute::Var<float> vCoeff = luisa::compute::min(invSqrtI5v, 1.0f);

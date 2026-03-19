@@ -431,7 +431,7 @@ namespace lcs
 						return;
 
 					float3	 gradient = Zero3;
-					float3x3 hessian = Zero3x3;
+					float3x3 hessian = zero3x3;
 					bool	 collide = calculate_per_vert_grad_hess_template(vid, gradient, hessian);
 					if (collide)
 					{
@@ -461,7 +461,7 @@ namespace lcs
 					mtx_view](const uint index)
 				{
 					float3	   gradient = Zero3;
-					float3x3   hessian = Zero3x3;
+					float3x3   hessian = zero3x3;
 					const uint vid = sa_contact_active_verts[index];
 					if (!sa_x_to_dof_map[vid].is_rigid_body())
 						return;

@@ -64,21 +64,14 @@ namespace lcs
 				const Float L = sa_rest_length->read(eid);
 				const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
 
-				Float3 diff = vert_pos[0] - vert_pos[1];
-				Float  l = max(length(diff), Epsilon);
-				Float  C = l - L;
-
-				Float3 dir = diff / l;
-				Float  x_inv = 1.f / l;
-				Float  tangent_weight = max(1.0f - L * x_inv, 0.0f);
-
 				const detail::stretch_spring_energy::Input<Float, Float3> input{
-					.direction = dir,
-					.stretch_constraint = C,
+					.x0 = vert_pos[0],
+					.x1 = vert_pos[1],
+					.rest_length = L,
 					.stiffness = stiffness_spring,
-					.tangent_weight = tangent_weight
 				};
-				auto eval = detail::stretch_spring_energy::evaluate(input, make_float3x3(1.0f));
+				Float3x3 identify = float3x3::eye(1.0f);
+				auto	 eval = detail::stretch_spring_energy::evaluate(input, identify);
 
 				// Output
 				{
@@ -140,19 +133,11 @@ namespace lcs
 				const float L = sa_rest_length[eid];
 				const float stiffness_stretch_spring = sa_stretch_spring_stiffness[eid];
 
-				float3 diff = vert_pos[0] - vert_pos[1];
-				float  l = max_scalar(length_vec(diff), Epsilon);
-				float  C = l - L;
-
-				float3 dir = diff / l;
-				float  x_inv = 1.f / l;
-				float  tangent_weight = max_scalar(1.0f - L * x_inv, 0.0f);
-
 				const detail::stretch_spring_energy::Input<float, float3> input{
-					.direction = dir,
-					.stretch_constraint = C,
+					.x0 = vert_pos[0],
+					.x1 = vert_pos[1],
+					.rest_length = L,
 					.stiffness = stiffness_stretch_spring,
-					.tangent_weight = tangent_weight
 				};
 				auto eval = detail::stretch_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
 

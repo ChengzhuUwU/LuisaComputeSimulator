@@ -23,6 +23,7 @@
 #include <cmath>
 #include <memory>
 #include <unordered_map>
+#include <iomanip>
 
 namespace FiniteDiff
 {
@@ -295,25 +296,39 @@ int main(int argc, char** argv)
 							  const Eigen::MatrixXf& H_ana,
 							  float					 tol = 1e-3f)
 		{
-			std::cout << "########### Energy Test: " << name << " ###########" << std::endl;
-			float g_diff = (g_num - g_ana).cwiseAbs().maxCoeff();
-			float H_diff = (H_num - H_ana).cwiseAbs().maxCoeff();
+			const Eigen::IOFormat vec_fmt(6, 0, ", ", ", ", "[", "]");
+			const Eigen::IOFormat mat_fmt(6, 0, ", ", "\n", "[", "]");
+			Eigen::Index		  g_idx = 0;
+			Eigen::Index		  h_row = 0;
+			Eigen::Index		  h_col = 0;
+			float				  g_diff = (g_num - g_ana).cwiseAbs().maxCoeff(&g_idx);
+			float				  H_diff = (H_num - H_ana).cwiseAbs().maxCoeff(&h_row, &h_col);
+
+			std::cout << "\n============================================================\n";
+			std::cout << "Energy FD Check: " << name << "\n";
+			std::cout << "------------------------------------------------------------\n";
+			std::cout << std::left << std::setw(26) << "Max |grad diff|"
+					  << ": " << g_diff
+					  << "  (idx=" << g_idx << ")\n";
+			std::cout << std::left << std::setw(26) << "Max |hessian diff|"
+					  << ": " << H_diff
+					  << "  (row=" << h_row << ", col=" << h_col << ")\n";
+			std::cout << std::left << std::setw(26) << "Tolerance"
+					  << ": " << tol << "\n";
 			if (g_diff < tol && H_diff < tol)
 			{
-				std::cout << "Energy Test: " << name << " OK (within tol=" << tol << ")\n";
+				std::cout << "Result" << std::setw(21) << ""
+						  << ": PASS\n";
 				return;
 			}
-			std::cout << "Energy Test: " << name << " MISMATCH" << std::endl;
-			std::cout << "  gradient diff norm = " << g_diff << std::endl;
-			std::cout << "  analytic gradient:\n"
-					  << g_ana.transpose() << std::endl;
-			std::cout << "  numeric gradient:\n"
-					  << g_num.transpose() << std::endl;
-			std::cout << "  Hessian diff norm = " << H_diff << std::endl;
-			std::cout << "  analytic Hessian:\n"
-					  << H_ana << std::endl;
-			std::cout << "  numeric Hessian:\n"
-					  << H_num << std::endl;
+			std::cout << "Result" << std::setw(21) << ""
+					  << ": FAIL\n";
+			std::cout << "Analytic gradient : " << g_ana.transpose().format(vec_fmt) << "\n";
+			std::cout << "Numeric  gradient : " << g_num.transpose().format(vec_fmt) << "\n";
+			std::cout << "Analytic hessian:\n"
+					  << H_ana.format(mat_fmt) << "\n";
+			std::cout << "Numeric  hessian:\n"
+					  << H_num.format(mat_fmt) << "\n";
 		};
 
 		auto print_grad_only = [](const std::string&	  name,
@@ -321,19 +336,28 @@ int main(int argc, char** argv)
 								   const Eigen::VectorXf& g_ana,
 								   float				  tol = 1e-3f)
 		{
-			std::cout << "########### Energy Test: " << name << " ###########" << std::endl;
-			float g_diff = (g_num - g_ana).cwiseAbs().maxCoeff();
+			const Eigen::IOFormat vec_fmt(6, 0, ", ", ", ", "[", "]");
+			Eigen::Index		  g_idx = 0;
+			float				  g_diff = (g_num - g_ana).cwiseAbs().maxCoeff(&g_idx);
+
+			std::cout << "\n============================================================\n";
+			std::cout << "Energy FD Check: " << name << " (Gradient Only)\n";
+			std::cout << "------------------------------------------------------------\n";
+			std::cout << std::left << std::setw(26) << "Max |grad diff|"
+					  << ": " << g_diff
+					  << "  (idx=" << g_idx << ")\n";
+			std::cout << std::left << std::setw(26) << "Tolerance"
+					  << ": " << tol << "\n";
 			if (g_diff < tol)
 			{
-				std::cout << "Energy Test: " << name << " Gradient OK (within tol=" << tol << ")\n";
+				std::cout << "Result" << std::setw(21) << ""
+						  << ": PASS\n";
 				return;
 			}
-			std::cout << "Energy Test: " << name << " Gradient MISMATCH" << std::endl;
-			std::cout << "  gradient diff norm = " << g_diff << std::endl;
-			std::cout << "  analytic gradient:\n"
-					  << g_ana.transpose() << std::endl;
-			std::cout << "  numeric gradient:\n"
-					  << g_num.transpose() << std::endl;
+			std::cout << "Result" << std::setw(21) << ""
+					  << ": FAIL\n";
+			std::cout << "Analytic gradient : " << g_ana.transpose().format(vec_fmt) << "\n";
+			std::cout << "Numeric  gradient : " << g_num.transpose().format(vec_fmt) << "\n";
 		};
 
 		// finite-difference step (single-precision): avoid too-small h to reduce cancellation
@@ -410,17 +434,13 @@ int main(int argc, char** argv)
 			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(6, 6);
 			Eigen::Vector3f a(x0[0], x0[1], x0[2]);
 			Eigen::Vector3f b(x0[3], x0[4], x0[5]);
-			Eigen::Vector3f diff = a - b;
-			float			l = std::max(diff.norm(), 1e-8f);
-			float3			dir = luisa::make_float3(diff[0], diff[1], diff[2]) / l;
-			float			C = l - L0;
 
 			auto eval = detail::stretch_spring_energy::evaluate(
 				detail::stretch_spring_energy::Input<float, float3>{
-					.direction = dir,
-					.stretch_constraint = C,
+					.x0 = luisa::make_float3(a[0], a[1], a[2]),
+					.x1 = luisa::make_float3(b[0], b[1], b[2]),
+					.rest_length = L0,
 					.stiffness = k,
-					.tangent_weight = std::max(1.0f - L0 / l, 0.0f),
 				},
 				luisa::make_float3x3(1.0f));
 
@@ -483,7 +503,7 @@ int main(int argc, char** argv)
 			for (int i = 0; i < 3; i++)
 				g_ana.segment<3>(3 * i) = float3_to_eigen3(dedx[i]);
 
-			print_diff("StretchFace_Stretch", g_num, g_ana, H_num, H_ana, 1e-2);
+			print_diff("StretchFace_Stretch", g_num, g_ana, H_num, H_ana, 1e-2f);
 		}
 
 		// 2b) Shear component of StretchFace (triangle)
@@ -599,7 +619,64 @@ int main(int argc, char** argv)
 				}
 			}
 
-			print_diff("TetARAP", g_num, g_ana, H_num, H_ana, 1e-1f);
+			print_diff("TetARAP", g_num, g_ana, H_num, H_ana, 1e-2f);
+		}
+
+		// 3b) ARAP-only cross-check against Eigen-double reference (lambda = 0)
+		{
+			luisa::float3 X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
+			luisa::float3 X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
+			luisa::float3 X2 = luisa::make_float3(0.0f, 1.0f, 0.0f);
+			luisa::float3 X3 = luisa::make_float3(0.0f, 0.0f, 1.0f);
+
+			luisa::float3x3 Dm = luisa::make_float3x3(X1 - X0, X2 - X0, X3 - X0);
+			luisa::float3x3 Dm_inv = luisa::inverse(Dm);
+			const float		volume = std::abs(luisa::determinant(Dm)) / 6.0f;
+			const float		mu = 2.0f;
+			const float		lambda = 0.0f;
+
+			Eigen::Matrix<double, 12, 1> x_ref;
+			x_ref << 0.05, -0.02, 0.01,
+				1.22, 0.08, -0.03,
+				0.11, 1.10, 0.06,
+				-0.04, 0.15, 1.18;
+
+			auto in = detail::arap_tet_energy::Input<float3, float3x3, float>{
+				.x0 = luisa::make_float3(static_cast<float>(x_ref[0]), static_cast<float>(x_ref[1]), static_cast<float>(x_ref[2])),
+				.x1 = luisa::make_float3(static_cast<float>(x_ref[3]), static_cast<float>(x_ref[4]), static_cast<float>(x_ref[5])),
+				.x2 = luisa::make_float3(static_cast<float>(x_ref[6]), static_cast<float>(x_ref[7]), static_cast<float>(x_ref[8])),
+				.x3 = luisa::make_float3(static_cast<float>(x_ref[9]), static_cast<float>(x_ref[10]), static_cast<float>(x_ref[11])),
+				.dm_inv = Dm_inv,
+				.mu = mu,
+				.lambda = lambda,
+				.volume = volume,
+			};
+			auto eval = detail::arap_tet_energy::evaluate_host(in);
+
+			Eigen::Matrix<double, 12, 1>  g_impl;
+			Eigen::Matrix<double, 12, 12> H_impl;
+			H_impl.setZero();
+			for (int a = 0; a < 4; ++a)
+			{
+				g_impl.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]).cast<double>();
+				for (int b = 0; b < 4; ++b)
+				{
+					H_impl.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 4 + b]).cast<double>();
+				}
+			}
+
+			// Eigen::Matrix3d				  dm_inv_d = float3x3_to_eigen3x3(Dm_inv).cast<double>();
+			// Eigen::Matrix<double, 12, 1>  g_ref;
+			// Eigen::Matrix<double, 12, 12> H_ref;
+			// RefArapDouble::evaluate(x_ref, dm_inv_d, static_cast<double>(mu), static_cast<double>(volume), g_ref, H_ref);
+
+			// double g_err = (g_impl - g_ref).cwiseAbs().maxCoeff();
+			// double h_err = (H_impl - H_ref).cwiseAbs().maxCoeff();
+			// std::cout << "\n============================================================\n";
+			// std::cout << "ARAP Double Reference Check (lambda=0)\n";
+			// std::cout << "------------------------------------------------------------\n";
+			// std::cout << "Max |grad diff|    : " << g_err << "\n";
+			// std::cout << "Max |hessian diff| : " << h_err << "\n";
 		}
 
 		// 4) Bending (gradient-only): Hessian uses Gauss-Newton approximation,
@@ -697,7 +774,7 @@ int main(int argc, char** argv)
 					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 4 + b]);
 				}
 			}
-			print_diff("ABDInertia", g_num, g_ana, H_num, H_ana, 2e-2f);
+			print_diff("ABDInertia", g_num, g_ana, H_num, H_ana, 1e-3f);
 		}
 
 		// 6) ABD ortho (A in R^{3x3}, 9 dof)
@@ -736,7 +813,7 @@ int main(int argc, char** argv)
 					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 3 + b]);
 				}
 			}
-			print_diff("ABDOrtho", g_num, g_ana, H_num, H_ana, 2e-2f);
+			print_diff("ABDOrtho", g_num, g_ana, H_num, H_ana, 1e-3f);
 		}
 
 		// 7) Stable Neo-Hookean tet (gradient-only)
@@ -790,7 +867,7 @@ int main(int argc, char** argv)
 			{
 				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
 			}
-			print_grad_only("TetStableNeoHookean", g_num, g_ana, 2e-2f);
+			print_grad_only("TetStableNeoHookean", g_num, g_ana, 1e-3f);
 		}
 
 		// 8) Ground collision repulsive term (1 dof in y)
@@ -822,7 +899,7 @@ int main(int argc, char** argv)
 			H_ana(0, 0) = detail::ground_collision_energy::repulsive_second_derivative(
 				dist, thickness, d_hat, stiff, collision_type);
 
-			print_diff("GroundCollision_Repulsive", g_num, g_ana, H_num, H_ana, 2e-2f);
+			print_diff("GroundCollision_Repulsive", g_num, g_ana, H_num, H_ana, 1e-3f);
 		}
 
 		return;

@@ -84,7 +84,8 @@ namespace lcs
 					.inv_h2 = h_2_inv,
 					.stiffness_dirichlet = stiffness_dirichlet
 				};
-				auto eval = detail::soft_inertia_energy::evaluate(input, make_float3x3(1.0f));
+				Float3x3 identity = identity3x3;
+				auto	 eval = detail::soft_inertia_energy::evaluate(input, identity);
 
 				output_gradient->write(vid, eval.gradients[0]);
 				output_hessian->write(vid, eval.hessians[0]);

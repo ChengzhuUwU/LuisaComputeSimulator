@@ -88,12 +88,12 @@ auto compute_ortho_gradient_hessian(const std::vector<luisa::float3>& abd_q, con
 	{
 		for (uint jj = 0; jj < 3; jj++)
 		{
-			float3x3 hessian = Zero3x3;
+			float3x3 hessian = zero3x3;
 			if (ii == jj)
 			{
 				float3x3 qiqiT = outer_product(A[ii], A[ii]);
 				float	 qiTqi = dot_vec(A[ii], A[ii]) - 1.0f;
-				float3x3 term2 = qiTqi * Identity3x3;
+				float3x3 term2 = qiTqi * identity3x3;
 				for (uint kk = 0; kk < 3; kk++)
 				{
 					hessian = hessian + outer_product(A[kk], A[kk]);
@@ -102,7 +102,7 @@ auto compute_ortho_gradient_hessian(const std::vector<luisa::float3>& abd_q, con
 			}
 			else
 			{
-				hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * Identity3x3;
+				hessian = outer_product(A[jj], A[ii]) + dot_vec(A[ii], A[jj]) * identity3x3;
 			}
 			LUISA_INFO("hess of {} adj {} = {}", ii, jj, hessian);
 			cgA.block<3, 3>(3 + 3 * ii, 3 + 3 * jj) += 4.0f * stiff * float3x3_to_eigen3x3(hessian);
@@ -260,7 +260,7 @@ void test_FEM_BW98(luisa::compute::Device& device, luisa::compute::Stream& strea
 	for (auto& tmp : hessians)
 	{
 		for (auto& hess : tmp)
-			hess = Zero3x3;
+			hess = zero3x3;
 	}
 
 	Eigen::Matrix<float, 9, 1> G;

@@ -21,7 +21,7 @@ namespace lcs
 			template <typename T>
 			inline auto get_projection(const T& normal)
 			{
-				return Identity3x3 - outer_product(normal, normal); // P*dv = dv - dot(dv, n)*n
+				return identity3x3 - outer_product(normal, normal); // P*dv = dv - dot(dv, n)*n
 			}
 			inline std::pair<float, float3x3> get_friction_lambda_P(const float3& grad_contact,
 				const float3&													  rel_dx,
@@ -117,7 +117,7 @@ namespace lcs
 			template <typename FloatType, typename Vec>
 			inline auto compute_gradient_hessian(const FloatType& lambda, const Vec& normal, const Vec& rel_dx)
 			{
-				const auto P = Identity3x3 - outer_product(normal, normal);
+				const auto P = identity3x3 - outer_product(normal, normal);
 				auto	   gradient = lambda * (P * rel_dx);
 				auto	   hessian = lambda * P;
 				return std::make_pair(gradient, hessian);
@@ -125,7 +125,7 @@ namespace lcs
 			template <typename FloatType, typename Vec>
 			inline auto compute_hessian(const FloatType& lambda, const Vec& normal)
 			{
-				const auto P = Identity3x3 - outer_product(normal, normal);
+				const auto P = identity3x3 - outer_product(normal, normal);
 				auto	   hessian = lambda * P;
 				return hessian;
 			}
@@ -196,7 +196,7 @@ namespace lcs
 				using Float3x3 = Var<float3x3>;
 
 				const Float3x3 nnT = outer_product(normal, normal);
-				const Float3x3 I = Identity3x3;
+				const Float3x3 I = identity3x3;
 				const Float3x3 P = I - nnT;
 				const Float3   u = P * rel_dx;
 
@@ -225,7 +225,7 @@ namespace lcs
 
 				// tangential projector P = I - n n^T
 				const Float3x3 nnT = outer_product(normal, normal);
-				const Float3x3 I = Identity3x3;
+				const Float3x3 I = identity3x3;
 				const Float3x3 P = I - nnT;
 
 				const Float3 u = P * rel_dx;
@@ -267,7 +267,7 @@ namespace lcs
 
 				// tangential projector P = I - n n^T
 				const Float3x3 nnT = outer_product(normal, normal);
-				const Float3x3 I = Identity3x3;
+				const Float3x3 I = identity3x3;
 				const Float3x3 P = I - nnT;
 
 				const Float3   u = P * rel_dx;

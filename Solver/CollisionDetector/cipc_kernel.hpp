@@ -2349,10 +2349,10 @@ namespace lcs
 
 		inline void point_point_distance2_hessian(Float3& a, Float3& b, Float6x6& H)
 		{
-			H.mat[0][0] = 2.0f * Identity3x3;
-			H.mat[1][1] = 2.0f * Identity3x3;
-			H.mat[0][1] = -2.0f * Identity3x3;
-			H.mat[1][0] = -2.0f * Identity3x3;
+			H.mat[0][0] = 2.0f * identity3x3;
+			H.mat[1][1] = 2.0f * identity3x3;
+			H.mat[0][1] = -2.0f * identity3x3;
+			H.mat[1][0] = -2.0f * identity3x3;
 		}
 		inline void point_edge_distance2_hessian(Float3& p, Float3& e0, Float3& e1, Float9x9& H)
 		{
