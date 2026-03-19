@@ -19,9 +19,9 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 | Feature                            | Description                                                                           |
 | ---------------------------------- | ------------------------------------------------------------------------------------- |
-| **Cloth Simulation**               | High-resolution cloth with various constitutive models (Spring, Finite-Element, etc.) |
+| **Soft Body / Cloth Simulation**   | High-resolution soft bodies with various constitutive models (Spring, Stable NeoHookean, ARAP) |
 | **Rigid Body Dynamics**            | Rigid body simulation with collision and friction                                     |
-| **Cloth-Rigid Coupling**           | Seamless interaction between soft and rigid bodies                                    |
+| **Soft-Rigid Coupling**            | Seamless interaction between soft and rigid bodies                                    |
 | **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions                                     |
 | **Affine Body Dynamics (ABD)**     | Efficient reduced-space simulation for rigid bodies                                   |
 | **Multi-Backend Support**          | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback)                                       |
@@ -30,9 +30,9 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 ### Supported Physics
 
-- ✅ Cloth / Soft Body Simulation
+- ✅ Soft Body / Cloth Simulation
 - ✅ Rigid Body Simulation  
-- ✅ Cloth-Rigid Body Coupling
+- ✅ Soft-Rigid Body Coupling
 - ✅ Ground Collision
 - ✅ Frictional Contact
 - ✅ Continuous Collision Detection (CCD)
@@ -67,7 +67,11 @@ Sample Python-frontend code can be found at [test_cloth_rigid_coupling.py](Pytho
     cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
     cloth_wd = solver.create_world_data_from_file_path('cloth', cloth_mesh_path)
     cloth_wd.set_simulation_type(lcs.MaterialType.Cloth)
-    cloth_wd.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
+    cloth_wd.set_physics_material_cloth(
+        thickness=0.001, 
+        youngs_modulus=1e6,
+        stretch_model="FEM_BW98"  # or Spring
+    )
     cloth_wd.set_scale(0.75)
     cloth_wd.add_fixed_point_by_method("LeftBack")
     cloth_id = solver.register_world_data(cloth_wd)
@@ -332,16 +336,18 @@ Pre-built scenes in `Resources/Scenes/`:
 
 ### Completed ✅
 - [x] Python Bindings
-- [x] Cloth & Rigid Body Simulation
+- [x] Cloth Simulation
+- [x] Rigid Body Simulation
+- [x] Soft Body (Spring Energy only)
 - [x] Penetration-Free Contact (IPC)
 - [x] Affine Body Dynamics
 - [x] Frictional Modeling
 - [x] C++ Integration API
 
 ### In Progress 🔄
+- [x] Soft Body Simulation with Finite Strain Energy (Stable NeoHookean, ARAP)
 - [ ] Tetrahedral Mesh Support
 - [ ] Joint Constraints
-- [ ] Elastic Rod Energy
 
 ### Planned 📋
 - [ ] UV Mapping Package

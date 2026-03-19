@@ -156,7 +156,8 @@ namespace lcs::Initializer
 			this->material_type = sim_type;
 			return *this;
 		}
-		WorldData& add_fixed_point_info(const MakeFixedPointsInterface& info);
+		WorldData& add_fixed_point_from_method(const MakeFixedPointsInterface& info);
+		WorldData& add_fixed_point_from_indices(const std::vector<uint>& indices);
 
 		// template <typename Int, typename Real>
 		WorldData& load_mesh_from_array(const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces);
@@ -321,15 +322,16 @@ namespace lcs::Initializer
 			return sorted_index;
 		}
 
-		void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
-		void set_pinned_verts_from_functions(const std::function<bool(uint)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
-		void set_pinned_verts_from_indices(const std::vector<uint>& indices, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
-
 		void update_default_vertex_animations(const float time, std::vector<Animation::PerVertexAnimation>& vertex_animations);
 		void update_default_body_animations(const float time, Animation::PerBodyAnimation& body_animation);
 
 		void							  get_rest_positions(std::vector<std::array<float, 3>>& rest_positions) const;
 		std::vector<std::array<float, 3>> get_rest_positions() const;
+
+	private:
+		void set_pinned_verts_from_norm_position(const std::function<bool(const float3&)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
+		void set_pinned_verts_from_functions(const std::function<bool(uint)>& func, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
+		void set_pinned_verts_from_indices(const std::vector<uint>& indices, const FixedPointDefaultAnimation& info = FixedPointDefaultAnimation());
 	};
 
 } // namespace lcs::Initializer

@@ -12,13 +12,13 @@ Where internal energies model material behavior and external energies handle con
 
 ---
 
-## Energy Types
+## Constitutive Models for Soft Bodies
 
 ### 1. Stretch Energy
 
 Models the stretching resistance of cloth/soft bodies.
 
-#### Spring Energy 
+#### Spring Energy (Linear)
 
 $$E = \frac{k}{2} (|p_i - p_j| - L_0)^2$$
 
@@ -27,17 +27,38 @@ Where:
 - $L_0$ is rest length
 - $p_i, p_j$ are vertex positions
 
+**Characteristics:** Simple, fast, but limited to small deformations.
+
 **Implementation:** `SpringEnergy` in `Solver/Energies/spring_energy.cpp`
 
-#### Face Stretch Energy
+#### Stable NeoHookean Energy (Finite Strain)
 
-Energy based on triangle face deformation:
+$$E = \frac{\mu}{2}(tr(C) - 3) + \frac{\lambda}{2}(\det(F) - 1)^2 - \mu \ln(\det(F))$$
 
-$$E = \frac{k}{2} (A - A_0)^2$$
+Where:
+- $F$ is the deformation gradient ($F = \frac{\partial x}{\partial X}$)
+- $C = F^T F$ is the right Cauchy-Green tensor
+- $\mu$ and $\lambda$ are Lamé parameters (derived from Young's modulus and Poisson's ratio)
 
-Where $A$ is current area and $A_0$ is rest area.
+**Characteristics:** 
+- Stable for large deformations
+- Physically-based hyperelastic material
+- Volume preservation behavior
 
-**Implementation:** `StretchFaceEnergy` in `Solver/Energies/stretch_face_energy.cpp`
+**Implementation:** `NeoHookeanEnergy` in `Solver/Energies/neohookean_energy.cpp`
+
+#### ARAP (As-Rigid-As-Possible) Energy
+
+$$E_{ARAP} = \sum_{ij} w_{ij} \| (p_i - p_j) - R_i (X_i - X_j) \|^2$$
+
+Where $R_i$ is the rotation matrix that best aligns the deformed positions with rest positions locally.
+
+**Characteristics:**
+- Preserves local rigidity
+- Good for shape matching applications
+- Rotation-invariant energy formulation
+
+**Implementation:** `ARAPEnergy` in `Solver/Energies/arap_energy.cpp`
 
 ---
 
@@ -53,7 +74,19 @@ Where $\theta$ is the dihedral angle between adjacent faces.
 
 ---
 
-### 3. Inertia Energy
+### 3. Face Stretch Energy
+
+Energy based on triangle face deformation:
+
+$$E = \frac{k}{2} (A - A_0)^2$$
+
+Where $A$ is current area and $A_0$ is rest area.
+
+**Implementation:** `StretchFaceEnergy` in `Solver/Energies/stretch_face_energy.cpp`
+
+---
+
+### 4. Inertia Energy
 
 #### Soft Body Inertia
 
@@ -75,7 +108,7 @@ Where $q$ represents the reduced coordinates (translation + rotation).
 
 ---
 
-### 4. Orthogonality Energy
+### 5. Orthogonality Energy
 
 Ensures rigid body rotation matrices remain orthogonal:
 
@@ -85,7 +118,7 @@ $$E_{ortho} = \frac{k_o}{2} \|R^T R - I\|^2$$
 
 ---
 
-### 5. Contact Energy
+### 6. Contact Energy
 
 #### Quadratic Contact
 
@@ -142,14 +175,22 @@ Using ABD, the system solves in a reduced space:
 
 ```cpp
 ClothMaterial{
-    .stretch_model = ConstitutiveStretchModelCloth::Spring,
+    .stretch_model = ConstitutiveStretchModelCloth::Spring,      // or StableNeoHookean, ARAP
     .bending_model = ConstitutiveBendingModelCloth::Bending,
     .thickness = 0.001f,           // Thickness for collision
     .youngs_modulus = 1e6f,        // Stretch stiffness
-    .poisson_ratio = 0.0f,         // Poisson effect
+    .poisson_ratio = 0.0f,         // Poisson effect (for NeoHookean)
     .area_bending_stiffness = 1e-5f  // Bending stiffness
 }
 ```
+
+### Available Stretch Models
+
+| Model | Use Case | Parameters |
+|-------|----------|------------|
+| `Spring` | Basic cloth, real-time applications | youngs_modulus |
+| `StableNeoHookean` | Large deformations, physically-based | youngs_modulus, poisson_ratio |
+| `ARAP` | Shape matching, local rigidity | youngs_modulus |
 
 ### Tetrahedral Material Parameters
 

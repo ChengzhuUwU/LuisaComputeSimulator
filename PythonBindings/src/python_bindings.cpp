@@ -142,7 +142,7 @@ struct WorldDataWrapper
 		mfp.method = parse_fixed_method_py(method);
 		mfp.range = range;
 
-		wd->add_fixed_point_info(mfp);
+		wd->add_fixed_point_from_method(mfp);
 		return *this;
 	}
 
@@ -151,14 +151,17 @@ struct WorldDataWrapper
 	{
 		if (indices.ndim() != 1)
 			throw std::runtime_error("indices must be a 1-D array of ints");
-		auto		 buf = indices.unchecked<1>();
-		const size_t n = indices.shape(0);
+		auto			  buf = indices.unchecked<1>();
+		const size_t	  n = indices.shape(0);
+		std::vector<uint> idx_vec(n);
 		for (size_t i = 0; i < n; ++i)
 		{
-			int v = buf(i);
-			if (v >= 0)
-				wd->fixed_point_indices.push_back(static_cast<uint>(v));
+			int idx = buf(i);
+			if (idx < 0)
+				throw std::runtime_error("indices must be non-negative");
+			idx_vec[i] = static_cast<uint>(idx);
 		}
+		wd->add_fixed_point_from_indices(idx_vec);
 		return *this;
 	}
 

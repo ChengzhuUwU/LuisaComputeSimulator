@@ -758,7 +758,7 @@ namespace Demo::Simulation
 								fi.use_setting_position = true;
 							}
 						}
-						info.add_fixed_point_info(mfp);
+						info.add_fixed_point_from_method(mfp);
 					}
 				}
 				fn_register_mesh(info);

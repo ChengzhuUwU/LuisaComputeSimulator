@@ -150,7 +150,12 @@ namespace lcs::Initializer // WorldData
 			fixed_point_default_animations.emplace_back(fixed_info).local_vid = vid;
 		}
 	}
-	WorldData& WorldData::add_fixed_point_info(const MakeFixedPointsInterface& fixed_point_func)
+	WorldData& WorldData::add_fixed_point_from_indices(const std::vector<uint>& indices)
+	{
+		set_pinned_verts_from_indices(indices);
+		return *this;
+	}
+	WorldData& WorldData::add_fixed_point_from_method(const MakeFixedPointsInterface& fixed_point_func)
 	{
 		auto from_norm_position = [&](const std::function<bool(const float3&)>& func,
 									  const FixedPointDefaultAnimation&			info = FixedPointDefaultAnimation())

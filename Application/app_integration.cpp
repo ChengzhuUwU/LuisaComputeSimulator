@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 								.stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring,
 							})
 							.set_translation({ 0.0f, 0.4f, 0.0f })
-							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::LeftBack });
+							.add_fixed_point_from_method({ .method = lcs::Initializer::FixedPointsType::LeftBack });
 	uint upper_square_id = solver.register_world_data(upper_square);
 
 	std::vector<std::array<float, 3>> square_mesh_vertices{ { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 } };
@@ -36,11 +36,11 @@ int main(int argc, char** argv)
 							.set_physics_material(lcs::Material::ClothMaterial{})
 							.set_scale(0.8f)
 							.set_translation({ 0.1f, 0.2f, 0.0f })
-							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Left })
-							.add_fixed_point_info({ .method = lcs::Initializer::FixedPointsType::Right });
+							.add_fixed_point_from_method({ .method = lcs::Initializer::FixedPointsType::Left })
+							.add_fixed_point_from_method({ .method = lcs::Initializer::FixedPointsType::Right });
 	uint lower_square_id = solver.register_world_data(lower_square);
 
-	auto config = solver.get_config();
+	auto& config = solver.get_config();
 	config.use_floor = false;
 	config.implicit_dt = 0.2;
 	config.use_energy_linesearch = true;
