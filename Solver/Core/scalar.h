@@ -24,7 +24,7 @@ namespace lcs
 	template <typename T>
 	inline constexpr T abs_scalar(const T value)
 	{
-		return value > T(0) ? value : -value;
+		return select(value >= static_cast<T>(0), value, -value);
 	}
 	template <typename T>
 	inline constexpr T lerp_scalar(const T left, const T right, const T lerp_value)

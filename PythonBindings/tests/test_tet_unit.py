@@ -61,9 +61,10 @@ def parse_args():
         default=(10, 10, 20),
         help="Resolution for grid mesh as 'nx,ny,nz' (default: 10,10,20)",
     )
-    p.add_argument("--no_floor", action="store_true",
+    p.add_argument("--no_floor", default=False, action="store_true",
                    help="Disable floor collision for debugging")
-    p.add_argument("--headless", action="store_true")
+    p.add_argument("--headless", default=False, action="store_true")
+    p.add_argument("--use_gpu", default=False, action="store_true", help="Force GPU mode for testing")
     return p.parse_args()
 
 
@@ -218,7 +219,7 @@ def main():
     config.use_ccd_linesearch = False
     config.use_self_collision = False    # keep it simple for smoke test
     config.nonlinear_iter_count = 10  # Increased for stability
-    config.use_gpu = False  # Force CPU mode
+    config.use_gpu = args.use_gpu  # Use GPU if requested
 
     # ---- Register tet body -----------------------------------------------
     if args.mesh == "cube":
@@ -240,7 +241,7 @@ def main():
         youngs_modulus=1e4,
         poisson_ratio=0.4,
     )
-    tet_spring.add_fixed_point_by_method("Left")
+    tet_spring.add_fixed_point_by_method("Front")
     spring_fixed_vids = tet_spring.get_fixed_point_indices()
     reg_spring = solver.register_world_data(tet_spring)
     print(f"Registered tet_spring with id={reg_spring}, fixed vertices={spring_fixed_vids}")

@@ -586,4 +586,13 @@ namespace lcs
 			luisa::compute::make_float3(vec.y, -vec.x, 0.0f));
 	}
 
+	[[nodiscard]] inline float sqr_frobenius(const float3x3& m)
+	{
+		return dot(m[0], m[0]) + dot(m[1], m[1]) + dot(m[2], m[2]);
+	}
+	[[nodiscard]] inline Var<float> sqr_frobenius(const Var<float3x3>& m)
+	{
+		return dot(m[0], m[0]) + dot(m[1], m[1]) + dot(m[2], m[2]);
+	}
+
 }; // namespace lcs
