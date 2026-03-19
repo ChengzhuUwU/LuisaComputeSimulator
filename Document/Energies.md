@@ -29,9 +29,9 @@ Where:
 
 **Characteristics:** Simple, fast, but limited to small deformations.
 
-**Implementation:** `SpringEnergy` in `Solver/Energies/spring_energy.cpp`
+**Implementation:** `SpringEnergy` in [`Solver/Energies/spring_energy.cpp`](https://github.com/ChengzhuUwU/LuisaComputeSimulator/blob/main/Solver/Energies/spring_energy.cpp)
 
-#### Stable NeoHookean Energy (Finite Strain)
+#### Stable NeoHookean Energy (On development)
 
 $$E = \frac{\mu}{2}(tr(C) - 3) + \frac{\lambda}{2}(\det(F) - 1)^2 - \mu \ln(\det(F))$$
 
@@ -45,7 +45,8 @@ Where:
 - Physically-based hyperelastic material
 - Volume preservation behavior
 
-**Implementation:** `NeoHookeanEnergy` in `Solver/Energies/neohookean_energy.cpp`
+**Implementation:** TODO: `TetElasticEnergy` in [`Solver/Energies/tet_elastic_energy.cpp`](../Solver/Energies/tet_elastic_energy.cpp)
+
 
 #### ARAP (As-Rigid-As-Possible) Energy
 
@@ -58,7 +59,7 @@ Where $R_i$ is the rotation matrix that best aligns the deformed positions with 
 - Good for shape matching applications
 - Rotation-invariant energy formulation
 
-**Implementation:** `ARAPEnergy` in `Solver/Energies/arap_energy.cpp`
+**Implementation:** Planned
 
 ---
 
@@ -70,7 +71,7 @@ $$E = \frac{k_b}{2} (\theta - \theta_0)^2$$
 
 Where $\theta$ is the dihedral angle between adjacent faces.
 
-**Implementation:** `BendingEnergy` in `Solver/Energies/bending_energy_kernel.cpp`
+**Implementation:** `BendingEnergy` in [`Solver/Energies/bending_energy_kernel.cpp`](../Solver/Energies/bending_energy_kernel.cpp)
 
 ---
 
@@ -82,7 +83,7 @@ $$E = \frac{k}{2} (A - A_0)^2$$
 
 Where $A$ is current area and $A_0$ is rest area.
 
-**Implementation:** `StretchFaceEnergy` in `Solver/Energies/stretch_face_energy.cpp`
+**Implementation:** `StretchFaceEnergy` in [`Solver/Energies/stretch_face_energy.cpp`](../Solver/Energies/stretch_face_energy.cpp)
 
 ---
 
@@ -94,7 +95,7 @@ $$E_{inertia} = \frac{1}{2} m v^T v$$
 
 For soft bodies, uses full-space formulation with per-vertex masses.
 
-**Implementation:** `SoftInertiaEnergy` in `Solver/Energies/soft_inertia_energy.cpp`
+**Implementation:** `SoftInertiaEnergy` in [`Solver/Energies/soft_inertia_energy.cpp`](../Solver/Energies/soft_inertia_energy.cpp)
 
 #### Affine Body Dynamics (ABD) Inertia
 
@@ -104,17 +105,17 @@ $$E_{inertia} = \frac{1}{2} \dot{q}^T M \dot{q}$$
 
 Where $q$ represents the reduced coordinates (translation + rotation).
 
-**Implementation:** `AbdInertiaEnergy` in `Solver/Energies/abd_inertia_energy.cpp`
+**Implementation:** `AbdInertiaEnergy` in [`Solver/Energies/abd_inertia_energy.cpp`](../Solver/Energies/abd_inertia_energy.cpp)
 
 ---
 
 ### 5. Orthogonality Energy
 
-Ensures rigid body rotation matrices remain orthogonal:
+Ensures rigid body scaling and rotation matrix $A = RS$ tend to be rotation matrix $R$ (Penalty to the scaling term: $S=\mathbf{I}_{3\times 3}$):
 
-$$E_{ortho} = \frac{k_o}{2} \|R^T R - I\|^2$$
+$$E_{ortho} = \frac{k_o}{2} \|A^T A - I\|^2$$
 
-**Implementation:** `AbdOrthoEnergy` in `Solver/Energies/abd_ortho_energy.cpp`
+**Implementation:** `AbdOrthoEnergy` in [`Solver/Energies/abd_ortho_energy.cpp`](https://github.com/ChengzhuUwU/LuisaComputeSimulator/blob/main/Solver/Energies/abd_ortho_energy.cpp)
 
 ---
 
@@ -132,7 +133,7 @@ Where:
 
 $$E_{contact} = -k (d - \hat{d})^2 \ln\left(\frac{d}{\hat{d}}\right)$$
 
-More robust for thin objects.
+Provide more forces in extremly contact.
 
 ---
 
@@ -144,21 +145,21 @@ The simulator uses Affine Body Dynamics for efficient rigid body simulation.
 
 Rigid body motion is represented as an affine transformation:
 
-$$x = R \overline{x} + t$$
+$$x = A \overline{x} + p$$
 
 Where:
-- $\overline{x}$ is the position in model space
-- $R$ is the rotation matrix
-- $t$ is translation
+- $\overline{x}$ is the rest state position in model space
+- $A = RS$ is the rotation and scaling matrix
+- $p$ is translation
 
 ### Jacobian
 
-$$J = \frac{\partial x}{\partial q} = 
+$$ J = 
 \begin{bmatrix}
-I_3 & -\overline{x}_\times
-\end{bmatrix}$$
-
-Where $\overline{x}_\times$ is the skew-symmetric cross-product matrix.
+1 & 0 & 0 & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & & & & \\
+0 & 1 & 0 & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & \\
+0 & 0 & 1 & & & & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 \\
+\end{bmatrix} \in R^{3 \times 12} $$
 
 ### Reduced Space
 
