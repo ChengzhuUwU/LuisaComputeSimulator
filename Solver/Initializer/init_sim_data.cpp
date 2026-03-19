@@ -4,7 +4,7 @@
 #include "Core/float_n.h"
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
-#include "Energies/bending_energy_kernel.h"
+#include "Energies/detail/bending_energy.hpp"
 #include "Energies/fem_utils.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
@@ -760,7 +760,7 @@ namespace lcs::Initializer
 						const float3& x2 = vert_pos[2];
 						const float3& x3 = vert_pos[3];
 
-						const float angle = lcs::BendingEnergyUtils::compute_theta(x0, x1, x2, x3);
+						const float angle = lcs::detail::bending_energy::compute_theta(x0, x1, x2, x3);
 
 						const float A1 = compute_face_area(x0, x1, x2);
 						const float A2 = compute_face_area(x0, x1, x3);

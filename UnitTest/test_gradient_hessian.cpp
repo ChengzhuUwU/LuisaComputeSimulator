@@ -9,6 +9,10 @@
 #include "Energies/detail/stretch_face_energy.hpp"
 #include "Energies/detail/arap_tet_energy.hpp"
 #include "Energies/detail/bending_energy.hpp"
+#include "Energies/detail/abd_inertia_energy.hpp"
+#include "Energies/detail/abd_ortho_energy.hpp"
+#include "Energies/detail/stable_neo_hookean_energy.hpp"
+#include "Energies/detail/ground_collision_energy.hpp"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>
 #include <vector>
@@ -610,7 +614,7 @@ int main(int argc, char** argv)
 
 			std::function<float(const EigenVec&)> bend_func = [&](const EigenVec& xv) -> float
 			{
-				float angle = BendingEnergyUtils::compute_theta(luisa::make_float3(xv[0], xv[1], xv[2]),
+				float angle = detail::bending_energy::compute_theta(luisa::make_float3(xv[0], xv[1], xv[2]),
 					luisa::make_float3(xv[3], xv[4], xv[5]),
 					luisa::make_float3(xv[6], xv[7], xv[8]),
 					luisa::make_float3(xv[9], xv[10], xv[11]));
@@ -624,13 +628,13 @@ int main(int argc, char** argv)
 			Eigen::MatrixXf H_dummy;
 			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(bend_func, x0, g_num, H_dummy, fd_h, false);
 
-			float3 grad_arr[4] = { Zero3, Zero3, Zero3, Zero3 };
-			float  angle = BendingEnergyUtils::compute_d_theta_d_x(luisa::make_float3(x0[0], x0[1], x0[2]),
-				 luisa::make_float3(x0[3], x0[4], x0[5]),
-				 luisa::make_float3(x0[6], x0[7], x0[8]),
-				 luisa::make_float3(x0[9], x0[10], x0[11]),
-				 grad_arr);
-			auto   eval = detail::bending_energy::evaluate<float, float3, float3x3>(grad_arr, angle, stiff * area);
+			auto eval = detail::bending_energy::evaluate<float, float3, float3x3>(
+				luisa::make_float3(x0[0], x0[1], x0[2]),
+				luisa::make_float3(x0[3], x0[4], x0[5]),
+				luisa::make_float3(x0[6], x0[7], x0[8]),
+				luisa::make_float3(x0[9], x0[10], x0[11]),
+				0.0f,
+				stiff * area);
 
 			Eigen::VectorXf g_ana(12);
 			for (int ii = 0; ii < 4; ++ii)
@@ -640,49 +644,190 @@ int main(int argc, char** argv)
 			print_grad_only("Bending_GradientOnly", g_num, g_ana, 2e-3f);
 		}
 
-		// Skip Hessian FD check for bending under current Gauss-Newton approximation.
-		return;
-
-		// 4) Ground collision (simple quadratic)
+		// 5) ABD inertia (4 control points / 12 dof)
 		{
-			const float							  floor_y = 0.0f;
-			const float							  thickness = 0.0f;
-			const float							  d_hat = 0.1f;
-			const float							  area = 1.0f;
-			const float							  stiff = 100.0f * area;
-			std::function<float(const EigenVec&)> ground_func = [&](const EigenVec& xv) -> float
-			{
-				Eigen::Vector3f x(xv[0], xv[1], xv[2]);
-				float			dist = x[1] - floor_y;
-				if (dist - thickness < d_hat)
-				{
-					float C = d_hat + thickness - dist;
-					return 0.5f * stiff * C * C;
-				}
-				return 0.0f;
+			const float			  scaled_stiffness = 3.0f;
+			const luisa::float4x4 M = luisa::make_float4x4(
+				0.50f, 0.10f, 0.08f, 0.02f,
+				0.10f, 0.45f, 0.05f, 0.03f,
+				0.08f, 0.05f, 0.40f, 0.04f,
+				0.02f, 0.03f, 0.04f, 0.35f);
+			luisa::float3 q_tilde[4] = {
+				luisa::make_float3(0.0f, 0.0f, 0.0f),
+				luisa::make_float3(1.0f, 0.0f, 0.0f),
+				luisa::make_float3(0.0f, 1.0f, 0.0f),
+				luisa::make_float3(0.0f, 0.0f, 1.0f),
 			};
 
-			EigenVec x0(3);
-			x0 << 0.0f, -0.05f, 0.0f; // slightly penetrating
+			std::function<float(const EigenVec&)> abd_inertia_func = [&](const EigenVec& xv) -> float
+			{
+				luisa::float3 delta[4];
+				for (int i = 0; i < 4; ++i)
+				{
+					delta[i] = luisa::make_float3(xv[3 * i + 0] - q_tilde[i][0],
+						xv[3 * i + 1] - q_tilde[i][1],
+						xv[3 * i + 2] - q_tilde[i][2]);
+				}
+				return detail::abd_inertia_energy::compute_energy(delta, M, scaled_stiffness);
+			};
+
+			EigenVec x0(12);
+			x0 << 0.02f, -0.01f, 0.03f,
+				1.05f, 0.02f, -0.01f,
+				-0.03f, 1.08f, 0.04f,
+				0.01f, -0.02f, 1.10f;
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(abd_inertia_func, x0, g_num, H_num, fd_h, false);
+
+			luisa::float3 delta[4];
+			for (int i = 0; i < 4; ++i)
+			{
+				delta[i] = luisa::make_float3(x0[3 * i + 0] - q_tilde[i][0],
+					x0[3 * i + 1] - q_tilde[i][1],
+					x0[3 * i + 2] - q_tilde[i][2]);
+			}
+			auto eval = detail::abd_inertia_energy::evaluate(delta, M, scaled_stiffness, luisa::make_float3x3(1.0f));
+
+			Eigen::VectorXf g_ana(12);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(12, 12);
+			for (int a = 0; a < 4; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 4; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 4 + b]);
+				}
+			}
+			print_diff("ABDInertia", g_num, g_ana, H_num, H_ana, 2e-2f);
+		}
+
+		// 6) ABD ortho (A in R^{3x3}, 9 dof)
+		{
+			const float							  stiff = 2.0f;
+			std::function<float(const EigenVec&)> abd_ortho_func = [&](const EigenVec& xv) -> float
+			{
+				luisa::float3x3 A = luisa::make_float3x3(
+					luisa::make_float3(xv[0], xv[1], xv[2]),
+					luisa::make_float3(xv[3], xv[4], xv[5]),
+					luisa::make_float3(xv[6], xv[7], xv[8]));
+				return detail::abd_ortho_energy::compute_energy(A, stiff);
+			};
+
+			EigenVec x0(9);
+			x0 << 1.02f, 0.03f, -0.01f,
+				-0.02f, 0.98f, 0.04f,
+				0.01f, -0.05f, 1.03f;
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(abd_ortho_func, x0, g_num, H_num, fd_h, false);
+
+			luisa::float3x3 A = luisa::make_float3x3(
+				luisa::make_float3(x0[0], x0[1], x0[2]),
+				luisa::make_float3(x0[3], x0[4], x0[5]),
+				luisa::make_float3(x0[6], x0[7], x0[8]));
+			auto eval = detail::abd_ortho_energy::evaluate<float, float3, float3x3>(A, stiff, luisa::make_float3x3(1.0f));
+
+			Eigen::VectorXf g_ana(9);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(9, 9);
+			for (int a = 0; a < 3; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 3; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 3 + b]);
+				}
+			}
+			print_diff("ABDOrtho", g_num, g_ana, H_num, H_ana, 2e-2f);
+		}
+
+		// 7) Stable Neo-Hookean tet (gradient-only)
+		{
+			luisa::float3	X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
+			luisa::float3	X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
+			luisa::float3	X2 = luisa::make_float3(0.0f, 1.0f, 0.0f);
+			luisa::float3	X3 = luisa::make_float3(0.0f, 0.0f, 1.0f);
+			luisa::float3x3 Dm = luisa::make_float3x3(X1 - X0, X2 - X0, X3 - X0);
+			luisa::float3x3 Dm_inv = luisa::inverse(Dm);
+			const float		volume = std::abs(luisa::determinant(Dm)) / 6.0f;
+			const float		mu = 2.0f;
+			const float		lambda = 1.0f;
+
+			std::function<float(const EigenVec&)> snhk_func = [&](const EigenVec& xv) -> float
+			{
+				return detail::TetElasticEnergyUtils::compute_energy(
+					luisa::make_float3(xv[0], xv[1], xv[2]),
+					luisa::make_float3(xv[3], xv[4], xv[5]),
+					luisa::make_float3(xv[6], xv[7], xv[8]),
+					luisa::make_float3(xv[9], xv[10], xv[11]),
+					Dm_inv,
+					mu,
+					lambda,
+					volume);
+			};
+
+			EigenVec x0(12);
+			x0 << 0.03f, -0.02f, 0.01f,
+				1.10f, 0.04f, -0.02f,
+				0.02f, 1.06f, 0.05f,
+				-0.01f, 0.03f, 1.08f;
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(snhk_func, x0, g_num, H_num, fd_h, false);
+
+			auto in = detail::stable_neo_hookean_energy::Input<float3, float3x3, float>{
+				.x0 = luisa::make_float3(x0[0], x0[1], x0[2]),
+				.x1 = luisa::make_float3(x0[3], x0[4], x0[5]),
+				.x2 = luisa::make_float3(x0[6], x0[7], x0[8]),
+				.x3 = luisa::make_float3(x0[9], x0[10], x0[11]),
+				.dm_inv = Dm_inv,
+				.mu = mu,
+				.lambda = lambda,
+				.volume = volume,
+			};
+			auto eval = detail::stable_neo_hookean_energy::evaluate_host(in);
+
+			Eigen::VectorXf g_ana(12);
+			for (int a = 0; a < 4; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+			}
+			print_grad_only("TetStableNeoHookean", g_num, g_ana, 2e-2f);
+		}
+
+		// 8) Ground collision repulsive term (1 dof in y)
+		{
+			const float floor_y = 0.0f;
+			const float thickness = 0.01f;
+			const float d_hat = 0.1f;
+			const float stiff = 100.0f;
+			const uint	collision_type = 0u;
+
+			std::function<float(const EigenVec&)> ground_func = [&](const EigenVec& xv) -> float
+			{
+				float dist = xv[0] - floor_y;
+				return detail::ground_collision_energy::repulsive_energy(
+					dist, thickness, d_hat, stiff, collision_type);
+			};
+
+			EigenVec x0(1);
+			x0 << 0.04f;
 			Eigen::VectorXf g_num;
 			Eigen::MatrixXf H_num;
 			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(ground_func, x0, g_num, H_num, fd_h, false);
 
-			Eigen::VectorXf g_ana(3);
-			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(3, 3);
-			float			dist = x0[1] - floor_y;
-			if (dist - thickness < d_hat)
-			{
-				float			C = d_hat + thickness - dist;
-				float			k1 = stiff * C;
-				float			k2 = stiff;
-				Eigen::Vector3f normal(0.0f, 1.0f, 0.0f);
-				g_ana = -k1 * normal;
-				H_ana = k2 * (normal * normal.transpose());
-			}
+			Eigen::VectorXf g_ana(1);
+			Eigen::MatrixXf H_ana(1, 1);
+			float			dist = x0[0] - floor_y;
+			g_ana[0] = detail::ground_collision_energy::repulsive_first_derivative(
+				dist, thickness, d_hat, stiff, collision_type);
+			H_ana(0, 0) = detail::ground_collision_energy::repulsive_second_derivative(
+				dist, thickness, d_hat, stiff, collision_type);
 
-			print_diff("GroundCollision", g_num, g_ana, H_num, H_ana);
+			print_diff("GroundCollision_Repulsive", g_num, g_ana, H_num, H_ana, 2e-2f);
 		}
+
+		return;
 	};
 
 	run_energy_fd_tests(device, stream);

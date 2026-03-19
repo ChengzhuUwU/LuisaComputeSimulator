@@ -35,7 +35,7 @@ namespace lcs
 					Float3 vert_pos[4] = { sa_x.read(edge[0]), sa_x.read(edge[1]), sa_x.read(edge[2]), sa_x.read(edge[3]) };
 					Float  rest_angle = sa_bending_edges_rest_angle->read(eid);
 					Float  angle =
-						BendingEnergyUtils::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
+						detail::bending_energy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
 					Float delta_angle = angle - rest_angle;
 					Float area = sa_bending_edges_rest_area->read(eid);
 					Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
@@ -71,22 +71,13 @@ namespace lcs
 					sa_x->read(edge[2]),
 					sa_x->read(edge[3]),
 				};
-				Float3 gradients[4] = {
-					make_float3(0.0f),
-					make_float3(0.0f),
-					make_float3(0.0f),
-					make_float3(0.0f),
-				};
 
 				const Float rest_angle = sa_bending_edges_rest_angle->read(eid);
-				const Float angle =
-					BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
-				const Float delta_angle = angle - rest_angle;
-
 				const Float area = sa_bending_edges_rest_area->read(eid);
 				const Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
 
-				auto eval = detail::bending_energy::evaluate<Float, Float3, Float3x3>(gradients, delta_angle, stiff);
+				auto eval = detail::bending_energy::evaluate<Float, Float3, Float3x3>(
+					vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], rest_angle, stiff);
 				{
 					output_gradient_ptr->write(eid * 4 + 0, eval.gradients[0]);
 					output_gradient_ptr->write(eid * 4 + 1, eval.gradients[1]);
@@ -151,17 +142,13 @@ namespace lcs
 			{
 				uint4  edge = sa_bending_edges[eid];
 				float3 vert_pos[4] = { sa_x[edge[0]], sa_x[edge[1]], sa_x[edge[2]], sa_x[edge[3]] };
-				float3 gradients[4] = { Zero3, Zero3, Zero3, Zero3 };
 
 				const float rest_angle = sa_bending_edges_rest_angle[eid];
-				const float angle =
-					BendingEnergyUtils::compute_d_theta_d_x(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], gradients);
-				const float delta_angle = angle - rest_angle;
-
 				const float area = sa_bending_edges_rest_area[eid];
 				const float stiff = sa_bending_edges_stiffness[eid] * scaling * area;
 
-				auto eval = detail::bending_energy::evaluate<float, float3, float3x3>(gradients, delta_angle, stiff);
+				auto eval = detail::bending_energy::evaluate<float, float3, float3x3>(
+					vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], rest_angle, stiff);
 
 				for (uint ii = 0; ii < 4; ii++)
 				{
