@@ -125,20 +125,33 @@ namespace lcs::detail::bending_energy
 		return face_dihedral_angle(x0, x1, x2, x3);
 	}
 
-	template <typename ScalarT>
+	template <typename ScalarT, typename Vec3T>
 	[[nodiscard]] inline ScalarT compute_energy(
-		const ScalarT delta_angle,
+		const Vec3T&  x0,
+		const Vec3T&  x1,
+		const Vec3T&  x2,
+		const Vec3T&  x3,
+		const ScalarT rest_angle,
 		const ScalarT stiffness)
 	{
+		Vec3T	   dtheta_dx[4] = { Vec3T{}, Vec3T{}, Vec3T{}, Vec3T{} };
+		const auto angle = compute_d_theta_d_x(x0, x1, x2, x3, dtheta_dx);
+		const auto delta_angle = angle - rest_angle;
 		return 0.5f * stiffness * delta_angle * delta_angle;
 	}
 
 	template <typename ScalarT, typename Vec3T, typename Mat3T>
 	[[nodiscard]] inline auto evaluate(
-		const Vec3T (&dtheta_dx)[4],
-		const ScalarT delta_angle,
+		const Vec3T&  x0,
+		const Vec3T&  x1,
+		const Vec3T&  x2,
+		const Vec3T&  x3,
+		const ScalarT rest_angle,
 		const ScalarT stiffness)
 	{
+		Vec3T	   dtheta_dx[4] = { Vec3T{}, Vec3T{}, Vec3T{}, Vec3T{} };
+		const auto angle = compute_d_theta_d_x(x0, x1, x2, x3, dtheta_dx);
+		const auto delta_angle = angle - rest_angle;
 		const auto g0 = stiffness * delta_angle * dtheta_dx[0];
 		const auto h00 = stiffness * outer_product(dtheta_dx[0], dtheta_dx[0]);
 
@@ -158,21 +171,6 @@ namespace lcs::detail::bending_energy
 			}
 		}
 		return out;
-	}
-
-	template <typename ScalarT, typename Vec3T, typename Mat3T>
-	[[nodiscard]] inline auto evaluate(
-		const Vec3T&  x2,
-		const Vec3T&  x1,
-		const Vec3T&  x0,
-		const Vec3T&  x3,
-		const ScalarT rest_angle,
-		const ScalarT stiffness)
-	{
-		Vec3T	   dtheta_dx[4] = { Vec3T{}, Vec3T{}, Vec3T{}, Vec3T{} };
-		const auto angle = compute_d_theta_d_x(x2, x1, x0, x3, dtheta_dx);
-		const auto delta_angle = angle - rest_angle;
-		return evaluate<ScalarT, Vec3T, Mat3T>(dtheta_dx, delta_angle, stiffness);
 	}
 
 } // namespace lcs::detail::bending_energy

@@ -34,12 +34,10 @@ namespace lcs
 
 					Float3 vert_pos[4] = { sa_x.read(edge[0]), sa_x.read(edge[1]), sa_x.read(edge[2]), sa_x.read(edge[3]) };
 					Float  rest_angle = sa_bending_edges_rest_angle->read(eid);
-					Float  angle =
-						detail::bending_energy::compute_theta(vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3]);
-					Float delta_angle = angle - rest_angle;
-					Float area = sa_bending_edges_rest_area->read(eid);
-					Float stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
-					energy = detail::bending_energy::compute_energy(delta_angle, stiff);
+					Float  area = sa_bending_edges_rest_area->read(eid);
+					Float  stiff = sa_bending_edges_stiffness->read(eid) * scaling * area;
+					energy = detail::bending_energy::compute_energy(
+						vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], rest_angle, stiff);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);

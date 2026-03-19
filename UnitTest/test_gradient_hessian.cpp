@@ -614,12 +614,10 @@ int main(int argc, char** argv)
 
 			std::function<float(const EigenVec&)> bend_func = [&](const EigenVec& xv) -> float
 			{
-				float angle = detail::bending_energy::compute_theta(luisa::make_float3(xv[0], xv[1], xv[2]),
+				return detail::bending_energy::compute_energy(luisa::make_float3(xv[0], xv[1], xv[2]),
 					luisa::make_float3(xv[3], xv[4], xv[5]),
 					luisa::make_float3(xv[6], xv[7], xv[8]),
-					luisa::make_float3(xv[9], xv[10], xv[11]));
-				float delta = angle - 0.0f;
-				return detail::bending_energy::compute_energy(delta, stiff * area);
+					luisa::make_float3(xv[9], xv[10], xv[11]), 0.0f, stiff * area);
 			};
 
 			EigenVec x0(12);
