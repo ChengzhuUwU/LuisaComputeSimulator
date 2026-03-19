@@ -5,6 +5,7 @@
 #include "Core/lc_to_eigen.h"
 #include "Core/svd_2x2.h"
 #include "Core/svd_3x3.h"
+#include <type_traits>
 #include <luisa/luisa-compute.h>
 
 namespace lcs
@@ -177,6 +178,14 @@ namespace lcs
 			R.vec[1] = F.cols[1];
 			return R;
 		}
+		inline float9 flatten(const float3x3& F)
+		{
+			float9 R;
+			R.vec[0] = F.cols[0];
+			R.vec[1] = F.cols[1];
+			R.vec[2] = F.cols[2];
+			return R;
+		}
 		inline Var<float6> flatten(const Var<float2x3>& F)
 		{
 			Var<float6> R;
@@ -184,201 +193,149 @@ namespace lcs
 			R.vec[1] = F.cols[1];
 			return R;
 		}
+		inline Var<float9> flatten(const Var<float3x3>& F)
+		{
+			Var<float9> R;
+			R.vec[0] = F[0];
+			R.vec[1] = F[1];
+			R.vec[2] = F[2];
+			return R;
+		}
 
-		template <size_t M, size_t N>
-		static inline void set_matrix_scalar(LargeMatrix<M, N>& mat, size_t row, size_t col, const float value)
+		namespace
 		{
-			mat.scalar(0, 0) = value;
-		}
-		template <size_t M, size_t N>
-		static inline void set_matrix_scalar(Var<LargeMatrix<M, N>>& mat, size_t row, size_t col, const float value)
-		{
-			mat->scalar(0, 0) = value;
-		}
+			template <typename DmInvType, typename DiffMatType>
+			static inline DiffMatType get_dFdx_2D(const DmInvType& InverseDm)
+			{
+				const auto d0 = InverseDm[0][0];
+				const auto d1 = InverseDm[0][1];
+				const auto d2 = InverseDm[1][0];
+				const auto d3 = InverseDm[1][1];
+
+				DiffMatType result_cm;
+				if constexpr (std::is_same_v<DmInvType, LargeMatrix<9, 6>>)
+				{
+					result_cm.set_zero();
+				}
+				else if constexpr (std::is_same_v<DmInvType, Var<LargeMatrix<9, 6>>>)
+				{
+					result_cm->set_zero();
+				}
+
+				const auto val_1 = -d0 - d1;
+				const auto val_2 = -d2 - d3;
+				set_matrix_scalar(result_cm, 0, 0, val_1);
+				set_matrix_scalar(result_cm, 0, 3, val_2);
+				set_matrix_scalar(result_cm, 1, 1, val_1);
+				set_matrix_scalar(result_cm, 1, 4, val_2);
+				set_matrix_scalar(result_cm, 2, 2, val_1);
+				set_matrix_scalar(result_cm, 2, 5, val_2);
+				set_matrix_scalar(result_cm, 3, 0, d0);
+				set_matrix_scalar(result_cm, 3, 3, d2);
+				set_matrix_scalar(result_cm, 4, 1, d0);
+				set_matrix_scalar(result_cm, 4, 4, d2);
+				set_matrix_scalar(result_cm, 5, 2, d0);
+				set_matrix_scalar(result_cm, 5, 5, d2);
+				set_matrix_scalar(result_cm, 6, 0, d1);
+				set_matrix_scalar(result_cm, 6, 3, d3);
+				set_matrix_scalar(result_cm, 7, 1, d1);
+				set_matrix_scalar(result_cm, 7, 4, d3);
+				set_matrix_scalar(result_cm, 8, 2, d1);
+				set_matrix_scalar(result_cm, 8, 5, d3);
+
+				return result_cm;
+			}
+
+			template <typename DmInvType, typename DiffMatType>
+			static inline DiffMatType get_dFdx_3D(const DmInvType& InverseDm)
+			{
+				const auto m = InverseDm[0][0];
+				const auto n = InverseDm[1][0];
+				const auto o = InverseDm[2][0];
+				const auto p = InverseDm[0][1];
+				const auto q = InverseDm[1][1];
+				const auto r = InverseDm[2][1];
+				const auto s = InverseDm[0][2];
+				const auto t = InverseDm[1][2];
+				const auto u = InverseDm[2][2];
+
+				DiffMatType result_cm;
+				if constexpr (std::is_same_v<DmInvType, LargeMatrix<9, 6>>)
+				{
+					result_cm.set_zero();
+				}
+				else if constexpr (std::is_same_v<DmInvType, Var<LargeMatrix<9, 6>>>)
+				{
+					result_cm->set_zero();
+				}
+
+				const auto val_1 = -m - n - o;
+				const auto val_2 = -p - q - r;
+				const auto val_3 = -s - t - u;
+				set_matrix_scalar(result_cm, 0, 0, val_1);
+				set_matrix_scalar(result_cm, 0, 3, val_2);
+				set_matrix_scalar(result_cm, 0, 6, val_3);
+				set_matrix_scalar(result_cm, 1, 1, val_1);
+				set_matrix_scalar(result_cm, 1, 4, val_2);
+				set_matrix_scalar(result_cm, 1, 7, val_3);
+				set_matrix_scalar(result_cm, 2, 2, val_1);
+				set_matrix_scalar(result_cm, 2, 5, val_2);
+				set_matrix_scalar(result_cm, 2, 8, val_3);
+				set_matrix_scalar(result_cm, 3, 0, m);
+				set_matrix_scalar(result_cm, 3, 3, p);
+				set_matrix_scalar(result_cm, 3, 6, s);
+				set_matrix_scalar(result_cm, 4, 1, m);
+				set_matrix_scalar(result_cm, 4, 4, p);
+				set_matrix_scalar(result_cm, 4, 7, s);
+				set_matrix_scalar(result_cm, 5, 2, m);
+				set_matrix_scalar(result_cm, 5, 5, p);
+				set_matrix_scalar(result_cm, 5, 8, s);
+				set_matrix_scalar(result_cm, 6, 0, n);
+				set_matrix_scalar(result_cm, 6, 3, q);
+				set_matrix_scalar(result_cm, 6, 6, t);
+				set_matrix_scalar(result_cm, 7, 1, n);
+				set_matrix_scalar(result_cm, 7, 4, q);
+				set_matrix_scalar(result_cm, 7, 7, t);
+				set_matrix_scalar(result_cm, 8, 2, n);
+				set_matrix_scalar(result_cm, 8, 5, q);
+				set_matrix_scalar(result_cm, 8, 8, t);
+				set_matrix_scalar(result_cm, 9, 0, o);
+				set_matrix_scalar(result_cm, 9, 3, r);
+				set_matrix_scalar(result_cm, 9, 6, u);
+				set_matrix_scalar(result_cm, 10, 1, o);
+				set_matrix_scalar(result_cm, 10, 4, r);
+				set_matrix_scalar(result_cm, 10, 7, u);
+				set_matrix_scalar(result_cm, 11, 2, o);
+				set_matrix_scalar(result_cm, 11, 5, r);
+				set_matrix_scalar(result_cm, 11, 8, u);
+
+				return result_cm;
+			}
+
+		} // namespace
 
 		inline LargeMatrix<9, 6> get_dFdx(const luisa::float2x2& InverseDm)
 		{
-			const float d0 = InverseDm[0][0];
-			const float d1 = InverseDm[0][1];
-			const float d2 = InverseDm[1][0];
-			const float d3 = InverseDm[1][1];
-			const float s0 = d0 + d1;
-			const float s1 = d2 + d3;
-
-			lcs::LargeMatrix<9, 6> result;
-			for (int i = 0; i < 3; i++)
-			{
-				result.scalar(i, i) = -s0;
-				result.scalar(i, i + 3) = -s1;
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				result.scalar(i + 3, i) = d0;
-				result.scalar(i + 3, i + 3) = d2;
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				result.scalar(i + 6, i) = d1;
-				result.scalar(i + 6, i + 3) = d3;
-			}
-			return result;
+			return get_dFdx_2D<luisa::float2x2, LargeMatrix<9, 6>>(InverseDm);
 		}
 		inline Var<LargeMatrix<9, 6>> get_dFdx(const Var<luisa::float2x2>& InverseDm)
 		{
-			using Float = Var<float>;
-			const Float d0 = InverseDm[0][0];
-			const Float d1 = InverseDm[0][1];
-			const Float d2 = InverseDm[1][0];
-			const Float d3 = InverseDm[1][1];
-			const Float s0 = d0 + d1;
-			const Float s1 = d2 + d3;
-
-			Var<lcs::LargeMatrix<9, 6>> result;
-			for (int i = 0; i < 3; i++)
-			{
-				result->scalar(i, i) = -s0;
-				result->scalar(i, i + 3) = -s1;
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				result->scalar(i + 3, i) = d0;
-				result->scalar(i + 3, i + 3) = d2;
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				result->scalar(i + 6, i) = d1;
-				result->scalar(i + 6, i + 3) = d3;
-			}
-			return result;
+			return get_dFdx_2D<Var<luisa::float2x2>, Var<LargeMatrix<9, 6>>>(InverseDm);
 		}
-		inline LargeMatrix<6, 9> get_dFdx_T(const luisa::float2x2& InverseDm)
+		inline LargeMatrix<12, 9> get_dFdx(const luisa::float3x3& InverseDm)
 		{
-			lcs::LargeMatrix<6, 9> dfdx_T = lcs::LargeMatrix<6, 9>::zero();
-
-			const float d0 = InverseDm[0][0];
-			const float d1 = InverseDm[0][1];
-			const float d2 = InverseDm[1][0];
-			const float d3 = InverseDm[1][1];
-			const float s0 = d0 + d1;
-			const float s1 = d2 + d3;
-
-			dfdx_T.scalar<0, 0>() = -s0;
-			dfdx_T.scalar<3, 0>() = -s1;
-			dfdx_T.scalar<1, 1>() = -s0;
-			dfdx_T.scalar<4, 1>() = -s1;
-			dfdx_T.scalar<2, 2>() = -s0;
-			dfdx_T.scalar<5, 2>() = -s1;
-			dfdx_T.scalar<0, 3>() = d0;
-			dfdx_T.scalar<3, 3>() = d2;
-			dfdx_T.scalar<1, 4>() = d0;
-			dfdx_T.scalar<4, 4>() = d2;
-			dfdx_T.scalar<2, 5>() = d0;
-			dfdx_T.scalar<5, 5>() = d2;
-			dfdx_T.scalar<0, 6>() = d1;
-			dfdx_T.scalar<3, 6>() = d3;
-			dfdx_T.scalar<1, 7>() = d1;
-			dfdx_T.scalar<4, 7>() = d3;
-			dfdx_T.scalar<2, 8>() = d1;
-			dfdx_T.scalar<5, 8>() = d3;
-			return dfdx_T;
+			return get_dFdx_3D<luisa::float3x3, LargeMatrix<12, 9>>(InverseDm);
 		}
-		inline Var<LargeMatrix<6, 9>> get_dFdx_T(const Var<luisa::float2x2>& InverseDm)
+		inline Var<LargeMatrix<12, 9>> get_dFdx(const Var<luisa::float3x3>& InverseDm)
 		{
-			Var<LargeMatrix<6, 9>> dfdx_T;
-			dfdx_T->set_zero();
-
-			const auto d0 = InverseDm[0][0];
-			const auto d1 = InverseDm[0][1];
-			const auto d2 = InverseDm[1][0];
-			const auto d3 = InverseDm[1][1];
-			const auto s0 = d0 + d1;
-			const auto s1 = d2 + d3;
-
-			dfdx_T->scalar<0, 0>() = -s0;
-			dfdx_T->scalar<3, 0>() = -s1;
-			dfdx_T->scalar<1, 1>() = -s0;
-			dfdx_T->scalar<4, 1>() = -s1;
-			dfdx_T->scalar<2, 2>() = -s0;
-			dfdx_T->scalar<5, 2>() = -s1;
-			dfdx_T->scalar<0, 3>() = d0;
-			dfdx_T->scalar<3, 3>() = d2;
-			dfdx_T->scalar<1, 4>() = d0;
-			dfdx_T->scalar<4, 4>() = d2;
-			dfdx_T->scalar<2, 5>() = d0;
-			dfdx_T->scalar<5, 5>() = d2;
-			dfdx_T->scalar<0, 6>() = d1;
-			dfdx_T->scalar<3, 6>() = d3;
-			dfdx_T->scalar<1, 7>() = d1;
-			dfdx_T->scalar<4, 7>() = d3;
-			dfdx_T->scalar<2, 8>() = d1;
-			dfdx_T->scalar<5, 8>() = d3;
-			return dfdx_T;
-		}
-
-		inline LargeMatrix<9, 12> get_dFdx_T(const luisa::float3x3& InverseDm)
-		{
-			lcs::LargeMatrix<9, 12> dfdx_T = lcs::LargeMatrix<9, 12>::zero();
-
-			const float m = InverseDm[0][0];
-			const float n = InverseDm[1][0];
-			const float o = InverseDm[2][0];
-			const float p = InverseDm[0][1];
-			const float q = InverseDm[1][1];
-			const float r = InverseDm[2][1];
-			const float s = InverseDm[0][2];
-			const float t = InverseDm[1][2];
-			const float u = InverseDm[2][2];
-
-			const float t1 = -m - p - s;
-			const float t2 = -n - q - t;
-			const float t3 = -o - r - u;
-
-			dfdx_T.scalar<0, 0>() = t1;
-			dfdx_T.scalar<0, 3>() = m;
-			dfdx_T.scalar<0, 6>() = p;
-			dfdx_T.scalar<0, 9>() = s;
-			dfdx_T.scalar<1, 1>() = t1;
-			dfdx_T.scalar<1, 4>() = m;
-			dfdx_T.scalar<1, 7>() = p;
-			dfdx_T.scalar<1, 10>() = s;
-			dfdx_T.scalar<2, 2>() = t1;
-			dfdx_T.scalar<2, 5>() = m;
-			dfdx_T.scalar<2, 8>() = p;
-			dfdx_T.scalar<2, 11>() = s;
-			dfdx_T.scalar<3, 0>() = t2;
-			dfdx_T.scalar<3, 3>() = n;
-			dfdx_T.scalar<3, 6>() = q;
-			dfdx_T.scalar<3, 9>() = t;
-			dfdx_T.scalar<4, 1>() = t2;
-			dfdx_T.scalar<4, 4>() = n;
-			dfdx_T.scalar<4, 7>() = q;
-			dfdx_T.scalar<4, 10>() = t;
-			dfdx_T.scalar<5, 2>() = t2;
-			dfdx_T.scalar<5, 5>() = n;
-			dfdx_T.scalar<5, 8>() = q;
-			dfdx_T.scalar<5, 11>() = t;
-			dfdx_T.scalar<6, 0>() = t3;
-			dfdx_T.scalar<6, 3>() = o;
-			dfdx_T.scalar<6, 6>() = r;
-			dfdx_T.scalar<6, 9>() = u;
-			dfdx_T.scalar<7, 1>() = t3;
-			dfdx_T.scalar<7, 4>() = o;
-			dfdx_T.scalar<7, 7>() = r;
-			dfdx_T.scalar<7, 10>() = u;
-			dfdx_T.scalar<8, 2>() = t3;
-			dfdx_T.scalar<8, 5>() = o;
-			dfdx_T.scalar<8, 8>() = r;
-			dfdx_T.scalar<8, 11>() = u;
-
-			return dfdx_T;
+			return get_dFdx_3D<Var<luisa::float3x3>, Var<LargeMatrix<12, 9>>>(InverseDm);
 		}
 
 		// dFdx.T * dedF (9x6 mult 6x1 => 9x1)
 		inline luisa::float3x3 convert_force(const float2x3& dedF, const luisa::float2x2& inv_rest2x2)
 		{
-			lcs::LargeMatrix<6, 9> dFdxT = get_dFdx_T(inv_rest2x2);
-			lcs::LargeVector<9>	   gradients = dFdxT * FemUtils::flatten(dedF);
-			luisa::float3x3		   result;
+			lcs::LargeVector<9> gradients = transpose(get_dFdx(inv_rest2x2)) * FemUtils::flatten(dedF);
+			luisa::float3x3		result;
 			result.cols[0] = gradients.block(0);
 			result.cols[1] = gradients.block(1);
 			result.cols[2] = gradients.block(2);
@@ -391,9 +348,8 @@ namespace lcs
 		}
 		inline Var<luisa::float3x3> convert_force(const Var<float2x3>& dedF, const Var<luisa::float2x2>& inv_rest2x2)
 		{
-			Var<lcs::LargeMatrix<6, 9>> dFdxT = get_dFdx_T(inv_rest2x2);
-			Var<lcs::LargeVector<9>>	gradients = dFdxT * FemUtils::flatten(dedF);
-			Var<luisa::float3x3>		result;
+			Var<lcs::LargeVector<9>> gradients = transpose(get_dFdx(inv_rest2x2)) * FemUtils::flatten(dedF);
+			Var<luisa::float3x3>	 result;
 			result[0] = gradients->block(0);
 			result[1] = gradients->block(1);
 			result[2] = gradients->block(2);

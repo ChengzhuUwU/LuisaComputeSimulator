@@ -270,7 +270,6 @@ namespace lcs::detail::stretch_face_energy
 		float6x6 d2edF2 = d2e0dF2 + d2e1dF2;
 
 		LargeMatrix<9, 6> dFdx = FemUtils::get_dFdx(in.dm_inv);
-		LargeMatrix<6, 9> dFdx_T = FemUtils::get_dFdx_T(in.dm_inv);
 		LargeVector<9>	  gradients = in.area * transpose(dFdx) * FemUtils::flatten(dedF);
 		LargeMatrix<9, 9> hessians = in.area * transpose(dFdx) * d2edF2 * dFdx;
 
@@ -315,7 +314,6 @@ namespace lcs::detail::stretch_face_energy
 		// luisa::compute::Var<float9x9> hessians = in.area * FemUtils::convert_hessian(d2edF2, in.dm_inv);
 
 		Var<LargeMatrix<9, 6>> dFdx = FemUtils::get_dFdx(in.dm_inv);
-		Var<LargeMatrix<6, 9>> dFdx_T = FemUtils::get_dFdx_T(in.dm_inv);
 		Var<LargeVector<9>>	   gradients = in.area * transpose(dFdx) * FemUtils::flatten(dedF);
 		Var<LargeMatrix<9, 9>> hessians = in.area * transpose(dFdx) * d2edF2 * dFdx;
 

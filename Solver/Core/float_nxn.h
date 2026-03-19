@@ -18,6 +18,17 @@ namespace lcs
 	constexpr float3x3 zero3x3 = luisa::make_float3x3(0.0f);
 	constexpr float4x4 zero4x4 = luisa::make_float4x4(0.0f);
 
+	template <size_t M, size_t N, typename Value>
+	static inline void set_matrix_scalar(LargeMatrix<M, N>& mat, uint col_idx, uint row_idx, const Value& value)
+	{
+		mat.scalar(col_idx, row_idx) = value;
+	}
+	template <size_t M, size_t N, typename Value>
+	static inline void set_matrix_scalar(Var<LargeMatrix<M, N>>& mat, uint col_idx, uint row_idx, const Value& value)
+	{
+		mat->scalar(col_idx, row_idx) = value;
+	}
+
 	// makeFloat NxN
 	// diag scalar
 	// diag vec
