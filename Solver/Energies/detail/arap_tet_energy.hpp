@@ -1,14 +1,17 @@
 #pragma once
 
+#include "Core/float_nxn.h"
 #include "Core/svd_3x3.h"
 #include "Core/float_n.h"
 #include "Energies/detail/energy_detail_common.hpp"
+#include "Energies/detail/fem_utils.h"
 #include "SimulationCore/base_mesh.h"
 #include <type_traits>
 
 namespace lcs::detail::arap_tet_energy
 {
 	constexpr float sqrt2 = 1.4142135623730951f;
+	constexpr float rsqrt2 = 1.0f / sqrt2;
 
 	template <typename Vec3T, typename Mat3T, typename ScalarT>
 	struct Input
@@ -60,13 +63,9 @@ namespace lcs::detail::arap_tet_energy
 	[[nodiscard]] inline float9 vec_col_major(const float3x3& m)
 	{
 		float9 v;
-		for (int c = 0; c < 3; c++)
-		{
-			for (int r = 0; r < 3; r++)
-			{
-				v.scalar(r + 3 * c) = m[c][r];
-			}
-		}
+		v.block(0) = m[0];
+		v.block(1) = m[1];
+		v.block(2) = m[2];
 		return v;
 	}
 
@@ -133,72 +132,19 @@ namespace lcs::detail::arap_tet_energy
 		return Ds * dm_inv;
 	}
 
+	[[nodiscard]] inline float sqr_frobenius(const float3x3& m)
+	{
+		return dot(m[0], m[0]) + dot(m[1], m[1]) + dot(m[2], m[2]);
+	}
 	[[nodiscard]] inline float compute_energy(const Input<float3, float3x3, float>& in)
 	{
 		float3x3 F = deformation_gradient(in.x0, in.x1, in.x2, in.x3, in.dm_inv);
 		float3x3 R = polar_rotation(F);
 		float	 J = determinant(F);
 		// Match reference core: E_arap = kappa * v * ||F - R||^2.
-		float psi_arap = 0.0f;
-		for (int c = 0; c < 3; c++)
-		{
-			for (int r = 0; r < 3; r++)
-			{
-				float d = F[c][r] - R[c][r];
-				psi_arap += d * d;
-			}
-		}
-		float psi_vol = 0.5f * in.lambda * (J - 1.0f) * (J - 1.0f);
-		return in.volume * (0.5f * in.mu * psi_arap + psi_vol);
-	}
-
-	[[nodiscard]] inline float9x9 arap_hessian_F_space(const float3x3& F)
-	{
-		float3x3 U, V;
-		float3	 Sigma;
-		lcs::svd(F, U, Sigma, V);
-
-		float3x3 T0 = (1.0f / sqrt2) * U * make_twist_mode_0() * transpose(V);
-		float3x3 T1 = (1.0f / sqrt2) * U * make_twist_mode_1() * transpose(V);
-		float3x3 T2 = (1.0f / sqrt2) * U * make_twist_mode_2() * transpose(V);
-
-		float9 t0 = vec_col_major(T0);
-		float9 t1 = vec_col_major(T1);
-		float9 t2 = vec_col_major(T2);
-
-		float s0 = Sigma[0];
-		float s1 = Sigma[1];
-		float s2 = Sigma[2];
-
-		float9x9 H;
-		H.set_zero();
-		for (int i = 0; i < 9; i++)
-		{
-			H.scalar(i, i) = 2.0f;
-		}
-
-		auto subtract_mode = [&](float9x9& mat, const float9& t, float coeff)
-		{
-			for (int i = 0; i < 9; i++)
-			{
-				for (int j = 0; j < 9; j++)
-				{
-					mat.scalar(i, j) -= coeff * t.scalar(i) * t.scalar(j);
-				}
-			}
-		};
-
-		const float eps = 1e-8f;
-		auto		safe_coeff = [&](float denom)
-		{
-			// Reference form: 4 / (s_i + s_j), with small denominator guard.
-			return 4.0f / std::max(denom, eps);
-		};
-		subtract_mode(H, t0, safe_coeff(s0 + s1));
-		subtract_mode(H, t1, safe_coeff(s1 + s2));
-		subtract_mode(H, t2, safe_coeff(s0 + s2));
-
-		return H;
+		//  == I2 - 2 * I1 + 3, where I1 = tr(F^T R) and I2 = tr(R^T F F^T R).
+		float psi_arap = sqr_frobenius(F - R);
+		return in.volume * in.mu * (psi_arap);
 	}
 
 	inline void compute_B(const float3x3& dm_inv, float B[4][3])
@@ -258,52 +204,61 @@ namespace lcs::detail::arap_tet_energy
 	[[nodiscard]] inline auto evaluate_host(const Input<float3, float3x3, float>& in)
 	{
 		float3x3 F = deformation_gradient(in.x0, in.x1, in.x2, in.x3, in.dm_inv);
-		float3x3 R = polar_rotation(F);
-		float	 J = determinant(F);
+		// float3x3 R = polar_rotation(F);
 
-		float3x3 cofF;
-		cofF[0][0] = F[1][1] * F[2][2] - F[2][1] * F[1][2];
-		cofF[0][1] = -(F[1][0] * F[2][2] - F[2][0] * F[1][2]);
-		cofF[0][2] = F[1][0] * F[2][1] - F[2][0] * F[1][1];
-		cofF[1][0] = -(F[0][1] * F[2][2] - F[2][1] * F[0][2]);
-		cofF[1][1] = F[0][0] * F[2][2] - F[2][0] * F[0][2];
-		cofF[1][2] = -(F[0][0] * F[2][1] - F[2][0] * F[0][1]);
-		cofF[2][0] = F[0][1] * F[1][2] - F[1][1] * F[0][2];
-		cofF[2][1] = -(F[0][0] * F[1][2] - F[1][0] * F[0][2]);
-		cofF[2][2] = F[0][0] * F[1][1] - F[1][0] * F[0][1];
+		float3x3 U, V;
+		float3	 S;
+		lcs::svd(F, U, S, V);
 
-		// kappa = 0.5 * mu to stay consistent with existing solver convention.
-		float3x3 dEdF = in.mu * in.volume * (F - R)
-			+ in.lambda * in.volume * (J - 1.0f) * cofF;
+		float3x3 R = U * transpose(V);
+
+		float3x3 dEdF = 2.0f * (F - R);
 
 		// d2E/dF2 (ARAP part)
-		float9x9 H9 = arap_hessian_F_space(F);
-		for (int i = 0; i < 9; i++)
-		{
-			for (int j = 0; j < 9; j++)
-			{
-				H9.scalar(i, j) *= 0.5f * in.mu * in.volume;
-			}
-		}
+		// float9x9 H9 = arap_hessian_F_space(F);
+		float3x3 Q0 = rsqrt2 * U * make_twist_mode_0() * transpose(V);
+		float3x3 Q1 = rsqrt2 * U * make_twist_mode_1() * transpose(V);
+		float3x3 Q2 = rsqrt2 * U * make_twist_mode_2() * transpose(V);
 
-		// d2E/dF2 (volumetric part): lambda * v * (vec(cofF)vec(cofF)^T + (J-1) * d2J/dF2)
-		float9	 vec_cof = vec_col_major(cofF);
-		float9x9 HJ = det_hessian_F_space(F);
-		for (int i = 0; i < 9; ++i)
-		{
-			for (int j = 0; j < 9; ++j)
-			{
-				H9.scalar(i, j) += in.lambda * in.volume
-					* (vec_cof.scalar(i) * vec_cof.scalar(j) + (J - 1.0f) * HJ.scalar(i, j));
-			}
-		}
+		float9 t0 = vec_col_major(Q0);
+		float9 t1 = vec_col_major(Q1);
+		float9 t2 = vec_col_major(Q2);
 
-		float B[4][3];
-		compute_B(in.dm_inv, B);
+		float s0 = S[0];
+		float s1 = S[1];
+		float s2 = S[2];
+
+		float9x9 H9;
+		H9.set_zero();
+		H9.set_diag(2.0f * identity3x3); // dEdF = 2 * I - 2 * H1
+
+		auto subtract_mode = [&](float9x9& mat, const float9& t, float coeff)
+		{
+			mat = mat - coeff * MATRIX9::outer_product(t, t);
+		};
+
+		const float eps = 1e-8f;
+		subtract_mode(H9, t0, 4.0f / luisa::max(s0 + s1, eps)); // 2/(s0+s1) * 2 from the chain rule
+		subtract_mode(H9, t1, 4.0f / luisa::max(s1 + s2, eps));
+		subtract_mode(H9, t2, 4.0f / luisa::max(s0 + s2, eps));
 
 		EnergyEvalResult<4, 16, float3, float3x3> out{};
-		convert_force(dEdF, B, out.gradients.data());
-		convert_hessian(H9, B, out.hessians.data());
+
+		float stiffness = in.mu * in.volume;
+
+		auto dFdx = FemUtils::get_dFdx(in.dm_inv);
+		auto G = stiffness * transpose(dFdx) * FemUtils::flatten(dEdF);
+		auto H = stiffness * transpose(dFdx) * H9 * dFdx;
+		for (int i = 0; i < 4; i++)
+		{
+			out.gradients[i] = G.block(i);
+			for (int j = 0; j < 4; j++)
+			{
+				out.hessians[i * 4 + j] = H.block(j, i);
+			}
+		}
+		// convert_force(dEdF, B, out.gradients.data());
+		// convert_hessian(H9, B, out.hessians.data());
 		return out;
 	}
 
@@ -339,7 +294,7 @@ namespace lcs::detail::arap_tet_energy
 				psi = psi + d * d;
 			}
 		}
-		psi = 0.5f * in.mu * psi + 0.5f * in.lambda * (J - 1.0f) * (J - 1.0f);
+		psi = 0.5f * in.mu * psi; //+ 0.5f * in.lambda * (J - 1.0f) * (J - 1.0f);
 		return in.volume * psi;
 	}
 
@@ -352,18 +307,18 @@ namespace lcs::detail::arap_tet_energy
 		auto		  R = polar_rotation_approx(F);
 		Var<float>	  J = determinant(F);
 
-		Var<float3x3> cofF;
-		cofF[0][0] = F[1][1] * F[2][2] - F[2][1] * F[1][2];
-		cofF[0][1] = -(F[1][0] * F[2][2] - F[2][0] * F[1][2]);
-		cofF[0][2] = F[1][0] * F[2][1] - F[2][0] * F[1][1];
-		cofF[1][0] = -(F[0][1] * F[2][2] - F[2][1] * F[0][2]);
-		cofF[1][1] = F[0][0] * F[2][2] - F[2][0] * F[0][2];
-		cofF[1][2] = -(F[0][0] * F[2][1] - F[2][0] * F[0][1]);
-		cofF[2][0] = F[0][1] * F[1][2] - F[1][1] * F[0][2];
-		cofF[2][1] = -(F[0][0] * F[1][2] - F[1][0] * F[0][2]);
-		cofF[2][2] = F[0][0] * F[1][1] - F[1][0] * F[0][1];
+		// Var<float3x3> cofF;
+		// cofF[0][0] = F[1][1] * F[2][2] - F[2][1] * F[1][2];
+		// cofF[0][1] = -(F[1][0] * F[2][2] - F[2][0] * F[1][2]);
+		// cofF[0][2] = F[1][0] * F[2][1] - F[2][0] * F[1][1];
+		// cofF[1][0] = -(F[0][1] * F[2][2] - F[2][1] * F[0][2]);
+		// cofF[1][1] = F[0][0] * F[2][2] - F[2][0] * F[0][2];
+		// cofF[1][2] = -(F[0][0] * F[2][1] - F[2][0] * F[0][1]);
+		// cofF[2][0] = F[0][1] * F[1][2] - F[1][1] * F[0][2];
+		// cofF[2][1] = -(F[0][0] * F[1][2] - F[1][0] * F[0][2]);
+		// cofF[2][2] = F[0][0] * F[1][1] - F[1][0] * F[0][1];
 
-		auto P = in.mu * (F - R) + in.lambda * (J - 1.0f) * cofF;
+		auto P = in.mu * (F - R); // + in.lambda * (J - 1.0f) * cofF;
 
 		using GradientOutT = std::decay_t<decltype(in.x0)>;
 		using HessianOutT = std::decay_t<decltype(in.dm_inv)>;
@@ -378,45 +333,45 @@ namespace lcs::detail::arap_tet_energy
 			B[0][k] = -(B[1][k] + B[2][k] + B[3][k]);
 		}
 
-		for (int a = 0; a < 4; a++)
-		{
-			Var<float3> g = make_float3(0.0f);
-			for (int c = 0; c < 3; c++)
-			{
-				for (int i = 0; i < 3; i++)
-				{
-					g[i] = g[i] + P[c][i] * B[a][c];
-				}
-			}
-			out.gradients[a] = in.volume * g;
-		}
+		// for (int a = 0; a < 4; a++)
+		// {
+		// 	Var<float3> g = make_float3(0.0f);
+		// 	for (int c = 0; c < 3; c++)
+		// 	{
+		// 		for (int i = 0; i < 3; i++)
+		// 		{
+		// 			g[i] = g[i] + P[c][i] * B[a][c];
+		// 		}
+		// 	}
+		// 	out.gradients[a] = in.volume * g;
+		// }
 
-		for (int a = 0; a < 4; a++)
-		{
-			for (int b = 0; b < 4; b++)
-			{
-				Var<float> bdot = 0.0f;
-				for (int k = 0; k < 3; k++)
-				{
-					bdot = bdot + B[a][k] * B[b][k];
-				}
+		// for (int a = 0; a < 4; a++)
+		// {
+		// 	for (int b = 0; b < 4; b++)
+		// 	{
+		// 		Var<float> bdot = 0.0f;
+		// 		for (int k = 0; k < 3; k++)
+		// 		{
+		// 			bdot = bdot + B[a][k] * B[b][k];
+		// 		}
 
-				Var<float3> cof_a = make_float3(0.0f);
-				Var<float3> cof_b = make_float3(0.0f);
-				for (int i = 0; i < 3; i++)
-				{
-					for (int c = 0; c < 3; c++)
-					{
-						cof_a[i] = cof_a[i] + cofF[c][i] * B[a][c];
-						cof_b[i] = cof_b[i] + cofF[c][i] * B[b][c];
-					}
-				}
+		// 		Var<float3> cof_a = make_float3(0.0f);
+		// 		Var<float3> cof_b = make_float3(0.0f);
+		// 		for (int i = 0; i < 3; i++)
+		// 		{
+		// 			for (int c = 0; c < 3; c++)
+		// 			{
+		// 				cof_a[i] = cof_a[i] + cofF[c][i] * B[a][c];
+		// 				cof_b[i] = cof_b[i] + cofF[c][i] * B[b][c];
+		// 			}
+		// 		}
 
-				out.hessians[a * 4 + b] = in.volume
-					* (in.mu * bdot * make_float3x3(1.0f)
-						+ in.lambda * outer_product(cof_a, cof_b));
-			}
-		}
+		// 		out.hessians[a * 4 + b] = in.volume
+		// 			* (in.mu * bdot * make_float3x3(1.0f)
+		// 				+ in.lambda * outer_product(cof_a, cof_b));
+		// 	}
+		// }
 
 		return out;
 	}

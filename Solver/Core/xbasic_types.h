@@ -392,6 +392,16 @@ namespace lcs
 						(*this).block(i, j) = input;
 					}
 		}
+		void set_as_diag(const luisa::float3x3 input)
+		{
+			static_assert(M == N, "Matrix is not Square Matrix");
+			for (size_t i = 0; i < block_M; i++)
+				for (size_t j = 0; j < block_N; j++)
+					if (i == j)
+						(*this).block(i, j) = input;
+					else
+						(*this).block(i, j) = luisa::make_float3x3(0.0f);
+		}
 		void set_zero()
 		{
 			for (size_t i = 0; i < block_M; i++)

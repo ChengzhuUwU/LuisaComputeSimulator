@@ -250,21 +250,21 @@ namespace lcs
 			static inline DiffMatType get_dFdx_3D(const DmInvType& InverseDm)
 			{
 				const auto m = InverseDm[0][0];
-				const auto n = InverseDm[1][0];
-				const auto o = InverseDm[2][0];
-				const auto p = InverseDm[0][1];
+				const auto n = InverseDm[0][1];
+				const auto o = InverseDm[0][2];
+				const auto p = InverseDm[1][0];
 				const auto q = InverseDm[1][1];
-				const auto r = InverseDm[2][1];
-				const auto s = InverseDm[0][2];
-				const auto t = InverseDm[1][2];
+				const auto r = InverseDm[1][2];
+				const auto s = InverseDm[2][0];
+				const auto t = InverseDm[2][1];
 				const auto u = InverseDm[2][2];
 
 				DiffMatType result_cm;
-				if constexpr (std::is_same_v<DmInvType, LargeMatrix<9, 6>>)
+				if constexpr (std::is_same_v<DmInvType, LargeMatrix<12, 9>>)
 				{
 					result_cm.set_zero();
 				}
-				else if constexpr (std::is_same_v<DmInvType, Var<LargeMatrix<9, 6>>>)
+				else if constexpr (std::is_same_v<DmInvType, Var<LargeMatrix<12, 9>>>)
 				{
 					result_cm->set_zero();
 				}
