@@ -23,6 +23,26 @@ sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 
+def parse_grid_resolution(text):
+    """Parse resolution string like '10,10,20' into a positive integer triplet."""
+    try:
+        parts = [int(v.strip()) for v in text.split(',')]
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"grid_resolution must be three integers like '10,10,20', got '{text}'"
+        ) from e
+
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError(
+            f"grid_resolution must contain exactly three integers, got '{text}'"
+        )
+    if any(v <= 0 for v in parts):
+        raise argparse.ArgumentTypeError(
+            f"grid_resolution must be positive, got '{text}'"
+        )
+    return tuple(parts)
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -33,8 +53,14 @@ def parse_args():
     p.add_argument("--backend", default=default_backend,
                    choices=["cuda", "dx", "vk", "metal"])
     p.add_argument("--advance_frames", type=int, default=30)
-    p.add_argument("--mesh", default="cube", choices=["single", "cube"],
+    p.add_argument("--mesh", default="grid_10x10x20", choices=["single", "cube", "grid_10x10x20"],
                    help="Tet mesh to test: a single tetrahedron or a 5-tet cube")
+    p.add_argument(
+        "--grid_resolution",
+        type=parse_grid_resolution,
+        default=(10, 10, 20),
+        help="Resolution for grid mesh as 'nx,ny,nz' (default: 10,10,20)",
+    )
     p.add_argument("--no_floor", action="store_true",
                    help="Disable floor collision for debugging")
     p.add_argument("--headless", action="store_true")
@@ -96,6 +122,62 @@ def make_single_tet(center=(0.0, 0.5, 0.0), scale=0.4):
     return verts, tets
 
 
+def make_grid_tet(origin=(-0.2, 0.3, -0.2), size=(0.4, 0.4, 0.8), resolution=(10, 10, 20)):
+    """Return (vertices [N,3], tets [M,4]) for a structured 6-tet-per-cell grid."""
+
+    rx, ry, rz = resolution
+    if rx <= 0 or ry <= 0 or rz <= 0:
+        raise ValueError(f"resolution must be positive, got {resolution}")
+
+    origin = np.asarray(origin, dtype=np.float64)
+    size = np.asarray(size, dtype=np.float64)
+    cell = size / np.asarray([rx, ry, rz], dtype=np.float64)
+
+    def vid(ix, iy, iz):
+        # Same indexing order as the C++ grid_vertex_index style loops.
+        return ((ix * (ry + 1) + iy) * (rz + 1) + iz)
+
+    verts = np.empty(((rx + 1) * (ry + 1) * (rz + 1), 3), dtype=np.float64)
+    for ix in range(rx + 1):
+        for iy in range(ry + 1):
+            for iz in range(rz + 1):
+                idx = vid(ix, iy, iz)
+                verts[idx] = origin + cell * np.array([ix, iy, iz], dtype=np.float64)
+
+    def orient_positive(a, b, c, d):
+        vol6 = np.linalg.det(np.column_stack((verts[b] - verts[a], verts[c] - verts[a], verts[d] - verts[a])))
+        if vol6 > 0.0:
+            return [a, b, c, d]
+        return [a, c, b, d]
+
+    tets = []
+    for ix in range(rx):
+        for iy in range(ry):
+            for iz in range(rz):
+                v000 = vid(ix, iy, iz)
+                v100 = vid(ix + 1, iy, iz)
+                v010 = vid(ix, iy + 1, iz)
+                v110 = vid(ix + 1, iy + 1, iz)
+                v001 = vid(ix, iy, iz + 1)
+                v101 = vid(ix + 1, iy, iz + 1)
+                v011 = vid(ix, iy + 1, iz + 1)
+                v111 = vid(ix + 1, iy + 1, iz + 1)
+
+                local = [
+                    [v000, v100, v110, v111],
+                    [v000, v110, v010, v111],
+                    [v000, v010, v011, v111],
+                    [v000, v011, v001, v111],
+                    [v000, v001, v101, v111],
+                    [v000, v101, v100, v111],
+                ]
+                for tet in local:
+                    tets.append(orient_positive(*tet))
+
+    tets = np.asarray(tets, dtype=np.int32)
+    return verts, tets
+
+
 def tet_signed_volume(v0, v1, v2, v3):
     """Signed tetra volume using vertex order (v0,v1,v2,v3)."""
     return np.linalg.det(np.column_stack((v1 - v0, v2 - v0, v3 - v0))) / 6.0
@@ -141,6 +223,8 @@ def main():
     # ---- Register tet body -----------------------------------------------
     if args.mesh == "cube":
         verts, tets = make_unit_tet_cube(center=(0.0, 0.5, 0.0), scale=0.2)
+    elif args.mesh == "grid_10x10x20":
+        verts, tets = make_grid_tet(origin=(-0.2, 0.3, -0.2), size=(0.4, 0.4, 0.8), resolution=args.grid_resolution)
     else:
         verts, tets = make_single_tet(center=(0.0, 0.5, 0.0), scale=0.2)
 
@@ -167,7 +251,7 @@ def main():
     tet_arap = solver.create_world_data_from_tet_array("tet_arap", arap_verts, tets)
     tet_arap.set_physics_material_tet(
         model="ARAP",
-        youngs_modulus=1e4,
+        youngs_modulus=1e8,
         poisson_ratio=0.4,
     )
     tet_arap.add_fixed_point_by_method("Left")
