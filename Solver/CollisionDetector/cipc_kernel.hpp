@@ -1,10 +1,8 @@
 #pragma once
 
-#include "CollisionDetector/accd.hpp"
-#include "CollisionDetector/libuipc/codim_ipc_simplex_normal_contact_function.h"
-#include "CollisionDetector/libuipc/distance/distance_flagged.h"
+#include "Core/float_n.h"
+#include "Core/float_nxn.h"
 #include <Eigen/Dense>
-#include <iostream>
 
 namespace lcs
 {
@@ -2351,10 +2349,10 @@ namespace lcs
 
 		inline void point_point_distance2_hessian(Float3& a, Float3& b, Float6x6& H)
 		{
-			H.mat[0][0] = makeFloat3x3(Float(2.0f));
-			H.mat[1][1] = makeFloat3x3(Float(2.0f));
-			H.mat[0][1] = makeFloat3x3(Float(-2.0f));
-			H.mat[1][0] = makeFloat3x3(Float(-2.0f));
+			H.mat[0][0] = 2.0f * Identity3x3;
+			H.mat[1][1] = 2.0f * Identity3x3;
+			H.mat[0][1] = -2.0f * Identity3x3;
+			H.mat[1][0] = -2.0f * Identity3x3;
 		}
 		inline void point_edge_distance2_hessian(Float3& p, Float3& e0, Float3& e1, Float9x9& H)
 		{

@@ -2,8 +2,6 @@
 #include "CollisionDetector/accd.hpp"
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/friction_kernel.hpp"
-#include "CollisionDetector/libuipc/codim_ipc_simplex_normal_contact_function.h"
-#include "CollisionDetector/libuipc/distance/distance_flagged.h"
 #include "Core/lc_to_eigen.h"
 #include "Core/affine_position.h"
 #include "SimulationCore/scene_params.h"

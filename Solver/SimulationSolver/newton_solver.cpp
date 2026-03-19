@@ -1,6 +1,7 @@
 #include <iostream>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
+#include "CollisionDetector/accd.hpp"
 #include "CollisionDetector/cipc_kernel.hpp"
 #include "CollisionDetector/distance.hpp"
 #include "CollisionDetector/friction_kernel.hpp"
