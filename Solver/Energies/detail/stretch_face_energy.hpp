@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Energies/detail/energy_detail_common.hpp"
-#include "Energies/fem_utils.h"
+#include "Energies/detail/fem_utils.h"
 #include "SimulationCore/base_mesh.h"
 #include <type_traits>
 
@@ -269,14 +269,22 @@ namespace lcs::detail::stretch_face_energy
 		float2x3 dedF = de0dF + de1dF;
 		float6x6 d2edF2 = d2e0dF2 + d2e1dF2;
 
-		float3x3 gradients = in.area * FemUtils::convert_force(dedF, in.dm_inv);
-		float9x9 hessians = in.area * FemUtils::convert_hessian(d2edF2, in.dm_inv);
+		LargeMatrix<9, 6> dFdx = FemUtils::get_dFdx(in.dm_inv);
+		LargeMatrix<6, 9> dFdx_T = FemUtils::get_dFdx_T(in.dm_inv);
+		LargeVector<9>	  gradients = in.area * transpose(dFdx) * FemUtils::flatten(dedF);
+		LargeMatrix<9, 9> hessians = in.area * transpose(dFdx) * d2edF2 * dFdx;
+
+		// float3x3 gradients = in.area * FemUtils::convert_force(dedF, in.dm_inv);
+		// float9x9 hessians = in.area * FemUtils::convert_hessian(d2edF2, in.dm_inv);
 
 		EnergyEvalResult<3, 9, float3, float3x3> out{};
 
-		out.gradients[0] = gradients[0];
-		out.gradients[1] = gradients[1];
-		out.gradients[2] = gradients[2];
+		// out.gradients[0] = gradients[0];
+		// out.gradients[1] = gradients[1];
+		// out.gradients[2] = gradients[2];
+		out.gradients[0] = gradients.block(0);
+		out.gradients[1] = gradients.block(1);
+		out.gradients[2] = gradients.block(2);
 
 		out.hessians[0] = hessians.block(0, 0);
 		out.hessians[1] = hessians.block(1, 0);
@@ -303,16 +311,24 @@ namespace lcs::detail::stretch_face_energy
 		auto dedF = de0dF + de1dF;
 		auto d2edF2 = d2e0dF2 + d2e1dF2;
 
-		luisa::compute::Var<float3x3> gradients = in.area * FemUtils::convert_force(dedF, in.dm_inv);
-		luisa::compute::Var<float9x9> hessians = in.area * FemUtils::convert_hessian(d2edF2, in.dm_inv);
+		// luisa::compute::Var<float3x3> gradients = in.area * FemUtils::convert_force(dedF, in.dm_inv);
+		// luisa::compute::Var<float9x9> hessians = in.area * FemUtils::convert_hessian(d2edF2, in.dm_inv);
 
-		using GradientOutT = std::decay_t<decltype(gradients[0])>;
+		Var<LargeMatrix<9, 6>> dFdx = FemUtils::get_dFdx(in.dm_inv);
+		Var<LargeMatrix<6, 9>> dFdx_T = FemUtils::get_dFdx_T(in.dm_inv);
+		Var<LargeVector<9>>	   gradients = in.area * transpose(dFdx) * FemUtils::flatten(dedF);
+		Var<LargeMatrix<9, 9>> hessians = in.area * transpose(dFdx) * d2edF2 * dFdx;
+
+		using GradientOutT = std::decay_t<decltype(gradients->block(0))>;
 		using HessianOutT = std::decay_t<decltype(hessians->block(0, 0))>;
 		EnergyEvalResult<3, 9, GradientOutT, HessianOutT> out{};
 
-		out.gradients[0] = gradients[0];
-		out.gradients[1] = gradients[1];
-		out.gradients[2] = gradients[2];
+		// out.gradients[0] = gradients[0];
+		// out.gradients[1] = gradients[1];
+		// out.gradients[2] = gradients[2];
+		out.gradients[0] = gradients->block(0);
+		out.gradients[1] = gradients->block(1);
+		out.gradients[2] = gradients->block(2);
 
 		out.hessians[0] = hessians->block(0, 0);
 		out.hessians[1] = hessians->block(1, 0);

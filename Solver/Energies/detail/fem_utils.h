@@ -143,6 +143,20 @@ namespace lcs
 			result[1][2] = float(1.0f);
 			return result;
 		}
+		inline float3x3 make_diff_mat3x3()
+		{
+			float3x3 result = zero3x3;
+			// x2 - x1
+			result[0][0] = -1.0f;
+			result[0][1] = 1.0f;
+			// x3 - x1
+			result[1][0] = -1.0f;
+			result[1][2] = 1.0f;
+			// x4 - x1
+			result[2][0] = -1.0f;
+			result[2][3] = 1.0f;
+			return result;
+		}
 		inline Var<float2x3> make_diff_mat3x2_Var()
 		{
 			Var<float2x3> result;
@@ -171,6 +185,17 @@ namespace lcs
 			return R;
 		}
 
+		template <size_t M, size_t N>
+		static inline void set_matrix_scalar(LargeMatrix<M, N>& mat, size_t row, size_t col, const float value)
+		{
+			mat.scalar(0, 0) = value;
+		}
+		template <size_t M, size_t N>
+		static inline void set_matrix_scalar(Var<LargeMatrix<M, N>>& mat, size_t row, size_t col, const float value)
+		{
+			mat->scalar(0, 0) = value;
+		}
+
 		inline LargeMatrix<9, 6> get_dFdx(const luisa::float2x2& InverseDm)
 		{
 			const float d0 = InverseDm[0][0];
@@ -195,6 +220,34 @@ namespace lcs
 			{
 				result.scalar(i + 6, i) = d1;
 				result.scalar(i + 6, i + 3) = d3;
+			}
+			return result;
+		}
+		inline Var<LargeMatrix<9, 6>> get_dFdx(const Var<luisa::float2x2>& InverseDm)
+		{
+			using Float = Var<float>;
+			const Float d0 = InverseDm[0][0];
+			const Float d1 = InverseDm[0][1];
+			const Float d2 = InverseDm[1][0];
+			const Float d3 = InverseDm[1][1];
+			const Float s0 = d0 + d1;
+			const Float s1 = d2 + d3;
+
+			Var<lcs::LargeMatrix<9, 6>> result;
+			for (int i = 0; i < 3; i++)
+			{
+				result->scalar(i, i) = -s0;
+				result->scalar(i, i + 3) = -s1;
+			}
+			for (int i = 0; i < 3; i++)
+			{
+				result->scalar(i + 3, i) = d0;
+				result->scalar(i + 3, i + 3) = d2;
+			}
+			for (int i = 0; i < 3; i++)
+			{
+				result->scalar(i + 6, i) = d1;
+				result->scalar(i + 6, i + 3) = d3;
 			}
 			return result;
 		}
@@ -262,64 +315,94 @@ namespace lcs
 			return dfdx_T;
 		}
 
-		// dedF * dFdx (6x1 mult 6x9 => 1x9)
+		inline LargeMatrix<9, 12> get_dFdx_T(const luisa::float3x3& InverseDm)
+		{
+			lcs::LargeMatrix<9, 12> dfdx_T = lcs::LargeMatrix<9, 12>::zero();
+
+			const float m = InverseDm[0][0];
+			const float n = InverseDm[1][0];
+			const float o = InverseDm[2][0];
+			const float p = InverseDm[0][1];
+			const float q = InverseDm[1][1];
+			const float r = InverseDm[2][1];
+			const float s = InverseDm[0][2];
+			const float t = InverseDm[1][2];
+			const float u = InverseDm[2][2];
+
+			const float t1 = -m - p - s;
+			const float t2 = -n - q - t;
+			const float t3 = -o - r - u;
+
+			dfdx_T.scalar<0, 0>() = t1;
+			dfdx_T.scalar<0, 3>() = m;
+			dfdx_T.scalar<0, 6>() = p;
+			dfdx_T.scalar<0, 9>() = s;
+			dfdx_T.scalar<1, 1>() = t1;
+			dfdx_T.scalar<1, 4>() = m;
+			dfdx_T.scalar<1, 7>() = p;
+			dfdx_T.scalar<1, 10>() = s;
+			dfdx_T.scalar<2, 2>() = t1;
+			dfdx_T.scalar<2, 5>() = m;
+			dfdx_T.scalar<2, 8>() = p;
+			dfdx_T.scalar<2, 11>() = s;
+			dfdx_T.scalar<3, 0>() = t2;
+			dfdx_T.scalar<3, 3>() = n;
+			dfdx_T.scalar<3, 6>() = q;
+			dfdx_T.scalar<3, 9>() = t;
+			dfdx_T.scalar<4, 1>() = t2;
+			dfdx_T.scalar<4, 4>() = n;
+			dfdx_T.scalar<4, 7>() = q;
+			dfdx_T.scalar<4, 10>() = t;
+			dfdx_T.scalar<5, 2>() = t2;
+			dfdx_T.scalar<5, 5>() = n;
+			dfdx_T.scalar<5, 8>() = q;
+			dfdx_T.scalar<5, 11>() = t;
+			dfdx_T.scalar<6, 0>() = t3;
+			dfdx_T.scalar<6, 3>() = o;
+			dfdx_T.scalar<6, 6>() = r;
+			dfdx_T.scalar<6, 9>() = u;
+			dfdx_T.scalar<7, 1>() = t3;
+			dfdx_T.scalar<7, 4>() = o;
+			dfdx_T.scalar<7, 7>() = r;
+			dfdx_T.scalar<7, 10>() = u;
+			dfdx_T.scalar<8, 2>() = t3;
+			dfdx_T.scalar<8, 5>() = o;
+			dfdx_T.scalar<8, 8>() = r;
+			dfdx_T.scalar<8, 11>() = u;
+
+			return dfdx_T;
+		}
+
+		// dFdx.T * dedF (9x6 mult 6x1 => 9x1)
 		inline luisa::float3x3 convert_force(const float2x3& dedF, const luisa::float2x2& inv_rest2x2)
 		{
-			const float3x2	g_T = (make_diff_mat3x2() * inv_rest2x2).transpose();
-			const float3x2	dedF_T = dedF.transpose();
-			luisa::float3x3 result;
-			for (unsigned i = 0; i < 3; ++i)
-			{
-				for (unsigned dim = 0; dim < 3; ++dim)
-				{
-					result[i][dim] = luisa::dot(g_T[i], dedF_T[dim]);
-				}
-			}
+			lcs::LargeMatrix<6, 9> dFdxT = get_dFdx_T(inv_rest2x2);
+			lcs::LargeVector<9>	   gradients = dFdxT * FemUtils::flatten(dedF);
+			luisa::float3x3		   result;
+			result.cols[0] = gradients.block(0);
+			result.cols[1] = gradients.block(1);
+			result.cols[2] = gradients.block(2);
 			return result;
 		}
 		inline float9x9 convert_hessian(const float6x6& d2ed2f, const luisa::float2x2& inv_rest2x2)
 		{
-			lcs::LargeMatrix<6, 9> dfdx_T = get_dFdx_T(inv_rest2x2);
-
-			float9x9 result;
-			result.set_zero();
-			for (unsigned i = 0; i < 6; ++i)
-			{
-				for (unsigned j = 0; j < 6; ++j)
-				{
-					result = result
-						+ d2ed2f.scalar(j, i) * float9x9::outer_product(dfdx_T.column(i), dfdx_T.column(j));
-				}
-			}
-			return result; // dfdx.transpose() * d2ed2f * dfdx;
+			lcs::LargeMatrix<9, 6> dFdx = get_dFdx(inv_rest2x2);
+			return transpose(dFdx) * d2ed2f * dFdx;
 		}
 		inline Var<luisa::float3x3> convert_force(const Var<float2x3>& dedF, const Var<luisa::float2x2>& inv_rest2x2)
 		{
-			const Var<float3x2>	 g_T = transpose(make_diff_mat3x2_Var() * inv_rest2x2);
-			const Var<float3x2>	 dedF_T = transpose(dedF);
-			Var<luisa::float3x3> result;
-			for (unsigned i = 0; i < 3; ++i)
-			{
-				for (unsigned dim = 0; dim < 3; ++dim)
-				{
-					result[i][dim] = luisa::compute::dot(g_T.cols[i], dedF_T.cols[dim]);
-				}
-			}
+			Var<lcs::LargeMatrix<6, 9>> dFdxT = get_dFdx_T(inv_rest2x2);
+			Var<lcs::LargeVector<9>>	gradients = dFdxT * FemUtils::flatten(dedF);
+			Var<luisa::float3x3>		result;
+			result[0] = gradients->block(0);
+			result[1] = gradients->block(1);
+			result[2] = gradients->block(2);
 			return result;
 		}
 		inline Var<float9x9> convert_hessian(const Var<float6x6>& d2ed2f, const Var<luisa::float2x2>& inv_rest2x2)
 		{
-			Var<LargeMatrix<6, 9>> dfdx_T = get_dFdx_T(inv_rest2x2);
-			Var<float9x9>		   result;
-			result->set_zero();
-			for (unsigned i = 0; i < 6; ++i)
-			{
-				for (unsigned j = 0; j < 6; ++j)
-				{
-					result = result + d2ed2f->scalar(j, i) * outer_product(dfdx_T->column(i), dfdx_T->column(j));
-				}
-			}
-			return result; // dfdx.transpose() * d2ed2f * dfdx;
+			Var<lcs::LargeMatrix<9, 6>> dFdx = get_dFdx(inv_rest2x2);
+			return transpose(dFdx) * d2ed2f * dFdx;
 		}
 
 	} // namespace FemUtils

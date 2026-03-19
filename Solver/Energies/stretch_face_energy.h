@@ -2,7 +2,7 @@
 
 #include "Energies/energy.h"
 #include "Energies/energy_offsets.h"
-#include "Energies/fem_utils.h"
+#include "Energies/detail/fem_utils.h"
 #include "Energies/detail/stretch_face_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"

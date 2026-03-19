@@ -5,7 +5,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Energies/detail/bending_energy.hpp"
-#include "Energies/fem_utils.h"
+#include "Energies/detail/fem_utils.h"
 #include "Initializer/init_mesh_data.h"
 #include "MeshOperation/mesh_reader.h"
 #include "Initializer/initializer_utils.h"
@@ -424,8 +424,10 @@ namespace lcs::Initializer
 				if (mesh_info.holds<TetMaterial>())
 				{
 					auto model = mesh_info.get_material<TetMaterial>().model;
-					use_stress = (model == ConstitutiveModelTet::StableNeoHookean
-						|| model == ConstitutiveModelTet::ARAP);
+					use_stress = model == ConstitutiveModelTet::StableNeoHookean
+						|| model == ConstitutiveModelTet::ARAP
+						|| model == ConstitutiveModelTet::Corotated
+						|| model == ConstitutiveModelTet::StVK;
 				}
 				uint4 tet = mesh_data->sa_tetrahedrons[tid];
 				bool  is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
@@ -854,6 +856,7 @@ namespace lcs::Initializer
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
 					auto [mu, lambda] = FemUtils::convert_lame_params_3d(E, nu);
+					// LUISA_INFO("Tet {}: volume = {},  mu = {}, lambda = {}", orig_tid, volume, mu, lambda);
 					stress_tet_data.constraint_indices[tid] = tet;
 					stress_tet_data.sa_stress_tets_model[tid] = static_cast<uint>(model);
 					stress_tet_data.sa_stress_tets_rest_volume[tid] = volume;

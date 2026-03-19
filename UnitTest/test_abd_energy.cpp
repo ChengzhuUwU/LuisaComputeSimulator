@@ -5,7 +5,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Core/svd_3x3.h"
-#include "Energies/fem_utils.h"
+#include "Energies/detail/fem_utils.h"
 #include "Energies/stretch_face_energy.h"
 #include "luisa/core/logging.h"
 #include <luisa/dsl/sugar.h>

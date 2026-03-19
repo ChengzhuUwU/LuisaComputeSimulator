@@ -305,29 +305,29 @@ namespace lcs
 
 		luisa::float3x3 mat[block_M][block_N];
 
-		// NOTE: using row-major
+		// NOTE: using column-major
 		luisa::float3x3& block(size_t idx1, size_t idx2) { return mat[idx1][idx2]; }
-		// NOTE: using row-major
+		// NOTE: using column-major
 		const luisa::float3x3& block(size_t idx1, size_t idx2) const { return mat[idx1][idx2]; }
 
-		// NOTE: using row-major
+		// NOTE: using column-major
 		float& scalar(size_t idx1, size_t idx2)
 		{
 			return mat[(idx1 / 3)][(idx2 / 3)][(idx1 % 3)][(idx2 % 3)];
 		}
-		// NOTE: using row-major
+		// NOTE: using column-major
 		const float& scalar(size_t idx1, size_t idx2) const
 		{
 			return mat[(idx1 / 3)][(idx2 / 3)][(idx1 % 3)][(idx2 % 3)];
 		}
-		// NOTE: using row-major
+		// NOTE: using column-major
 		template <size_t I, size_t J>
 		constexpr float& scalar()
 		{
 			static_assert(I < M && J < N, "Index out of bounds");
 			return mat[block_i<I, J>][block_j<I, J>][inner_i<I, J>][inner_j<I, J>];
 		}
-		// NOTE: using row-major
+		// NOTE: using column-major
 		template <size_t I, size_t J>
 		constexpr const float& scalar() const
 		{
