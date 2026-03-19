@@ -420,11 +420,13 @@ namespace lcs::Initializer
 			{
 				const uint	mesh_idx = mesh_data->sa_tet_mesh_id[tid];
 				const auto& mesh_info = world_data[mesh_idx];
-				bool		use_stress = mesh_info.holds<TetMaterial>()
-					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::ARAP
-					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::Corotated
-					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::StVK
-					&& mesh_info.get_material<TetMaterial>().model == ConstitutiveModelTet::StableNeoHookean;
+				bool		use_stress = false;
+				if (mesh_info.holds<TetMaterial>())
+				{
+					auto model = mesh_info.get_material<TetMaterial>().model;
+					use_stress = (model == ConstitutiveModelTet::StableNeoHookean
+						|| model == ConstitutiveModelTet::ARAP);
+				}
 				uint4 tet = mesh_data->sa_tetrahedrons[tid];
 				bool  is_dynamic = cull_unused_constraints ? !mesh_data->sa_is_fixed[tet[0]] || !mesh_data->sa_is_fixed[tet[1]]
 						 || !mesh_data->sa_is_fixed[tet[2]] || !mesh_data->sa_is_fixed[tet[3]]
@@ -810,6 +812,7 @@ namespace lcs::Initializer
 			// Rest tetrahedron info
 			auto& stress_tet_data = sim_data->get_stress_tet_data();
 			stress_tet_data.constraint_indices.resize(num_stress_tets);
+			stress_tet_data.sa_stress_tets_model.resize(num_stress_tets);
 			stress_tet_data.sa_stress_tets_rest_volume.resize(num_stress_tets);
 			stress_tet_data.sa_stress_tets_mu_lambda.resize(num_stress_tets);
 			stress_tet_data.sa_stress_tets_Dm_inv.resize(num_stress_tets);
@@ -845,10 +848,12 @@ namespace lcs::Initializer
 					}
 					const auto& mesh_info = world_data[mesh_data->sa_tet_mesh_id[orig_tid]];
 					const auto& material = mesh_info.get_material<TetMaterial>();
+					const auto	model = material.model;
 					const float E = material.youngs_modulus;
 					const float nu = material.poisson_ratio;
 					auto [mu, lambda] = FemUtils::convert_lame_params_3d(E, nu);
 					stress_tet_data.constraint_indices[tid] = tet;
+					stress_tet_data.sa_stress_tets_model[tid] = static_cast<uint>(model);
 					stress_tet_data.sa_stress_tets_rest_volume[tid] = volume;
 					stress_tet_data.sa_stress_tets_Dm_inv[tid] = Dm_inv;
 					stress_tet_data.sa_stress_tets_mu_lambda[tid] =
@@ -1437,6 +1442,7 @@ namespace lcs::Initializer
 		{
 			stream
 				<< upload_buffer(device, stress_tet_O.constraint_indices, stress_tet_I.constraint_indices)
+				<< upload_buffer(device, stress_tet_O.sa_stress_tets_model, stress_tet_I.sa_stress_tets_model)
 				<< upload_buffer(device, stress_tet_O.sa_stress_tets_mu_lambda, stress_tet_I.sa_stress_tets_mu_lambda)
 				<< upload_buffer(device, stress_tet_O.sa_stress_tets_rest_volume, stress_tet_I.sa_stress_tets_rest_volume)
 				<< upload_buffer(device, stress_tet_O.sa_stress_tets_Dm_inv, stress_tet_I.sa_stress_tets_Dm_inv)

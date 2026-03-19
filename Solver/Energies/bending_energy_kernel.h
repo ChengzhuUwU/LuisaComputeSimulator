@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Energies/energy.h"
+#include "Energies/detail/bending_energy.hpp"
 #include "Energies/energy_offsets.h"
 #include "SimulationCore/base_mesh.h"
 #include "SimulationCore/simulation_data.h"

@@ -1,4 +1,6 @@
 #include "Core/xbasic_types.h"
+#include "Core/svd_2x2.h"
+#include "Core/svd_3x3.h"
 #include <iostream>
 #include <luisa/luisa-compute.h>
 #include <Eigen/Dense>
@@ -100,7 +102,7 @@ int main(int argc, char** argv)
 		lcs::print_largemat(result1);
 		lcs::print_largevec(result2);
 	}
-
+	if (false)
 	{
 		using T = float;
 		Eigen::Matrix<T, 2, 2> A1;
@@ -111,6 +113,7 @@ int main(int argc, char** argv)
 				  << (A1 * b1).transpose() << std::endl;
 		// std::cout << "float : A1 = \n" << A1 << ", b1 = \n" << b1 << ", Ab = \n" << A1 * b1 << std::endl;
 	}
+	if (false)
 	{
 		using T = double;
 		Eigen::Matrix<T, 2, 2> A1;
@@ -124,6 +127,7 @@ int main(int argc, char** argv)
 		//           << b1 << ", Ab = \n"
 		//           << A1 * b1 << std::endl;
 	}
+	if (false)
 	{
 		using T = float;
 		Eigen::Matrix<T, 2, 2> A1;
@@ -134,6 +138,32 @@ int main(int argc, char** argv)
 		float v2 = A1(1, 0) * b1(0); // + A1(1, 1) * b1(1);
 		std::cout << "manual float : \n"
 				  << v1 << ", " << v2 << std::endl;
+	}
+
+	// Test SVD 3x3
+	{
+		using T = float;
+		Eigen::Matrix<T, 3, 3> A;
+		A << 1, 0, 0, 0, 2, 0, 0, 0, 3;
+
+		Eigen::JacobiSVD<Eigen::Matrix<T, 3, 3>> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+		std::cout << "\n=== SVD 3x3 (Eigen) ===\n";
+		std::cout << "U:\n"
+				  << svd.matrixU() << "\n";
+		std::cout << "S: " << svd.singularValues().transpose() << "\n";
+		std::cout << "V:\n"
+				  << svd.matrixV() << "\n";
+
+		// Test with lcs::svd_3x3
+		lcs::float3x3 mat_lcs;
+		mat_lcs[0] = luisa::make_float3(1, 0, 0);
+		mat_lcs[1] = luisa::make_float3(0, 2, 0);
+		mat_lcs[2] = luisa::make_float3(0, 0, 3);
+		lcs::float3x3 U, V;
+		luisa::float3 S;
+		lcs::svd(mat_lcs, U, S, V);
+		std::cout << "\n=== SVD 3x3 (LCS) ===\n";
+		std::cout << "S: " << S[0] << " " << S[1] << " " << S[2] << "\n";
 	}
 
 	// lcs::set_colomn_largemat(mat, 0, vec);

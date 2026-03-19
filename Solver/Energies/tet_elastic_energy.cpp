@@ -1,5 +1,7 @@
 #include "Energies/tet_elastic_energy.h"
+#include "Energies/detail/arap_tet_energy.hpp"
 #include "Energies/detail/stable_neo_hookean_energy.hpp"
+#include "SimulationCore/physical_material.h"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -25,6 +27,7 @@ namespace lcs
 				Var<BufferView<float3>>								  sa_x)
 			{
 				auto& sa_tets = constraint.constraint_indices;
+				auto& sa_models = constraint.sa_stress_tets_model;
 				auto& sa_Dm_inv = constraint.sa_stress_tets_Dm_inv;
 				auto& sa_rest_volume = constraint.sa_stress_tets_rest_volume;
 				auto& sa_mu_lambda = constraint.sa_stress_tets_mu_lambda;
@@ -42,8 +45,11 @@ namespace lcs
 				Float2	 mu_lambda = sa_mu_lambda->read(tid);
 				Float	 mu = mu_lambda[0];
 				Float	 lam = mu_lambda[1];
+				UInt	 model = sa_models->read(tid);
 
-				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> input{
+				Float energy = 0.0f;
+
+				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> snhk_input{
 					.x0 = x0,
 					.x1 = x1,
 					.x2 = x2,
@@ -53,7 +59,25 @@ namespace lcs
 					.lambda = lam,
 					.volume = volume
 				};
-				Float energy = detail::stable_neo_hookean_energy::compute_energy(input);
+				const detail::arap_tet_energy::Input<Float3, Float3x3, Float> arap_input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+
+				$if(model == static_cast<uint>(Material::ConstitutiveModelTet::ARAP))
+				{
+					energy = detail::arap_tet_energy::compute_energy(arap_input);
+				}
+				$else
+				{
+					energy = detail::stable_neo_hookean_energy::compute_energy(snhk_input);
+				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
 					tid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -71,6 +95,7 @@ namespace lcs
 				Var<BufferView<float3>>								 sa_x)
 			{
 				auto& sa_tets = constraint.constraint_indices;
+				auto& sa_models = constraint.sa_stress_tets_model;
 				auto& sa_Dm_inv = constraint.sa_stress_tets_Dm_inv;
 				auto& sa_rest_volume = constraint.sa_stress_tets_rest_volume;
 				auto& sa_mu_lambda = constraint.sa_stress_tets_mu_lambda;
@@ -90,8 +115,9 @@ namespace lcs
 				Float2	 mu_lambda = sa_mu_lambda->read(tid);
 				Float	 mu = mu_lambda[0];
 				Float	 lam = mu_lambda[1];
+				UInt	 model = sa_models->read(tid);
 
-				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> input{
+				const detail::stable_neo_hookean_energy::Input<Float3, Float3x3, Float> snhk_input{
 					.x0 = x0,
 					.x1 = x1,
 					.x2 = x2,
@@ -101,7 +127,26 @@ namespace lcs
 					.lambda = lam,
 					.volume = volume
 				};
-				auto eval = detail::stable_neo_hookean_energy::evaluate(input);
+				const detail::arap_tet_energy::Input<Float3, Float3x3, Float> arap_input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+
+				decltype(detail::stable_neo_hookean_energy::evaluate(snhk_input)) eval{};
+				$if(model == static_cast<uint>(Material::ConstitutiveModelTet::ARAP))
+				{
+					eval = detail::arap_tet_energy::evaluate(arap_input);
+				}
+				$else
+				{
+					eval = detail::stable_neo_hookean_energy::evaluate(snhk_input);
+				};
 
 				// Write gradients: 4 entries per tet
 				for (uint v = 0; v < 4; v++)
@@ -153,6 +198,7 @@ namespace lcs
 			num_tets,
 			[sa_x = std::span(host_sim_data.sa_x),
 				sa_tets = std::span(stress_tets.constraint_indices),
+				sa_models = std::span(stress_tets.sa_stress_tets_model),
 				sa_Dm_inv = std::span(stress_tets.sa_stress_tets_Dm_inv),
 				sa_volume = std::span(stress_tets.sa_stress_tets_rest_volume),
 				sa_mu_lambda = std::span(stress_tets.sa_stress_tets_mu_lambda),
@@ -160,6 +206,7 @@ namespace lcs
 				out_hessian = std::span(stress_tets.constraint_hessians)](const uint tid)
 			{
 				const uint4			   tet = sa_tets[tid];
+				const uint			   model = sa_models[tid];
 				const float3&		   x0 = sa_x[tet[0]];
 				const float3&		   x1 = sa_x[tet[1]];
 				const float3&		   x2 = sa_x[tet[2]];
@@ -168,7 +215,7 @@ namespace lcs
 				const float			   volume = sa_volume[tid];
 				const auto [mu, lam] = sa_mu_lambda[tid];
 
-				const detail::stable_neo_hookean_energy::Input<float3, float3x3, float> input{
+				const detail::stable_neo_hookean_energy::Input<float3, float3x3, float> snhk_input{
 					.x0 = x0,
 					.x1 = x1,
 					.x2 = x2,
@@ -178,7 +225,20 @@ namespace lcs
 					.lambda = lam,
 					.volume = volume
 				};
-				auto eval = detail::stable_neo_hookean_energy::evaluate_host(input);
+				const detail::arap_tet_energy::Input<float3, float3x3, float> arap_input{
+					.x0 = x0,
+					.x1 = x1,
+					.x2 = x2,
+					.x3 = x3,
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lam,
+					.volume = volume
+				};
+
+				auto eval = (model == static_cast<uint>(Material::ConstitutiveModelTet::ARAP))
+					? detail::arap_tet_energy::evaluate_host(arap_input)
+					: detail::stable_neo_hookean_energy::evaluate_host(snhk_input);
 
 				for (uint v = 0; v < 4; v++)
 					out_gradient[tid * 4 + v] = eval.gradients[v];

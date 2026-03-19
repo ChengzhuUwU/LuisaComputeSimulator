@@ -147,16 +147,33 @@ def main():
     print(f"Tet mesh: {len(verts)} vertices, {len(tets)} tets")
     report_tet_volume_stats(verts, tets)
 
-    tet_body = solver.create_world_data_from_tet_array("tet_cube", verts, tets)
-    tet_body.set_physics_material_tet(
+    # Spring benchmark body
+    spring_verts = verts.copy()
+    spring_verts[:, 0] -= 0.35
+    tet_spring = solver.create_world_data_from_tet_array("tet_spring", spring_verts, tets)
+    tet_spring.set_physics_material_tet(
         model="Spring",
         youngs_modulus=1e5,
         poisson_ratio=0.4,
     )
-    tet_body.add_fixed_point_by_method("Left") 
-    fixed_vids = tet_body.get_fixed_point_indices()
-    reg_id = solver.register_world_data(tet_body)
-    print(f"Registered tet_cube with id={reg_id}, fixed vertices={fixed_vids}")
+    tet_spring.add_fixed_point_by_method("Left")
+    spring_fixed_vids = tet_spring.get_fixed_point_indices()
+    reg_spring = solver.register_world_data(tet_spring)
+    print(f"Registered tet_spring with id={reg_spring}, fixed vertices={spring_fixed_vids}")
+
+    # ARAP body to compare with spring benchmark
+    arap_verts = verts.copy()
+    arap_verts[:, 0] += 0.35
+    tet_arap = solver.create_world_data_from_tet_array("tet_arap", arap_verts, tets)
+    tet_arap.set_physics_material_tet(
+        model="ARAP",
+        youngs_modulus=1e5,
+        poisson_ratio=0.4,
+    )
+    tet_arap.add_fixed_point_by_method("Left")
+    arap_fixed_vids = tet_arap.get_fixed_point_indices()
+    reg_arap = solver.register_world_data(tet_arap)
+    print(f"Registered tet_arap with id={reg_arap}, fixed vertices={arap_fixed_vids}")
 
     # ---- Initialize solver -----------------------------------------------
     solver.init_solver()
@@ -168,17 +185,29 @@ def main():
 
     if args.headless:
         solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_init.obj"))
+        avg_y_diff = []
         for frame in range(args.advance_frames):
             if config.use_gpu:
                 solver.physics_step_gpu()
             else:
                 solver.physics_step_cpu()
-            verts_out, _ = solver.get_object_sim_result_by_registration_id(reg_id)
-            if len(verts_out):
-                report_runtime_tet_stats(np.asarray(verts_out), tets, frame)
+            spring_out, _ = solver.get_object_sim_result_by_registration_id(reg_spring)
+            arap_out, _ = solver.get_object_sim_result_by_registration_id(reg_arap)
+
+            if len(spring_out):
+                report_runtime_tet_stats(np.asarray(spring_out), tets, frame)
+            if len(arap_out):
+                report_runtime_tet_stats(np.asarray(arap_out), tets, frame)
+
+            if len(spring_out) and len(arap_out):
+                spring_y = np.asarray(spring_out)[:, 1].mean()
+                arap_y = np.asarray(arap_out)[:, 1].mean()
+                diff = abs(spring_y - arap_y)
+                avg_y_diff.append(diff)
+                print(f"    compare spring_vs_arap: avg_y_diff={diff:.6f}")
 
             all_verts = []
-            reg_ids = [reg_id]  
+            reg_ids = [reg_spring, reg_arap]
             for rid in reg_ids:
                 verts_out, _ = solver.get_object_sim_result_by_registration_id(rid)
                 if len(verts_out):
@@ -200,6 +229,21 @@ def main():
             )
 
         solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_result.obj"))
+
+        if avg_y_diff:
+            final_diff = avg_y_diff[-1]
+            mean_diff = float(np.mean(avg_y_diff))
+            early_window = min(len(avg_y_diff), 10)
+            early_mean = float(np.mean(avg_y_diff[:early_window]))
+            print(
+                f"Spring/ARAP trajectory diff: final={final_diff:.6f}, mean={mean_diff:.6f}, "
+                f"early_mean={early_mean:.6f}"
+            )
+            if early_mean > 0.08 or final_diff > 5.0:
+                raise RuntimeError(
+                    "ARAP deviates too much from Spring benchmark: "
+                    f"early_mean={early_mean:.6f}, final={final_diff:.6f}"
+                )
     else:
         # Interactive GUI
         try:
