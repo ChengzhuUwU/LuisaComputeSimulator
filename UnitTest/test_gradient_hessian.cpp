@@ -622,63 +622,6 @@ int main(int argc, char** argv)
 			print_diff("TetARAP", g_num, g_ana, H_num, H_ana, 1e-2f);
 		}
 
-		// 3b) ARAP-only cross-check against Eigen-double reference (lambda = 0)
-		{
-			luisa::float3 X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
-			luisa::float3 X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
-			luisa::float3 X2 = luisa::make_float3(0.0f, 1.0f, 0.0f);
-			luisa::float3 X3 = luisa::make_float3(0.0f, 0.0f, 1.0f);
-
-			luisa::float3x3 Dm = luisa::make_float3x3(X1 - X0, X2 - X0, X3 - X0);
-			luisa::float3x3 Dm_inv = luisa::inverse(Dm);
-			const float		volume = std::abs(luisa::determinant(Dm)) / 6.0f;
-			const float		mu = 2.0f;
-			const float		lambda = 0.0f;
-
-			Eigen::Matrix<double, 12, 1> x_ref;
-			x_ref << 0.05, -0.02, 0.01,
-				1.22, 0.08, -0.03,
-				0.11, 1.10, 0.06,
-				-0.04, 0.15, 1.18;
-
-			auto in = detail::arap_tet_energy::Input<float3, float3x3, float>{
-				.x0 = luisa::make_float3(static_cast<float>(x_ref[0]), static_cast<float>(x_ref[1]), static_cast<float>(x_ref[2])),
-				.x1 = luisa::make_float3(static_cast<float>(x_ref[3]), static_cast<float>(x_ref[4]), static_cast<float>(x_ref[5])),
-				.x2 = luisa::make_float3(static_cast<float>(x_ref[6]), static_cast<float>(x_ref[7]), static_cast<float>(x_ref[8])),
-				.x3 = luisa::make_float3(static_cast<float>(x_ref[9]), static_cast<float>(x_ref[10]), static_cast<float>(x_ref[11])),
-				.dm_inv = Dm_inv,
-				.mu = mu,
-				.lambda = lambda,
-				.volume = volume,
-			};
-			auto eval = detail::arap_tet_energy::evaluate_host(in);
-
-			Eigen::Matrix<double, 12, 1>  g_impl;
-			Eigen::Matrix<double, 12, 12> H_impl;
-			H_impl.setZero();
-			for (int a = 0; a < 4; ++a)
-			{
-				g_impl.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]).cast<double>();
-				for (int b = 0; b < 4; ++b)
-				{
-					H_impl.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 4 + b]).cast<double>();
-				}
-			}
-
-			// Eigen::Matrix3d				  dm_inv_d = float3x3_to_eigen3x3(Dm_inv).cast<double>();
-			// Eigen::Matrix<double, 12, 1>  g_ref;
-			// Eigen::Matrix<double, 12, 12> H_ref;
-			// RefArapDouble::evaluate(x_ref, dm_inv_d, static_cast<double>(mu), static_cast<double>(volume), g_ref, H_ref);
-
-			// double g_err = (g_impl - g_ref).cwiseAbs().maxCoeff();
-			// double h_err = (H_impl - H_ref).cwiseAbs().maxCoeff();
-			// std::cout << "\n============================================================\n";
-			// std::cout << "ARAP Double Reference Check (lambda=0)\n";
-			// std::cout << "------------------------------------------------------------\n";
-			// std::cout << "Max |grad diff|    : " << g_err << "\n";
-			// std::cout << "Max |hessian diff| : " << h_err << "\n";
-		}
-
 		// 4) Bending (gradient-only): Hessian uses Gauss-Newton approximation,
 		// so we only check first-order consistency here.
 		{
@@ -818,37 +761,41 @@ int main(int argc, char** argv)
 
 		// 7) Stable Neo-Hookean tet (gradient-only)
 		{
-			luisa::float3	X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
-			luisa::float3	X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
-			luisa::float3	X2 = luisa::make_float3(0.0f, 1.0f, 0.0f);
-			luisa::float3	X3 = luisa::make_float3(0.0f, 0.0f, 1.0f);
+			luisa::float3 X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
+			luisa::float3 X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
+			luisa::float3 X2 = luisa::make_float3(0.0f, 1.0f, 0.0f);
+			luisa::float3 X3 = luisa::make_float3(0.0f, 0.0f, 1.0f);
+
 			luisa::float3x3 Dm = luisa::make_float3x3(X1 - X0, X2 - X0, X3 - X0);
 			luisa::float3x3 Dm_inv = luisa::inverse(Dm);
 			const float		volume = std::abs(luisa::determinant(Dm)) / 6.0f;
 			const float		mu = 2.0f;
-			const float		lambda = 1.0f;
+			const float		lambda = 0.5f;
 
-			std::function<float(const EigenVec&)> snhk_func = [&](const EigenVec& xv) -> float
+			std::function<float(const EigenVec&)> arap_func = [&](const EigenVec& xv) -> float
 			{
-				return detail::TetElasticEnergyUtils::compute_energy(
-					luisa::make_float3(xv[0], xv[1], xv[2]),
-					luisa::make_float3(xv[3], xv[4], xv[5]),
-					luisa::make_float3(xv[6], xv[7], xv[8]),
-					luisa::make_float3(xv[9], xv[10], xv[11]),
-					Dm_inv,
-					mu,
-					lambda,
-					volume);
+				auto in = detail::stable_neo_hookean_energy::Input<float3, float3x3, float>{
+					.x0 = luisa::make_float3(xv[0], xv[1], xv[2]),
+					.x1 = luisa::make_float3(xv[3], xv[4], xv[5]),
+					.x2 = luisa::make_float3(xv[6], xv[7], xv[8]),
+					.x3 = luisa::make_float3(xv[9], xv[10], xv[11]),
+					.dm_inv = Dm_inv,
+					.mu = mu,
+					.lambda = lambda,
+					.volume = volume,
+				};
+				return detail::stable_neo_hookean_energy::compute_energy(in);
 			};
 
 			EigenVec x0(12);
-			x0 << 0.03f, -0.02f, 0.01f,
-				1.10f, 0.04f, -0.02f,
-				0.02f, 1.06f, 0.05f,
-				-0.01f, 0.03f, 1.08f;
+			x0 << 0.05f, -0.02f, 0.01f,
+				1.22f, 0.08f, -0.03f,
+				0.11f, 1.10f, 0.06f,
+				-0.04f, 0.15f, 1.18f;
 			Eigen::VectorXf g_num;
 			Eigen::MatrixXf H_num;
-			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(snhk_func, x0, g_num, H_num, fd_h, false);
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(arap_func, x0, g_num, H_num, fd_h, false);
+			H_num = hessian_proj_SPD(H_num);
 
 			auto in = detail::stable_neo_hookean_energy::Input<float3, float3x3, float>{
 				.x0 = luisa::make_float3(x0[0], x0[1], x0[2]),
@@ -860,14 +807,32 @@ int main(int argc, char** argv)
 				.lambda = lambda,
 				.volume = volume,
 			};
-			auto eval = detail::stable_neo_hookean_energy::evaluate_host(in);
+			lcs::detail::EnergyEvalResult<4, 16, float3, float3x3> eval{};
+			for (int i = 0; i < 4; ++i)
+			{
+				eval.gradients[i] = luisa::make_float3(0.0f);
+				for (int j = 0; j < 4; ++j)
+				{
+					eval.hessians[i * 4 + j] = luisa::make_float3x3(0.0f);
+				}
+			}
+
+			eval = detail::stable_neo_hookean_energy::evaluate(in);
+			// detail::TetElasticEnergyUtils::compute_gradient_hessian(
+			// 	in.x0, in.x1, in.x2, in.x3, in.dm_inv, in.mu, in.lambda, in.volume, eval.gradients.data(), eval.hessians.data());
 
 			Eigen::VectorXf g_ana(12);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(12, 12);
 			for (int a = 0; a < 4; ++a)
 			{
 				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 4; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 4 + b]);
+				}
 			}
-			print_grad_only("TetStableNeoHookean", g_num, g_ana, 1e-3f);
+
+			print_diff("TetStableNeoHookean", g_num, g_ana, H_num, H_ana, 1e-2f);
 		}
 
 		// 8) Ground collision repulsive term (1 dof in y)
