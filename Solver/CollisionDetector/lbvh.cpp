@@ -294,10 +294,11 @@ namespace lcs
 		luisa::compute::BufferVar<uint>&										  broadphase_count,
 		luisa::compute::BufferVar<uint>&										  broad_phase_list,
 		luisa::compute::Var<uint>												  max_count,
+		luisa::compute::Var<uint>												  vid,
 		std::function<luisa::compute::Var<bool>(const luisa::compute::Var<uint>)> is_valid_function)
 	{
 		using namespace luisa::compute;
-		const Uint							  vid = dispatch_id().x;
+		// const Uint							  vid = dispatch_id().x;
 		constexpr uint						  STACK_SIZE = 32;
 		luisa::compute::ArrayUInt<STACK_SIZE> stack;
 		Int									  stack_ptr = 0;
@@ -800,6 +801,7 @@ namespace lcs
 					broadphase_count,
 					broad_phase_list,
 					max_count,
+					vid,
 					[&](const Uint adj_fid)
 					{ return Var<bool>(true); });
 			});
@@ -837,6 +839,7 @@ namespace lcs
 					broadphase_count,
 					broad_phase_list,
 					max_count,
+					vid,
 					[&](const Uint adj_fid)
 					{ return Var<bool>(true); });
 			});
@@ -876,6 +879,7 @@ namespace lcs
 					broadphase_count,
 					broad_phase_list,
 					max_count,
+					eid,
 					[&](const Uint adj_eid)
 					{ return Var<bool>(eid < adj_eid); });
 			});

@@ -401,7 +401,7 @@ namespace lcs::Initializer // WorldData
 		input_mesh.faces = input_mesh.surface_faces;
 
 		// 5. Extract surface edges from surface faces (for collision/rendering adjacency)
-		SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.surface_edges, input_mesh.dihedral_edges, true);
+		SimMesh::extract_edges_from_surface(input_mesh.surface_faces, input_mesh.surface_edges, input_mesh.dihedral_edges, true);
 
 		// 6. Extract full tet edges (including interior edges) for spring constraints
 		input_mesh.edges = extract_all_edges_from_tets(input_mesh.tetrahedrons);
@@ -409,8 +409,9 @@ namespace lcs::Initializer // WorldData
 		// 7. Mark material type
 		material_type = Material::MaterialType::Tetrahedral;
 
-		LUISA_INFO("Loaded tet mesh from array: {} verts, {} tets, {} edges, {} surface faces, {} surface edges",
-			vertices.size(), tets.size(), input_mesh.edges.size(), input_mesh.surface_faces.size(), input_mesh.surface_edges.size());
+		LUISA_INFO("Loaded tet mesh from array: {} verts, {} edges, {} tets => {} surface verts, {} surface faces, {} surface edges",
+			vertices.size(), input_mesh.edges.size(), tets.size(),
+			input_mesh.surface_verts.size(), input_mesh.surface_faces.size(), input_mesh.surface_edges.size());
 
 		return *this;
 	}

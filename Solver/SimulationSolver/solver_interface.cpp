@@ -75,8 +75,8 @@ namespace lcs
 		}
 
 		{
-			lbvh_data_face->allocate(device, host_mesh_data->num_faces, lcs::LBVHTreeTypeFace);
-			lbvh_data_edge->allocate(device, host_mesh_data->num_edges, lcs::LBVHTreeTypeEdge);
+			lbvh_data_face->allocate(device, host_sim_data->sa_contact_active_faces.size(), lcs::LBVHTreeTypeFace);
+			lbvh_data_edge->allocate(device, host_sim_data->sa_contact_active_edges.size(), lcs::LBVHTreeTypeEdge);
 			lcs::Initializer::init_lbvh_data(device, stream, lbvh_data_face);
 			lcs::Initializer::init_lbvh_data(device, stream, lbvh_data_edge);
 			// lbvh_cloth_vert.unit_test(device, stream);
@@ -173,7 +173,7 @@ namespace lcs
 					shell_info.set_physics_material(RigidMaterial());
 				}
 				const bool has_boundary =
-					input_mesh.dihedral_edges.size() != input_mesh.edges.size();
+					input_mesh.dihedral_edges.size() != input_mesh.surface_edges.size();
 
 				auto& mat = shell_info.get_material<RigidMaterial>();
 				mat.is_shell = !mat.is_solid;

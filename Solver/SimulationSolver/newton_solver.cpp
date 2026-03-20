@@ -1344,6 +1344,17 @@ namespace lcs
 			narrow_phase_detector->download_narrowphase_collision_count(stream);
 		}
 	}
+	void NewtonSolver::device_triplet_sort(luisa::compute::Device& device, luisa::compute::Stream& stream)
+	{
+		narrow_phase_detector->prescan_pervert_adj_list(
+			stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
+		narrow_phase_detector->download_narrowphase_collision_count(stream);
+		narrow_phase_detector->resize_buffers(device, stream); // Resize adj pairs buffers
+		narrow_phase_detector->construct_pervert_adj_list(
+			stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
+		narrow_phase_detector->device_sort_contact_triplet(stream);
+		narrow_phase_detector->resize_buffers(device, stream); // Resize adj verts buffers (Assembled triplet buffers)
+	}
 	void NewtonSolver::device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream)
 	{
 		// narrow_phase_detector->reset_toi(stream);
@@ -1992,14 +2003,7 @@ namespace lcs
 			stream << sim_data->sa_x.copy_from(host_sim_data->sa_x.data());
 
 			device_update_contact_list(device, stream);
-			narrow_phase_detector->prescan_pervert_adj_list(
-				stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
-			narrow_phase_detector->download_narrowphase_collision_count(stream);
-			narrow_phase_detector->resize_buffers(device, stream); // Resize adj pairs buffers
-			narrow_phase_detector->construct_pervert_adj_list(
-				stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
-			narrow_phase_detector->device_sort_contact_triplet(stream);
-			narrow_phase_detector->resize_buffers(device, stream); // Resize adj verts buffers (Assembled triplet buffers)
+			device_triplet_sort(device, stream);
 		};
 		auto evaluate_contact = [&]()
 		{
@@ -2184,14 +2188,7 @@ namespace lcs
 			if (!get_scene_params().use_self_collision)
 				return;
 			device_update_contact_list(device, stream);
-			narrow_phase_detector->prescan_pervert_adj_list(
-				stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
-			narrow_phase_detector->download_narrowphase_collision_count(stream);
-			narrow_phase_detector->resize_buffers(device, stream); // Resize adj pairs buffers
-			narrow_phase_detector->construct_pervert_adj_list(
-				stream, sim_data->sa_vert_affine_bodies_id, host_sim_data->num_verts_soft);
-			narrow_phase_detector->device_sort_contact_triplet(stream);
-			narrow_phase_detector->resize_buffers(device, stream); // Resize adj verts buffers (Assembled triplet buffers)
+			device_triplet_sort(device, stream);
 		};
 		auto evaluate_contact = [&]()
 		{

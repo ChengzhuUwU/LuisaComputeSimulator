@@ -96,6 +96,7 @@ namespace lcs
 		void device_narrowphase_ccd(luisa::compute::Stream& stream);
 		void device_narrowphase_dcd(luisa::compute::Stream& stream);
 		void device_update_contact_list(luisa::compute::Device& device, luisa::compute::Stream& stream);
+		void device_triplet_sort(luisa::compute::Device& device, luisa::compute::Stream& stream);
 		void device_post_dist_check(luisa::compute::Stream& stream);
 		void device_ccd_line_search(luisa::compute::Device& device, luisa::compute::Stream& stream);
 		void device_SpMV(luisa::compute::Stream&  stream,
