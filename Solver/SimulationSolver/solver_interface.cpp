@@ -796,7 +796,7 @@ namespace lcs
 	{
 		using namespace luisa::compute;
 		const bool					 use_debug_info = false;
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 
 		compiler.compile<1>(fn_reset_float,
 			[](Var<BufferView<float>> buffer)

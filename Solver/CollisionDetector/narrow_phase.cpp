@@ -361,7 +361,7 @@ namespace lcs // CCD
 		const uint offset_vf = collision_data->get_vf_count_offset();
 		const uint offset_ee = collision_data->get_ee_count_offset();
 
-		luisa::compute::ShaderOption option{ .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		compiler.compile(
 			fn_reset_vertex_property, [](BufferVar<VertexProperty> sa_x_property)
@@ -811,7 +811,7 @@ namespace lcs // DCD
 		const uint offset_vf = collision_data->get_vf_count_offset();
 		const uint offset_ee = collision_data->get_ee_count_offset();
 
-		luisa::compute::ShaderOption option{ .enable_fast_math = true, .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		compiler.compile<1>(
 			fn_narrow_phase_vf_dcd_query,
@@ -1263,7 +1263,7 @@ namespace lcs // Friction
 	{
 		using namespace luisa::compute;
 
-		luisa::compute::ShaderOption option{ .enable_fast_math = true, .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		// Only process friction part
 		compiler.compile<1>(
@@ -1342,7 +1342,7 @@ namespace lcs // Scan Collision Set
 	void NarrowPhasesDetector::compile_construct_pervert_adj_collision_list(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
-		luisa::compute::ShaderOption option{ .enable_fast_math = true, .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		compiler.compile<1>(
 			fn_calc_pervert_collion_count,
@@ -1495,7 +1495,7 @@ namespace lcs // Culling and Make Triplet
 	{
 		using namespace luisa::compute;
 
-		luisa::compute::ShaderOption option{ .enable_fast_math = true, .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		compiler.compile<1>(
 			fn_reset_triplet,
@@ -2426,7 +2426,7 @@ namespace lcs // Compute Contact Gradient & Hessian & Assemble
 			sa_cgA_diag.atomic(idx)[2][2].fetch_add(mat[2][2]);
 		};
 
-		luisa::compute::ShaderOption option{ .enable_fast_math = true, .enable_debug_info = true };
+		luisa::compute::ShaderOption option = compiler.default_option();
 
 		// Spring-form contact energy
 		compiler.compile<1>(

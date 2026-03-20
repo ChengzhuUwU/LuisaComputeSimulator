@@ -7,12 +7,15 @@ namespace lcs
 {
 	class AsyncCompiler
 	{
-		luisa::fiber::counter  _counter;
-		luisa::compute::Device _device;
+		luisa::fiber::counter		 _counter;
+		luisa::compute::Device		 _device;
+		luisa::compute::ShaderOption _default_option;
 
 	public:
 		auto&		device() { return _device; }
 		auto const& device() const { return _device; }
+		auto&		default_option() { return _default_option; }
+		auto const& default_option() const { return _default_option; }
 		AsyncCompiler(luisa::compute::Device& device)
 			: _device(device)
 		{

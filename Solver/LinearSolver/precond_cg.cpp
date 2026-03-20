@@ -34,7 +34,7 @@ namespace lcs
 	{
 		using namespace luisa::compute;
 
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 		// auto& sa_cgX = sim_data->sa_cgX;
 		// auto& sa_cgB = sim_data->sa_cgB;
 		// auto& sa_cgA_diag = sim_data->sa_cgA_diag;

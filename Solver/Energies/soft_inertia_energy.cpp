@@ -17,7 +17,7 @@ namespace lcs
 
 	void SoftInertiaEnergy::compile(AsyncCompiler& compiler)
 	{
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 		compiler.compile<1>(
 			_shader,
 			[sa_q_tilde = _sa_q_tilde_view, sa_system_energy = _sa_system_energy_view](

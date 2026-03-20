@@ -169,7 +169,7 @@ namespace lcs
 		const bool use_debug_info = false;
 		using namespace luisa::compute;
 
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = true };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 
 		compile_advancing(compiler, default_option);
 

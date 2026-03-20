@@ -42,6 +42,8 @@ namespace lcs
 			luisa::compute::Clock clk;
 			{
 				AsyncCompiler compiler(device);
+				compiler.default_option().enable_debug_info = false;
+				compiler.default_option().enable_fast_math = true;
 				{
 					SolverInterface::compile(compiler);
 					this->compile(compiler);

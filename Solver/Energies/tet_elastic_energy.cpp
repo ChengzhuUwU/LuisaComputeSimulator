@@ -18,7 +18,7 @@ namespace lcs
 
 	void TetElasticEnergy::compile(AsyncCompiler& compiler)
 	{
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 
 		// ---- Energy shader ----
 		compiler.compile<1>(

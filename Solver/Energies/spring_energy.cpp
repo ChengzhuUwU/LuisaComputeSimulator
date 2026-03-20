@@ -14,7 +14,7 @@ namespace lcs
 
 	void SpringEnergy::compile(AsyncCompiler& compiler)
 	{
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 		compiler.compile<1>(
 			_shader,
 			[sa_system_energy = _sa_system_energy](Var<Constitutions::StretchSpring<luisa::compute::Buffer>> constraint,

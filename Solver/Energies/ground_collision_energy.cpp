@@ -61,7 +61,7 @@ namespace lcs
 
 	void GroundCollisionEnergy::compile(AsyncCompiler& compiler)
 	{
-		luisa::compute::ShaderOption default_option = { .enable_debug_info = false };
+		luisa::compute::ShaderOption default_option = compiler.default_option();
 		compiler.compile<1>(
 			_shader,
 			[sa_rest_vert_area = _sa_rest_vert_area,
