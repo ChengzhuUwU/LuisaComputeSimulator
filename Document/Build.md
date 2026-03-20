@@ -4,13 +4,14 @@ This guide covers building LuisaComputeSimulator on different platforms and conf
 
 ## Requirements
 
-| Requirement           | Minimum Version | Notes               |
-| --------------------- | --------------- | ------------------- |
-| CMake                 | 3.26+           |                     |
-| C++ Compiler          | C++20 capable   | Clang 15+, GCC 13+  |
-| CUDA (optional)       | 12.0+           | For CUDA backend    |
-| Vulkan SDK (optional) | 1.3+            | For Vulkan backend  |
-| Python 3.8+           |                 | For Python bindings |
+| Requirement           | Minimum Version | Notes                              |
+| --------------------- | --------------- | ---------------------------------- |
+| CMake                 | 3.26+           |                                    |
+| Xmake                 | 3.0.6+          | Required by LuisaCompute submodule |
+| C++ Compiler          | C++20 capable   | Clang 15+, GCC 13+                 |
+| CUDA (optional)       | 12.0+           | For CUDA backend                   |
+| Vulkan SDK (optional) | 1.3+            | For Vulkan backend                 |
+| Python 3.8+           |                 | For Python bindings                |
 
 ### Platform-Specific Requirements
 
@@ -60,6 +61,7 @@ cmake --build build -j
 
 ```bash
 xmake lua setup.lua
+xmake f -m release
 xmake build
 ```
 
@@ -81,7 +83,22 @@ xmake build
 | `-D LUISA_COMPUTE_ENABLE_DX`     | Enable DirectX backend        | `ON` (Windows) |
 | `-D LCS_BUILD_PYBINDINGS`        | Build Python bindings         | `OFF`          |
 | `-D LCS_PYTHON_EXECUTABLE`       | Python interpreter path       |                |
-| `-D LCS_ENABLE_GUI`              | Enable GUI (Polyscope)        | `ON`           |
+| `-D LCS_ENABLE_GUI`              | Enable GUI (Polyscope)        | `OFF`          |
+
+### Xmake Flags
+
+| Option                                | Description                 | Default     |
+| ------------------------------------- | --------------------------- | ----------- |
+| `--mode=release/debug`                | Build type                  | `release`   |
+| `--luisa_compute_enable_cuda=y/n`     | Enable CUDA backend         | `y`         |
+| `--luisa_compute_enable_vulkan=y/n`   | Enable Vulkan backend       | `n`         |
+| `--luisa_compute_enable_metal=y/n`    | Enable Metal backend        | `y` (macOS) |
+| `--luisa_compute_enable_dx=y/n`       | Enable DirectX backend      | `n`         |
+| `--luisa_compute_enable_fallback=y/n` | Enable CPU fallback backend | `n`         |
+| `--lcs_enable_gui=y/n`                | Enable GUI (Polyscope)      | `n`         |
+| `--lcs_enable_test=y/n`               | Build unit tests            | `n`         |
+| `--lcs_build_pybindings=y/n`          | Build Python bindings       | `n`         |
+| `--lcs_python_executable=<path>`      | Python interpreter path     | empty       |
 
 ### Build Examples
 
@@ -120,6 +137,27 @@ cmake -S . -B build \
     -DLUISA_COMPUTE_ENABLE_VULKAN=ON
 
 cmake --build build -j
+```
+
+#### Xmake with Python Bindings (Windows example)
+```bash
+xmake lua setup.lua
+xmake f -c -m release \
+    --lcs_build_pybindings=y \
+    --lcs_python_executable="C:/Applications/Python/python.exe" \
+    --lcs_enable_gui=n \
+    --lcs_enable_test=n \
+    --luisa_compute_enable_cuda=y \
+    --luisa_compute_enable_dx=n \
+    --luisa_compute_enable_vulkan=n \
+    --luisa_compute_enable_fallback=n
+
+xmake build
+```
+
+#### Xmake build only Python module
+```bash
+xmake build lcs_py
 ```
 
 ---
@@ -197,19 +235,19 @@ DirectX 12 is enabled by default on Windows. Ensure you have:
 
 ```bash
 # CUDA (Linux)
-./build/bin/app-simulation cuda
+./build/bin/app_simulation cuda
 
 # Metal (macOS)
-./build/bin/app-simulation metal
+./build/bin/app_simulation metal
 
 # DirectX (Windows)
-./build/bin/app-simulation dx
+./build/bin/app_simulation dx
 
 # Vulkan
-./build/bin/app-simulation vulkan
+./build/bin/app_simulation vulkan
 
 # CPU (Fallback)
-./build/bin/app-simulation fallback
+./build/bin/app_simulation fallback
 ```
 
 #### Python Application
@@ -228,7 +266,7 @@ Set environment variable to dump shaders for debugging:
 
 ```bash
 export LUISA_DUMP_SOURCE=1
-./build/bin/app-simulation cuda
+./build/bin/app_simulation cuda
 ```
 
 Shader files will be saved to `build/bin/.cache/`.

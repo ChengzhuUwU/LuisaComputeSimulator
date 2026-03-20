@@ -129,7 +129,7 @@ int main(int argc, char** argv)
 
 	auto fn_save_frame_to_obj = [&](const uint frame_id, const auto& sim_result, const std::string& additional_info = "")
 	{
-		std::string full_path = luisa::format("{}/OutputMesh/0{}/frame_{}{}.obj",
+		std::string full_path = std::format("{}/OutputMesh/0{}/frame_{}{}.obj",
 			LCSV_RESOURCE_PATH,
 			lcs::get_scene_params().scene_id,
 			frame_id, additional_info);
@@ -180,7 +180,7 @@ int main(int argc, char** argv)
 					per_frame_rendering_vertices.clear();
 					if (curr_frame != frame_start)
 					{
-						std::string scene_directory = luisa::format("{}/OutputMesh/0{}", LCSV_RESOURCE_PATH, lcs::get_scene_params().scene_id);
+						std::string scene_directory = std::format("{}/OutputMesh/0{}", LCSV_RESOURCE_PATH, lcs::get_scene_params().scene_id);
 						std::string save_state_full_path = scene_directory + "/saved_state.state";
 						solver.lcs::SolverInterface::save_current_frame_state_to_host(save_state_full_path);
 					}
@@ -365,7 +365,7 @@ int main(int argc, char** argv)
 
 			if (ImGui::CollapsingHeader("Data IO", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				std::string scene_directory = luisa::format("{}/OutputMesh/0{}", LCSV_RESOURCE_PATH, lcs::get_scene_params().scene_id);
+				std::string scene_directory = std::format("{}/OutputMesh/0{}", LCSV_RESOURCE_PATH, lcs::get_scene_params().scene_id);
 				std::string save_state_full_path = scene_directory + "/saved_state.state";
 
 				if (ImGui::Button("Save mesh", ImVec2(-1, 0)))

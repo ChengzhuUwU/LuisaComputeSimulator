@@ -217,6 +217,7 @@ cmake --build build -j
 
 # Or use Xmake
 xmake lua setup.lua
+xmake f -m release
 xmake build
 ```
 
@@ -225,10 +226,10 @@ xmake build
 #### C++ Application
 ```bash
 # Run with default scene
-./build/bin/app-simulation
+./build/bin/app_simulation
 
 # Specify backend and scene
-./build/bin/app-simulation cuda Resources/Scenes/cloth_rigid_coupling_high_res.json
+./build/bin/app_simulation cuda Resources/Scenes/cloth_rigid_coupling_high_res.json
 ```
 
 #### Python Application

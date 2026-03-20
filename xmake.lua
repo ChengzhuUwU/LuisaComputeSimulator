@@ -1,6 +1,87 @@
 set_allowedplats("windows")
 set_allowedarchs("x64")
 set_allowedmodes("debug", "release", "releasedbg")
+set_targetdir(path.join(os.projectdir(), "build", "bin"))
+
+local function cfg_bool(default, ...)
+    local keys = {...}
+    for _, key in ipairs(keys) do
+        local value = get_config(key)
+        if value ~= nil then
+            if type(value) == "boolean" then
+                return value
+            end
+            if type(value) == "number" then
+                return value ~= 0
+            end
+            if type(value) == "string" then
+                local v = value:lower()
+                if v == "y" or v == "yes" or v == "true" or v == "on" or v == "1" then
+                    return true
+                end
+                if v == "n" or v == "no" or v == "false" or v == "off" or v == "0" then
+                    return false
+                end
+            end
+        end
+    end
+    return default
+end
+
+option("lcs_enable_gui")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable GUI support (polyscope)")
+option_end()
+
+option("lcs_enable_test")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable unit tests")
+option_end()
+
+option("lcs_build_pybindings")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Build Python bindings (lcs_py)")
+option_end()
+
+option("lcs_python_executable")
+    set_default("")
+    set_showmenu(true)
+    set_description("Path to Python executable for building lcs_py")
+option_end()
+
+option("luisa_compute_enable_cuda")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable CUDA backend")
+option_end()
+
+option("luisa_compute_enable_metal")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable Metal backend")
+option_end()
+
+option("luisa_compute_enable_vulkan")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable Vulkan backend")
+option_end()
+
+option("luisa_compute_enable_dx")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable DirectX backend")
+option_end()
+
+option("luisa_compute_enable_fallback")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable Fallback backend")
+option_end()
+
 -- windows flags
 if (is_host("windows")) then 
     add_defines("NOMINMAX")
@@ -52,12 +133,106 @@ target("luisa-compute-solver-lib")
     add_deps("lc-dsl", "lc-runtime", "lc-backends-dummy", "lc-vstl", "eigen")
     set_pcxxheader("Solver/zzpch.h")
 
-target("app-simulation")
+target("app_simulation")
     add_rules("lc_basic_settings", {
         project_kind = "binary",
         enable_exception = true
     })
-    add_files("Application/*.cpp|app_test_features.cpp")
-
-    add_deps("luisa-compute-solver-lib", "polyscope", "lc-yyjson")
+    add_files("Application/*.cpp|app_integration.cpp")
+    add_deps("luisa-compute-solver-lib", "lc-yyjson")
+    if cfg_bool(false, "lcs_enable_gui") then
+        add_deps("polyscope")
+        add_defines("SIMULATION_APP_USE_GUI=1")
+    end
     set_pcxxheader("Application/zzpch.h")
+
+target("app_integration")
+    add_rules("lc_basic_settings", {
+        project_kind = "binary",
+        enable_exception = true
+    })
+    add_files("Application/app_integration.cpp")
+    add_deps("luisa-compute-solver-lib")
+    set_pcxxheader("Application/zzpch.h")
+
+if cfg_bool(false, "lcs_enable_test") then
+    target("test_xtypes")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_xtypes.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_lc_features")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_lc_features.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_lbvh_refit")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_lbvh_refit.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_jit")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_jit.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_host_functions")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_host_functions.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_abd_energy")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_abd_energy.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_gradient_hessian")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_gradient_hessian.cpp")
+        add_deps("luisa-compute-solver-lib")
+end
+
+if cfg_bool(false, "lcs_build_pybindings") then
+    target("lcs_py")
+        add_rules("lc_basic_settings", {
+            project_kind = "shared",
+            enable_exception = true
+        })
+        add_files("PythonBindings/src/python_bindings.cpp", "Application/app_simulation_demo_config.cpp")
+        add_includedirs("Application")
+        add_deps("luisa-compute-solver-lib", "lc-yyjson")
+        set_extension(".pyd")
+
+        on_load(function(target)
+            local pyexe = get_config("lcs_python_executable")
+            if not pyexe or pyexe == "" then
+                raise("lcs_build_pybindings requires --lcs_python_executable=<path-to-python>")
+            end
+            if not os.isfile(pyexe) then
+                raise("lcs_python_executable does not exist: " .. pyexe)
+            end
+
+            local probe = [[import sys,sysconfig,pathlib;v=f"{sys.version_info[0]}{sys.version_info[1]}";inc=sysconfig.get_path("include") or "";platinc=sysconfig.get_path("platinclude") or "";base=pathlib.Path(sys.base_prefix);libdir=(base/"libs");print("INCLUDE="+inc);print("PLATINCLUDE="+platinc);print("LIBDIR="+str(libdir));print("LIB=python"+v)]]
+            local out = os.iorunv(pyexe, {"-c", probe})
+
+            local include_dir = out:match("INCLUDE=([^\r\n]+)")
+            local plat_include_dir = out:match("PLATINCLUDE=([^\r\n]+)")
+            local lib_dir = out:match("LIBDIR=([^\r\n]+)")
+            local py_lib = out:match("LIB=([^\r\n]+)")
+
+            if include_dir and include_dir ~= "" then
+                target:add("includedirs", include_dir)
+            end
+            if plat_include_dir and plat_include_dir ~= "" and plat_include_dir ~= include_dir then
+                target:add("includedirs", plat_include_dir)
+            end
+            target:add("includedirs", "ext/pybind11/include")
+
+            if lib_dir and lib_dir ~= "" then
+                target:add("linkdirs", lib_dir)
+            end
+            if py_lib and py_lib ~= "" then
+                target:add("links", py_lib)
+            end
+        end)
+end

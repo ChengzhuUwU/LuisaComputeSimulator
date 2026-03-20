@@ -11,6 +11,7 @@
 #include "Initializer/initializer_utils.h"
 #include "luisa/core/logging.h"
 #include "luisa/core/mathematics.h"
+#include <span>
 
 namespace lcs::Initializer
 {

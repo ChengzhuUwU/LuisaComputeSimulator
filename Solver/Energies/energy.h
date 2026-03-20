@@ -3,6 +3,7 @@
 #include "Utils/async_compiler.h"
 #include <luisa/runtime/stream.h>
 #include <vector>
+#include <span>
 
 namespace lcs
 {

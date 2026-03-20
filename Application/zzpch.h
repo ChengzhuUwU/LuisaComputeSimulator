@@ -1,7 +1,9 @@
 #include <Eigen/Dense>
-#include <polyscope/polyscope.h>
-#include <polyscope/surface_mesh.h>
-#include <imgui.h>
+#if defined(SIMULATION_APP_USE_GUI)
+	#include <polyscope/polyscope.h>
+	#include <polyscope/surface_mesh.h>
+	#include <imgui.h>
+#endif
 #include <filesystem>
 #include <istream>
 #include <sstream>
