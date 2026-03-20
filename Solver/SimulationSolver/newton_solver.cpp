@@ -809,7 +809,7 @@ namespace lcs
 				sa_contact_active_verts_offset = sim_data->sa_contact_active_verts_offset.view(),
 				sa_contact_active_verts_d_hat = sim_data->sa_contact_active_verts_d_hat.view(),
 				toi_per_vert = collision_data->toi_per_vert.view(),
-				sa_is_fixed = mesh_data->sa_is_fixed.view()](Float floor_y, Bool use_ground_collision)
+				sa_x_property = sim_data->sa_x_property.view()](Float floor_y, Bool use_ground_collision)
 			{
 				// Indirect index: each thread handles one active (surface) vertex
 				const UInt active_idx = dispatch_id().x;
@@ -818,7 +818,8 @@ namespace lcs
 				Float toi = 1.0f;
 				$if(use_ground_collision)
 				{
-					$if(!sa_is_fixed->read(vid))
+					const auto property = sa_x_property->read(vid);
+					$if(!property->is_fixed())
 					{
 						Float offset = sa_contact_active_verts_offset->read(vid);
 						Float curr_y = sa_x->read(vid).y;
@@ -831,12 +832,20 @@ namespace lcs
 					};
 				};
 
-				toi = ParallelIntrinsic::block_intrinsic_reduce(vid, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
-
-				$if(vid % 256 == 0 & toi != 1.0f)
+				$if(toi != 1.0f)
 				{
 					toi_per_vert->atomic(0).fetch_min(toi);
+					// device_log("Debug: Before vid {}, toi {}", vid, toi);
 				};
+
+				// TODO!!!! To fix block reduce !!!!
+				// toi = ParallelIntrinsic::block_intrinsic_reduce(vid, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+
+				// $if(vid % 256 == 0 & toi != 1.0f)
+				// {
+				// 	Float orig_toi = toi_per_vert->atomic(0).fetch_min(toi);
+				// 	// device_log("Debug: vid {}, toi from {} to {}", vid, orig_toi, toi);
+				// };
 			},
 			default_option);
 	}

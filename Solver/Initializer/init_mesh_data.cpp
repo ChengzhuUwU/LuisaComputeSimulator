@@ -257,15 +257,16 @@ namespace lcs
 							/ float(curr_num_edges);
 
 						auto aabb_range = pos_max - pos_min;
-						LUISA_INFO("Mesh {}: name = {:10}, numVerts = {:<4}, numFaces = {:<4}, numEdges = {:<4}, numTets = {:3}, avgEdgeLength = {:2.4f}, AABB range = ({:4.3f}, {:4.3f}, {:4.3f})",
+						LUISA_INFO("Mesh {}: name = {}, numVerts/numFaces/numEdges/numTets = {:<4} / {:<4} / {:<4} / {:<4}, numSurfaceVerts/Edges = {:<4} / {:<4}, avgEdgeLength = {:2.4f}",
 							meshIdx,
 							curr_mesh_info.get_model_name(),
 							curr_num_verts,
 							curr_num_faces,
 							curr_num_edges,
 							curr_num_tets,
-							avg_spring_length,
-							aabb_range.x, aabb_range.y, aabb_range.z);
+							curr_input_mesh.surface_verts.size(),
+							curr_input_mesh.surface_edges.size(),
+							avg_spring_length);
 					}
 
 					prefix_num_verts += curr_num_verts;
@@ -584,7 +585,7 @@ namespace lcs
 					const float input_density = shell_info.get_density();
 					mesh_data->sa_body_mass[meshIdx] = input_mass != 0.0f ? input_mass : sum_volume * input_density;
 
-					LUISA_INFO("Mesh {}: name = {:10}, volume = {:3.2e}{}, body mass = {:3.2e}, avg vert mass = {:3.2e}",
+					LUISA_INFO("Mesh {}: name = {}, volume = {:3.2e}{}, body mass = {:3.2e}, avg vert mass = {:3.2e}",
 						meshIdx,
 						shell_info.get_model_name(),
 						sum_volume,

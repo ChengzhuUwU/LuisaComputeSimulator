@@ -409,9 +409,9 @@ namespace lcs::Initializer // WorldData
 		// 7. Mark material type
 		material_type = Material::MaterialType::Tetrahedral;
 
-		LUISA_INFO("Loaded tet mesh from array: {} verts, {} edges, {} tets => {} surface verts, {} surface faces, {} surface edges",
-			vertices.size(), input_mesh.edges.size(), tets.size(),
-			input_mesh.surface_verts.size(), input_mesh.surface_faces.size(), input_mesh.surface_edges.size());
+		// LUISA_INFO("Loaded tet mesh from array: {} verts, {} edges, {} tets => {} surface verts, {} surface faces, {} surface edges",
+		// 	vertices.size(), input_mesh.edges.size(), tets.size(),
+		// 	input_mesh.surface_verts.size(), input_mesh.surface_faces.size(), input_mesh.surface_edges.size());
 
 		return *this;
 	}
