@@ -67,7 +67,7 @@ auto world_data = lcs::Initializer::WorldData()
     .set_translation({x, y, z})
     .set_rotation({rx, ry, rz})
     .set_scale(s)
-    .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Left});
+    .add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Left});
 ```
 
 ---
@@ -258,15 +258,15 @@ enum struct FixedPointsType {
 ### Adding Fixed Points
 
 ```cpp
-.add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Left})
-.add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::LeftBack})
-.add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Right})
+.add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Left})
+.add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::LeftBack})
+.add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Right})
 ```
 
 **Example - Pin both corners:**
 ```cpp
-.add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Left})
-.add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Right})
+.add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Left})
+.add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Right})
 ```
 
 ---
@@ -404,7 +404,7 @@ int main(int argc, char** argv) {
             .stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring,
         })
         .set_translation({0.0f, 0.4f, 0.0f})
-        .add_fixed_point_info({
+        .add_fixed_point_from_method({
             .method = lcs::Initializer::FixedPointsType::LeftBack
         });
     uint upper_id = solver.register_world_data(upper_square);
@@ -428,8 +428,8 @@ int main(int argc, char** argv) {
         .set_physics_material(lcs::Material::ClothMaterial{})
         .set_scale(0.8f)
         .set_translation({0.1f, 0.2f, 0.0f})
-        .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Left})
-        .add_fixed_point_info({.method = lcs::Initializer::FixedPointsType::Right});
+        .add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Left})
+        .add_fixed_point_from_method({.method = lcs::Initializer::FixedPointsType::Right});
     uint lower_id = solver.register_world_data(lower_square);
 
     // === Configure solver ===
