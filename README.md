@@ -9,7 +9,7 @@
 [![macos](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml/badge.svg?branch=main)](https://github.com/ChengzhuUwU/LuisaComputeSimulator/actions/workflows/cmake_macos.yml)
 [![License](https://img.shields.io/github/license/ChengzhuUwU/LuisaComputeSimulator)](LICENSE)
 
-LuisaComputeSimulator is a **high-performance cross-platform physics simulator** built on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute). It provides real-time simulation of **cloth** and **rigid bodies** with **penetration-free contact handling**, accelerated by GPU/CPU backends.
+LuisaComputeSimulator is a **high-performance cross-platform physics simulator** built on [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute). It provides real-time simulation of **soft bodies, cloth, and rigid bodies** with **penetration-free contact handling**, accelerated by GPU/CPU backends.
 
 > **Performance Demo:** 88K vertices, 174K triangles, 3M+ collision pairs → **~3 FPS on RTX 3090 (CUDA)**, **~2 FPS on M2 Max (Metal)**
 
@@ -19,9 +19,9 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 | Feature                            | Description                                                                           |
 | ---------------------------------- | ------------------------------------------------------------------------------------- |
-| **Soft Body / Cloth Simulation**   | High-resolution soft bodies with various constitutive models (Spring, Stable NeoHookean, ARAP) |
+| **Soft Body / Cloth Simulation**   | High-resolution soft-body and cloth simulation with FEM-based constitutive models |
 | **Rigid Body Dynamics**            | Rigid body simulation with collision and friction                                     |
-| **Soft-Rigid Coupling**            | Seamless interaction between soft and rigid bodies                                    |
+| **Soft-Cloth-Rigid Coupling**      | Seamless interaction among soft bodies, cloth, and rigid bodies in one solver        |
 | **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions                                     |
 | **Affine Body Dynamics (ABD)**     | Efficient reduced-space simulation for rigid bodies                                   |
 | **Multi-Backend Support**          | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback)                                       |
@@ -30,21 +30,27 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 ### Supported Physics
 
-- ✅ Soft Body / Cloth Simulation
+- ✅ Soft Body / Cloth Simulation (Spring + ARAP FEM)
 - ✅ Rigid Body Simulation  
 - ✅ Soft-Rigid Body Coupling
+- ✅ Cloth-Soft-Rigid Coupling
 - ✅ Ground Collision
 - ✅ Frictional Contact
 - ✅ Continuous Collision Detection (CCD)
 - ✅ Fixed Point / Pinned Constraints
 - ✅ Tetrahedral Mesh (In Development)
 - 🔄 Joint Constraints (Planned)
+- 🔄 OpenUSD Scene Support
 
 ## Usage
 
 ### Python Frontend
 
-Sample Python-frontend code can be found at [test_cloth_large_deform.py](PythonBindings/tests/test_cloth_large_deform.py) (comparison of different stretch models) and [test_cloth_rigid_coupling.py](PythonBindings/tests/test_cloth_rigid_coupling.py):
+Sample Python-frontend code can be found at:
+
+- [test_cloth_animation](PythonBindings/tests/test_cloth_animation.py) (cloth twisting animation)
+- [test_soft_folding.py](PythonBindings/tests/test_soft_folding.py) (soft-body tetrahedral simulation)
+- [test_cloth_soft_rigid_coupling.py](PythonBindings/tests/test_cloth_soft_rigid_coupling.py) (cloth-soft-rigid coupling)
 
 ```python
     import os
@@ -139,13 +145,12 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
                                 .set_material_type(lcs::Material::MaterialType::Cloth)
                                 .set_physics_material(lcs::Material::ClothMaterial{
                                     .stretch_model = lcs::Material::ConstitutiveStretchModelCloth::FEM_BW98,
-                                    .bending_model = lcs::Material::ConstitutiveBendingModelCloth::QuadraticBending,
+                                    .bending_model = lcs::Material::ConstitutiveBendingModelCloth::DihedralAngle,
                                     .thickness = 0.001f,
                                     .youngs_modulus = 1e6f,
                                     .poisson_ratio = 0.3f,
                                 })
-                                .set_translation({ 0.0f, 0.4f, 0.0f })
-                                .add_fixed_point_from_method({ .method = lcs::Initializer::FixedPointsType::LeftBack });
+                                .set_translation({ 0.0f, 0.4f, 0.0f });
         uint upper_square_id = solver.register_world_data(upper_square);
 
         // ========================================================================
@@ -158,10 +163,7 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
                                 .load_mesh_from_array(square_mesh_vertices, square_mesh_faces)
                                 .set_material_type(lcs::Material::MaterialType::Cloth)
                                 .set_physics_material(lcs::Material::ClothMaterial{
-                                    .stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring,
-                                    .bending_model = lcs::Material::ConstitutiveBendingModelCloth::QuadraticBending,
-                                    .thickness = 0.001f,
-                                    .youngs_modulus = 1e5f,
+                                    .stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring
                                 })
                                 .set_scale(0.8f)
                                 .set_translation({ 0.1f, 0.2f, 0.0f })
@@ -238,143 +240,9 @@ python PythonBindings/example_usage.py --backend cuda
 python PythonBindings/example_usage.py --backend cuda --headless --advance_frames 60
 ```
 
-> **Note:** Supported backends: `cuda`, `dx` (DirectX), `vk` (Vulkan), `metal` (macOS)
+> **Note:** Most used backends in LuisaCompute : `cuda`, `dx` (DirectX), `vk` (Vulkan), `metal` (macOS)
 
----
-
-## 📖 Usage
-
-### Python Frontend
-
-Sample code for cloth-rigid coupling simulation with different constitutive models:
-
-```python
-import trimesh
-import lcs_py as lcs
-
-# Initialize solver with backend
-solver = lcs.NewtonSolver()
-solver.init_device(backend_name="cuda")
-
-# Create rigid body from mesh file
-cube_mesh = trimesh.load("cube.obj", process=False)
-cube = solver.create_world_data_from_array("cube", cube_mesh.vertices, cube_mesh.faces)
-cube.set_simulation_type(lcs.MaterialType.Rigid)
-cube.set_translation(0.0, 0.34, 0.0)
-cube.set_rotation(0.5235988, 0.0, 0.5235988)
-cube.set_scale(0.1)
-cube_id = solver.register_world_data(cube)
-
-# Create cloth from file with configurable stretch model
-cloth = solver.create_world_data_from_file_path("cloth", "square2K.obj")
-cloth.set_simulation_type(lcs.MaterialType.Cloth)
-# Configure cloth material:
-# - stretch_model: "FEM_BW98" (finite strain) or "Spring" (linear)
-# - bending_model: "QuadraticBending" or "DihedralAngle"
-cloth.set_physics_material_cloth(
-    thickness=0.001, 
-    youngs_modulus=1e6,
-    poisson_ratio=0.3,
-    stretch_model="FEM_BW98",
-    bending_model="QuadraticBending"
-)
-cloth.set_scale(0.75)
-cloth.add_fixed_point_by_method("LeftBack")
-cloth.add_fixed_point_by_method("RightBack")
-cloth_id = solver.register_world_data(cloth)
-
-# Configure simulation
-config = solver.get_config()
-config.use_floor = False
-config.use_self_collision = True
-config.implicit_dt = 1/60
-
-# Initialize and run
-solver.init_solver()
-
-for frame in range(100):
-    solver.physics_step_gpu()
-    solver.save_sim_result(f"output/frame_{frame}.obj")
-
-solver.cleanup_device()
-```
-
-### C++ Frontend
-
-```cpp
-#include <string>
-#include <vector>
-#include "SimulationSolver/newton_solver.h"
-
-int main(int argc, char** argv) {
-    // Set log level
-    luisa::log_level_info();
-
-    // Parse backend
-    std::string backend = (argc >= 2) ? argv[1] : "cuda";
-
-    // Create solver
-    lcs::NewtonSolver solver;
-    solver.create_device(argv[0], backend);
-
-    // Build cloth with FEM_BW98 (finite strain energy)
-    auto cloth = lcs::Initializer::WorldData()
-        .set_name("cloth")
-        .load_mesh_from_path(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
-        .set_material_type(lcs::Material::MaterialType::Cloth)
-        .set_physics_material(lcs::Material::ClothMaterial{
-            .stretch_model = lcs::Material::ConstitutiveStretchModelCloth::FEM_BW98,
-            .bending_model = lcs::Material::ConstitutiveBendingModelCloth::QuadraticBending,
-            .thickness = 0.001f,
-            .youngs_modulus = 1e6f,
-            .poisson_ratio = 0.3f,
-        })
-        .set_translation({0.0f, 0.4f, 0.0f})
-        .add_fixed_point_from_method({ .method = lcs::Initializer::FixedPointsType::LeftBack });
-    uint cloth_id = solver.register_world_data(cloth);
-
-    // Configure solver
-    auto& config = solver.get_config();
-    config.use_floor = false;
-    config.use_self_collision = true;
-    config.implicit_dt = 1.0 / 60.0;
-    config.nonlinear_iter_count = 10;
-
-    // Initialize and run
-    solver.init_solver();
-
-    std::vector<std::vector<std::array<float, 3>>> vertices;
-    for (uint i = 0; i < 20; i++) {
-        solver.physics_step_GPU();
-        solver.get_curr_vertices_to_host(vertices);
-    }
-
-    // Save result
-    solver.save_mesh_to_obj(luisa::format("{}/OutputMesh/result.obj", LCSV_RESOURCE_PATH));
-
-    return 0;
-}
-```
-
----
-
-## 🎯 Example Scenes
-
-Pre-built scenes in `Resources/Scenes/`:
-
-| Scene File                           | Description                             | Mesh Size       |
-| ------------------------------------ | --------------------------------------- | --------------- |
-| `cloth_rigid_coupling_high_res.json` | High-res cloth dropping on rigid cube   | 88K vertices    |
-| `cloth_rigid_coupling_drop.json`     | Cloth falling onto cube                 | ~2K vertices    |
-| `cloth_rotation_cylinder.json`       | Cloth wrapping around rotating cylinder | 7K / 88K / 260K |
-| `cloth_pinned.json`                  | Pinned cloth with different materials   | ~2K vertices    |
-| `cloth_friction.json`                | Cloth with frictional contact           | ~2K vertices    |
-| `rigid_folding_cubes.json`           | Multiple folding rigid cubes            | 3 cubes         |
-| `rigid_multi_folding_cubes.json`     | Many folding cubes                      | 8 cubes         |
-| `rigid_bucket.json`                  | Rigid objects in bucket                 | ~1K vertices    |
-| `rigid_frictional_test.json`         | Frictional sliding test                 | -               |
-
----
+More compiling details can be found at [BUILD.md](/Document/Build.md)
 
 ## 🖥️ Supported Backends
 
@@ -416,14 +284,14 @@ Pre-built scenes in `Resources/Scenes/`:
 - [x] Python Bindings
 - [x] Cloth Simulation
 - [x] Rigid Body Simulation
-- [x] Soft Body (Spring Energy only)
+- [x] Soft Body (Spring + ARAP FEM)
+- [x] Soft-Cloth-Rigid Coupling
 - [x] Penetration-Free Contact (IPC)
 - [x] Affine Body Dynamics
 - [x] Frictional Modeling
 - [x] C++ Integration API
 
 ### In Progress 🔄
-- [x] Soft Body Simulation with Finite Strain Energy (Stable NeoHookean, ARAP)
 - [ ] Tetrahedral Mesh Support
 - [ ] Joint Constraints
 

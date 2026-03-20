@@ -10,6 +10,8 @@ $$E_{total} = E_{internal} + E_{external}$$
 
 Where internal energies model material behavior and external energies handle constraints.
 
+The current soft-body pipeline supports **Spring** and **ARAP tetrahedral FEM** energies, and these soft constraints are assembled in the same global system as cloth and rigid-body energies to enable coupled simulation.
+
 ---
 
 ## Constitutive Models for Soft Bodies
@@ -29,37 +31,37 @@ Where:
 
 **Characteristics:** Simple, fast, but limited to small deformations.
 
-**Implementation:** `SpringEnergy` in [`Solver/Energies/spring_energy.cpp`](https://github.com/ChengzhuUwU/LuisaComputeSimulator/blob/main/Solver/Energies/spring_energy.cpp)
+**Implementation:** `stretch_spring_energy` in [`Solver/Energies/detail/stretch_spring_energy.hpp`](../Solver/Energies/detail/stretch_spring_energy.hpp)
 
-#### Stable NeoHookean Energy (On development)
+#### Stable NeoHookean Energy (Tetrahedral FEM)
 
-$$E = \frac{\mu}{2}(tr(C) - 3) + \frac{\lambda}{2}(\det(F) - 1)^2 - \mu \ln(\det(F))$$
+$$E = V\left[\frac{\mu}{2}(\mathrm{tr}(F^T F) - 3) - \mu(\det(F)-1) + \frac{\lambda}{2}(\det(F)-1)^2\right]$$
 
 Where:
 - $F$ is the deformation gradient ($F = \frac{\partial x}{\partial X}$)
 - $C = F^T F$ is the right Cauchy-Green tensor
 - $\mu$ and $\lambda$ are Lamé parameters (derived from Young's modulus and Poisson's ratio)
 
-**Characteristics:** 
+**Characteristics:**
 - Stable for large deformations
 - Physically-based hyperelastic material
 - Volume preservation behavior
 
-**Implementation:** TODO: `TetElasticEnergy` in [`Solver/Energies/tet_elastic_energy.cpp`](../Solver/Energies/tet_elastic_energy.cpp)
+**Implementation:** `stable_neo_hookean_energy` in [`Solver/Energies/detail/stable_neo_hookean_energy.hpp`](../Solver/Energies/detail/stable_neo_hookean_energy.hpp)
 
 
 #### ARAP (As-Rigid-As-Possible) Energy
 
-$$E_{ARAP} = \sum_{ij} w_{ij} \| (p_i - p_j) - R_i (X_i - X_j) \|^2$$
+$$E_{ARAP} = \mu V \|F - R\|_F^2$$
 
-Where $R_i$ is the rotation matrix that best aligns the deformed positions with rest positions locally.
+Where $F$ is deformation gradient, $R$ is the polar rotation extracted from $F$, $\mu$ is shear stiffness, and $V$ is tet rest volume.
 
 **Characteristics:**
 - Preserves local rigidity
 - Good for shape matching applications
 - Rotation-invariant energy formulation
 
-**Implementation:** Planned
+**Implementation:** `arap_tet_energy` in [`Solver/Energies/detail/arap_tet_energy.hpp`](../Solver/Energies/detail/arap_tet_energy.hpp)
 
 ---
 
@@ -71,19 +73,25 @@ $$E = \frac{k_b}{2} (\theta - \theta_0)^2$$
 
 Where $\theta$ is the dihedral angle between adjacent faces.
 
-**Implementation:** `BendingEnergy` in [`Solver/Energies/bending_energy_kernel.cpp`](../Solver/Energies/bending_energy_kernel.cpp)
+**Implementation:** `bending_energy` in [`Solver/Energies/detail/bending_energy.hpp`](../Solver/Energies/detail/bending_energy.hpp)
 
 ---
 
-### 3. Face Stretch Energy
+### 3. Face Stretch Energy (BW98-Style Membrane FEM)
 
-Energy based on triangle face deformation:
+Membrane energy on triangle faces using stretch and shear invariants.
 
-$$E = \frac{k}{2} (A - A_0)^2$$
+Let $F=[F_u,F_v] \in \mathbb{R}^{3\times 2}$ be the 2D-to-3D deformation gradient on the face. The implementation uses:
 
-Where $A$ is current area and $A_0$ is rest area.
+$$E = A\left(E_{stretch} + E_{shear}\right)$$
 
-**Implementation:** `StretchFaceEnergy` in [`Solver/Energies/stretch_face_energy.cpp`](../Solver/Energies/stretch_face_energy.cpp)
+$$E_{stretch} = \frac{\mu}{2}\left[(\|F_u\|-1)^2 + (\|F_v\|-1)^2\right]$$
+
+$$E_{shear} = \frac{\lambda}{2}(F_u\cdot F_v)^2$$
+
+Where $A$ is the rest-face area, and $(\mu,\lambda)$ are material parameters.
+
+**Implementation:** `stretch_face_energy` in [`Solver/Energies/detail/stretch_face_energy.hpp`](../Solver/Energies/detail/stretch_face_energy.hpp)
 
 ---
 
@@ -91,31 +99,33 @@ Where $A$ is current area and $A_0$ is rest area.
 
 #### Soft Body Inertia
 
-$$E_{inertia} = \frac{1}{2} m v^T v$$
+$$E_{inertia} = \frac{1}{2h^2} m k_d \|x-\tilde{x}\|^2$$
 
-For soft bodies, uses full-space formulation with per-vertex masses.
+For soft bodies, the implementation is a per-vertex implicit inertia term with Dirichlet scaling $k_d$ ($k_d=10^6$ for fixed points and $k_d=1$ for active points).
 
-**Implementation:** `SoftInertiaEnergy` in [`Solver/Energies/soft_inertia_energy.cpp`](../Solver/Energies/soft_inertia_energy.cpp)
+**Implementation:** `soft_inertia_energy` in [`Solver/Energies/detail/soft_inertia_energy.hpp`](../Solver/Energies/detail/soft_inertia_energy.hpp)
 
 #### Affine Body Dynamics (ABD) Inertia
 
 For rigid bodies, uses reduced-space formulation:
 
-$$E_{inertia} = \frac{1}{2} \dot{q}^T M \dot{q}$$
+$$E_{inertia}=\frac{1}{2h^2} \|q-\tilde{q}\|_M^2$$
 
-Where $q$ represents the reduced coordinates (translation + rotation).
+Where $\Delta_i$ are the 3D delta columns in ABD state, $M\in\mathbb{R}^{4\times 4}$ is the body mass matrix, and $\alpha$ is the scaled stiffness factor used by the solver.
 
-**Implementation:** `AbdInertiaEnergy` in [`Solver/Energies/abd_inertia_energy.cpp`](../Solver/Energies/abd_inertia_energy.cpp)
+**Implementation:** `abd_inertia_energy` in [`Solver/Energies/detail/abd_inertia_energy.hpp`](../Solver/Energies/detail/abd_inertia_energy.hpp)
 
 ---
 
 ### 5. Orthogonality Energy
 
-Ensures rigid body scaling and rotation matrix $A = RS$ tend to be rotation matrix $R$ (Penalty to the scaling term: $S=\mathbf{I}_{3\times 3}$):
+Ensures rigid body affine matrix $A$ stays close to rotation (penalizes non-orthogonality):
 
-$$E_{ortho} = \frac{k_o}{2} \|A^T A - I\|^2$$
+$$E_{ortho} = \kappa V \|A^T A - I\|_F^2$$
 
-**Implementation:** `AbdOrthoEnergy` in [`Solver/Energies/abd_ortho_energy.cpp`](https://github.com/ChengzhuUwU/LuisaComputeSimulator/blob/main/Solver/Energies/abd_ortho_energy.cpp)
+Where $\kappa$ is the rigid stiffness, $V$ is the body's volume.
+
+**Implementation:** `abd_ortho_energy` in [`Solver/Energies/detail/abd_ortho_energy.hpp`](../Solver/Energies/detail/abd_ortho_energy.hpp)
 
 ---
 
@@ -134,6 +144,17 @@ Where:
 $$E_{contact} = -k (d - \hat{d})^2 \ln\left(\frac{d}{\hat{d}}\right)$$
 
 Provide more forces in extremly contact.
+
+#### Ground Collision + Friction (Implementation Mapping)
+
+Ground-contact repulsion (quadratic / barrier switch) and friction energy-gradient-hessian are implemented in:
+
+- `ground_collision_energy` in [`Solver/Energies/detail/ground_collision_energy.hpp`](../Solver/Energies/detail/ground_collision_energy.hpp)
+
+This implementation provides:
+
+- `repulsive_energy`, `repulsive_first_derivative`, `repulsive_second_derivative`
+- `friction_energy`, `friction_gradient_hessian`
 
 ---
 
@@ -197,11 +218,15 @@ ClothMaterial{
 
 ```cpp
 TetMaterial{
-    .model = ConstitutiveModelTet::Corotated,
+    .model = ConstitutiveModelTet::ARAP, // or ConstitutiveModelTet::StableNeoHookean
     .youngs_modulus = 1e6f,
     .poisson_ratio = 0.4f
 }
 ```
+
+### Coupled System Assembly
+
+Soft-body tetrahedral energies, cloth energies, rigid-body inertia/orthogonality, and contact energies are assembled into one Newton system. This enables direct coupling among soft bodies, cloth, and rigid bodies in the same simulation step.
 
 ---
 

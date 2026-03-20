@@ -1,9 +1,9 @@
 /**
  * LuisaComputeSimulator - C++ Integration Example
- * 
+ *
  * This file demonstrates how to use the LuisaComputeSimulator C++ API
  * for soft body / cloth simulation with different constitutive models.
- * 
+ *
  * Build: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
  *        cmake --build build -j
  * Run:   ./build/bin/app_integration cuda
@@ -20,7 +20,8 @@ int main(int argc, char** argv)
 
 	// Parse backend from command line (cuda, dx, vk, metal, or empty for CPU)
 	std::string backend;
-	if (argc >= 2) {
+	if (argc >= 2)
+	{
 		backend = argv[1];
 	}
 
@@ -37,7 +38,7 @@ int main(int argc, char** argv)
 							.load_mesh_from_path(std::string(LCSV_RESOURCE_PATH) + "/InputMesh/square2.obj")
 							.set_material_type(lcs::Material::MaterialType::Cloth)
 							.set_physics_material(lcs::Material::ClothMaterial{
-								.stretch_model = lcs::Material::ConstitutiveStretchModelCloth::FEM_BW98,  // Finite strain energy
+								.stretch_model = lcs::Material::ConstitutiveStretchModelCloth::FEM_BW98, // Finite strain energy
 								.bending_model = lcs::Material::ConstitutiveBendingModelCloth::QuadraticBending,
 								.thickness = 0.001f,
 								.youngs_modulus = 1e6f,
@@ -58,8 +59,8 @@ int main(int argc, char** argv)
 							.load_mesh_from_array(square_mesh_vertices, square_mesh_faces)
 							.set_material_type(lcs::Material::MaterialType::Cloth)
 							.set_physics_material(lcs::Material::ClothMaterial{
-								.stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring,  // Linear spring
-								.bending_model = lcs::Material::ConstitutiveBendingModelCloth::QuadraticBending,
+								.stretch_model = lcs::Material::ConstitutiveStretchModelCloth::Spring, // Linear spring
+								.bending_model = lcs::Material::ConstitutiveBendingModelCloth::DihedralAngle,
 								.thickness = 0.001f,
 								.youngs_modulus = 1e5f,
 							})
@@ -87,7 +88,7 @@ int main(int argc, char** argv)
 	auto& config = solver.get_config();
 	config.use_floor = false;
 	config.use_self_collision = true;
-	config.implicit_dt = 1.0 / 60.0;  // 60 FPS timestep
+	config.implicit_dt = 1.0 / 60.0; // 60 FPS timestep
 	config.use_energy_linesearch = true;
 	config.nonlinear_iter_count = 10;
 	config.pcg_iter_count = 100;
@@ -107,7 +108,7 @@ int main(int argc, char** argv)
 	for (uint ii = 0; ii < 20; ii++)
 	{
 		// Step physics (GPU or CPU)
-		solver.physics_step_GPU();  // or solver.physics_step_CPU()
+		solver.physics_step_GPU(); // or solver.physics_step_CPU()
 
 		// Retrieve updated vertices
 		solver.get_curr_vertices_to_host(sa_rendering_vertices);
