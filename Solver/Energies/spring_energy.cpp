@@ -36,7 +36,7 @@ namespace lcs
 					energy = detail::stretch_spring_energy::compute_energy(stiffness, C);
 				};
 
-				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(eid % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_stretch_spring).fetch_add(energy);

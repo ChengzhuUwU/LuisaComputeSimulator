@@ -40,7 +40,7 @@ namespace lcs
 						vert_pos[0], vert_pos[1], vert_pos[2], vert_pos[3], rest_angle, stiff);
 				};
 
-				energy = ParallelIntrinsic::block_intrinsic_reduce(eid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(eid % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_bending).fetch_add(energy);

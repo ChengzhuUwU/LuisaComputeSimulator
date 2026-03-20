@@ -100,10 +100,12 @@ namespace lcs
 
 		// !!!Only the first warp will get block reduce result
 		template <typename T, typename ReduceOp>
-		inline Var<T> block_intrinsic_reduce(const luisa::compute::UInt& vid, const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary)
+		inline Var<T> block_intrinsic_reduce(const Var<T>& thread_value, const ReduceOp warp_reduce_op_binary)
 		{
 			using Uint = luisa::compute::UInt;
 			luisa::compute::set_block_size(reduce_block_dim);
+
+			const luisa::compute::UInt vid = luisa::compute::dispatch_id().x;
 
 			const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
 			const luisa::compute::UInt warpIdx = threadIdx / warp_dim;
@@ -138,12 +140,14 @@ namespace lcs
 		}
 
 		template <typename T>
-		inline Var<T> block_intrinsic_scan_exclusive(const luisa::compute::UInt& vid,
-			const Var<T>&														 thread_value,
-			Var<T>&																 output_block_sum)
+		inline Var<T> block_intrinsic_scan_exclusive(
+			const Var<T>& thread_value,
+			Var<T>&		  output_block_sum)
 		{
 			using Uint = luisa::compute::UInt;
 			luisa::compute::set_block_size(reduce_block_dim);
+
+			const luisa::compute::UInt vid = luisa::compute::dispatch_id().x;
 
 			const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
 			const luisa::compute::UInt warpIdx = threadIdx / warp_dim;
@@ -390,11 +394,12 @@ namespace lcs
 		template <typename T>
 		inline void block_bitonic_sort(luisa::compute::Shared<ushort>& cache_key,
 			luisa::compute::Shared<T>&								   cache_value,
-			const luisa::compute::UInt&								   vid,
 			const Var<T>&											   thread_value,
 			bool													   ascending = true)
 		{
 			luisa::compute::set_block_size(reduce_block_dim);
+
+			const luisa::compute::UInt vid = luisa::compute::dispatch_id().x;
 			const luisa::compute::UInt threadIdx = vid % reduce_block_dim;
 
 			luisa::compute::UInt k = 2u;

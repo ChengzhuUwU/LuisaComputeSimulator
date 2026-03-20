@@ -52,7 +52,7 @@ namespace lcs
 					energy = detail::stretch_face_energy::compute_energy(input);
 				};
 
-				energy = ParallelIntrinsic::block_intrinsic_reduce(fid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(fid % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_stretch_face).fetch_add(energy);

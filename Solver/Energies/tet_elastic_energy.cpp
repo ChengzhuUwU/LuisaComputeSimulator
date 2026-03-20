@@ -81,7 +81,7 @@ namespace lcs
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
-					tid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+					energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(tid % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_tet_elastic).fetch_add(energy);

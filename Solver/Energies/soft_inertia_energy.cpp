@@ -48,7 +48,7 @@ namespace lcs
 					energy = detail::soft_inertia_energy::compute_energy(input);
 				};
 
-				energy = ParallelIntrinsic::block_intrinsic_reduce(vid, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(vid % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_inertia).fetch_add(energy);

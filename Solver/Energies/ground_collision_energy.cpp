@@ -133,7 +133,7 @@ namespace lcs
 				};
 
 				Float2 energy =
-					ParallelIntrinsic::block_intrinsic_reduce(vid,
+					ParallelIntrinsic::block_intrinsic_reduce(
 						make_float2(energy_repulsive, energy_friction),
 						ParallelIntrinsic::warp_reduce_op_sum<float2>);
 				$if(vid % 256 == 0)

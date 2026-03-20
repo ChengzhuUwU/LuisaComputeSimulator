@@ -42,7 +42,7 @@ namespace lcs
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(
-					body_idx, energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
+					energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
 				$if(body_idx % 256 == 0)
 				{
 					sa_system_energy->atomic(offset_abd_ortho).fetch_add(energy);

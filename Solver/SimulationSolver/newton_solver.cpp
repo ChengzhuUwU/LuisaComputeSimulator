@@ -801,6 +801,19 @@ namespace lcs
 		// Only register helpers that are not per-energy; per-energy evaluate shaders are registered
 		// inside each energy's compile() implementation.
 
+		// auto tmp_test_reduce_float = compiler.device().compile<1>(
+		// 	[](Var<Buffer<float>> sa_buffer)
+		// 	{
+		// 		const Uint idx = dispatch_id().x;
+		// 		Float toi = 1.0f / Float(idx + 1);
+		// 		toi = ParallelIntrinsic::block_intrinsic_reduce(vid, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+		// 		if (idx == 0)
+		// 		{
+		// 			sa_buffer->write(0, sum);
+		// 		};
+		// 	},
+		// 	default_option);
+
 		compiler.compile<1>(
 			fn_gound_collision_ccd,
 			[sa_x_iter_start = sim_data->sa_x_iter_start.view(),
@@ -835,16 +848,12 @@ namespace lcs
 				$if(toi != 1.0f)
 				{
 					toi_per_vert->atomic(0).fetch_min(toi);
-					// device_log("Debug: Before vid {}, toi {}", vid, toi);
 				};
 
-				// TODO!!!! To fix block reduce !!!!
-				// toi = ParallelIntrinsic::block_intrinsic_reduce(vid, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
-
+				// toi = ParallelIntrinsic::block_intrinsic_reduce(toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 				// $if(vid % 256 == 0 & toi != 1.0f)
 				// {
-				// 	Float orig_toi = toi_per_vert->atomic(0).fetch_min(toi);
-				// 	// device_log("Debug: vid {}, toi from {} to {}", vid, orig_toi, toi);
+				// 	toi_per_vert->atomic(0).fetch_min(toi);
 				// };
 			},
 			default_option);

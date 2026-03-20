@@ -505,7 +505,7 @@ namespace lcs // CCD
 					//            t1_f2);
 				};
 
-				toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+				toi = ParallelIntrinsic::block_intrinsic_reduce(toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 
 				$if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
 				{
@@ -651,7 +651,7 @@ namespace lcs // CCD
 				//     device_log("EE Pair {} : toi = {}, edge1 {} ({}) & edge2 {} ({})", pair_idx, toi, left, left_edge, right, right_edge);
 				// };
 
-				toi = ParallelIntrinsic::block_intrinsic_reduce(pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+				toi = ParallelIntrinsic::block_intrinsic_reduce(toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 
 				$if(pair_idx % 256 == 0 & toi != accd::line_search_max_t)
 				{
@@ -1384,7 +1384,7 @@ namespace lcs // Scan Collision Set
 
 				Uint						 vert_count = num_adj_pairs;
 				Uint						 block_sum = 0;
-				Uint						 block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
+				Uint						 block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vert_count, block_sum);
 				luisa::compute::Shared<uint> block_prefix(1);
 				$if(vid % 256 == 0)
 				{
@@ -1550,7 +1550,7 @@ namespace lcs // Culling and Make Triplet
 				luisa::compute::sync_block();
 
 				// Block sort
-				ParallelIntrinsic::block_bitonic_sort(cache_key, cache_value, triplet_idx, value);
+				ParallelIntrinsic::block_bitonic_sort(cache_key, cache_value, value);
 
 				// For sorted triplet
 				$if(triplet_idx < num_triplets)
@@ -1565,7 +1565,7 @@ namespace lcs // Culling and Make Triplet
 
 					Uint	   block_sum = 0;
 					const Uint prefix_ex =
-						ParallelIntrinsic::block_intrinsic_scan_exclusive(triplet_idx, contr, block_sum);
+						ParallelIntrinsic::block_intrinsic_scan_exclusive(contr, block_sum);
 					const Uint prefix_in = prefix_ex + contr;
 
 					$if(contr == 1)
@@ -1602,7 +1602,7 @@ namespace lcs // Culling and Make Triplet
 
 				Uint						 vert_count = num_adj_verts;
 				Uint						 block_sum = 0;
-				Uint						 block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vid, vert_count, block_sum);
+				Uint						 block_offset = ParallelIntrinsic::block_intrinsic_scan_exclusive<uint>(vert_count, block_sum);
 				luisa::compute::Shared<uint> block_prefix(1);
 				$if(vid % 256 == 0)
 				{
@@ -2976,7 +2976,7 @@ namespace lcs // Compute Contact Energy
 				};
 
 				Float2 energy =
-					ParallelIntrinsic::block_intrinsic_reduce(pair_idx,
+					ParallelIntrinsic::block_intrinsic_reduce(
 						make_float2(energy_repulsion, energy_friction),
 						ParallelIntrinsic::warp_reduce_op_sum<float2>);
 
@@ -3395,7 +3395,7 @@ namespace lcs // Host Methods
 					};
 
 					toi = ParallelIntrinsic::block_intrinsic_reduce(
-						pair_idx, toi, ParallelIntrinsic::warp_reduce_op_min<float>);
+						toi, ParallelIntrinsic::warp_reduce_op_min<float>);
 				});
 
 			stream << fn_test_ccd_ee(thickenss).dispatch(1) << synchronize();

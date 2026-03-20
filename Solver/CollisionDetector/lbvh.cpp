@@ -374,8 +374,8 @@ namespace lcs
 
 			Var<float3> min_pos = AABB::get_aabb_min(aabb);
 			Var<float3> max_pos = AABB::get_aabb_max(aabb);
-			min_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
-			max_pos = ParallelIntrinsic::block_intrinsic_reduce(vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+			min_pos = ParallelIntrinsic::block_intrinsic_reduce(min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+			max_pos = ParallelIntrinsic::block_intrinsic_reduce(max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
 			auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
 
 			$if(vid % 256 == 0)
@@ -404,9 +404,9 @@ namespace lcs
 				Var<float3> min_pos = AABB::get_aabb_min(aabb);
 				Var<float3> max_pos = AABB::get_aabb_max(aabb);
 				min_pos = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+					min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
 				max_pos = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+					max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
 				auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
 
 				$if(vid % 256 == 0)
@@ -427,9 +427,9 @@ namespace lcs
 				Var<float3> min_pos = AABB::get_aabb_min(aabb);
 				Var<float3> max_pos = AABB::get_aabb_max(aabb);
 				min_pos = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
+					min_pos, ParallelIntrinsic::warp_reduce_op_min<float3>);
 				max_pos = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
+					max_pos, ParallelIntrinsic::warp_reduce_op_max<float3>);
 				auto reduced_aabb = AABB::make_aabb(min_pos, max_pos);
 
 				$if(vid % 256 == 0)

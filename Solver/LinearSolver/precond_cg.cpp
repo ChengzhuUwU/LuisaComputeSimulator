@@ -135,7 +135,7 @@ namespace lcs
 
 					dot_rr = dot_vec(r, r);
 				};
-				dot_rr = ParallelIntrinsic::block_intrinsic_reduce(vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+				dot_rr = ParallelIntrinsic::block_intrinsic_reduce(dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
 				$if(vid % 256 == 0)
 				{
@@ -162,7 +162,7 @@ namespace lcs
 					};
 				}
 				dot_rr = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
+					dot_rr, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
 				$if(vid == 0)
 				{
@@ -191,7 +191,7 @@ namespace lcs
 				};
 
 				dot_pq = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+					dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
 				$if(vid % 256 == 0)
 				{
@@ -215,7 +215,7 @@ namespace lcs
 				}
 
 				dot_pq = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
+					dot_pq, ParallelIntrinsic::warp_reduce_op_sum<float>);
 
 				$if(vid == 0)
 				{
@@ -283,7 +283,7 @@ namespace lcs
 				Float  dot_rr = dot_vec(r, r);
 				Float2 dot_rr_rz = makeFloat2(dot_rr, dot_rz);
 				dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+					dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
 				$if(vid % 256 == 0)
 				{
 					const Uint blockIdx = vid / 256;
@@ -315,7 +315,7 @@ namespace lcs
 				Float2 dot_rr_rz = make_float2(dot_rr, dot_rz);
 
 				dot_rr_rz = ParallelIntrinsic::block_intrinsic_reduce(
-					vid, dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
+					dot_rr_rz, ParallelIntrinsic::warp_reduce_op_sum<float2>);
 
 				$if(vid == 0)
 				{
