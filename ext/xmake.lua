@@ -34,7 +34,8 @@ lc_options = {
     lc_enable_api = false,
     lc_enable_clangcxx = false,
     lc_enable_dsl = true,
-    lc_enable_gui = false,
+    lc_enable_gui = cfg_bool(false, "lcs_enable_gui"),
+    lc_enable_imgui = cfg_bool(false, "lcs_enable_gui"),
     lc_enable_osl = false,
     lc_enable_ir = false,
     lc_enable_tests = false,
@@ -75,6 +76,18 @@ end)
 target_end()
 
 if cfg_bool(false, "lcs_enable_gui") then
+    target("glfw")
+    set_kind("static")
+    add_includedirs("LuisaCompute/src/ext/glfw/include", {
+        public = true
+    })
+    add_files("LuisaCompute/src/ext/glfw/src/**.c")
+    if is_host("windows") then
+        add_defines("_GLFW_WIN32")
+        add_syslinks("User32", "Gdi32", "Shell32")
+    end
+    target_end()
+
     target("glm")
     set_kind("headeronly")
     add_includedirs("glm", {
@@ -100,7 +113,7 @@ if cfg_bool(false, "lcs_enable_gui") then
         public = true
     })
     add_defines("GLAD_GLAPI_EXPORT_BUILD", "POLYSCOPE_BACKEND_OPENGL3_GLFW_ENABLED", "POLYSCOPE_BACKEND_OPENGL3_ENABLED")
-    add_deps("glm", "implot", "stb-image", "nlohmann_json", "glad")
+    add_deps("glm", "implot", "stb-image", "nlohmann_json", "glad", "glfw")
     set_pcxxheader("polyscope_pch.h")
     target_end()
 
@@ -141,6 +154,16 @@ if cfg_bool(false, "lcs_enable_gui") then
     target_end()
 
     target("imgui")
-    add_files("LuisaCompute/src/ext/imgui/backends/imgui_impl_opengl3.cpp")
+    set_kind("static")
+    add_includedirs("LuisaCompute/src/ext/imgui", {
+        public = true
+    })
+    add_files(
+        "LuisaCompute/src/ext/imgui/imgui.cpp",
+        "LuisaCompute/src/ext/imgui/imgui_draw.cpp",
+        "LuisaCompute/src/ext/imgui/imgui_tables.cpp",
+        "LuisaCompute/src/ext/imgui/imgui_widgets.cpp"
+    )
     target_end()
+
 end
