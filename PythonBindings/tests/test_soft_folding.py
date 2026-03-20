@@ -16,7 +16,7 @@ solver.init_device(backend_name=backend)
 
 # Register meshes
 from utils.mesh_proc import get_sample_tet_grid
-tet_verts, tet_indices = get_sample_tet_grid(origin=(-0.2, 0.3, -0.2), size=(1, 1, 1), resolution=(2, 2, 2))
+tet_verts, tet_indices = get_sample_tet_grid(origin=(-0.2, 0.3, -0.2), size=(1, 1, 1), resolution=(10, 10, 10))
 
 delta = 0.102
 count = 0
