@@ -361,11 +361,19 @@ namespace lcs::Initializer // WorldData
 			input_mesh.faces[i] = { uint(faces[i][0]), uint(faces[i][1]), uint(faces[i][2]) };
 		}
 		SimMesh::extract_edges_from_surface(input_mesh.faces, input_mesh.edges, input_mesh.dihedral_edges, true);
+		input_mesh.surface_faces = input_mesh.faces;
+		input_mesh.surface_verts.resize(vertices.size());
+		std::iota(input_mesh.surface_verts.begin(), input_mesh.surface_verts.end(), 0);
+		input_mesh.surface_edges = input_mesh.edges;
 		return *this;
 	}
 	WorldData& WorldData::load_mesh_from_path(const std::string_view& path)
 	{
 		bool succ = SimMesh::read_mesh_file(path, input_mesh);
+		input_mesh.surface_edges = input_mesh.edges;
+		input_mesh.surface_faces = input_mesh.faces;
+		input_mesh.surface_verts.resize(input_mesh.model_positions.size());
+		std::iota(input_mesh.surface_verts.begin(), input_mesh.surface_verts.end(), 0);
 		return *this;
 	}
 
