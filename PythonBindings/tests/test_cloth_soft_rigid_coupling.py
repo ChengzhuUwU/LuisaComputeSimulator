@@ -19,14 +19,14 @@ solver.init_device(backend_name=backend)
 # Register meshes
 
 # Load a mesh by providing vertices and triangles array directly
-cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
-cube_mesh = trimesh.load(cube_mesh_path, process=False)
-cube = solver.create_world_data_from_array('cube', cube_mesh.vertices, cube_mesh.faces)
-cube.set_simulation_type(lcs.MaterialType.Rigid)
-cube.set_translation(0.0, 0.34, 0.0)
-cube.set_rotation(0.5235988, 0.0, 0.5235988)
-cube.set_scale(0.1)
-cube_id = solver.register_world_data(cube)
+rigid_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'sphere63.obj')
+rigid_mesh = trimesh.load(rigid_mesh_path, process=False)
+rigid = solver.create_world_data_from_array('cube', rigid_mesh.vertices, rigid_mesh.faces)
+rigid.set_simulation_type(lcs.MaterialType.Rigid)
+rigid.set_translation(0.0, 0.34, 0.0)
+rigid.set_rotation(0.5235988, 0.0, 0.5235988)
+rigid.set_scale(0.1)
+rigid_id = solver.register_world_data(rigid)
 
 # Load a mesh by providing the path to the obj file
 cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'square2K.obj')
@@ -41,18 +41,18 @@ cloth.add_fixed_point_by_method("RightFront")
 cloth_id = solver.register_world_data(cloth)
 
 # Load a tet mesh by providing vertices and tets array directly
-# from utils.mesh_proc import get_sample_tet_grid
-# tet_verts, tet_indices = get_sample_tet_grid(origin=(-0.2, 0.3, -0.2), size=(0.4, 0.4, 0.8), resolution=(10, 10, 20))
-# tet = solver.create_world_data_from_tet_array("tet", tet_verts, tet_indices)
-# tet.set_simulation_type(lcs.MaterialType.Tetrahedral)
-# tet.set_physics_material_tet(
-# 	model="ARAP",
-# 	youngs_modulus=1e5,
-# 	poisson_ratio=0.4,
-# )
-# tet.set_translation(0.0, 0.5, 0.0)
-# tet.set_scale(0.4)
-# tet_id = solver.register_world_data(tet)
+from utils.mesh_proc import get_sample_tet_grid
+tet_verts, tet_indices = get_sample_tet_grid(origin=(-0.2, 0.3, -0.2), size=(0.5, 0.5, 2.0), resolution=(5, 5, 20))
+tet = solver.create_world_data_from_tet_array("tet", tet_verts, tet_indices)
+tet.set_simulation_type(lcs.MaterialType.Tetrahedral)
+tet.set_physics_material_tet(
+	model="ARAP",
+	youngs_modulus=1e5,
+	poisson_ratio=0.4,
+)
+tet.set_translation(0.2, 0.5, 0.0)
+tet.set_scale(0.2)
+tet_id = solver.register_world_data(tet)
 
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
@@ -60,7 +60,6 @@ solver.init_solver()
 
 # Get mesh info
 solver.print_registered_meshes_info()
-# cube_get_1 = solver.get_object_by_registration_id(cube_id)
 
 # Set scene parameters
 config_ref = solver.get_config()

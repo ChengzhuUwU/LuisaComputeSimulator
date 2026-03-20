@@ -222,7 +222,7 @@ namespace lcs::Initializer
 			const uint num_dof = adj_map.size();
 			const uint num_constraint = constitution_template.get_num_indices();
 
-			LUISA_INFO("Init constraint {:12}: numElement = {}, stride = {}", Derived::get_constitution_name(), num_constraint, N);
+			LUISA_INFO("     Init energy {:12}: stride = {}, numElement = {}", Derived::get_constitution_name(), N, num_constraint);
 
 			const auto& sa_constitution_elements = constitution_template.get_indices();
 			auto&		gradient = constitution_template.get_constraint_gradients();
@@ -1037,15 +1037,15 @@ namespace lcs::Initializer
 					abd_inertia_data.sa_affine_bodies_mass_matrix[body_idx] = compressed_mass_matrix;
 					abd_inertia_data.sa_affine_bodies_mass_matrix_full[body_idx] = body_mass;
 
-					if (num_affine_bodies < 20)
-					{
-						// std::cout << "Mass Matrix = \n" << body_mass << std::endl;
-						LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
-						LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
-						LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
-						LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
-						LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
-					}
+					// if (num_affine_bodies < 20)
+					// {
+					// 	std::cout << "Mass Matrix = \n" << body_mass << std::endl;
+					// 	LUISA_INFO("Affine Body {} Mass Matrix : ", body_idx);
+					// 	LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[0]);
+					// 	LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[1]);
+					// 	LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[2]);
+					// 	LUISA_INFO("Affine Body {} Mass Matrix : {}", body_idx, compressed_mass_matrix[3]);
+					// }
 				}
 
 				const bool has_fixed_vert = sim_data->sa_q_is_fixed[prefix_dof_abd + 4 * body_idx];
@@ -1091,6 +1091,8 @@ namespace lcs::Initializer
 			sim_data->vert_adj_material_force_verts.resize(num_dof);
 
 			auto& adj_map = sim_data->vert_adj_material_force_verts;
+
+			LUISA_INFO("Building adjacent list for material forces...");
 
 			// Vert adj soft-body fixed constraints
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();

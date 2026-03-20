@@ -137,14 +137,14 @@ namespace lcs
 
 				for (uint meshIdx = 0; meshIdx < num_meshes; meshIdx++)
 				{
-					auto&		curr_shell_info = world_data[meshIdx];
-					const auto& curr_input_mesh = curr_shell_info.get_mesh();
+					auto&		curr_mesh_info = world_data[meshIdx];
+					const auto& curr_input_mesh = curr_mesh_info.get_mesh();
 
 					// Model info
 					{
-						mesh_data->sa_rest_translate[meshIdx] = curr_shell_info.translation;
-						mesh_data->sa_rest_rotation[meshIdx] = curr_shell_info.rotation;
-						mesh_data->sa_rest_scale[meshIdx] = curr_shell_info.scale;
+						mesh_data->sa_rest_translate[meshIdx] = curr_mesh_info.translation;
+						mesh_data->sa_rest_rotation[meshIdx] = curr_mesh_info.rotation;
+						mesh_data->sa_rest_scale[meshIdx] = curr_mesh_info.scale;
 					}
 
 					const uint curr_num_verts = curr_input_mesh.model_positions.size();
@@ -162,14 +162,14 @@ namespace lcs
 							std::array<float, 3> read_pos = curr_input_mesh.model_positions[vid];
 							float3				 model_position = luisa::make_float3(read_pos[0], read_pos[1], read_pos[2]);
 							float4x4			 model_matrix = lcs::make_model_matrix(
-								curr_shell_info.translation, curr_shell_info.rotation, curr_shell_info.scale);
+								curr_mesh_info.translation, curr_mesh_info.rotation, curr_mesh_info.scale);
 							float3 world_position = lcs::affine_position(model_matrix, model_position);
 							mesh_data->sa_model_x[prefix_num_verts + vid] = model_position;
-							mesh_data->sa_scaled_model_x[prefix_num_verts + vid] = curr_shell_info.scale * model_position;
+							mesh_data->sa_scaled_model_x[prefix_num_verts + vid] = curr_mesh_info.scale * model_position;
 							mesh_data->sa_rest_x[prefix_num_verts + vid] = world_position;
 							mesh_data->sa_rest_v[prefix_num_verts + vid] = luisa::make_float3(0.0f);
 							mesh_data->sa_vert_mesh_id[prefix_num_verts + vid] = meshIdx;
-							mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_shell_info.material_type);
+							mesh_data->sa_vert_mesh_type[prefix_num_verts + vid] = uint(curr_mesh_info.material_type);
 							mesh_data->sa_global_vid_to_local_vid[prefix_num_verts + vid] = vid;
 						});
 					// Read triangle face
@@ -218,13 +218,13 @@ namespace lcs
 						});
 
 					// Read fixed points
-					mesh_data->fixed_verts_map[meshIdx].resize(curr_shell_info.fixed_point_indices.size());
+					mesh_data->fixed_verts_map[meshIdx].resize(curr_mesh_info.fixed_point_indices.size());
 					CpuParallel::single_thread_for(0,
-						curr_shell_info.fixed_point_indices.size(),
+						curr_mesh_info.fixed_point_indices.size(),
 						[&](const uint index)
 						{
 							const uint local_vid =
-								curr_shell_info.fixed_point_indices[index];
+								curr_mesh_info.fixed_point_indices[index];
 							const uint global_vid = prefix_num_verts + local_vid;
 							// LUISA_INFO("Mesh {:<2} : fixed vert index in mesh = {}, global vert index = {}", meshIdx, local_vid, global_vid);
 							mesh_data->sa_is_fixed[global_vid] = true;
@@ -256,14 +256,16 @@ namespace lcs
 								})
 							/ float(curr_num_edges);
 
-						LUISA_INFO("Mesh {:<2} : numVerts = {:<5}, numFaces = {:<5}, numEdges = {:<5}, numTets = {:5}, avgEdgeLength = {:2.4f}, AABB range = {}",
+						auto aabb_range = pos_max - pos_min;
+						LUISA_INFO("Mesh {}: name = {:10}, numVerts = {:<4}, numFaces = {:<4}, numEdges = {:<4}, numTets = {:3}, avgEdgeLength = {:2.4f}, AABB range = ({:4.3f}, {:4.3f}, {:4.3f})",
 							meshIdx,
+							curr_mesh_info.get_model_name(),
 							curr_num_verts,
 							curr_num_faces,
 							curr_num_edges,
 							curr_num_tets,
 							avg_spring_length,
-							pos_max - pos_min);
+							aabb_range.x, aabb_range.y, aabb_range.z);
 					}
 
 					prefix_num_verts += curr_num_verts;
@@ -582,10 +584,11 @@ namespace lcs
 					const float input_density = shell_info.get_density();
 					mesh_data->sa_body_mass[meshIdx] = input_mass != 0.0f ? input_mass : sum_volume * input_density;
 
-					LUISA_INFO("Mesh {}'s volume = {}{}, body mass = {}, avg vert mass = {}",
+					LUISA_INFO("Mesh {}: name = {:10}, volume = {:3.2e}{}, body mass = {:3.2e}, avg vert mass = {:3.2e}",
 						meshIdx,
+						shell_info.get_model_name(),
 						sum_volume,
-						shell_info.get_is_shell() ? luisa::format(", surface area = {}", sum_surface_area) : "",
+						shell_info.get_is_shell() ? luisa::format(", surface area = {:3.2e}", sum_surface_area) : "",
 						mesh_data->sa_body_mass[meshIdx],
 						mesh_data->sa_body_mass[meshIdx]
 							/ float(mesh_data->prefix_num_verts[meshIdx + 1] - mesh_data->prefix_num_verts[meshIdx]));

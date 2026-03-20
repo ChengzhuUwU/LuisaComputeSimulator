@@ -58,7 +58,7 @@ def parse_args():
     p.add_argument(
         "--grid_resolution",
         type=parse_grid_resolution,
-        default=(10, 10, 20),
+        default=(2, 2, 2),
         help="Resolution for grid mesh as 'nx,ny,nz' (default: 10,10,20)",
     )
     p.add_argument("--no_floor", default=False, action="store_true",
@@ -162,8 +162,8 @@ def main():
     config.use_floor = False
     config.floor = lcs.Float3(0.0, 0.0, 0.0)
     config.use_ccd_linesearch = False
-    config.use_self_collision = False    # keep it simple for smoke test
-    config.nonlinear_iter_count = 10  # Increased for stability
+    config.use_self_collision = True    # keep it simple for smoke test
+    config.nonlinear_iter_count = 1  # Increased for stability
     config.use_gpu = args.use_gpu  # Use GPU if requested
 
     # ---- Register tet body -----------------------------------------------
@@ -179,28 +179,28 @@ def main():
     report_tet_volume_stats(verts, tets)
 
     # Spring benchmark body
-    spring_verts = verts.copy()
-    spring_verts[:, 0] -= 0.35
-    tet_spring = solver.create_world_data_from_tet_array("tet_spring", spring_verts, tets)
+    tet_spring = solver.create_world_data_from_tet_array("tet_spring", verts, tets)
     tet_spring.set_physics_material_tet(
         model="Spring",
         youngs_modulus=1e4,
         poisson_ratio=0.4,
     )
+    tet_spring.set_translation(-0.1, 0.0, 0.0)
+    tet_spring.set_scale(0.2)
     tet_spring.add_fixed_point_by_method("Left")
     spring_fixed_vids = tet_spring.get_fixed_point_indices()
     reg_spring = solver.register_world_data(tet_spring)
-    print(f"Registered tet_spring with id={reg_spring}, fixed vertices={spring_fixed_vids}")
+    # print(f"Registered tet_spring with id={reg_spring}, fixed vertices={spring_fixed_vids}")
 
     # ARAP body to compare with spring benchmark
-    arap_verts = verts.copy()
-    arap_verts[:, 0] += 0.35
-    tet_arap = solver.create_world_data_from_tet_array("tet_arap", arap_verts, tets)
+    tet_arap = solver.create_world_data_from_tet_array("tet_arap", verts, tets)
     tet_arap.set_physics_material_tet(
         model="ARAP",
         youngs_modulus=1e5,
         poisson_ratio=0.4,
     )
+    tet_arap.set_translation(0.1, 0.0, 0.0)
+    tet_arap.set_scale(0.2)
     tet_arap.add_fixed_point_by_method("Left")
     arap_fixed_vids = tet_arap.get_fixed_point_indices()
     reg_arap = solver.register_world_data(tet_arap)

@@ -61,7 +61,9 @@ namespace lcs::Initializer
 		const uint num_surface_verts = static_cast<uint>(surface_vert_indices.size());
 		const uint num_surface_edges = static_cast<uint>(surface_edge_indices.size());
 		const uint num_surface_faces = static_cast<uint>(surface_face_indices.size());
-
+		LUISA_INFO("Surface verts count = {} (Total verts = {})", num_surface_verts, mesh_data->num_verts);
+		LUISA_INFO("Surface edges count = {} (Total edges = {})", num_surface_edges, mesh_data->num_edges);
+		LUISA_INFO("Surface faces count = {} (Total faces = {})", num_surface_faces, mesh_data->num_faces);
 		sim_data->sa_contact_active_verts.resize(num_surface_verts);
 		sim_data->sa_contact_active_edges.resize(num_surface_edges);
 		sim_data->sa_contact_active_faces.resize(num_surface_faces);
