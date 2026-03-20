@@ -17,16 +17,16 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 
 ## ✨ Features
 
-| Feature                            | Description                                                                           |
-| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| Feature                            | Description                                                                       |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
 | **Soft Body / Cloth Simulation**   | High-resolution soft-body and cloth simulation with FEM-based constitutive models |
-| **Rigid Body Dynamics**            | Rigid body simulation with collision and friction                                     |
-| **Soft-Cloth-Rigid Coupling**      | Seamless interaction among soft bodies, cloth, and rigid bodies in one solver        |
-| **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions                                     |
-| **Affine Body Dynamics (ABD)**     | Efficient reduced-space simulation for rigid bodies                                   |
-| **Multi-Backend Support**          | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback)                                       |
-| **Python & C++ APIs**              | Flexible programming interfaces for different use cases                               |
-| **Interactive GUI**                | Real-time visualization with Polyscope                                                |
+| **Rigid Body Dynamics**            | Rigid body simulation with collision and friction                                 |
+| **Soft-Cloth-Rigid Coupling**      | Seamless interaction among soft bodies, cloth, and rigid bodies in one solver     |
+| **Penetration-Free Contact (IPC)** | Robust collision handling using barrier functions                                 |
+| **Affine Body Dynamics (ABD)**     | Efficient reduced-space simulation for rigid bodies                               |
+| **Multi-Backend Support**          | CUDA, DirectX 12, Vulkan, Metal, CPU (Fallback)                                   |
+| **Python & C++ APIs**              | Flexible programming interfaces for different use cases                           |
+| **Interactive GUI**                | Real-time visualization with Polyscope                                            |
 
 ### Supported Physics
 
@@ -325,7 +325,8 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for d
 
 ## 🙏 Acknowledgments
 
-Thanks to the [LuisaCompute](https://github.com/LuisaGroup/LuisaCompute) and [libuipc](https://github.com/spiriMirror/libuipc) communities for their open-source contributions to physically-based simulation.
+Thanks to LuisaCompute and Libuipc community, their open-source spirit has propelled the advancement of the reality.
+
 
 ---
 
