@@ -24,12 +24,12 @@ local function cfg_bool(default, ...)
 end
 
 lc_options = {
-    lc_fallback_backend = cfg_bool(false, "luisa_compute_enable_fallback"),
-    lc_cuda_backend = cfg_bool(true, "luisa_compute_enable_cuda"),
-    lc_dx_backend = cfg_bool(false, "luisa_compute_enable_dx"),
-    lc_vk_backend = cfg_bool(false, "luisa_compute_enable_vulkan"),
-    lc_vk_support = cfg_bool(false, "luisa_compute_enable_vulkan"),
-    lc_metal_backend = cfg_bool(true, "luisa_compute_enable_metal") and is_host("macosx"),
+    lc_fallback_backend = cfg_bool(false, "lc_fallback_backend"),
+    lc_cuda_backend = cfg_bool(true, "lc_cuda_backend") and not is_host("macosx") ,
+    lc_dx_backend = cfg_bool(false, "lc_dx_backend"),
+    lc_vk_backend = cfg_bool(false, "lc_vk_backend"),
+    lc_vk_support = cfg_bool(false, "lc_vk_support"),
+    lc_metal_backend = cfg_bool(true, "lc_metal_backend") and is_host("macosx"),
     lc_enable_mimalloc = true,
     lc_enable_api = false,
     lc_enable_clangcxx = false,

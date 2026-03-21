@@ -65,16 +65,16 @@ xmake lua setup.lua
 
 # Configure for your platform
 # On macOS with Metal:
-xmake f -m release --luisa_compute_enable_cuda=n --luisa_compute_enable_metal=y --luisa_compute_enable_fallback=y
+xmake f -m release --lc_cuda_backend=n --lc_metal_backend=y --lc_fallback_backend=y
 
 # On Linux with CUDA:
-xmake f -m release --luisa_compute_enable_cuda=y --luisa_compute_enable_vulkan=n
+xmake f -m release --lc_cuda_backend=y --lc_vk_backend=n
 
 # Build
 xmake build
 ```
 
-> **Note:** On macOS, you must explicitly disable CUDA backend (`--luisa_compute_enable_cuda=n`) since xmake detects CUDA toolchain automatically but the SDK is not available on macOS.
+> **Note:** In this project, xmake backend switches use `lc_*_backend` names. On macOS, CUDA is forced off (`lc_cuda_backend=false`) and Metal is only enabled on macOS (`lc_metal_backend=true` only on macOS), regardless of manual override.
 
 ---
 
@@ -101,11 +101,11 @@ xmake build
 | Option                                | Description                 | Default     |
 | ------------------------------------- | --------------------------- | ----------- |
 | `--mode=release/debug`                | Build type                  | `release`   |
-| `--luisa_compute_enable_cuda=y/n`     | Enable CUDA backend         | `y`         |
-| `--luisa_compute_enable_vulkan=y/n`   | Enable Vulkan backend       | `n`         |
-| `--luisa_compute_enable_metal=y/n`    | Enable Metal backend        | `y` (macOS) |
-| `--luisa_compute_enable_dx=y/n`       | Enable DirectX backend      | `n`         |
-| `--luisa_compute_enable_fallback=y/n` | Enable CPU fallback backend | `n`         |
+| `--lc_cuda_backend=y/n`               | Enable CUDA backend         | `y` (non-macOS effective) |
+| `--lc_vk_backend=y/n`                 | Enable Vulkan backend       | `n`         |
+| `--lc_metal_backend=y/n`              | Enable Metal backend        | `y` (macOS effective) |
+| `--lc_dx_backend=y/n`                 | Enable DirectX backend      | `n`         |
+| `--lc_fallback_backend=y/n`           | Enable CPU fallback backend | `n`         |
 | `--lcs_enable_gui=y/n`                | Enable GUI (Polyscope)      | `n`         |
 | `--lcs_enable_test=y/n`               | Build unit tests            | `n`         |
 | `--lcs_build_pybindings=y/n`          | Build Python bindings       | `n`         |
@@ -158,10 +158,10 @@ xmake f -c -m release \
     --lcs_python_executable="C:/Applications/Python/python.exe" \
     --lcs_enable_gui=n \
     --lcs_enable_test=n \
-    --luisa_compute_enable_cuda=y \
-    --luisa_compute_enable_dx=n \
-    --luisa_compute_enable_vulkan=n \
-    --luisa_compute_enable_fallback=n
+    --lc_cuda_backend=y \
+    --lc_dx_backend=n \
+    --lc_vk_backend=n \
+    --lc_fallback_backend=n
 
 xmake build
 ```
@@ -255,7 +255,7 @@ DirectX 12 is enabled by default on Windows. Ensure you have:
 ./build/bin/app_simulation dx
 
 # Vulkan
-./build/bin/app_simulation vulkan
+./build/bin/app_simulation vk
 
 # CPU (Fallback)
 ./build/bin/app_simulation fallback

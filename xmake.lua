@@ -52,31 +52,33 @@ option("lcs_python_executable")
     set_description("Path to Python executable for building lcs_py")
 option_end()
 
-option("luisa_compute_enable_cuda")
+
+
+option("lc_cuda_backend")
     set_default(true)
     set_showmenu(true)
     set_description("Enable CUDA backend")
 option_end()
 
-option("luisa_compute_enable_metal")
+option("lc_metal_backend")
     set_default(true)
     set_showmenu(true)
     set_description("Enable Metal backend")
 option_end()
 
-option("luisa_compute_enable_vulkan")
+option("lc_vk_backend")
     set_default(false)
     set_showmenu(true)
     set_description("Enable Vulkan backend")
 option_end()
 
-option("luisa_compute_enable_dx")
+option("lc_dx_backend")
     set_default(false)
     set_showmenu(true)
     set_description("Enable DirectX backend")
 option_end()
 
-option("luisa_compute_enable_fallback")
+option("lc_fallback_backend")
     set_default(false)
     set_showmenu(true)
     set_description("Enable Fallback backend")

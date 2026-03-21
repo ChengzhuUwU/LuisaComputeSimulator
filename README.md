@@ -206,6 +206,8 @@ Sample Cpp-frontend code can be found at [app_integration.cpp](Application/app_i
 
 ### 1. Clone & Build
 
+You can use Cmake:
+
 ```bash
 # Clone the repository
 git clone https://github.com/ChengzhuUwU/LuisaComputeSimulator.git
@@ -214,13 +216,15 @@ cd LuisaComputeSimulator
 # Configure and build (CMake)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
+```
 
-# Or use Xmake
+You can also use Xmake:
+
+```bash
 # Clone dependencies
 xmake lua setup.lua
 # Configure (platform-specific)
-xmake f -m release --luisa_compute_enable_cuda=n --luisa_compute_enable_metal=y --luisa_compute_enable_fallback=y  # macOS
-xmake f -m release --luisa_compute_enable_cuda=y --luisa_compute_enable_vulkan=n  # Linux with CUDA
+xmake f -m release 
 xmake build
 ```
 
