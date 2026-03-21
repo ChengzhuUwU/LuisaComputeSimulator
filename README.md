@@ -216,8 +216,11 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
 # Or use Xmake
+# Clone dependencies
 xmake lua setup.lua
-xmake f -m release
+# Configure (platform-specific)
+xmake f -m release --luisa_compute_enable_cuda=n --luisa_compute_enable_metal=y --luisa_compute_enable_fallback=y  # macOS
+xmake f -m release --luisa_compute_enable_cuda=y --luisa_compute_enable_vulkan=n  # Linux with CUDA
 xmake build
 ```
 

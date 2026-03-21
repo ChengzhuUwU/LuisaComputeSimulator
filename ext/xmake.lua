@@ -40,9 +40,11 @@ lc_options = {
     lc_enable_ir = false,
     lc_enable_tests = false,
     lc_backend_lto = false,
-    lc_sdk_dir = path.join(os.scriptdir(), "ext/LuisaCompute/SDKs"),
+    lc_sdk_dir = path.join(os.scriptdir(), "LuisaCompute/SDKs"),
     lc_win_runtime = "MD",
-    lc_dx_cuda_interop = is_host("windows")
+    lc_dx_cuda_interop = false,
+    lc_vk_cuda_interop = false,
+    lc_cuda_ext_lcub = false
     -- lc_toy_c_backend = true
 }
 includes("LuisaCompute")

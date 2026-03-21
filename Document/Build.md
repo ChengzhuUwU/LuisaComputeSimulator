@@ -60,10 +60,21 @@ cmake --build build -j
 ### Xmake
 
 ```bash
+# Clone dependencies first
 xmake lua setup.lua
-xmake f -m release
+
+# Configure for your platform
+# On macOS with Metal:
+xmake f -m release --luisa_compute_enable_cuda=n --luisa_compute_enable_metal=y --luisa_compute_enable_fallback=y
+
+# On Linux with CUDA:
+xmake f -m release --luisa_compute_enable_cuda=y --luisa_compute_enable_vulkan=n
+
+# Build
 xmake build
 ```
+
+> **Note:** On macOS, you must explicitly disable CUDA backend (`--luisa_compute_enable_cuda=n`) since xmake detects CUDA toolchain automatically but the SDK is not available on macOS.
 
 ---
 

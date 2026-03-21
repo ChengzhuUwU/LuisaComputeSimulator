@@ -1,5 +1,5 @@
-set_allowedplats("windows")
-set_allowedarchs("x64")
+set_allowedplats("windows", "macosx", "linux")
+set_allowedarchs("x64", "arm64")
 set_allowedmodes("debug", "release", "releasedbg")
 set_targetdir(path.join(os.projectdir(), "build", "bin"))
 
