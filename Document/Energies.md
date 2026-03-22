@@ -31,7 +31,9 @@ Where:
 
 **Characteristics:** Simple, fast, but limited to small deformations.
 
-**Implementation:** `stretch_spring_energy` in [`Solver/Energies/detail/stretch_spring_energy.hpp`](../Solver/Energies/detail/stretch_spring_energy.hpp)
+**Implementation:** `hookean_spring_energy` in [`Solver/Energies/detail/hookean_spring_energy.hpp`](../Solver/Energies/detail/hookean_spring_energy.hpp)
+
+Detailed note: [`Document/Energies/HookeanSpring.md`](./Energies/HookeanSpring.md)
 
 #### Stable NeoHookean Energy (Tetrahedral FEM)
 
@@ -49,6 +51,8 @@ Where:
 
 **Implementation:** `stable_neo_hookean_energy` in [`Solver/Energies/detail/stable_neo_hookean_energy.hpp`](../Solver/Energies/detail/stable_neo_hookean_energy.hpp)
 
+Detailed note: [`Document/Energies/StableNeoHookean.md`](./Energies/StableNeoHookean.md)
+
 
 #### ARAP (As-Rigid-As-Possible) Energy
 
@@ -63,6 +67,8 @@ Where $F$ is deformation gradient, $R$ is the polar rotation extracted from $F$,
 
 **Implementation:** `arap_tet_energy` in [`Solver/Energies/detail/arap_tet_energy.hpp`](../Solver/Energies/detail/arap_tet_energy.hpp)
 
+Detailed note: [`Document/Energies/ARAPTet.md`](./Energies/ARAPTet.md)
+
 ---
 
 ### 2. Bending Energy
@@ -74,6 +80,8 @@ $$E = \frac{k_b}{2} (\theta - \theta_0)^2$$
 Where $\theta$ is the dihedral angle between adjacent faces.
 
 **Implementation:** `bending_energy` in [`Solver/Energies/detail/bending_energy.hpp`](../Solver/Energies/detail/bending_energy.hpp)
+
+Detailed note: [`Document/Energies/Bending.md`](./Energies/Bending.md)
 
 ---
 
@@ -91,7 +99,9 @@ $$E_{shear} = \frac{\lambda}{2}(F_u\cdot F_v)^2$$
 
 Where $A$ is the rest-face area, and $(\mu,\lambda)$ are material parameters.
 
-**Implementation:** `stretch_face_energy` in [`Solver/Energies/detail/stretch_face_energy.hpp`](../Solver/Energies/detail/stretch_face_energy.hpp)
+**Implementation:** `fem_BW98_cloth_energy` in [`Solver/Energies/detail/fem_BW98_cloth_energy.hpp`](../Solver/Energies/detail/fem_BW98_cloth_energy.hpp)
+
+Detailed note: [`Document/Energies/FemBW98Cloth.md`](./Energies/FemBW98Cloth.md)
 
 ---
 
@@ -105,6 +115,8 @@ For soft bodies, the implementation is a per-vertex implicit inertia term with D
 
 **Implementation:** `soft_inertia_energy` in [`Solver/Energies/detail/soft_inertia_energy.hpp`](../Solver/Energies/detail/soft_inertia_energy.hpp)
 
+Detailed note: [`Document/Energies/SoftInertia.md`](./Energies/SoftInertia.md)
+
 #### Affine Body Dynamics (ABD) Inertia
 
 For rigid bodies, uses reduced-space formulation:
@@ -115,17 +127,21 @@ Where $\Delta_i$ are the 3D delta columns in ABD state, $M\in\mathbb{R}^{4\times
 
 **Implementation:** `abd_inertia_energy` in [`Solver/Energies/detail/abd_inertia_energy.hpp`](../Solver/Energies/detail/abd_inertia_energy.hpp)
 
+Detailed note: [`Document/Energies/ABDInertia.md`](./Energies/ABDInertia.md)
+
 ---
 
 ### 5. Orthogonality Energy
 
 Ensures rigid body affine matrix $A$ stays close to rotation (penalizes non-orthogonality):
 
-$$E_{ortho} = \kappa V \|A^T A - I\|_F^2$$
+$$E_{ortho} = \kappa \|A^T A - I\|_F^2$$
 
-Where $\kappa$ is the rigid stiffness, $V$ is the body's volume.
+Where $\kappa$ is the rigid stiffness.
 
 **Implementation:** `abd_ortho_energy` in [`Solver/Energies/detail/abd_ortho_energy.hpp`](../Solver/Energies/detail/abd_ortho_energy.hpp)
+
+Detailed note: [`Document/Energies/ABDOrtho.md`](./Energies/ABDOrtho.md)
 
 ---
 
@@ -156,6 +172,20 @@ This implementation provides:
 - `repulsive_energy`, `repulsive_first_derivative`, `repulsive_second_derivative`
 - `friction_energy`, `friction_gradient_hessian`
 
+Detailed note: [`Document/Energies/GroundCollision.md`](./Energies/GroundCollision.md)
+
+### 7. Single-Edge Spring Energy
+
+For the pairwise spring used in edge constraints:
+
+$$
+E = \frac{k}{2}(\|x_0-x_1\| - \ell_0)^2
+$$
+
+**Implementation:** `hookean_spring_energy` in [`Solver/Energies/detail/hookean_spring_energy.hpp`](../Solver/Energies/detail/hookean_spring_energy.hpp)
+
+Detailed note: [`Document/Energies/HookeanSpring.md`](./Energies/HookeanSpring.md)
+
 ---
 
 ## Affine Body Dynamics (ABD)
@@ -175,12 +205,7 @@ Where:
 
 ### Jacobian
 
-$$ J = 
-\begin{bmatrix}
-1 & 0 & 0 & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & & & & \\
-0 & 1 & 0 & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & \\
-0 & 0 & 1 & & & & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 \\
-\end{bmatrix} \in R^{3 \times 12} $$
+$$J = \begin{bmatrix} 1 & 0 & 0 & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & & & & \\ 0 & 1 & 0 & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 & & & \\ 0 & 0 & 1 & & & & & & & \overline{x}_1 & \overline{x}_2 & \overline{x}_3 \end{bmatrix} \in R^{3 \times 12}$$
 
 ### Reduced Space
 
