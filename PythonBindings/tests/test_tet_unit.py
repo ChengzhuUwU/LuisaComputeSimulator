@@ -192,19 +192,29 @@ def main():
     reg_spring = solver.register_world_data(tet_spring)
     # print(f"Registered tet_spring with id={reg_spring}, fixed vertices={spring_fixed_vids}")
 
-    # ARAP body to compare with spring benchmark
+    # ARAP body
     tet_arap = solver.create_world_data_from_tet_array("tet_arap", verts, tets)
     tet_arap.set_physics_material_tet(
         model="ARAP",
-        youngs_modulus=1e5,
+        youngs_modulus=1e4,
         poisson_ratio=0.4,
     )
     tet_arap.set_translation(0.1, 0.0, 0.0)
     tet_arap.set_scale(0.2)
     tet_arap.add_fixed_point_by_method("Left")
-    arap_fixed_vids = tet_arap.get_fixed_point_indices()
     reg_arap = solver.register_world_data(tet_arap)
-    print(f"Registered tet_arap with id={reg_arap}, fixed vertices={arap_fixed_vids}")
+
+    # SNHK body 
+    tet_snhk = solver.create_world_data_from_tet_array("tet_snhk", verts, tets)
+    tet_snhk.set_physics_material_tet(
+        model="StableNeoHookean",
+        youngs_modulus=1e4,
+        poisson_ratio=0.4,
+    )
+    tet_snhk.set_translation(0.0, 0.0, 0.1)
+    tet_snhk.set_scale(0.2)
+    tet_snhk.add_fixed_point_by_method("Left")
+    reg_snhk = solver.register_world_data(tet_snhk)
 
     # ---- Initialize solver -----------------------------------------------
     solver.init_solver()

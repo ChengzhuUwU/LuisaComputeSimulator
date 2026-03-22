@@ -72,6 +72,10 @@ endif()
 
 if (LCS_BUILD_PYBINDINGS)
 
+    set(PYBIND11_FINDPYTHON ON CACHE BOOL "Force pybind11 to use modern FindPython" FORCE)
+    set(Python_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python executable" FORCE)
+    set(Python3_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python3 executable" FORCE)
+    set(PYTHON_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Legacy Python executable" FORCE)
     set(PYBIND11_PYTHON_EXECUTABLE ${LCS_PYTHON_EXECUTABLE} CACHE FILEPATH "Python executable for pybind11" FORCE)
     message(STATUS "Python binding executable path: ${PYBIND11_PYTHON_EXECUTABLE}")
 
