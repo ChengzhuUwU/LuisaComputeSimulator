@@ -1,5 +1,5 @@
 #include "stretch_face_energy.h"
-#include "Energies/detail/stretch_face_energy.hpp"
+#include "Energies/detail/fem_BW98_cloth_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
@@ -40,7 +40,7 @@ namespace lcs
 					Float  lambda_cloth = mu_lambda[1];
 					// lambda_cloth = 0.0f;
 
-					const detail::stretch_face_energy::Input<Float3, Float2x2, Float> input{
+					const detail::fem_BW98_cloth_energy::Input<Float3, Float2x2, Float> input{
 						.x0 = vert_pos[0],
 						.x1 = vert_pos[1],
 						.x2 = vert_pos[2],
@@ -49,7 +49,7 @@ namespace lcs
 						.lambda = lambda_cloth,
 						.area = area
 					};
-					energy = detail::stretch_face_energy::compute_energy(input);
+					energy = detail::fem_BW98_cloth_energy::compute_energy(input);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -85,7 +85,7 @@ namespace lcs
 				Float  lambda_cloth = mu_lambda[1];
 				// lambda_cloth = 0.0f;
 
-				const detail::stretch_face_energy::Input<Float3, Float2x2, Float> input{
+				const detail::fem_BW98_cloth_energy::Input<Float3, Float2x2, Float> input{
 					.x0 = vert_pos[0],
 					.x1 = vert_pos[1],
 					.x2 = vert_pos[2],
@@ -94,7 +94,7 @@ namespace lcs
 					.lambda = lambda_cloth,
 					.area = area
 				};
-				auto eval = detail::stretch_face_energy::evaluate(input);
+				auto eval = detail::fem_BW98_cloth_energy::evaluate(input);
 
 				// Output
 				{
@@ -163,7 +163,7 @@ namespace lcs
 				// lambda_cloth = 0.0f;
 
 				// LUISA_INFO("BW98 Info: Fid = {}, Face = {}, lambda = {}, mu = {}", fid, face, lambda_cloth, mu_cloth);
-				const detail::stretch_face_energy::Input<float3, float2x2, float> input{
+				const detail::fem_BW98_cloth_energy::Input<float3, float2x2, float> input{
 					.x0 = vert_pos[0],
 					.x1 = vert_pos[1],
 					.x2 = vert_pos[2],
@@ -172,7 +172,7 @@ namespace lcs
 					.lambda = lambda_cloth,
 					.area = area
 				};
-				auto eval = detail::stretch_face_energy::evaluate(input);
+				auto eval = detail::fem_BW98_cloth_energy::evaluate(input);
 
 				output_gradient_ptr[fid * 3 + 0] = eval.gradients[0];
 				output_gradient_ptr[fid * 3 + 1] = eval.gradients[1];

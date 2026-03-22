@@ -1,5 +1,5 @@
 #include "spring_energy.h"
-#include "Energies/detail/stretch_spring_energy.hpp"
+#include "Energies/detail/hookean_spring_energy.hpp"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
 
@@ -33,7 +33,7 @@ namespace lcs
 					const Float	 l = sqrt_scalar(length_squared_vec(diff));
 					const Float	 C = l - rest_edge_length;
 					const Float	 stiffness = sa_stretch_spring_stiffness->read(eid);
-					energy = detail::stretch_spring_energy::compute_energy(stiffness, C);
+					energy = detail::hookean_spring_energy::compute_energy(stiffness, C);
 				};
 
 				energy = ParallelIntrinsic::block_intrinsic_reduce(energy, ParallelIntrinsic::warp_reduce_op_sum<float>);
@@ -64,14 +64,14 @@ namespace lcs
 				const Float L = sa_rest_length->read(eid);
 				const Float stiffness_spring = sa_stretch_spring_stiffness->read(eid);
 
-				const detail::stretch_spring_energy::Input<Float, Float3> input{
+				const detail::hookean_spring_energy::Input<Float, Float3> input{
 					.x0 = vert_pos[0],
 					.x1 = vert_pos[1],
 					.rest_length = L,
 					.stiffness = stiffness_spring,
 				};
 				Float3x3 identify = float3x3::eye(1.0f);
-				auto	 eval = detail::stretch_spring_energy::evaluate(input, identify);
+				auto	 eval = detail::hookean_spring_energy::evaluate(input, identify);
 
 				// Output
 				{
@@ -133,13 +133,13 @@ namespace lcs
 				const float L = sa_rest_length[eid];
 				const float stiffness_stretch_spring = sa_stretch_spring_stiffness[eid];
 
-				const detail::stretch_spring_energy::Input<float, float3> input{
+				const detail::hookean_spring_energy::Input<float, float3> input{
 					.x0 = vert_pos[0],
 					.x1 = vert_pos[1],
 					.rest_length = L,
 					.stiffness = stiffness_stretch_spring,
 				};
-				auto eval = detail::stretch_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
+				auto eval = detail::hookean_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
 
 				output_gradient_ptr[eid * 2 + 0] = eval.gradients[0];
 				output_gradient_ptr[eid * 2 + 1] = eval.gradients[1];

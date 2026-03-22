@@ -1,7 +1,7 @@
 #include "Energies/tet_elastic_energy.h"
 #include "Energies/detail/arap_tet_energy.hpp"
 #include "Energies/detail/stable_neo_hookean_energy.hpp"
-#include "Energies/detail/stretch_spring_energy.hpp"
+#include "Energies/detail/hookean_spring_energy.hpp"
 #include "SimulationCore/physical_material.h"
 #include "SimulationCore/base_mesh.h"
 #include "Utils/cpu_parallel.h"
@@ -231,13 +231,13 @@ namespace lcs
 				// 			float3 DIFF = rest_pos[ii] - rest_pos[jj];
 				// 			float  L = length_vec(DIFF);
 
-				// 			const detail::stretch_spring_energy::Input<float, float3> input{
+				// 			const detail::hookean_spring_energy::Input<float, float3> input{
 				// 				.x0 = vert_pos[ii],
 				// 				.x1 = vert_pos[jj],
 				// 				.rest_length = L,
 				// 				.stiffness = 1e4f,
 				// 			};
-				// 			auto eval2 = detail::stretch_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
+				// 			auto eval2 = detail::hookean_spring_energy::evaluate(input, luisa::make_float3x3(1.0f));
 				// 			eval.gradients[ii] += eval2.gradients[0];
 				// 			eval.gradients[jj] += eval2.gradients[1];
 				// 			eval.hessians[ii * 4 + ii] = eval.hessians[ii * 4 + ii] + eval2.hessians[0];

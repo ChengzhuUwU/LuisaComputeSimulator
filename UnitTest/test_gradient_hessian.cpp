@@ -5,8 +5,8 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Energies/detail/soft_inertia_energy.hpp"
-#include "Energies/detail/stretch_spring_energy.hpp"
-#include "Energies/detail/stretch_face_energy.hpp"
+#include "Energies/detail/hookean_spring_energy.hpp"
+#include "Energies/detail/fem_BW98_cloth_energy.hpp"
 #include "Energies/detail/arap_tet_energy.hpp"
 #include "Energies/detail/bending_energy.hpp"
 #include "Energies/detail/abd_inertia_energy.hpp"
@@ -419,7 +419,7 @@ int main(int argc, char** argv)
 				Eigen::Vector3f diff = a - b;
 				float			l = std::max(diff.norm(), 1e-8f);
 				float			C = l - L0;
-				return detail::stretch_spring_energy::compute_energy(k, C);
+				return detail::hookean_spring_energy::compute_energy(k, C);
 			};
 
 			EigenVec x0(6);
@@ -435,8 +435,8 @@ int main(int argc, char** argv)
 			Eigen::Vector3f a(x0[0], x0[1], x0[2]);
 			Eigen::Vector3f b(x0[3], x0[4], x0[5]);
 
-			auto eval = detail::stretch_spring_energy::evaluate(
-				detail::stretch_spring_energy::Input<float, float3>{
+			auto eval = detail::hookean_spring_energy::evaluate(
+				detail::hookean_spring_energy::Input<float, float3>{
 					.x0 = luisa::make_float3(a[0], a[1], a[2]),
 					.x1 = luisa::make_float3(b[0], b[1], b[2]),
 					.rest_length = L0,
@@ -478,7 +478,7 @@ int main(int argc, char** argv)
 				luisa::float3 vx1 = luisa::make_float3(xv[3], xv[4], xv[5]);
 				luisa::float3 vx2 = luisa::make_float3(xv[6], xv[7], xv[8]);
 				lcs::float2x3 F = makeFloat2x3(vx1 - vx0, vx2 - vx0) * Dm_inv;
-				return area * detail::stretch_face_energy::stretch_energy(F, mu);
+				return area * detail::fem_BW98_cloth_energy::stretch_energy(F, mu);
 			};
 
 			EigenVec xvec(9);
@@ -493,8 +493,8 @@ int main(int argc, char** argv)
 				makeFloat2x3(luisa::make_float3(xvec[3] - xvec[0], xvec[4] - xvec[1], xvec[5] - xvec[2]),
 					luisa::make_float3(xvec[6] - xvec[0], xvec[7] - xvec[1], xvec[8] - xvec[2]))
 				* Dm_inv;
-			auto	 dedF = detail::stretch_face_energy::stretch_gradient(F, mu);
-			auto	 d2eF = detail::stretch_face_energy::stretch_hessian(F, mu);
+			auto	 dedF = detail::fem_BW98_cloth_energy::stretch_gradient(F, mu);
+			auto	 d2eF = detail::fem_BW98_cloth_energy::stretch_hessian(F, mu);
 			float3x3 dedx = area * FemUtils::convert_force(dedF, Dm_inv);
 			float9x9 d2edx2 = area * FemUtils::convert_hessian(d2eF, Dm_inv);
 
@@ -530,7 +530,7 @@ int main(int argc, char** argv)
 				luisa::float3 vx1 = luisa::make_float3(xv[3], xv[4], xv[5]);
 				luisa::float3 vx2 = luisa::make_float3(xv[6], xv[7], xv[8]);
 				lcs::float2x3 F = makeFloat2x3(vx1 - vx0, vx2 - vx0) * Dm_inv;
-				return area * detail::stretch_face_energy::shear_energy(F, lambda);
+				return area * detail::fem_BW98_cloth_energy::shear_energy(F, lambda);
 			};
 
 			EigenVec xvec(9);
@@ -545,8 +545,8 @@ int main(int argc, char** argv)
 				makeFloat2x3(luisa::make_float3(xvec[3] - xvec[0], xvec[4] - xvec[1], xvec[5] - xvec[2]),
 					luisa::make_float3(xvec[6] - xvec[0], xvec[7] - xvec[1], xvec[8] - xvec[2]))
 				* Dm_inv;
-			auto	 dedF_sh = detail::stretch_face_energy::shear_gradient(Fsh, lambda);
-			auto	 d2eF_sh = detail::stretch_face_energy::shear_hessian(Fsh, lambda);
+			auto	 dedF_sh = detail::fem_BW98_cloth_energy::shear_gradient(Fsh, lambda);
+			auto	 d2eF_sh = detail::fem_BW98_cloth_energy::shear_hessian(Fsh, lambda);
 			float3x3 dedx_sh = area * FemUtils::convert_force(dedF_sh, Dm_inv);
 			float9x9 d2edx2_sh = area * FemUtils::convert_hessian(d2eF_sh, Dm_inv);
 

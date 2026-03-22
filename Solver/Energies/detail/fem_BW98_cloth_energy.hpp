@@ -5,7 +5,9 @@
 #include "SimulationCore/base_mesh.h"
 #include <type_traits>
 
-namespace lcs::detail::stretch_face_energy
+// Reference: "A Finite Element Formulation of Baraff-Witkin Cloth" (Bergou et al., 2010)
+
+namespace lcs::detail::fem_BW98_cloth_energy
 {
 	template <typename T>
 	[[nodiscard]] inline T sqr(T x)
@@ -340,4 +342,4 @@ namespace lcs::detail::stretch_face_energy
 		return out;
 	}
 
-} // namespace lcs::detail::stretch_face_energy
+} // namespace lcs::detail::fem_BW98_cloth_energy

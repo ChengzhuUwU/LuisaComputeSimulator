@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <algorithm>
 
-namespace lcs::detail::stretch_spring_energy
+namespace lcs::detail::hookean_spring_energy
 {
 	[[nodiscard]] inline float scalar_max(float a, float b) noexcept
 	{
@@ -68,4 +68,4 @@ namespace lcs::detail::stretch_spring_energy
 		return out;
 	}
 
-} // namespace lcs::detail::stretch_spring_energy
+} // namespace lcs::detail::hookean_spring_energy
