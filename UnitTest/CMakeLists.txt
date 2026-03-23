@@ -13,4 +13,4 @@ luisa_compute_solver_add_test(test_jit test_jit.cpp)
 luisa_compute_solver_add_test(test_host_functions test_host_functions.cpp)
 luisa_compute_solver_add_test(test_abd_energy test_abd_energy.cpp)
 luisa_compute_solver_add_test(test_gradient_hessian test_gradient_hessian.cpp)
-
+luisa_compute_solver_add_test(test_newton_solver_integration test_newton_solver_integration.cpp)
