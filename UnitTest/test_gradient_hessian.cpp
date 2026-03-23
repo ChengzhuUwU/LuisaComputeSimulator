@@ -11,6 +11,9 @@
 #include "Energies/detail/bending_energy.hpp"
 #include "Energies/detail/abd_inertia_energy.hpp"
 #include "Energies/detail/abd_ortho_energy.hpp"
+#include "Energies/detail/fixed_joint_constaint.hpp"
+#include "Energies/detail/prismatic_joint_constaint.hpp"
+#include "Energies/detail/revolute_joint_constaint.hpp"
 #include "Energies/detail/stable_neo_hookean_energy.hpp"
 #include "Energies/detail/ground_collision_energy.hpp"
 #include "luisa/core/logging.h"
@@ -296,8 +299,8 @@ int main(int argc, char** argv)
 							  const Eigen::MatrixXf& H_ana,
 							  float					 tol = 1e-3f)
 		{
-			const Eigen::IOFormat vec_fmt(6, 0, ", ", ", ", "[", "]");
-			const Eigen::IOFormat mat_fmt(6, 0, ", ", "\n", "[", "]");
+			const Eigen::IOFormat vec_fmt(3, 0, ", ", ", ", "[", "]");
+			const Eigen::IOFormat mat_fmt(3, 0, ", ", "\n", "[", "]");
 			Eigen::Index		  g_idx = 0;
 			Eigen::Index		  h_row = 0;
 			Eigen::Index		  h_col = 0;
@@ -323,12 +326,41 @@ int main(int argc, char** argv)
 			}
 			std::cout << "Result" << std::setw(21) << ""
 					  << ": FAIL\n";
-			std::cout << "Analytic gradient : " << g_ana.transpose().format(vec_fmt) << "\n";
-			std::cout << "Numeric  gradient : " << g_num.transpose().format(vec_fmt) << "\n";
-			std::cout << "Analytic hessian:\n"
-					  << H_ana.format(mat_fmt) << "\n";
-			std::cout << "Numeric  hessian:\n"
-					  << H_num.format(mat_fmt) << "\n";
+			if (g_diff >= tol)
+			{
+				std::cout << "Analytic gradient : " << g_ana.transpose().format(vec_fmt) << "\n";
+				std::cout << "Numeric  gradient : " << g_num.transpose().format(vec_fmt) << "\n";
+				for (int i = 0; i < g_num.size(); ++i)
+				{
+					if (std::abs(g_num[i] - g_ana[i]) > tol)
+					{
+						std::cout << "  idx=" << i
+								  << ", grad_ana=" << g_ana[i]
+								  << ", grad_num=" << g_num[i]
+								  << ", diff=" << std::abs(g_num[i] - g_ana[i]) << "\n";
+					}
+				}
+			}
+			if (H_diff >= tol)
+			{
+				// std::cout << "Analytic hessian:\n"
+				// 		  << H_ana.format(mat_fmt) << "\n";
+				// std::cout << "Numeric  hessian:\n"
+				// 		  << H_num.format(mat_fmt) << "\n";
+				for (int i = 0; i < H_num.rows(); ++i)
+				{
+					for (int j = 0; j < H_num.cols(); ++j)
+					{
+						if (std::abs(H_num(i, j) - H_ana(i, j)) > tol)
+						{
+							std::cout << "  idx=(" << i << ", " << j << ")"
+									  << ", hess_ana=" << H_ana(i, j)
+									  << ", hess_num=" << H_num(i, j)
+									  << ", diff=" << std::abs(H_num(i, j) - H_ana(i, j)) << "\n";
+						}
+					}
+				}
+			}
 		};
 
 		auto print_grad_only = [](const std::string&	  name,
@@ -761,7 +793,186 @@ int main(int argc, char** argv)
 			print_diff("ABDOrtho", g_num, g_ana, H_num, H_ana, 1e-3f);
 		}
 
-		// 7) Stable Neo-Hookean tet (gradient-only)
+		// 7) Fixed joint (two rigid bodies, 8 blocks = 24 dof)
+		{
+			const float	 k_pos = 20.0f;
+			const float	 k_rot = 5.0f;
+			const float3 anchor_a = luisa::make_float3(0.1f, -0.05f, 0.03f);
+			const float3 anchor_b = luisa::make_float3(-0.02f, 0.08f, -0.04f);
+
+			std::function<float(const EigenVec&)> fixed_joint_func = [&](const EigenVec& xv) -> float
+			{
+				float3 q[8];
+				for (int i = 0; i < 8; ++i)
+				{
+					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
+				}
+				return detail::fixed_joint_constaint::compute_energy(
+					q, anchor_a, anchor_b, k_pos, k_rot, luisa::make_float3x3(1.0f));
+			};
+
+			EigenVec x0(24);
+			x0 << 0.20f, 0.30f, -0.10f,
+				1.02f, 0.01f, -0.02f,
+				-0.03f, 0.98f, 0.04f,
+				0.02f, -0.01f, 1.01f,
+				0.26f, 0.24f, -0.08f,
+				0.99f, -0.04f, 0.03f,
+				0.02f, 1.01f, -0.02f,
+				-0.01f, 0.03f, 0.97f;
+
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(fixed_joint_func, x0, g_num, H_num, fd_h, false);
+
+			float3 q[8];
+			for (int i = 0; i < 8; ++i)
+			{
+				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
+			}
+			auto eval = detail::fixed_joint_constaint::evaluate(
+				q, anchor_a, anchor_b, k_pos, k_rot, luisa::make_float3x3(1.0f));
+
+			Eigen::VectorXf g_ana(24);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
+			for (int a = 0; a < 8; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 8; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 8 + b]);
+				}
+			}
+			print_diff("JointFixed", g_num, g_ana, H_num, H_ana, 1e-3f);
+		}
+
+		// 8) Prismatic joint (slide axis in world-x)
+		{
+			const float	 k_pos = 12.0f;
+			const float	 k_rot = 3.5f;
+			const float3 anchor_a = luisa::make_float3(0.0f, 0.05f, -0.02f);
+			const float3 anchor_b = luisa::make_float3(0.0f, -0.03f, 0.01f);
+			const float3 axis_world = luisa::make_float3(1.0f, 0.0f, 0.0f);
+
+			std::function<float(const EigenVec&)> prismatic_joint_func = [&](const EigenVec& xv) -> float
+			{
+				float3 q[8];
+				for (int i = 0; i < 8; ++i)
+				{
+					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
+				}
+				return detail::prismatic_joint_constaint::compute_energy(
+					q, anchor_a, anchor_b, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+			};
+
+			EigenVec x0(24);
+			x0 << 0.20f, 0.10f, 0.00f,
+				1.01f, 0.02f, -0.01f,
+				-0.01f, 1.00f, 0.03f,
+				0.00f, -0.02f, 0.99f,
+				0.28f, 0.12f, 0.02f,
+				0.98f, 0.01f, -0.03f,
+				0.01f, 0.99f, 0.02f,
+				0.02f, -0.01f, 1.02f;
+
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(prismatic_joint_func, x0, g_num, H_num, fd_h, false);
+
+			float3 q[8];
+			for (int i = 0; i < 8; ++i)
+			{
+				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
+			}
+			auto eval = detail::prismatic_joint_constaint::evaluate(
+				q, anchor_a, anchor_b, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+
+			Eigen::VectorXf g_ana(24);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
+			for (int a = 0; a < 8; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 8; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 8 + b]);
+				}
+			}
+			print_diff("JointPrismatic", g_num, g_ana, H_num, H_ana, 1e-3f);
+		}
+
+		// 9) Revolute joint (hinge axis in world-z)
+		{
+			const float	 k_pos = 15.0f;
+			const float	 k_axis = 4.0f;
+			const float3 anchor_a = luisa::make_float3(0.02f, -0.01f, 0.0f);
+			const float3 anchor_b = luisa::make_float3(-0.01f, 0.02f, 0.0f);
+			const float3 axis_world = luisa::make_float3(0.0f, 0.0f, 1.0f);
+			const float3 axis_a_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
+			const float3 axis_b_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
+
+			std::function<float(const EigenVec&)> revolute_joint_func = [&](const EigenVec& xv) -> float
+			{
+				float3 q[8];
+				for (int i = 0; i < 8; ++i)
+				{
+					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
+				}
+				return detail::revolute_joint_constaint::compute_energy(
+					q,
+					anchor_a,
+					anchor_b,
+					axis_world,
+					axis_a_local,
+					axis_b_local,
+					k_pos,
+					k_axis,
+					luisa::make_float3x3(1.0f));
+			};
+
+			EigenVec x0(24);
+			x0 << -0.05f, 0.03f, 0.01f,
+				0.99f, 0.02f, 0.00f,
+				-0.03f, 1.01f, 0.01f,
+				0.01f, -0.02f, 0.98f,
+				0.01f, 0.05f, -0.02f,
+				1.02f, -0.01f, 0.00f,
+				0.01f, 0.97f, -0.03f,
+				0.02f, 0.02f, 1.01f;
+
+			Eigen::VectorXf g_num;
+			Eigen::MatrixXf H_num;
+			FiniteDiff::computeGradientAndHessian<float, Eigen::Dynamic>(revolute_joint_func, x0, g_num, H_num, fd_h, false);
+
+			float3 q[8];
+			for (int i = 0; i < 8; ++i)
+			{
+				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
+			}
+			auto eval = detail::revolute_joint_constaint::evaluate(
+				q,
+				anchor_a,
+				anchor_b,
+				axis_world,
+				axis_a_local,
+				axis_b_local,
+				k_pos,
+				k_axis,
+				luisa::make_float3x3(1.0f));
+
+			Eigen::VectorXf g_ana(24);
+			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
+			for (int a = 0; a < 8; ++a)
+			{
+				g_ana.segment<3>(3 * a) = float3_to_eigen3(eval.gradients[a]);
+				for (int b = 0; b < 8; ++b)
+				{
+					H_ana.block<3, 3>(3 * a, 3 * b) = float3x3_to_eigen3x3(eval.hessians[a * 8 + b]);
+				}
+			}
+			print_diff("JointRevolute", g_num, g_ana, H_num, H_ana, 1e-3f);
+		}
+
+		// 10) Stable Neo-Hookean tet (gradient-only)
 		{
 			luisa::float3 X0 = luisa::make_float3(0.0f, 0.0f, 0.0f);
 			luisa::float3 X1 = luisa::make_float3(1.0f, 0.0f, 0.0f);
@@ -837,7 +1048,7 @@ int main(int argc, char** argv)
 			print_diff("TetStableNeoHookean", g_num, g_ana, H_num, H_ana, 1e-2f);
 		}
 
-		// 8) Ground collision repulsive term (1 dof in y)
+		// 11) Ground collision repulsive term (1 dof in y)
 		{
 			const float floor_y = 0.0f;
 			const float thickness = 0.01f;
