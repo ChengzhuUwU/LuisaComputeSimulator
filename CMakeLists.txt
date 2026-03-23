@@ -1,9 +1,16 @@
 cmake_minimum_required(VERSION 3.26)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(LuisaComputeSimulator)
 
+# Ensure compile config exists
+set(LCS_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/lcs_config.ini")
+set(LCS_CONFIG_TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/lcs_config_template.ini")
+if(NOT EXISTS "${LCS_CONFIG_FILE}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/lcs_config_template.ini" "${LCS_CONFIG_FILE}" COPYONLY)
+endif()
 
 # Global options
 option(LCS_ENABLE_GUI "Enable GUI support" OFF)
