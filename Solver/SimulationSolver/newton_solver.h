@@ -141,6 +141,34 @@ namespace lcs
 		luisa::compute::Shader<1, Constitutions::SoftInertia<luisa::compute::Buffer>>			 fn_material_energy_assembly_soft_inertia;
 		luisa::compute::Shader<1, Constitutions::AbdInertia<luisa::compute::Buffer>, uint>		 fn_material_energy_assembly_abd_inertia;
 		luisa::compute::Shader<1, Constitutions::AbdOrthogonality<luisa::compute::Buffer>, uint> fn_material_energy_assembly_abd_ortho;
+		luisa::compute::Shader<1,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float2>,
+			luisa::compute::BufferView<uint>>
+			fn_material_energy_assembly_fixed_joint;
+		luisa::compute::Shader<1,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float2>,
+			luisa::compute::BufferView<uint>>
+			fn_material_energy_assembly_prismatic_joint;
+		luisa::compute::Shader<1,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<uint4>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float3>,
+			luisa::compute::BufferView<float2>,
+			luisa::compute::BufferView<uint>>
+			fn_material_energy_assembly_revolute_joint;
 
 		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>												  fn_pcg_spmv_diag;
 		luisa::compute::Shader<1, luisa::compute::Buffer<float3>, luisa::compute::Buffer<float3>>												  fn_pcg_spmv_offdiag_perVert;

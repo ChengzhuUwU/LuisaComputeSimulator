@@ -11,6 +11,7 @@
 #include "Initializer/initializer_utils.h"
 #include "luisa/core/logging.h"
 #include "luisa/core/mathematics.h"
+#include <cmath>
 #include <span>
 
 namespace lcs::Initializer
@@ -349,7 +350,10 @@ namespace lcs::Initializer
 
 	void init_sim_data(const std::vector<lcs::Initializer::WorldData>& world_data,
 		lcs::MeshData<std::vector>*									   mesh_data,
-		lcs::SimulationData<std::vector>*							   sim_data)
+		lcs::SimulationData<std::vector>*							   sim_data,
+		const std::vector<lcs::FixedJointConstraintDesc>&			   fixed_joint_descs,
+		const std::vector<lcs::PrismaticJointConstraintDesc>&		   prismatic_joint_descs,
+		const std::vector<lcs::RevoluteJointConstraintDesc>&		   revolute_joint_descs)
 	{
 		// Calculate number of energy element
 		constexpr bool cull_unused_constraints = true;
@@ -1086,6 +1090,114 @@ namespace lcs::Initializer
 			};
 		}
 
+		// Init joint constraints
+		{
+			auto normalize_axis = [](const float3& axis) -> float3
+			{
+				const float n2 = axis.x * axis.x + axis.y * axis.y + axis.z * axis.z;
+				if (n2 < 1.0e-12f)
+				{
+					return luisa::make_float3(1.0f, 0.0f, 0.0f);
+				}
+				const float inv_n = 1.0f / std::sqrt(n2);
+				return inv_n * axis;
+			};
+
+			auto try_get_rigid_q_indices = [&](uint registration_id, uint4& out_indices) -> bool
+			{
+				if (registration_id >= mesh_data->input_to_sorted_mesh_id.size())
+				{
+					LUISA_WARNING("Joint uses invalid registration id {}", registration_id);
+					return false;
+				}
+
+				const uint sorted_idx = mesh_data->input_to_sorted_mesh_id[registration_id];
+				if (sorted_idx >= world_data.size())
+				{
+					LUISA_WARNING("Joint registration id {} maps to invalid sorted index {}", registration_id, sorted_idx);
+					return false;
+				}
+				if (!world_data[sorted_idx].holds<lcs::Material::RigidMaterial>())
+				{
+					LUISA_WARNING("Joint registration id {} is not rigid.", registration_id);
+					return false;
+				}
+
+				const uint prefix_vid = mesh_data->prefix_num_verts[sorted_idx];
+				if (prefix_vid >= sim_data->sa_x_to_dof_map.size())
+				{
+					LUISA_WARNING("Joint registration id {} has invalid prefix_vid {}", registration_id, prefix_vid);
+					return false;
+				}
+
+				const uint dof_start = sim_data->sa_x_to_dof_map[prefix_vid].get_dof_idx();
+				if (dof_start + 3u >= sim_data->sa_q.size())
+				{
+					LUISA_WARNING("Joint registration id {} has invalid dof_start {}", registration_id, dof_start);
+					return false;
+				}
+
+				out_indices = luisa::make_uint4(dof_start + 0u, dof_start + 1u, dof_start + 2u, dof_start + 3u);
+				return true;
+			};
+
+			auto& fixed_joint_data = sim_data->get_fixed_joint_data();
+			auto& prismatic_joint_data = sim_data->get_prismatic_joint_data();
+			auto& revolute_joint_data = sim_data->get_revolute_joint_data();
+
+			for (const auto& desc : fixed_joint_descs)
+			{
+				uint4 idx_a{};
+				uint4 idx_b{};
+				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+				{
+					continue;
+				}
+				fixed_joint_data.constraint_indices_a.push_back(idx_a);
+				fixed_joint_data.constraint_indices_b.push_back(idx_b);
+				fixed_joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+				fixed_joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+				fixed_joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
+			}
+
+			for (const auto& desc : prismatic_joint_descs)
+			{
+				uint4 idx_a{};
+				uint4 idx_b{};
+				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+				{
+					continue;
+				}
+				prismatic_joint_data.constraint_indices_a.push_back(idx_a);
+				prismatic_joint_data.constraint_indices_b.push_back(idx_b);
+				prismatic_joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+				prismatic_joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+				prismatic_joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
+				prismatic_joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
+			}
+
+			for (const auto& desc : revolute_joint_descs)
+			{
+				uint4 idx_a{};
+				uint4 idx_b{};
+				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+				{
+					continue;
+				}
+				revolute_joint_data.constraint_indices_a.push_back(idx_a);
+				revolute_joint_data.constraint_indices_b.push_back(idx_b);
+				revolute_joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+				revolute_joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+				revolute_joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
+				revolute_joint_data.axis_a_local.push_back(normalize_axis(desc.axis_a_local));
+				revolute_joint_data.axis_b_local.push_back(normalize_axis(desc.axis_b_local));
+				revolute_joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_axis));
+			}
+		}
+
 		// Init Energy Adjacent List
 		{
 			// num_variables_in_system
@@ -1122,6 +1234,34 @@ namespace lcs::Initializer
 			// Vert adj affine-body orthogonality
 			auto& abd_ortho_data = sim_data->get_abd_orthogonality_data();
 			build_adj_list_and_init_grad_hess(adj_map, abd_ortho_data);
+
+			auto insert_joint_adj = [&](const auto& indices_a, const auto& indices_b)
+			{
+				const uint num_joint = static_cast<uint>(indices_a.size());
+				for (uint jid = 0; jid < num_joint; ++jid)
+				{
+					uint4 ia = indices_a[jid];
+					uint4 ib = indices_b[jid];
+					uint  nodes[8] = { ia.x, ia.y, ia.z, ia.w, ib.x, ib.y, ib.z, ib.w };
+					for (uint ii = 0; ii < 8; ++ii)
+					{
+						for (uint jj = 0; jj < 8; ++jj)
+						{
+							if (ii != jj)
+							{
+								insert_adj_vert(adj_map, nodes[ii], nodes[jj]);
+							}
+						}
+					}
+				}
+			};
+
+			insert_joint_adj(sim_data->get_fixed_joint_data().constraint_indices_a,
+				sim_data->get_fixed_joint_data().constraint_indices_b);
+			insert_joint_adj(sim_data->get_prismatic_joint_data().constraint_indices_a,
+				sim_data->get_prismatic_joint_data().constraint_indices_b);
+			insert_joint_adj(sim_data->get_revolute_joint_data().constraint_indices_a,
+				sim_data->get_revolute_joint_data().constraint_indices_b);
 
 			// Sort adjacents
 			CpuParallel::parallel_for(0,
@@ -1343,6 +1483,59 @@ namespace lcs::Initializer
 			// Soft body inertia & ground collision data
 			auto& soft_inertia_data = sim_data->get_soft_inertia_data();
 			init_constitution_offsets_in_adjlist(adj_list, csr, soft_inertia_data);
+
+			auto init_joint_offsets = [&](const auto& indices_a,
+										  const auto& indices_b,
+										  auto&		  offsets_buffer)
+			{
+				const uint num_joint = static_cast<uint>(indices_a.size());
+				offsets_buffer.resize(num_joint * 56u);
+				CpuParallel::parallel_for(0,
+					num_joint,
+					[&](const uint jid)
+					{
+						uint4 ia = indices_a[jid];
+						uint4 ib = indices_b[jid];
+						uint  nodes[8] = { ia.x, ia.y, ia.z, ia.w, ib.x, ib.y, ib.z, ib.w };
+						uint  slot = 0u;
+						for (uint ii = 0; ii < 8; ++ii)
+						{
+							for (uint jj = 0; jj < 8; ++jj)
+							{
+								if (ii == jj)
+								{
+									continue;
+								}
+								const uint	vid = nodes[ii];
+								const uint	adj_vid = nodes[jj];
+								const auto& row_adj = adj_list[vid];
+								auto		row_it = std::find(row_adj.begin(), row_adj.end(), adj_vid);
+								if (row_it == row_adj.end())
+								{
+									LUISA_ERROR("Joint offset map missing pair ({}, {}) for joint {}", vid, adj_vid, jid);
+								}
+								offsets_buffer[jid * 56u + slot] =
+									csr[vid] + static_cast<uint>(std::distance(row_adj.begin(), row_it));
+								slot += 1u;
+							}
+						}
+					});
+			};
+
+			auto& fixed_joint_data = sim_data->get_fixed_joint_data();
+			init_joint_offsets(fixed_joint_data.constraint_indices_a,
+				fixed_joint_data.constraint_indices_b,
+				fixed_joint_data.constraint_offsets_in_adjlist);
+
+			auto& prismatic_joint_data = sim_data->get_prismatic_joint_data();
+			init_joint_offsets(prismatic_joint_data.constraint_indices_a,
+				prismatic_joint_data.constraint_indices_b,
+				prismatic_joint_data.constraint_offsets_in_adjlist);
+
+			auto& revolute_joint_data = sim_data->get_revolute_joint_data();
+			init_joint_offsets(revolute_joint_data.constraint_indices_a,
+				revolute_joint_data.constraint_indices_b,
+				revolute_joint_data.constraint_offsets_in_adjlist);
 		}
 	}
 
@@ -1504,6 +1697,47 @@ namespace lcs::Initializer
 				   << upload_buffer(device, abd_ortho_O.constraint_hessians, abd_ortho_I.constraint_hessians)
 				   << upload_buffer(device, abd_ortho_O.vert_adj_constraints_csr, abd_ortho_I.vert_adj_constraints_csr);
 		}
+
+		auto& fixed_joint_I = input_data->get_fixed_joint_data();
+		auto& fixed_joint_O = output_data->get_fixed_joint_data();
+		if (fixed_joint_I.is_valid())
+		{
+			stream << upload_buffer(device, fixed_joint_O.constraint_indices_a, fixed_joint_I.constraint_indices_a)
+				   << upload_buffer(device, fixed_joint_O.constraint_indices_b, fixed_joint_I.constraint_indices_b)
+				   << upload_buffer(device, fixed_joint_O.anchor_a_local, fixed_joint_I.anchor_a_local)
+				   << upload_buffer(device, fixed_joint_O.anchor_b_local, fixed_joint_I.anchor_b_local)
+				   << upload_buffer(device, fixed_joint_O.stiffness, fixed_joint_I.stiffness)
+				   << upload_buffer(device, fixed_joint_O.constraint_offsets_in_adjlist, fixed_joint_I.constraint_offsets_in_adjlist);
+		}
+
+		auto& prismatic_joint_I = input_data->get_prismatic_joint_data();
+		auto& prismatic_joint_O = output_data->get_prismatic_joint_data();
+		if (prismatic_joint_I.is_valid())
+		{
+			stream << upload_buffer(device, prismatic_joint_O.constraint_indices_a, prismatic_joint_I.constraint_indices_a)
+				   << upload_buffer(device, prismatic_joint_O.constraint_indices_b, prismatic_joint_I.constraint_indices_b)
+				   << upload_buffer(device, prismatic_joint_O.anchor_a_local, prismatic_joint_I.anchor_a_local)
+				   << upload_buffer(device, prismatic_joint_O.anchor_b_local, prismatic_joint_I.anchor_b_local)
+				   << upload_buffer(device, prismatic_joint_O.axis_world, prismatic_joint_I.axis_world)
+				   << upload_buffer(device, prismatic_joint_O.stiffness, prismatic_joint_I.stiffness)
+				   << upload_buffer(device, prismatic_joint_O.constraint_offsets_in_adjlist, prismatic_joint_I.constraint_offsets_in_adjlist);
+		}
+
+		auto& revolute_joint_I = input_data->get_revolute_joint_data();
+		auto& revolute_joint_O = output_data->get_revolute_joint_data();
+		if (revolute_joint_I.is_valid())
+		{
+			stream << upload_buffer(device, revolute_joint_O.constraint_indices_a, revolute_joint_I.constraint_indices_a)
+				   << upload_buffer(device, revolute_joint_O.constraint_indices_b, revolute_joint_I.constraint_indices_b)
+				   << upload_buffer(device, revolute_joint_O.anchor_a_local, revolute_joint_I.anchor_a_local)
+				   << upload_buffer(device, revolute_joint_O.anchor_b_local, revolute_joint_I.anchor_b_local)
+				   << upload_buffer(device, revolute_joint_O.axis_world, revolute_joint_I.axis_world)
+				   << upload_buffer(device, revolute_joint_O.axis_a_local, revolute_joint_I.axis_a_local)
+				   << upload_buffer(device, revolute_joint_O.axis_b_local, revolute_joint_I.axis_b_local)
+				   << upload_buffer(device, revolute_joint_O.stiffness, revolute_joint_I.stiffness)
+				   << upload_buffer(device, revolute_joint_O.constraint_offsets_in_adjlist, revolute_joint_I.constraint_offsets_in_adjlist);
+		}
+
 		stream << upload_buffer(device,
 			output_data->sa_vert_affine_bodies_id,
 			input_data->sa_vert_affine_bodies_id); // Basic information

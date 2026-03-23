@@ -3,6 +3,7 @@
 #include "Core/float_nxn.h"
 #include "Core/lc_to_eigen.h"
 #include "Core/matrix_triplet.h"
+#include "SimulationCore/joint_constraint.h"
 #include "SimulationCore/simulation_type.h"
 #include "Utils/buffer_allocator.h"
 #include <vector>
@@ -416,6 +417,76 @@ namespace lcs
 	} // namespace Constitutions
 
 	template <template <typename...> typename BufferType>
+	struct FixedJointData : SimulationType
+	{
+		BufferType<uint4>  constraint_indices_a;
+		BufferType<uint4>  constraint_indices_b;
+		BufferType<float3> anchor_a_local;
+		BufferType<float3> anchor_b_local;
+		BufferType<float2> stiffness;
+		BufferType<uint>   constraint_offsets_in_adjlist;
+
+		template <typename T>
+		static bool is_buffer_valid(const BufferType<T>& buffer)
+		{
+			if constexpr (requires { buffer.valid(); })
+				return buffer.valid();
+			else
+				return !buffer.empty();
+		}
+		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
+		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
+	};
+
+	template <template <typename...> typename BufferType>
+	struct PrismaticJointData : SimulationType
+	{
+		BufferType<uint4>  constraint_indices_a;
+		BufferType<uint4>  constraint_indices_b;
+		BufferType<float3> anchor_a_local;
+		BufferType<float3> anchor_b_local;
+		BufferType<float3> axis_world;
+		BufferType<float2> stiffness;
+		BufferType<uint>   constraint_offsets_in_adjlist;
+
+		template <typename T>
+		static bool is_buffer_valid(const BufferType<T>& buffer)
+		{
+			if constexpr (requires { buffer.valid(); })
+				return buffer.valid();
+			else
+				return !buffer.empty();
+		}
+		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
+		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
+	};
+
+	template <template <typename...> typename BufferType>
+	struct RevoluteJointData : SimulationType
+	{
+		BufferType<uint4>  constraint_indices_a;
+		BufferType<uint4>  constraint_indices_b;
+		BufferType<float3> anchor_a_local;
+		BufferType<float3> anchor_b_local;
+		BufferType<float3> axis_world;
+		BufferType<float3> axis_a_local;
+		BufferType<float3> axis_b_local;
+		BufferType<float2> stiffness;
+		BufferType<uint>   constraint_offsets_in_adjlist;
+
+		template <typename T>
+		static bool is_buffer_valid(const BufferType<T>& buffer)
+		{
+			if constexpr (requires { buffer.valid(); })
+				return buffer.valid();
+			else
+				return !buffer.empty();
+		}
+		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
+		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
+	};
+
+	template <template <typename...> typename BufferType>
 	struct PcgInterfaceData : SimulationType
 	{
 		// PCG
@@ -536,6 +607,9 @@ namespace lcs
 		{
 			return abd_orthogonality;
 		}
+		FixedJointData<BufferType>&		get_fixed_joint_data() { return fixed_joint; }
+		PrismaticJointData<BufferType>& get_prismatic_joint_data() { return prismatic_joint; }
+		RevoluteJointData<BufferType>&	get_revolute_joint_data() { return revolute_joint; }
 
 		const Constitutions::StretchSpring<BufferType>& get_stretch_spring_data() const
 		{
@@ -551,6 +625,9 @@ namespace lcs
 		const Constitutions::ElasticRod<BufferType>&  get_elastic_rod_data() const { return elastic_rod; }
 		const Constitutions::AbdInertia<BufferType>&  get_abd_inertia_data() const { return abd_inertia; }
 		const Constitutions::SoftInertia<BufferType>& get_soft_inertia_data() const { return soft_inertia; }
+		const FixedJointData<BufferType>&			  get_fixed_joint_data() const { return fixed_joint; }
+		const PrismaticJointData<BufferType>&		  get_prismatic_joint_data() const { return prismatic_joint; }
+		const RevoluteJointData<BufferType>&		  get_revolute_joint_data() const { return revolute_joint; }
 
 	private:
 		Constitutions::StretchSpring<BufferType>	stretch_spring;
@@ -561,6 +638,9 @@ namespace lcs
 		Constitutions::ElasticRod<BufferType>		elastic_rod;
 		Constitutions::AbdInertia<BufferType>		abd_inertia;
 		Constitutions::SoftInertia<BufferType>		soft_inertia;
+		FixedJointData<BufferType>					fixed_joint;
+		PrismaticJointData<BufferType>				prismatic_joint;
+		RevoluteJointData<BufferType>				revolute_joint;
 	};
 
 } // namespace lcs

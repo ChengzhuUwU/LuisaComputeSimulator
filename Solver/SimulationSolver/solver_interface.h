@@ -9,6 +9,7 @@
 #include "Initializer/init_mesh_data.h"
 #include "LinearSolver/precond_cg.h"
 #include "SimulationCore/base_mesh.h"
+#include "SimulationCore/joint_constraint.h"
 #include "SimulationCore/simulation_data.h"
 #include "SimulationCore/collision_data.h"
 #include "Utils/buffer_filler.h"
@@ -26,6 +27,9 @@
 #include "Energies/bending_energy_kernel.h"
 #include "Energies/abd_inertia_energy.h"
 #include "Energies/abd_ortho_energy.h"
+#include "Energies/fixed_joint_energy.h"
+#include "Energies/prismatic_joint_energy.h"
+#include "Energies/revolute_joint_energy.h"
 #include "Energies/tet_elastic_energy.h"
 #include "SimulationCore/scene_params.h"
 
@@ -145,7 +149,10 @@ namespace lcs
 		void physics_step_post_operation();
 
 	private:
-		std::vector<Initializer::WorldData> world_data;
+		std::vector<Initializer::WorldData>		  world_data;
+		std::vector<FixedJointConstraintDesc>	  fixed_joint_descs;
+		std::vector<PrismaticJointConstraintDesc> prismatic_joint_descs;
+		std::vector<RevoluteJointConstraintDesc>  revolute_joint_descs;
 
 		SolverData	 solver_data;
 		SolverHelper solver_helper;
@@ -206,6 +213,18 @@ namespace lcs
 		// 	data.registration_index = static_cast<uint>(world_data.size() - 1);
 		// 	return data;
 		// }
+		void add_fixed_joint(const FixedJointConstraintDesc& desc)
+		{
+			fixed_joint_descs.push_back(desc);
+		}
+		void add_prismatic_joint(const PrismaticJointConstraintDesc& desc)
+		{
+			prismatic_joint_descs.push_back(desc);
+		}
+		void add_revolute_joint(const RevoluteJointConstraintDesc& desc)
+		{
+			revolute_joint_descs.push_back(desc);
+		}
 		// uint register_world_data_from_array(const std::string_view& name, const std::vector<std::array<float, 3>>& vertices, const std::vector<std::array<uint, 3>>& faces)
 		// {
 		// 	auto& data = world_data.emplace_back().load_mesh_from_array(vertices, faces).set_name(name);
@@ -252,6 +271,9 @@ namespace lcs
 		std::unique_ptr<BendingEnergy>		   bending_energy;
 		std::unique_ptr<AbdOrthoEnergy>		   abd_ortho_energy;
 		std::unique_ptr<TetElasticEnergy>	   tet_elastic_energy;
+		std::unique_ptr<FixedJointEnergy>	   fixed_joint_energy;
+		std::unique_ptr<PrismaticJointEnergy>  prismatic_joint_energy;
+		std::unique_ptr<RevoluteJointEnergy>   revolute_joint_energy;
 		// luisa::compute::Shader<1,
 		//     luisa::compute::BufferView<float3>,
 		//     luisa::compute::BufferView<float3>,

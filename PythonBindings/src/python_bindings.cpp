@@ -524,6 +524,84 @@ struct PyNewtonBuilder
 		solver_ptr->update_per_body_animation(mesh_idx, tt, tr);
 	}
 
+	void add_fixed_joint(const unsigned int							  body_a_registration,
+		const unsigned int											  body_b_registration,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_a_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_b_local,
+		float														  stiffness_pos,
+		float														  stiffness_rot)
+	{
+		if (anchor_a_local.ndim() != 1 || anchor_a_local.shape(0) != 3 || anchor_b_local.ndim() != 1 || anchor_b_local.shape(0) != 3)
+			throw std::runtime_error("anchor_a_local/anchor_b_local must be 1-D arrays of length 3.");
+		auto a = anchor_a_local.unchecked<1>();
+		auto b = anchor_b_local.unchecked<1>();
+
+		FixedJointConstraintDesc desc;
+		desc.body_a_registration = body_a_registration;
+		desc.body_b_registration = body_b_registration;
+		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
+		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
+		desc.stiffness_pos = stiffness_pos;
+		desc.stiffness_rot = stiffness_rot;
+		solver_ptr->add_fixed_joint(desc);
+	}
+
+	void add_prismatic_joint(const unsigned int						  body_a_registration,
+		const unsigned int											  body_b_registration,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_a_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_b_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> axis_world,
+		float														  stiffness_pos,
+		float														  stiffness_rot)
+	{
+		if (anchor_a_local.ndim() != 1 || anchor_a_local.shape(0) != 3 || anchor_b_local.ndim() != 1 || anchor_b_local.shape(0) != 3 || axis_world.ndim() != 1 || axis_world.shape(0) != 3)
+			throw std::runtime_error("anchor_a_local/anchor_b_local/axis_world must be 1-D arrays of length 3.");
+		auto a = anchor_a_local.unchecked<1>();
+		auto b = anchor_b_local.unchecked<1>();
+		auto w = axis_world.unchecked<1>();
+
+		PrismaticJointConstraintDesc desc;
+		desc.body_a_registration = body_a_registration;
+		desc.body_b_registration = body_b_registration;
+		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
+		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
+		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
+		desc.stiffness_pos = stiffness_pos;
+		desc.stiffness_rot = stiffness_rot;
+		solver_ptr->add_prismatic_joint(desc);
+	}
+
+	void add_revolute_joint(const unsigned int						  body_a_registration,
+		const unsigned int											  body_b_registration,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_a_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_b_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> axis_world,
+		py::array_t<float, py::array::c_style | py::array::forcecast> axis_a_local,
+		py::array_t<float, py::array::c_style | py::array::forcecast> axis_b_local,
+		float														  stiffness_pos,
+		float														  stiffness_axis)
+	{
+		if (anchor_a_local.ndim() != 1 || anchor_a_local.shape(0) != 3 || anchor_b_local.ndim() != 1 || anchor_b_local.shape(0) != 3 || axis_world.ndim() != 1 || axis_world.shape(0) != 3 || axis_a_local.ndim() != 1 || axis_a_local.shape(0) != 3 || axis_b_local.ndim() != 1 || axis_b_local.shape(0) != 3)
+			throw std::runtime_error("All joint vectors must be 1-D arrays of length 3.");
+		auto a = anchor_a_local.unchecked<1>();
+		auto b = anchor_b_local.unchecked<1>();
+		auto w = axis_world.unchecked<1>();
+		auto ua = axis_a_local.unchecked<1>();
+		auto ub = axis_b_local.unchecked<1>();
+
+		RevoluteJointConstraintDesc desc;
+		desc.body_a_registration = body_a_registration;
+		desc.body_b_registration = body_b_registration;
+		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
+		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
+		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
+		desc.axis_a_local = luisa::make_float3(ua(0), ua(1), ua(2));
+		desc.axis_b_local = luisa::make_float3(ub(0), ub(1), ub(2));
+		desc.stiffness_pos = stiffness_pos;
+		desc.stiffness_axis = stiffness_axis;
+		solver_ptr->add_revolute_joint(desc);
+	}
+
 	// Return simulation results as a tuple of (vertices_list, faces_list) of numpy arrays.
 	// Uses memcpy for efficient data transfer.
 	py::tuple get_sim_result()
@@ -866,6 +944,34 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"))
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
+		.def("add_fixed_joint",
+			&PyNewtonBuilder::add_fixed_joint,
+			py::arg("body_a_registration"),
+			py::arg("body_b_registration"),
+			py::arg("anchor_a_local"),
+			py::arg("anchor_b_local"),
+			py::arg("stiffness_pos") = 1.0e4f,
+			py::arg("stiffness_rot") = 1.0e3f)
+		.def("add_prismatic_joint",
+			&PyNewtonBuilder::add_prismatic_joint,
+			py::arg("body_a_registration"),
+			py::arg("body_b_registration"),
+			py::arg("anchor_a_local"),
+			py::arg("anchor_b_local"),
+			py::arg("axis_world"),
+			py::arg("stiffness_pos") = 1.0e4f,
+			py::arg("stiffness_rot") = 1.0e3f)
+		.def("add_revolute_joint",
+			&PyNewtonBuilder::add_revolute_joint,
+			py::arg("body_a_registration"),
+			py::arg("body_b_registration"),
+			py::arg("anchor_a_local"),
+			py::arg("anchor_b_local"),
+			py::arg("axis_world"),
+			py::arg("axis_a_local"),
+			py::arg("axis_b_local"),
+			py::arg("stiffness_pos") = 1.0e4f,
+			py::arg("stiffness_axis") = 1.0e3f)
 		.def("query_local_vid_from_global_vid",
 			&PyNewtonBuilder::query_local_vid_from_global_vid,
 			"Return global-vertex-id to local-vertex-id mapping as a 1-D uint32 numpy array")
