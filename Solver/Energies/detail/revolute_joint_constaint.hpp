@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/float_nxn.h"
 #include "Energies/detail/energy_detail_common.hpp"
 #include "luisa/core/mathematics.h"
 #include <type_traits>
@@ -12,12 +13,13 @@ namespace lcs::detail::revolute_joint_constaint
 	template <typename Vec3T>
 	[[nodiscard]] inline Vec3T safe_normalize_axis(const Vec3T& axis)
 	{
-		auto n2 = dot(axis, axis);
-		if (n2 < 1.0e-12f)
-		{
-			return Vec3T(1.0f, 0.0f, 0.0f);
-		}
-		return axis / luisa::sqrt(n2);
+		// auto n2 = dot(axis, axis);
+		// if (n2 < 1.0e-12f)
+		// {
+		// 	return Vec3T(1.0f, 0.0f, 0.0f);
+		// }
+		// return axis / sqrt_scalar(n2);
+		return normalize_vec(axis);
 	}
 
 	template <typename ScalarT, typename Vec3T, typename Mat3T>
@@ -35,16 +37,16 @@ namespace lcs::detail::revolute_joint_constaint
 		RevoluteJointEvalResult<ScalarT, Vec3T, Mat3T> out{};
 		for (auto& g : out.gradients)
 		{
-			g = Vec3T(0.0f);
+			g = zero3;
 		}
 		for (auto& H : out.hessians)
 		{
-			H = 0.0f * identity;
+			H = zero3x3;
 		}
 
-		auto add_linear_term = [&](const Mat3T(&coeff)[8], const Vec3T& bias, const ScalarT stiffness)
+		auto add_linear_term = [&](const Mat3T(&coeff)[8], const ScalarT stiffness)
 		{
-			Vec3T r = bias;
+			Vec3T r = zero3;
 			for (int i = 0; i < 8; ++i)
 			{
 				r += coeff[i] * q[i];
@@ -75,7 +77,7 @@ namespace lcs::detail::revolute_joint_constaint
 				anchor_b_local.x * I,
 				anchor_b_local.y * I,
 				anchor_b_local.z * I };
-			add_linear_term(coeff, Vec3T(0.0f), stiffness_pos);
+			add_linear_term(coeff, stiffness_pos);
 		}
 
 		// Body A hinge axis must align with world hinge axis.
@@ -88,7 +90,7 @@ namespace lcs::detail::revolute_joint_constaint
 				Z,
 				Z,
 				Z };
-			add_linear_term(coeff, Vec3T(0.0f), stiffness_axis);
+			add_linear_term(coeff, stiffness_axis);
 		}
 
 		// Body B hinge axis must align with world hinge axis.
@@ -101,7 +103,7 @@ namespace lcs::detail::revolute_joint_constaint
 				axis_b_local.x * P,
 				axis_b_local.y * P,
 				axis_b_local.z * P };
-			add_linear_term(coeff, Vec3T(0.0f), stiffness_axis);
+			add_linear_term(coeff, stiffness_axis);
 		}
 
 		return out;

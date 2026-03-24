@@ -234,7 +234,8 @@ namespace lcs
 			ElasticRod,
 			Orthogonality,
 			SoftInertia,
-			AbdInertia
+			AbdInertia,
+			JointConstraint
 		};
 		static inline std::string_view to_string(ConstraintType type)
 		{
@@ -256,6 +257,8 @@ namespace lcs
 					return "Soft Body Inertia";
 				case ConstraintType::AbdInertia:
 					return "Affine Body Inertia";
+				case ConstraintType::JointConstraint:
+					return "Joint Constraint";
 				default:
 					return "Unknown";
 			}
@@ -414,77 +417,38 @@ namespace lcs
 			static constexpr size_t			get_num_verts_per_constaint() { return 4; }
 		};
 
+		// Unified joint constraint: covers Fixed, Prismatic, and Revolute joints.
+		// constraint_indices   = body-A DOF indices (uint4)
+		// constraint_indices_b = body-B DOF indices (uint4)
+		// axis_world / axis_a_local / axis_b_local are (1,0,0) for Fixed; axis_a/b unused for Prismatic.
+		// joint_type encodes JointConstraintType as uint32.
+		// constraint_gradients : 8 float3  per joint (pre-computed by eval shader)
+		// constraint_hessians  : 64 float3x3 per joint (pre-computed by eval shader)
+		// constraint_offsets_in_adjlist : 56 uints per joint (off-diagonal hessian triplet offsets)
+		template <template <typename...> typename BufferType>
+		struct JointConstraint : ConstitutionInterface<BufferType, JointConstraint<BufferType>>
+		{
+			using uint8 = std::array<uint, 8>; // For storing 8 uints per joint for adjacency list offsets
+			BufferType<uint8>  constraint_indices;
+			BufferType<float3> anchor_a_local;
+			BufferType<float3> anchor_b_local;
+			BufferType<float3> axis_world;
+			BufferType<float3> axis_a_local;
+			BufferType<float3> axis_b_local;
+			BufferType<float2> stiffness;
+			BufferType<uint>   joint_type; // JointConstraintType as uint32
+
+			static constexpr ConstraintType constraint_type() { return ConstraintType::JointConstraint; }
+			// N=8: each joint has 8 nodes (4 from body A + 4 from body B).
+			// constraint_gradients  sized as num_joints * 8
+			// constraint_hessians   sized as num_joints * 64
+			// constraint_offsets_in_adjlist sized as num_joints * 56
+			static constexpr size_t get_num_verts_per_constaint() { return 8; }
+			auto&					get_indices_impl() { return constraint_indices; }
+			auto&					get_indices_impl() const { return constraint_indices; }
+		};
+
 	} // namespace Constitutions
-
-	template <template <typename...> typename BufferType>
-	struct FixedJointData : SimulationType
-	{
-		BufferType<uint4>  constraint_indices_a;
-		BufferType<uint4>  constraint_indices_b;
-		BufferType<float3> anchor_a_local;
-		BufferType<float3> anchor_b_local;
-		BufferType<float2> stiffness;
-		BufferType<uint>   constraint_offsets_in_adjlist;
-
-		template <typename T>
-		static bool is_buffer_valid(const BufferType<T>& buffer)
-		{
-			if constexpr (requires { buffer.valid(); })
-				return buffer.valid();
-			else
-				return !buffer.empty();
-		}
-		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
-		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
-	};
-
-	template <template <typename...> typename BufferType>
-	struct PrismaticJointData : SimulationType
-	{
-		BufferType<uint4>  constraint_indices_a;
-		BufferType<uint4>  constraint_indices_b;
-		BufferType<float3> anchor_a_local;
-		BufferType<float3> anchor_b_local;
-		BufferType<float3> axis_world;
-		BufferType<float2> stiffness;
-		BufferType<uint>   constraint_offsets_in_adjlist;
-
-		template <typename T>
-		static bool is_buffer_valid(const BufferType<T>& buffer)
-		{
-			if constexpr (requires { buffer.valid(); })
-				return buffer.valid();
-			else
-				return !buffer.empty();
-		}
-		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
-		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
-	};
-
-	template <template <typename...> typename BufferType>
-	struct RevoluteJointData : SimulationType
-	{
-		BufferType<uint4>  constraint_indices_a;
-		BufferType<uint4>  constraint_indices_b;
-		BufferType<float3> anchor_a_local;
-		BufferType<float3> anchor_b_local;
-		BufferType<float3> axis_world;
-		BufferType<float3> axis_a_local;
-		BufferType<float3> axis_b_local;
-		BufferType<float2> stiffness;
-		BufferType<uint>   constraint_offsets_in_adjlist;
-
-		template <typename T>
-		static bool is_buffer_valid(const BufferType<T>& buffer)
-		{
-			if constexpr (requires { buffer.valid(); })
-				return buffer.valid();
-			else
-				return !buffer.empty();
-		}
-		bool is_valid() const { return is_buffer_valid(constraint_indices_a); }
-		uint get_num_indices() const { return static_cast<uint>(constraint_indices_a.size()); }
-	};
 
 	template <template <typename...> typename BufferType>
 	struct PcgInterfaceData : SimulationType
@@ -603,31 +567,18 @@ namespace lcs
 		Constitutions::AbdInertia<BufferType>&		 get_abd_inertia_data() { return abd_inertia; }
 		Constitutions::SoftInertia<BufferType>&		 get_soft_inertia_data() { return soft_inertia; }
 		Constitutions::StretchSpring<BufferType>&	 get_stretch_spring_data() { return stretch_spring; }
-		Constitutions::AbdOrthogonality<BufferType>& get_abd_orthogonality_data()
-		{
-			return abd_orthogonality;
-		}
-		FixedJointData<BufferType>&		get_fixed_joint_data() { return fixed_joint; }
-		PrismaticJointData<BufferType>& get_prismatic_joint_data() { return prismatic_joint; }
-		RevoluteJointData<BufferType>&	get_revolute_joint_data() { return revolute_joint; }
+		Constitutions::AbdOrthogonality<BufferType>& get_abd_orthogonality_data() { return abd_orthogonality; }
+		Constitutions::JointConstraint<BufferType>&	 get_joint_constraint_data() { return joint_constraint; }
 
-		const Constitutions::StretchSpring<BufferType>& get_stretch_spring_data() const
-		{
-			return stretch_spring;
-		}
+		const Constitutions::StretchSpring<BufferType>&	   get_stretch_spring_data() const { return stretch_spring; }
 		const Constitutions::StretchFace<BufferType>&	   get_stretch_face_data() const { return stretch_face; }
 		const Constitutions::BendingEdge<BufferType>&	   get_bending_edge_data() const { return bending_edge; }
-		const Constitutions::AbdOrthogonality<BufferType>& get_abd_orthogonality_data() const
-		{
-			return abd_orthogonality;
-		}
-		const Constitutions::StressTet<BufferType>&	  get_stress_tet_data() const { return stress_tet; }
-		const Constitutions::ElasticRod<BufferType>&  get_elastic_rod_data() const { return elastic_rod; }
-		const Constitutions::AbdInertia<BufferType>&  get_abd_inertia_data() const { return abd_inertia; }
-		const Constitutions::SoftInertia<BufferType>& get_soft_inertia_data() const { return soft_inertia; }
-		const FixedJointData<BufferType>&			  get_fixed_joint_data() const { return fixed_joint; }
-		const PrismaticJointData<BufferType>&		  get_prismatic_joint_data() const { return prismatic_joint; }
-		const RevoluteJointData<BufferType>&		  get_revolute_joint_data() const { return revolute_joint; }
+		const Constitutions::AbdOrthogonality<BufferType>& get_abd_orthogonality_data() const { return abd_orthogonality; }
+		const Constitutions::StressTet<BufferType>&		   get_stress_tet_data() const { return stress_tet; }
+		const Constitutions::ElasticRod<BufferType>&	   get_elastic_rod_data() const { return elastic_rod; }
+		const Constitutions::AbdInertia<BufferType>&	   get_abd_inertia_data() const { return abd_inertia; }
+		const Constitutions::SoftInertia<BufferType>&	   get_soft_inertia_data() const { return soft_inertia; }
+		const Constitutions::JointConstraint<BufferType>&  get_joint_constraint_data() const { return joint_constraint; }
 
 	private:
 		Constitutions::StretchSpring<BufferType>	stretch_spring;
@@ -638,9 +589,7 @@ namespace lcs
 		Constitutions::ElasticRod<BufferType>		elastic_rod;
 		Constitutions::AbdInertia<BufferType>		abd_inertia;
 		Constitutions::SoftInertia<BufferType>		soft_inertia;
-		FixedJointData<BufferType>					fixed_joint;
-		PrismaticJointData<BufferType>				prismatic_joint;
-		RevoluteJointData<BufferType>				revolute_joint;
+		Constitutions::JointConstraint<BufferType>	joint_constraint;
 	};
 
 } // namespace lcs
@@ -712,6 +661,20 @@ LUISA_BINDING_GROUP(lcs::Constitutions::SoftInertia<luisa::compute::Buffer>,
 	vert_adj_constraints_csr,
 	sa_soft_vert_mass,
 	sa_stiffness_dirichlet){};
+
+LUISA_BINDING_GROUP(lcs::Constitutions::JointConstraint<luisa::compute::Buffer>,
+	constraint_indices,
+	constraint_offsets_in_adjlist,
+	constraint_gradients,
+	constraint_hessians,
+	vert_adj_constraints_csr,
+	anchor_a_local,
+	anchor_b_local,
+	axis_world,
+	axis_a_local,
+	axis_b_local,
+	stiffness,
+	joint_type){};
 
 /*
 struct BaseSimulationData

@@ -27,9 +27,7 @@
 #include "Energies/bending_energy_kernel.h"
 #include "Energies/abd_inertia_energy.h"
 #include "Energies/abd_ortho_energy.h"
-#include "Energies/fixed_joint_energy.h"
-#include "Energies/prismatic_joint_energy.h"
-#include "Energies/revolute_joint_energy.h"
+#include "Energies/joint_constraint_energy.h"
 #include "Energies/tet_elastic_energy.h"
 #include "SimulationCore/scene_params.h"
 
@@ -152,7 +150,7 @@ namespace lcs
 		std::vector<Initializer::WorldData>		  world_data;
 		std::vector<FixedJointConstraintDesc>	  fixed_joint_descs;
 		std::vector<PrismaticJointConstraintDesc> prismatic_joint_descs;
-		std::vector<RevoluteJointConstraintDesc>  revolute_joint_descs;
+		std::vector<RevoluteJointConstraintDesc>  revolute_joint_descs; // kept for API compat; all stored in JointConstraint
 
 		SolverData	 solver_data;
 		SolverHelper solver_helper;
@@ -257,8 +255,9 @@ namespace lcs
 		SpringEnergy*		   get_spring_energy() const { return spring_energy.get(); }
 		StretchFaceEnergy*	   get_stretch_face_energy() const { return stretch_face_energy.get(); }
 		BendingEnergy*		   get_bending_energy() const { return bending_energy.get(); }
-		AbdOrthoEnergy*		   get_abd_ortho_energy() const { return abd_ortho_energy.get(); }
-		TetElasticEnergy*	   get_tet_elastic_energy() const { return tet_elastic_energy.get(); }
+		AbdOrthoEnergy*			  get_abd_ortho_energy() const { return abd_ortho_energy.get(); }
+		TetElasticEnergy*		  get_tet_elastic_energy() const { return tet_elastic_energy.get(); }
+		JointConstraintEnergy*	  get_joint_constraint_energy() const { return joint_constraint_energy.get(); }
 
 	private:
 		luisa::compute::Shader<1, luisa::compute::BufferView<float>> fn_reset_float;
@@ -271,9 +270,7 @@ namespace lcs
 		std::unique_ptr<BendingEnergy>		   bending_energy;
 		std::unique_ptr<AbdOrthoEnergy>		   abd_ortho_energy;
 		std::unique_ptr<TetElasticEnergy>	   tet_elastic_energy;
-		std::unique_ptr<FixedJointEnergy>	   fixed_joint_energy;
-		std::unique_ptr<PrismaticJointEnergy>  prismatic_joint_energy;
-		std::unique_ptr<RevoluteJointEnergy>   revolute_joint_energy;
+		std::unique_ptr<JointConstraintEnergy> joint_constraint_energy;
 		// luisa::compute::Shader<1,
 		//     luisa::compute::BufferView<float3>,
 		//     luisa::compute::BufferView<float3>,

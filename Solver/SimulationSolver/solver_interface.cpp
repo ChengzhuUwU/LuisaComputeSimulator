@@ -848,16 +848,8 @@ namespace lcs
 		abd_ortho_energy = std::make_unique<AbdOrthoEnergy>(sim_data->sa_system_energy.view(), sim_data->sa_q.view());
 		abd_ortho_energy->compile(compiler);
 
-		fixed_joint_energy = std::make_unique<FixedJointEnergy>(sim_data->sa_system_energy.view(), sim_data->sa_q.view());
-		fixed_joint_energy->compile(compiler);
-
-		prismatic_joint_energy =
-			std::make_unique<PrismaticJointEnergy>(sim_data->sa_system_energy.view(), sim_data->sa_q.view());
-		prismatic_joint_energy->compile(compiler);
-
-		revolute_joint_energy =
-			std::make_unique<RevoluteJointEnergy>(sim_data->sa_system_energy.view(), sim_data->sa_q.view());
-		revolute_joint_energy->compile(compiler);
+		joint_constraint_energy = std::make_unique<JointConstraintEnergy>(sim_data->sa_system_energy.view(), sim_data->sa_q.view());
+		joint_constraint_energy->compile(compiler);
 	}
 	void SolverInterface::device_compute_elastic_energy(luisa::compute::Stream& stream,
 		std::map<std::string, double>&											energy_list)
@@ -887,44 +879,10 @@ namespace lcs
 			abd_ortho_energy->device_compute_energy(stream, abd_ortho_data, curr_q, abd_ortho_data.get_num_indices());
 		}
 
-		const auto& fixed_joint_data = sim_data->get_fixed_joint_data();
-		if (fixed_joint_data.is_valid())
+		const auto& joint_data = sim_data->get_joint_constraint_data();
+		if (joint_data.is_valid())
 		{
-			fixed_joint_energy->device_compute_energy(stream,
-				fixed_joint_data.constraint_indices_a,
-				fixed_joint_data.constraint_indices_b,
-				fixed_joint_data.anchor_a_local,
-				fixed_joint_data.anchor_b_local,
-				fixed_joint_data.stiffness,
-				fixed_joint_data.get_num_indices());
-		}
-
-		const auto& prismatic_joint_data = sim_data->get_prismatic_joint_data();
-		if (prismatic_joint_data.is_valid())
-		{
-			prismatic_joint_energy->device_compute_energy(stream,
-				prismatic_joint_data.constraint_indices_a,
-				prismatic_joint_data.constraint_indices_b,
-				prismatic_joint_data.anchor_a_local,
-				prismatic_joint_data.anchor_b_local,
-				prismatic_joint_data.axis_world,
-				prismatic_joint_data.stiffness,
-				prismatic_joint_data.get_num_indices());
-		}
-
-		const auto& revolute_joint_data = sim_data->get_revolute_joint_data();
-		if (revolute_joint_data.is_valid())
-		{
-			revolute_joint_energy->device_compute_energy(stream,
-				revolute_joint_data.constraint_indices_a,
-				revolute_joint_data.constraint_indices_b,
-				revolute_joint_data.anchor_a_local,
-				revolute_joint_data.anchor_b_local,
-				revolute_joint_data.axis_world,
-				revolute_joint_data.axis_a_local,
-				revolute_joint_data.axis_b_local,
-				revolute_joint_data.stiffness,
-				revolute_joint_data.get_num_indices());
+			joint_constraint_energy->device_compute_energy(stream, joint_data, joint_data.get_num_indices());
 		}
 
 		if (get_scene_params().use_floor)
@@ -981,9 +939,7 @@ namespace lcs
 		energy_list.insert(std::make_pair("Cloth Bending", host_energy[offset_bending]));
 		energy_list.insert(std::make_pair("ABD Orthogonality", host_energy[offset_abd_ortho]));
 		energy_list.insert(std::make_pair("Tet Elastic", host_energy[offset_tet_elastic]));
-		energy_list.insert(std::make_pair("Fixed Joint", host_energy[offset_fixed_joint]));
-		energy_list.insert(std::make_pair("Prismatic Joint", host_energy[offset_prismatic_joint]));
-		energy_list.insert(std::make_pair("Revolute Joint", host_energy[offset_revolute_joint]));
+		energy_list.insert(std::make_pair("Joint Constraint", host_energy[offset_joint_constraint]));
 	};
 
 	// ---------------------------------------------------------------------------

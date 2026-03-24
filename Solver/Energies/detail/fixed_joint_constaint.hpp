@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/float_n.h"
+#include "Core/float_nxn.h"
 #include "Energies/detail/energy_detail_common.hpp"
 #include <type_traits>
 
@@ -20,16 +22,16 @@ namespace lcs::detail::fixed_joint_constaint
 		FixedJointEvalResult<ScalarT, Vec3T, Mat3T> out{};
 		for (auto& g : out.gradients)
 		{
-			g = Vec3T(0.0f);
+			g = zero3;
 		}
 		for (auto& H : out.hessians)
 		{
-			H = 0.0f * identity;
+			H = zero3x3;
 		}
 
-		auto add_linear_term = [&](const Mat3T(&coeff)[8], const Vec3T& bias, const ScalarT stiffness)
+		auto add_linear_term = [&](const Mat3T(&coeff)[8], const ScalarT stiffness)
 		{
-			Vec3T r = bias;
+			Vec3T r = zero3;
 			for (int i = 0; i < 8; ++i)
 			{
 				r += coeff[i] * q[i];
@@ -46,7 +48,7 @@ namespace lcs::detail::fixed_joint_constaint
 		};
 
 		const Mat3T I = identity;
-		const Mat3T Z = 0.0f * identity;
+		const Mat3T Z = zero3x3;
 
 		// Anchor coincidence: (pB + B * rb) - (pA + A * ra) = 0
 		{
@@ -58,7 +60,7 @@ namespace lcs::detail::fixed_joint_constaint
 				anchor_b_local.x * I,
 				anchor_b_local.y * I,
 				anchor_b_local.z * I };
-			add_linear_term(coeff, Vec3T(0.0f), stiffness_pos);
+			add_linear_term(coeff, stiffness_pos);
 		}
 
 		// Orientation lock: A_i - B_i = 0 (i = 0..2)
@@ -67,7 +69,7 @@ namespace lcs::detail::fixed_joint_constaint
 			Mat3T coeff[8] = { Z, Z, Z, Z, Z, Z, Z, Z };
 			coeff[1 + row] = I;
 			coeff[5 + row] = (-1.0f) * I;
-			add_linear_term(coeff, Vec3T(0.0f), stiffness_rot);
+			add_linear_term(coeff, stiffness_rot);
 		}
 
 		return out;
