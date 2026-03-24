@@ -33,3 +33,4 @@ ext/*
 !.vscode/settings.json.for_xmake
 .obsidian
 lcs_config.ini
+.workbuddy
