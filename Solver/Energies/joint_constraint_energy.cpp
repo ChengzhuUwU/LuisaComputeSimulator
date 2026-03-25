@@ -43,6 +43,7 @@ namespace lcs
 
 				const Float3 anchor_a = joint.anchor_a_local->read(joint_idx);
 				const Float3 anchor_b = joint.anchor_b_local->read(joint_idx);
+				const Float3 rest_pos_delta = joint.rest_position_delta->read(joint_idx);
 				const Float3 axis = joint.axis_world->read(joint_idx);
 				const Float3 axis_a = joint.axis_a_local->read(joint_idx);
 				const Float3 axis_b = joint.axis_b_local->read(joint_idx);
@@ -56,7 +57,7 @@ namespace lcs
 
 				$if(jtype == static_cast<uint>(JointConstraintType::Fixed))
 				{
-					Float3 r_pos = p_b - p_a;
+					Float3 r_pos = (p_b - p_a) - rest_pos_delta;
 					energy = 0.5f * stiff.x * dot(r_pos, r_pos);
 					for (int row = 0; row < 3; ++row)
 					{
@@ -66,7 +67,7 @@ namespace lcs
 				}
 				$elif(jtype == static_cast<uint>(JointConstraintType::Prismatic))
 				{
-					Float3 d = p_b - p_a;
+					Float3 d = (p_b - p_a) - rest_pos_delta;
 					Float3 r_pos = d - axis * dot(axis, d);
 					energy = 0.5f * stiff.x * dot(r_pos, r_pos);
 					for (int row = 0; row < 3; ++row)
@@ -78,7 +79,7 @@ namespace lcs
 				$else
 				{
 					// Revolute
-					Float3 r_pos = p_b - p_a;
+					Float3 r_pos = (p_b - p_a) - rest_pos_delta;
 					energy = 0.5f * stiff.x * dot(r_pos, r_pos);
 
 					Float3 axis_a_world = q[1] * axis_a.x + q[2] * axis_a.y + q[3] * axis_a.z;
@@ -119,6 +120,7 @@ namespace lcs
 
 				const Float3   anchor_a = joint.anchor_a_local->read(joint_idx);
 				const Float3   anchor_b = joint.anchor_b_local->read(joint_idx);
+				const Float3   rest_pos_delta = joint.rest_position_delta->read(joint_idx);
 				const Float3   axis = joint.axis_world->read(joint_idx);
 				const Float3   axis_a = joint.axis_a_local->read(joint_idx);
 				const Float3   axis_b = joint.axis_b_local->read(joint_idx);
@@ -129,7 +131,7 @@ namespace lcs
 				$if(jtype == static_cast<uint>(JointConstraintType::Fixed))
 				{
 					auto eval = detail::fixed_joint_constaint::evaluate<Float, Float3, Float3x3>(
-						q, anchor_a, anchor_b, stiff.x, stiff.y, I);
+						q, anchor_a, anchor_b, rest_pos_delta, stiff.x, stiff.y, I);
 					for (uint i = 0; i < 8; ++i)
 						joint.constraint_gradients->write(joint_idx * 8u + i, eval.gradients[i]);
 					for (uint i = 0; i < 8; ++i)
@@ -139,7 +141,7 @@ namespace lcs
 				$elif(jtype == static_cast<uint>(JointConstraintType::Prismatic))
 				{
 					auto eval = detail::prismatic_joint_constaint::evaluate<Float, Float3, Float3x3>(
-						q, anchor_a, anchor_b, axis, stiff.x, stiff.y, I);
+						q, anchor_a, anchor_b, rest_pos_delta, axis, stiff.x, stiff.y, I);
 					for (uint i = 0; i < 8; ++i)
 						joint.constraint_gradients->write(joint_idx * 8u + i, eval.gradients[i]);
 					for (uint i = 0; i < 8; ++i)
@@ -150,7 +152,7 @@ namespace lcs
 				{
 					// Revolute
 					auto eval = detail::revolute_joint_constaint::evaluate<Float, Float3, Float3x3>(
-						q, anchor_a, anchor_b, axis, axis_a, axis_b, stiff.x, stiff.y, I);
+						q, anchor_a, anchor_b, rest_pos_delta, axis, axis_a, axis_b, stiff.x, stiff.y, I);
 					for (uint i = 0; i < 8; ++i)
 						joint.constraint_gradients->write(joint_idx * 8u + i, eval.gradients[i]);
 					for (uint i = 0; i < 8; ++i)
@@ -184,6 +186,7 @@ namespace lcs
 
 					const float3   anchor_a = joint_data.anchor_a_local[joint_idx];
 					const float3   anchor_b = joint_data.anchor_b_local[joint_idx];
+					const float3   rest_pos_delta = joint_data.rest_position_delta[joint_idx];
 					const float3   axis = joint_data.axis_world[joint_idx];
 					const float3   axis_a = joint_data.axis_a_local[joint_idx];
 					const float3   axis_b = joint_data.axis_b_local[joint_idx];
@@ -194,7 +197,7 @@ namespace lcs
 					if (jtype == static_cast<uint>(JointConstraintType::Fixed))
 					{
 						auto eval = detail::fixed_joint_constaint::evaluate<float, float3, float3x3>(
-							q, anchor_a, anchor_b, stiff.x, stiff.y, I);
+							q, anchor_a, anchor_b, rest_pos_delta, stiff.x, stiff.y, I);
 						for (uint i = 0; i < 8; ++i)
 							joint_data.constraint_gradients[joint_idx * 8u + i] = eval.gradients[i];
 						for (uint i = 0; i < 8; ++i)
@@ -204,7 +207,7 @@ namespace lcs
 					else if (jtype == static_cast<uint>(JointConstraintType::Prismatic))
 					{
 						auto eval = detail::prismatic_joint_constaint::evaluate<float, float3, float3x3>(
-							q, anchor_a, anchor_b, axis, stiff.x, stiff.y, I);
+							q, anchor_a, anchor_b, rest_pos_delta, axis, stiff.x, stiff.y, I);
 						for (uint i = 0; i < 8; ++i)
 							joint_data.constraint_gradients[joint_idx * 8u + i] = eval.gradients[i];
 						for (uint i = 0; i < 8; ++i)
@@ -215,7 +218,7 @@ namespace lcs
 					{
 						// Revolute
 						auto eval = detail::revolute_joint_constaint::evaluate<float, float3, float3x3>(
-							q, anchor_a, anchor_b, axis, axis_a, axis_b, stiff.x, stiff.y, I);
+							q, anchor_a, anchor_b, rest_pos_delta, axis, axis_a, axis_b, stiff.x, stiff.y, I);
 						for (uint i = 0; i < 8; ++i)
 							joint_data.constraint_gradients[joint_idx * 8u + i] = eval.gradients[i];
 						for (uint i = 0; i < 8; ++i)

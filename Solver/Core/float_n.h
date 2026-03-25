@@ -230,9 +230,9 @@ namespace lcs
 #define Zero3 luisa::make_float3(0.f, 0.f, 0.f)
 #define Zero4 luisa::make_float4(0.f, 0.f, 0.f, 0.f)
 
-	constexpr float2 zero2 = luisa::make_float2(1.0f);
-	constexpr float3 zero3 = luisa::make_float3(1.0f);
-	constexpr float4 zero4 = luisa::make_float4(1.0f);
+	constexpr float2 zero2 = luisa::make_float2(0.0f);
+	constexpr float3 zero3 = luisa::make_float3(0.0f);
+	constexpr float4 zero4 = luisa::make_float4(0.0f);
 
 	constexpr inline float2 makeFloat2(const float x = 0.0f)
 	{

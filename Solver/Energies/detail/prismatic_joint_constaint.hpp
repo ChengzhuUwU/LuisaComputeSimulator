@@ -27,6 +27,7 @@ namespace lcs::detail::prismatic_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
+		const Vec3T&  rest_position_delta,
 		const Vec3T&  axis_world,
 		const ScalarT stiffness_pos,
 		const ScalarT stiffness_rot,
@@ -42,9 +43,9 @@ namespace lcs::detail::prismatic_joint_constaint
 			H = zero3x3;
 		}
 
-		auto add_linear_term = [&](const Mat3T(&coeff)[8], const ScalarT stiffness)
+		auto add_linear_term = [&](const Mat3T(&coeff)[8], const Vec3T& bias, const ScalarT stiffness)
 		{
-			Vec3T r = zero3;
+			Vec3T r = bias;
 			for (int i = 0; i < 8; ++i)
 			{
 				r += coeff[i] * q[i];
@@ -75,7 +76,7 @@ namespace lcs::detail::prismatic_joint_constaint
 				anchor_b_local.x * P,
 				anchor_b_local.y * P,
 				anchor_b_local.z * P };
-			add_linear_term(coeff, stiffness_pos);
+			add_linear_term(coeff, (-1.0f) * (P * rest_position_delta), stiffness_pos);
 		}
 
 		// Keep relative orientation fixed to model a standard prismatic joint.
@@ -84,7 +85,7 @@ namespace lcs::detail::prismatic_joint_constaint
 			Mat3T coeff[8] = { Z, Z, Z, Z, Z, Z, Z, Z };
 			coeff[1 + row] = I;
 			coeff[5 + row] = (-1.0f) * I;
-			add_linear_term(coeff, stiffness_rot);
+			add_linear_term(coeff, zero3, stiffness_rot);
 		}
 
 		return out;
@@ -95,6 +96,7 @@ namespace lcs::detail::prismatic_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
+		const Vec3T&  rest_position_delta,
 		const Vec3T&  axis_world,
 		const ScalarT stiffness_pos,
 		const ScalarT stiffness_rot,
@@ -105,7 +107,7 @@ namespace lcs::detail::prismatic_joint_constaint
 
 		Vec3T p_a = q[0] + q[1] * anchor_a_local.x + q[2] * anchor_a_local.y + q[3] * anchor_a_local.z;
 		Vec3T p_b = q[4] + q[5] * anchor_b_local.x + q[6] * anchor_b_local.y + q[7] * anchor_b_local.z;
-		Vec3T r_pos = P * (p_b - p_a);
+		Vec3T r_pos = P * ((p_b - p_a) - rest_position_delta);
 
 		ScalarT energy = 0.5f * stiffness_pos * dot(r_pos, r_pos);
 		for (int row = 0; row < 3; ++row)

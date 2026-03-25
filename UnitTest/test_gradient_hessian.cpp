@@ -307,6 +307,14 @@ int main(int argc, char** argv)
 			float				  g_diff = (g_num - g_ana).cwiseAbs().maxCoeff(&g_idx);
 			float				  H_diff = (H_num - H_ana).cwiseAbs().maxCoeff(&h_row, &h_col);
 
+			if (g_diff < tol && H_diff < tol)
+			{
+				std::cout << "Energy FD Check: " << std::format("{:20}", name) << " : PASS"
+						  << "  (max |grad diff|=" << std::format("{:.3e}", g_diff)
+						  << ", max |hess diff|=" << std::format("{:.3e}", H_diff)
+						  << ", tol=" << tol << ")\n";
+				return;
+			}
 			std::cout << "\n============================================================\n";
 			std::cout << "Energy FD Check: " << name << "\n";
 			std::cout << "------------------------------------------------------------\n";
@@ -318,12 +326,6 @@ int main(int argc, char** argv)
 					  << "  (row=" << h_row << ", col=" << h_col << ")\n";
 			std::cout << std::left << std::setw(26) << "Tolerance"
 					  << ": " << tol << "\n";
-			if (g_diff < tol && H_diff < tol)
-			{
-				std::cout << "Result" << std::setw(21) << ""
-						  << ": PASS\n";
-				return;
-			}
 			std::cout << "Result" << std::setw(21) << ""
 					  << ": FAIL\n";
 			if (g_diff >= tol)
@@ -372,6 +374,12 @@ int main(int argc, char** argv)
 			Eigen::Index		  g_idx = 0;
 			float				  g_diff = (g_num - g_ana).cwiseAbs().maxCoeff(&g_idx);
 
+			if (g_diff < tol)
+			{
+				std::cout << "Energy FD Check: " << name << " (Gradient Only) : PASS"
+						  << "  (max |grad diff|=" << g_diff << ", tol=" << tol << ")\n";
+				return;
+			}
 			std::cout << "\n============================================================\n";
 			std::cout << "Energy FD Check: " << name << " (Gradient Only)\n";
 			std::cout << "------------------------------------------------------------\n";
@@ -380,12 +388,6 @@ int main(int argc, char** argv)
 					  << "  (idx=" << g_idx << ")\n";
 			std::cout << std::left << std::setw(26) << "Tolerance"
 					  << ": " << tol << "\n";
-			if (g_diff < tol)
-			{
-				std::cout << "Result" << std::setw(21) << ""
-						  << ": PASS\n";
-				return;
-			}
 			std::cout << "Result" << std::setw(21) << ""
 					  << ": FAIL\n";
 			std::cout << "Analytic gradient : " << g_ana.transpose().format(vec_fmt) << "\n";
@@ -799,6 +801,7 @@ int main(int argc, char** argv)
 			const float	 k_rot = 5.0f;
 			const float3 anchor_a = luisa::make_float3(0.1f, -0.05f, 0.03f);
 			const float3 anchor_b = luisa::make_float3(-0.02f, 0.08f, -0.04f);
+			const float3 rest_position_delta = luisa::make_float3(0.03f, -0.01f, 0.02f);
 
 			std::function<float(const EigenVec&)> fixed_joint_func = [&](const EigenVec& xv) -> float
 			{
@@ -808,7 +811,7 @@ int main(int argc, char** argv)
 					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
 				}
 				return detail::fixed_joint_constaint::compute_energy(
-					q, anchor_a, anchor_b, k_pos, k_rot, luisa::make_float3x3(1.0f));
+					q, anchor_a, anchor_b, rest_position_delta, k_pos, k_rot, luisa::make_float3x3(1.0f));
 			};
 
 			EigenVec x0(24);
@@ -831,7 +834,7 @@ int main(int argc, char** argv)
 				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
 			}
 			auto eval = detail::fixed_joint_constaint::evaluate(
-				q, anchor_a, anchor_b, k_pos, k_rot, luisa::make_float3x3(1.0f));
+				q, anchor_a, anchor_b, rest_position_delta, k_pos, k_rot, luisa::make_float3x3(1.0f));
 
 			Eigen::VectorXf g_ana(24);
 			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
@@ -852,6 +855,7 @@ int main(int argc, char** argv)
 			const float	 k_rot = 3.5f;
 			const float3 anchor_a = luisa::make_float3(0.0f, 0.05f, -0.02f);
 			const float3 anchor_b = luisa::make_float3(0.0f, -0.03f, 0.01f);
+			const float3 rest_position_delta = luisa::make_float3(-0.02f, 0.04f, -0.01f);
 			const float3 axis_world = luisa::make_float3(1.0f, 0.0f, 0.0f);
 
 			std::function<float(const EigenVec&)> prismatic_joint_func = [&](const EigenVec& xv) -> float
@@ -862,7 +866,7 @@ int main(int argc, char** argv)
 					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
 				}
 				return detail::prismatic_joint_constaint::compute_energy(
-					q, anchor_a, anchor_b, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+					q, anchor_a, anchor_b, rest_position_delta, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
 			};
 
 			EigenVec x0(24);
@@ -885,7 +889,7 @@ int main(int argc, char** argv)
 				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
 			}
 			auto eval = detail::prismatic_joint_constaint::evaluate(
-				q, anchor_a, anchor_b, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+				q, anchor_a, anchor_b, rest_position_delta, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
 
 			Eigen::VectorXf g_ana(24);
 			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
@@ -906,6 +910,7 @@ int main(int argc, char** argv)
 			const float	 k_axis = 4.0f;
 			const float3 anchor_a = luisa::make_float3(0.02f, -0.01f, 0.0f);
 			const float3 anchor_b = luisa::make_float3(-0.01f, 0.02f, 0.0f);
+			const float3 rest_position_delta = luisa::make_float3(0.01f, -0.03f, 0.02f);
 			const float3 axis_world = luisa::make_float3(0.0f, 0.0f, 1.0f);
 			const float3 axis_a_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
 			const float3 axis_b_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
@@ -921,6 +926,7 @@ int main(int argc, char** argv)
 					q,
 					anchor_a,
 					anchor_b,
+					rest_position_delta,
 					axis_world,
 					axis_a_local,
 					axis_b_local,
@@ -952,6 +958,7 @@ int main(int argc, char** argv)
 				q,
 				anchor_a,
 				anchor_b,
+				rest_position_delta,
 				axis_world,
 				axis_a_local,
 				axis_b_local,

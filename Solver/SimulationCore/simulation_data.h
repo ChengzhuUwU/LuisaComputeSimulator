@@ -421,6 +421,9 @@ namespace lcs
 		// constraint_indices   = body-A DOF indices (uint4)
 		// constraint_indices_b = body-B DOF indices (uint4)
 		// axis_world / axis_a_local / axis_b_local are (1,0,0) for Fixed; axis_a/b unused for Prismatic.
+		// rest_position_delta stores initial (p_b - p_a) at joint creation; position constraints are
+		// enforced on (current_delta - rest_position_delta) so fixed/prismatic/revolute preserve
+		// initial anchor spacing instead of collapsing to zero distance.
 		// joint_type encodes JointConstraintType as uint32.
 		// constraint_gradients : 8 float3  per joint (pre-computed by eval shader)
 		// constraint_hessians  : 64 float3x3 per joint (pre-computed by eval shader)
@@ -432,6 +435,7 @@ namespace lcs
 			BufferType<uint8>  constraint_indices;
 			BufferType<float3> anchor_a_local;
 			BufferType<float3> anchor_b_local;
+			BufferType<float3> rest_position_delta;
 			BufferType<float3> axis_world;
 			BufferType<float3> axis_a_local;
 			BufferType<float3> axis_b_local;
@@ -670,6 +674,7 @@ LUISA_BINDING_GROUP(lcs::Constitutions::JointConstraint<luisa::compute::Buffer>,
 	vert_adj_constraints_csr,
 	anchor_a_local,
 	anchor_b_local,
+	rest_position_delta,
 	axis_world,
 	axis_a_local,
 	axis_b_local,

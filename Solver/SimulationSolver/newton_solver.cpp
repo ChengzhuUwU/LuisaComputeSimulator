@@ -2168,6 +2168,10 @@ namespace lcs
 					{
 						e->host_evaluate(*host_sim_data, *host_mesh_data);
 					}
+					if (auto* e = get_joint_constraint_energy())
+					{
+						e->host_evaluate(*host_sim_data, *host_mesh_data);
+					}
 					if (auto* e = get_ground_collision_energy())
 					{
 						if (get_scene_params().use_floor)

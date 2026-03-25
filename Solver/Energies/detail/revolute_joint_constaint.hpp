@@ -27,6 +27,7 @@ namespace lcs::detail::revolute_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
+		const Vec3T&  rest_position_delta,
 		const Vec3T&  axis_world,
 		const Vec3T&  axis_a_local,
 		const Vec3T&  axis_b_local,
@@ -44,9 +45,9 @@ namespace lcs::detail::revolute_joint_constaint
 			H = zero3x3;
 		}
 
-		auto add_linear_term = [&](const Mat3T(&coeff)[8], const ScalarT stiffness)
+		auto add_linear_term = [&](const Mat3T(&coeff)[8], const Vec3T& bias, const ScalarT stiffness)
 		{
-			Vec3T r = zero3;
+			Vec3T r = bias;
 			for (int i = 0; i < 8; ++i)
 			{
 				r += coeff[i] * q[i];
@@ -77,7 +78,7 @@ namespace lcs::detail::revolute_joint_constaint
 				anchor_b_local.x * I,
 				anchor_b_local.y * I,
 				anchor_b_local.z * I };
-			add_linear_term(coeff, stiffness_pos);
+			add_linear_term(coeff, (-1.0f) * rest_position_delta, stiffness_pos);
 		}
 
 		// Body A hinge axis must align with world hinge axis.
@@ -90,7 +91,7 @@ namespace lcs::detail::revolute_joint_constaint
 				Z,
 				Z,
 				Z };
-			add_linear_term(coeff, stiffness_axis);
+			add_linear_term(coeff, zero3, stiffness_axis);
 		}
 
 		// Body B hinge axis must align with world hinge axis.
@@ -103,7 +104,7 @@ namespace lcs::detail::revolute_joint_constaint
 				axis_b_local.x * P,
 				axis_b_local.y * P,
 				axis_b_local.z * P };
-			add_linear_term(coeff, stiffness_axis);
+			add_linear_term(coeff, zero3, stiffness_axis);
 		}
 
 		return out;
@@ -114,6 +115,7 @@ namespace lcs::detail::revolute_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
+		const Vec3T&  rest_position_delta,
 		const Vec3T&  axis_world,
 		const Vec3T&  axis_a_local,
 		const Vec3T&  axis_b_local,
@@ -126,7 +128,7 @@ namespace lcs::detail::revolute_joint_constaint
 
 		Vec3T p_a = q[0] + q[1] * anchor_a_local.x + q[2] * anchor_a_local.y + q[3] * anchor_a_local.z;
 		Vec3T p_b = q[4] + q[5] * anchor_b_local.x + q[6] * anchor_b_local.y + q[7] * anchor_b_local.z;
-		Vec3T r_pos = p_b - p_a;
+		Vec3T r_pos = (p_b - p_a) - rest_position_delta;
 
 		Vec3T axis_a_world = q[1] * axis_a_local.x + q[2] * axis_a_local.y + q[3] * axis_a_local.z;
 		Vec3T axis_b_world = q[5] * axis_b_local.x + q[6] * axis_b_local.y + q[7] * axis_b_local.z;

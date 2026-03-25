@@ -1177,75 +1177,115 @@ namespace lcs::Initializer
 
 			auto&				joint_data = sim_data->get_joint_constraint_data();
 			const luisa::float3 default_axis{ 1.f, 0.f, 0.f };
-
-			using uint8 = std::array<uint, 8>;
-
-			for (const auto& desc : fixed_joint_descs)
+			const auto&			rest_q = sim_data->sa_rest_q;
+			auto compute_rest_position_delta = [&](const uint4& idx_a, const uint4& idx_b, const float3& anchor_a, const float3& anchor_b)
 			{
-				uint4 idx_a{};
-				uint4 idx_b{};
-				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
-					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
-				{
-					continue;
-				}
-				uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_a[0], idx_a[1], idx_a[2], idx_a[3] };
-				joint_data.constraint_indices.push_back(idx_ext);
-				joint_data.anchor_a_local.push_back(desc.anchor_a_local);
-				joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-				joint_data.axis_world.push_back(default_axis);
-				joint_data.axis_a_local.push_back(default_axis);
-				joint_data.axis_b_local.push_back(default_axis);
-				joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
-				joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Fixed));
-			}
-
-			for (const auto& desc : prismatic_joint_descs)
+				const float3 p_a = rest_q[idx_a.x] + rest_q[idx_a.y] * anchor_a.x + rest_q[idx_a.z] * anchor_a.y + rest_q[idx_a.w] * anchor_a.z;
+				const float3 p_b = rest_q[idx_b.x] + rest_q[idx_b.y] * anchor_b.x + rest_q[idx_b.z] * anchor_b.y + rest_q[idx_b.w] * anchor_b.z;
+				return p_b - p_a;
+			};
+			auto try_get_rest_anchor_world = [&](uint registration_id, const float3& anchor_local, float3& out_pos) -> bool
 			{
-				uint4 idx_a{};
-				uint4 idx_b{};
-				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
-					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+				if (registration_id >= mesh_data->input_to_sorted_mesh_id.size())
 				{
-					continue;
+					return false;
 				}
-				uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_a[0], idx_a[1], idx_a[2], idx_a[3] };
-				joint_data.constraint_indices.push_back(idx_ext);
-				joint_data.anchor_a_local.push_back(desc.anchor_a_local);
-				joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-				joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
-				joint_data.axis_a_local.push_back(default_axis);
-				joint_data.axis_b_local.push_back(default_axis);
-				joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
-				joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Prismatic));
-			}
-
-			for (const auto& desc : revolute_joint_descs)
+				const uint sorted_idx = mesh_data->input_to_sorted_mesh_id[registration_id];
+				if (sorted_idx >= world_data.size() || !world_data[sorted_idx].holds<lcs::Material::RigidMaterial>())
+				{
+					return false;
+				}
+				const auto& wd = world_data[sorted_idx];
+				// Keep scale as 1 to match affine-body q representation used by joint energy terms.
+				const float4x4 rest_transform = lcs::make_model_matrix(wd.translation, wd.rotation, luisa::make_float3(1.0f));
+				out_pos = lcs::affine_position(rest_transform, anchor_local);
+				return true;
+			};
+			auto compute_rest_position_delta_from_world = [&](uint reg_a, uint reg_b, const float3& anchor_a, const float3& anchor_b, const uint4& idx_a, const uint4& idx_b)
 			{
-				uint4 idx_a{};
-				uint4 idx_b{};
-				if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
-					|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+				float3 p_a{};
+				float3 p_b{};
+				if (try_get_rest_anchor_world(reg_a, anchor_a, p_a) && try_get_rest_anchor_world(reg_b, anchor_b, p_b))
 				{
-					continue;
+					return p_b - p_a;
+				}
+				return compute_rest_position_delta(idx_a, idx_b, anchor_a, anchor_b);
+			};
+
+				using uint8 = std::array<uint, 8>;
+
+				for (const auto& desc : fixed_joint_descs)
+				{
+					uint4 idx_a{};
+					uint4 idx_b{};
+					if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+						|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+					{
+						continue;
+					}
+					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
+					joint_data.constraint_indices.push_back(idx_ext);
+					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
+						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.axis_world.push_back(default_axis);
+					joint_data.axis_a_local.push_back(default_axis);
+					joint_data.axis_b_local.push_back(default_axis);
+					joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
+					joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Fixed));
 				}
 
-				uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_a[0], idx_a[1], idx_a[2], idx_a[3] };
-				joint_data.constraint_indices.push_back(idx_ext);
-				joint_data.anchor_a_local.push_back(desc.anchor_a_local);
-				joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-				joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
-				joint_data.axis_a_local.push_back(normalize_axis(desc.axis_a_local));
-				joint_data.axis_b_local.push_back(normalize_axis(desc.axis_b_local));
-				joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_axis));
-				joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Revolute));
-			}
+				for (const auto& desc : prismatic_joint_descs)
+				{
+					uint4 idx_a{};
+					uint4 idx_b{};
+					if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+						|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+					{
+						continue;
+					}
+					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
+					joint_data.constraint_indices.push_back(idx_ext);
+					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
+						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
+					joint_data.axis_a_local.push_back(default_axis);
+					joint_data.axis_b_local.push_back(default_axis);
+					joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_rot));
+					joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Prismatic));
+				}
 
-			// Pre-allocate gradient/hessian buffers (filled by eval shader at runtime)
-			const size_t num_joints = joint_data.constraint_indices.size();
-			joint_data.constraint_gradients.resize(num_joints * 8u, luisa::make_float3(0.f));
-			joint_data.constraint_hessians.resize(num_joints * 64u, luisa::make_float3x3(0.f));
-		}
+				for (const auto& desc : revolute_joint_descs)
+				{
+					uint4 idx_a{};
+					uint4 idx_b{};
+					if (!try_get_rigid_q_indices(desc.body_a_registration, idx_a)
+						|| !try_get_rigid_q_indices(desc.body_b_registration, idx_b))
+					{
+						continue;
+					}
+
+					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
+					joint_data.constraint_indices.push_back(idx_ext);
+					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
+					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
+					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
+						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
+					joint_data.axis_a_local.push_back(normalize_axis(desc.axis_a_local));
+					joint_data.axis_b_local.push_back(normalize_axis(desc.axis_b_local));
+					joint_data.stiffness.push_back(luisa::make_float2(desc.stiffness_pos, desc.stiffness_axis));
+					joint_data.joint_type.push_back(static_cast<uint>(JointConstraintType::Revolute));
+				}
+
+				// Pre-allocate gradient/hessian buffers (filled by eval shader at runtime)
+				const size_t num_joints = joint_data.constraint_indices.size();
+				joint_data.constraint_gradients.resize(num_joints * 8u, luisa::make_float3(0.f));
+				joint_data.constraint_hessians.resize(num_joints * 64u, luisa::make_float3x3(0.f));
+			}
 
 		// Init Energy Adjacent List
 		{
@@ -1682,6 +1722,7 @@ namespace lcs::Initializer
 				<< upload_buffer(device, joint_O.constraint_indices, joint_I.constraint_indices)
 				<< upload_buffer(device, joint_O.anchor_a_local, joint_I.anchor_a_local)
 				<< upload_buffer(device, joint_O.anchor_b_local, joint_I.anchor_b_local)
+				<< upload_buffer(device, joint_O.rest_position_delta, joint_I.rest_position_delta)
 				<< upload_buffer(device, joint_O.axis_world, joint_I.axis_world)
 				<< upload_buffer(device, joint_O.axis_a_local, joint_I.axis_a_local)
 				<< upload_buffer(device, joint_O.axis_b_local, joint_I.axis_b_local)
