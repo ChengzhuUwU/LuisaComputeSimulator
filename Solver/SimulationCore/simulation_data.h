@@ -420,10 +420,12 @@ namespace lcs
 		// Unified joint constraint: covers Fixed, Prismatic, and Revolute joints.
 		// constraint_indices   = body-A DOF indices (uint4)
 		// constraint_indices_b = body-B DOF indices (uint4)
-		// axis_world / axis_a_local / axis_b_local are (1,0,0) for Fixed; axis_a/b unused for Prismatic.
-		// rest_position_delta stores initial (p_b - p_a) at joint creation; position constraints are
-		// enforced on (current_delta - rest_position_delta) so fixed/prismatic/revolute preserve
-		// initial anchor spacing instead of collapsing to zero distance.
+		// rest_position_delta stores initial anchor delta expressed in body-A local frame.
+		// Runtime target is A * rest_position_delta, which makes the positional relation body-local.
+		// rest_rot_col*_a_to_b stores the initial relative rotation columns R_ab (body-A local):
+		// B = A * R_ab for Fixed/Prismatic orientation locking.
+		// axis_world is used by Prismatic positional projector.
+		// axis_a_local / axis_b_local are used by Revolute axis alignment.
 		// joint_type encodes JointConstraintType as uint32.
 		// constraint_gradients : 8 float3  per joint (pre-computed by eval shader)
 		// constraint_hessians  : 64 float3x3 per joint (pre-computed by eval shader)
@@ -436,6 +438,9 @@ namespace lcs
 			BufferType<float3> anchor_a_local;
 			BufferType<float3> anchor_b_local;
 			BufferType<float3> rest_position_delta;
+			BufferType<float3> rest_rot_col0_a_to_b;
+			BufferType<float3> rest_rot_col1_a_to_b;
+			BufferType<float3> rest_rot_col2_a_to_b;
 			BufferType<float3> axis_world;
 			BufferType<float3> axis_a_local;
 			BufferType<float3> axis_b_local;
@@ -675,6 +680,9 @@ LUISA_BINDING_GROUP(lcs::Constitutions::JointConstraint<luisa::compute::Buffer>,
 	anchor_a_local,
 	anchor_b_local,
 	rest_position_delta,
+	rest_rot_col0_a_to_b,
+	rest_rot_col1_a_to_b,
+	rest_rot_col2_a_to_b,
 	axis_world,
 	axis_a_local,
 	axis_b_local,

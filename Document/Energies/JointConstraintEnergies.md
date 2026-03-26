@@ -1,200 +1,223 @@
 # Joint Constraint Energies
 
-This document covers the three joint constraint energies implemented in
-`Solver/Energies/detail/`:
+This note documents the unified rigid joint constraint implementation in:
 
-- `fixed_joint_constaint.hpp` — **Fixed Joint**
-- `prismatic_joint_constaint.hpp` — **Prismatic Joint**
-- `revolute_joint_constaint.hpp` — **Revolute Joint**
+- `Solver/Energies/detail/fixed_joint_constaint.hpp`
+- `Solver/Energies/detail/prismatic_joint_constaint.hpp`
+- `Solver/Energies/detail/revolute_joint_constaint.hpp`
+- `Solver/Energies/joint_constraint_energy.cpp`
 
-All three use the **ABD (Affine Body Dynamics)** representation.  
-Each rigid body is parameterized by 4 "column vectors" $(p, a_0, a_1, a_2) \in \mathbb{R}^{3\times4}$:
+The current implementation is a **body-local rest formulation**.
 
-$$
-\mathbf{q}^{(A)} = (q_0, q_1, q_2, q_3), \qquad
-\mathbf{q}^{(B)} = (q_4, q_5, q_6, q_7)
-$$
+## 1. ABD State and Notation
 
-where $q_0, q_4 \in \mathbb{R}^3$ are the body origins and $q_1, q_2, q_3$ (resp. $q_5, q_6, q_7$) are the columns of the deformation/rotation matrix $A$ (resp. $B$).
-
-The world-space position of a local point $r$ on body $A$ is:
+For two rigid bodies A and B, the 8 ABD blocks are:
 
 $$
-p_A(r) = q_0 + q_1 r_x + q_2 r_y + q_3 r_z
-$$
-
----
-
-## 1. Fixed Joint
-
-**Files:** `fixed_joint_energy.h / .cpp`, `detail/fixed_joint_constaint.hpp`
-
-### 1.1 Constraint Description
-
-A fixed joint locks **both the relative position and relative orientation** of two bodies.  
-Two penalty terms are summed:
-
-| Term | Residual | Meaning |
-|------|----------|---------|
-| Position | $r_\text{pos} = p_B(r^B) - p_A(r^A)$ | Anchor points must coincide |
-| Orientation (row $k$) | $r_k = q_{1+k} - q_{5+k}$ | Column $k$ of $A$ equals column $k$ of $B$ |
-
-### 1.2 Energy
-
-$$
-E_\text{fixed} = \frac{k_\text{pos}}{2} \|r_\text{pos}\|^2 + \frac{k_\text{rot}}{2} \sum_{k=0}^{2} \|r_k\|^2
+\mathbf{q}=(q_0,q_1,q_2,q_3,q_4,q_5,q_6,q_7),
 $$
 
 where
 
-$$
-r_\text{pos} = (q_4 + q_5 r^B_x + q_6 r^B_y + q_7 r^B_z) - (q_0 + q_1 r^A_x + q_2 r^A_y + q_3 r^A_z)
-$$
+- $q_0, q_4 \in \mathbb{R}^3$: body origins,
+- $A=[q_1\ q_2\ q_3]$, $B=[q_5\ q_6\ q_7]$.
 
-### 1.3 Gradient and Hessian
-
-All constraints are **linear in $\mathbf{q}$**, so the energy is a quadratic form:
+World position of a body-local point $r$:
 
 $$
-E = \frac{s}{2} \|\mathbf{C}\mathbf{q} + b\|^2, \quad
-\nabla_{\mathbf{q}} E = s\, \mathbf{C}^\top(\mathbf{C}\mathbf{q} + b), \quad
-\nabla^2_{\mathbf{q}} E = s\, \mathbf{C}^\top \mathbf{C}
+p_A(r)=q_0 + A r, \qquad p_B(r)=q_4 + B r.
 $$
 
-Each linear constraint contributes coefficient matrices $C_i \in \mathbb{R}^{3\times3}$ for each DOF block $q_i$.  
-The implementation uses the shared `add_linear_term` kernel:
+## 2. Stored Rest Data (Body-Local)
 
+Per joint, initialization computes and stores:
+
+- `anchor_a_local`, `anchor_b_local`
+- `rest_position_delta` as
+  $$
+  d_0^A = A_0^{-1}\bigl(p_{B0}(r_b)-p_{A0}(r_a)\bigr)
+  $$
+- `rest_rot_col0/1/2_a_to_b` as columns of
+  $$
+  R_{ab}^0 = A_0^{-1}B_0
+  $$
+
+So the runtime target relation is body-local:
+
+- positional target: $A d_0^A$
+- orientation target (fixed/prismatic): $B = A R_{ab}^0$.
+
+## 3. Fixed Joint
+
+Residuals:
+
+$$
+r_{pos} = \bigl(p_B(r_b)-p_A(r_a)\bigr) - A d_0^A,
+$$
+
+$$
+r_{rot,j} = q_{5+j} - A\,c_j,\quad j\in\{0,1,2\},
+$$
+
+where $c_j$ is column $j$ of $R_{ab}^0$.
+
+Energy:
+
+$$
+E_{fixed} = \frac{k_{pos}}{2}\|r_{pos}\|^2 + \frac{k_{rot}}{2}\sum_{j=0}^2 \|r_{rot,j}\|^2.
+$$
+
+This locks full relative pose in body-local rest sense.
+
+## 4. Prismatic Joint
+
+Let $n=\text{normalize}(axis_{world})$, and
+
+$$
+P = I - nn^T.
+$$
+
+Residuals:
+
+$$
+r_{pos} = P\Bigl(\bigl(p_B(r_b)-p_A(r_a)\bigr)-A d_0^A\Bigr),
+$$
+
+$$
+r_{rot,j} = q_{5+j} - A\,c_j,\quad j\in\{0,1,2\}.
+$$
+
+Energy:
+
+$$
+E_{prismatic} = \frac{k_{pos}}{2}\|r_{pos}\|^2 + \frac{k_{rot}}{2}\sum_{j=0}^2 \|r_{rot,j}\|^2.
+$$
+
+Interpretation:
+
+- translation perpendicular to $n$ is locked,
+- translation along $n$ is free,
+- relative orientation is locked to rest.
+
+So prismatic is **not** fixed: it keeps one translational DOF (along axis).
+
+## 5. Revolute Joint
+
+Residuals:
+
+$$
+r_{pos} = \bigl(p_B(r_b)-p_A(r_a)\bigr) - A d_0^A,
+$$
+
+$$
+r_{axis}=A\,a_{local}-B\,b_{local},
+$$
+
+where $a_{local}=$ `axis_a_local`, $b_{local}=$ `axis_b_local`.
+
+Energy:
+
+$$
+E_{revolute}=\frac{k_{pos}}{2}\|r_{pos}\|^2 + \frac{k_{axis}}{2}\|r_{axis}\|^2.
+$$
+
+Interpretation:
+
+- anchor position is fully locked (3 DOF),
+- the two hinge axes must coincide in world space,
+- twist around the shared hinge axis is free.
+
+Note: `axis_world` is not used in the revolute energy expression; revolute uses only `axis_a_local` and `axis_b_local`.
+
+## 6. Gradient and Hessian Structure
+
+All residuals are linear in ABD unknowns, so each term has exact quadratic form:
+
+$$
+E=\frac{s}{2}\|Cq+b\|^2,\quad \nabla E=sC^T(Cq+b),\quad \nabla^2E=sC^TC.
+$$
+
+Therefore joint gradient/Hessian are exact analytic results from linear coefficients (constant Hessian for each constraint term).
+
+## 7. Parameter Mapping
+
+- Fixed: `stiffness.x = k_pos`, `stiffness.y = k_rot`
+- Prismatic: `stiffness.x = k_pos`, `stiffness.y = k_rot`
+- Revolute: `stiffness.x = k_pos`, `stiffness.y = k_axis`
+
+## 8. DOF Summary
+
+- Fixed: lock 6, free 0
+- Prismatic: lock 5, free 1 (translation along `axis_world`)
+- Revolute: lock 5, free 1 (rotation around hinge axis)
+
+## 9. Validation
+
+Behavior validation script:
+
+- `PythonBindings/tests/test_rigid_joint_animation.py`
+
+Headless run example:
+
+```bash
+<LCS_PYTHON_EXECUTABLE> PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
-r = bias + Σ_i  coeff[i] * q[i]
-grad[i]       += stiffness * coeff[i] * r
-hessian[i][j] += stiffness * coeff[i] * coeff[j]   (outer product of 3×3 matrices)
-```
 
-**Position term** — coefficient layout $(i = 0 \dots 7)$:
+The script checks fixed lock, prismatic free-axis translation, and revolute free twist numerically.
 
-$$
-C = \bigl(-I,\ -r^A_x I,\ -r^A_y I,\ -r^A_z I,\ I,\ r^B_x I,\ r^B_y I,\ r^B_z I\bigr)
-$$
+## 10. Migration Guide (World-Space -> Body-Local)
 
-**Orientation term for row $k$** — only DOF blocks $1+k$ and $5+k$ are non-zero:
+This section summarizes how the current body-local formulation differs from the previous world-space style expressions.
 
-$$
-C_{1+k} = I, \quad C_{5+k} = -I
-$$
+### 10.1 Core Variable Migration
 
-The full Hessian is an $8\times8$ block matrix (each block is $3\times3$), hence 64 blocks stored in the `EnergyEvalResult<8,64,...>`.
+Old idea (world-space target):
 
----
+- Position target was directly a world delta or direct anchor coincidence without body-local rest transport.
+- Orientation lock was often expressed as direct column equality (`q_{1+k} - q_{5+k}`), which implies identity rest relative rotation.
 
-## 2. Prismatic Joint
+New idea (body-local target):
 
-**Files:** `prismatic_joint_energy.h / .cpp`, `detail/prismatic_joint_constaint.hpp`
+- Store rest relative position in body-A local frame:
+  $$
+  d_0^A = A_0^{-1}\bigl(p_{B0}(r_b)-p_{A0}(r_a)\bigr)
+  $$
+  and enforce runtime target with `A * d_0^A`.
+- Store rest relative rotation:
+  $$
+  R_{ab}^0 = A_0^{-1}B_0
+  $$
+  and enforce `B - A * R_{ab}^0` (for fixed/prismatic orientation lock).
 
-### 2.1 Constraint Description
+### 10.2 Per-Joint Formula Mapping
 
-A prismatic joint allows **sliding along one axis** $\hat{n}$ (world-space) but locks all other relative motion.  
-Define the **plane projector** orthogonal to $\hat{n}$:
+| Joint | Old-style residual (typical) | New residual (implemented) | Effect |
+|---|---|---|---|
+| Fixed | $r_{pos}=p_B(r_b)-p_A(r_a)$, $r_{rot,j}=q_{5+j}-q_{1+j}$ | $r_{pos}=(p_B(r_b)-p_A(r_a)) - A d_0^A$, $r_{rot,j}=q_{5+j}-A c_j$ | Locks full relative pose around non-identity rest relation |
+| Prismatic | $r_{pos}=P(p_B-p_A)$, $r_{rot,j}=q_{5+j}-q_{1+j}$ | $r_{pos}=P((p_B(r_b)-p_A(r_a))-A d_0^A)$, $r_{rot,j}=q_{5+j}-A c_j$ | Preserves 1 translational DOF along axis while respecting rest relative pose |
+| Revolute | Often world-axis projection/alignment form | $r_{pos}=(p_B(r_b)-p_A(r_a)) - A d_0^A$, $r_{axis}=A a_{local}-B b_{local}$ | Preserves 1 rotational DOF (twist) with body-local hinge-axis consistency |
 
-$$
-P = I - \hat{n}\hat{n}^\top, \qquad \hat{n} = \frac{n_\text{world}}{\|n_\text{world}\|}
-$$
+Here $c_j$ is column $j$ of $R_{ab}^0$.
 
-| Term | Residual | Meaning |
-|------|----------|---------|
-| Position (in-plane) | $r_\text{pos} = P(p_B(r^B) - p_A(r^A))$ | Relative displacement perpendicular to axis must be zero |
-| Orientation (row $k$) | $r_k = q_{1+k} - q_{5+k}$ | Relative orientation locked (no rotation) |
+### 10.3 Why This Migration Matters
 
-### 2.2 Energy
+- If initial relative orientation is not identity, direct `q_{1+k} - q_{5+k}` will over-constrain toward identity and create bias.
+- If initial anchor relation is not world-fixed, omitting `A d_0^A` causes rest-target inconsistency when body A rotates.
+- Body-local rest storage makes constraint objectives invariant to the initial global placement and better matches articulated-joint semantics.
 
-$$
-E_\text{prismatic} = \frac{k_\text{pos}}{2} \|P(p_B - p_A)\|^2 + \frac{k_\text{rot}}{2} \sum_{k=0}^{2} \|q_{1+k} - q_{5+k}\|^2
-$$
+### 10.4 Migration Checklist (Code Review)
 
-### 2.3 Gradient and Hessian
-
-The structure is identical to the Fixed Joint, with the single change that $I$ in the position coefficient block is replaced by $P$:
-
-$$
-C_\text{pos} = \bigl(-P,\ -r^A_x P,\ -r^A_y P,\ -r^A_z P,\ P,\ r^B_x P,\ r^B_y P,\ r^B_z P\bigr)
-$$
-
-The orientation term is unchanged.  
-Because $P$ is a constant (given a fixed world axis), the Hessian is still **exact and constant** (no second-order correction needed).
-
-> **Note:** The energy computation in the `.cpp` shader uses the equivalent direct form  
-> $r_\text{pos} = d - \hat{n}(\hat{n} \cdot d)$ where $d = p_B - p_A$, which avoids an explicit matrix multiply on the GPU.
-
----
-
-## 3. Revolute Joint
-
-**Files:** `revolute_joint_energy.h / .cpp`, `detail/revolute_joint_constaint.hpp`
-
-### 3.1 Constraint Description
-
-A revolute joint allows **rotation around one hinge axis** while locking the anchor position and forcing the local hinge axes of both bodies to align with the world hinge axis $\hat{n}$.
-
-Let
-
-$$
-a_A = q_1 (\alpha_x) + q_2 (\alpha_y) + q_3 (\alpha_z), \qquad
-a_B = q_5 (\beta_x) + q_6 (\beta_y) + q_7 (\beta_z)
-$$
-
-be the hinge axis in world space, where $\alpha = $ `axis_a_local` and $\beta = $ `axis_b_local`.
-
-| Term | Residual | Meaning |
-|------|----------|---------|
-| Position | $r_\text{pos} = p_B(r^B) - p_A(r^A)$ | Anchor points coincide (full 3-DOF lock) |
-| Axis A alignment | $r_{aA} = P\, a_A$ | Body A's hinge axis ∥ world axis |
-| Axis B alignment | $r_{aB} = P\, a_B$ | Body B's hinge axis ∥ world axis |
-
-### 3.2 Energy
-
-$$
-E_\text{revolute} = \frac{k_\text{pos}}{2} \|p_B - p_A\|^2 + \frac{k_\text{axis}}{2} \|P\, a_A\|^2 + \frac{k_\text{axis}}{2} \|P\, a_B\|^2
-$$
-
-### 3.3 Gradient and Hessian
-
-**Position term** — same coefficient layout as Fixed Joint:
-
-$$
-C_\text{pos} = \bigl(-I,\ -r^A_x I,\ -r^A_y I,\ -r^A_z I,\ I,\ r^B_x I,\ r^B_y I,\ r^B_z I\bigr)
-$$
-
-**Axis-A alignment term** — non-zero only in body-A rotation blocks:
-
-$$
-C_{1} = \alpha_x P, \quad C_{2} = \alpha_y P, \quad C_{3} = \alpha_z P, \quad \text{all others } = 0
-$$
-
-**Axis-B alignment term** — non-zero only in body-B rotation blocks:
-
-$$
-C_{5} = \beta_x P, \quad C_{6} = \beta_y P, \quad C_{7} = \beta_z P, \quad \text{all others } = 0
-$$
-
-Again the Hessian is exact-quadratic (no nonlinear terms), assembled via the same `add_linear_term` kernel.
-
-> **Key difference from Prismatic:** The revolute joint enforces the *full* 3-DOF positional lock (uses $I$ not $P$ for the position term), but relaxes the *rotational* constraint — instead of locking all three orientation columns, it only requires that each body's designated hinge axis aligns with the shared world axis.
-
----
-
-## 4. Parameter Summary
-
-| Joint | Inputs beyond `indices_a/b`, `anchor_a/b`, `stiffness` | `stiffness.x` | `stiffness.y` |
-|-------|--------------------------------------------------------|---------------|---------------|
-| Fixed | — | $k_\text{pos}$ | $k_\text{rot}$ |
-| Prismatic | `axis_world` | $k_\text{pos}$ | $k_\text{rot}$ |
-| Revolute | `axis_world`, `axis_a_local`, `axis_b_local` | $k_\text{pos}$ | $k_\text{axis}$ |
-
----
-
-## 5. Degrees of Freedom Comparison
-
-| Joint | Locked DOF | Free DOF |
-|-------|-----------|---------|
-| Fixed | 6 (3 translation + 3 rotation) | 0 |
-| Prismatic | 5 (2 translation ⊥ axis + 3 rotation) | 1 (translation ∥ axis) |
-| Revolute | 4 (3 translation + 1 rotation ⊥ hinge) | 2 (rotation ∥ hinge per body, but shared → effectively 1 DOF rotation) |
+- Initialization (`init_sim_data.cpp`):
+  - confirm `rest_position_delta = A0^{-1}(p_b0 - p_a0)`
+  - confirm `rest_rot_col*` from `R_ab0 = A0^{-1}B0`
+- Data struct / upload:
+  - confirm `rest_rot_col0/1/2_a_to_b` exists in `JointConstraint`
+  - confirm CPU->GPU upload includes all three columns
+- Energy-only path (`joint_constraint_energy.cpp`):
+  - fixed/prismatic use `target_delta = A * d0_local`
+  - fixed/prismatic orientation use `B - A * R_ab0`
+  - revolute uses `A * axis_a_local - B * axis_b_local`
+- Eval path (`detail/*joint*_constaint.hpp` + host eval):
+  - `compute_energy(...)` and `evaluate(...)` use identical residual definitions
+- Behavior test:
+  - run `PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30`

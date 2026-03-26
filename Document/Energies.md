@@ -188,6 +188,30 @@ Detailed note: [`Document/Energies/HookeanSpring.md`](./Energies/HookeanSpring.m
 
 ---
 
+### 8. Joint Constraint Energy (Rigid Bodies)
+
+Rigid joints use the unified ABD joint formulation in:
+
+- `joint_constraint_energy` in [`Solver/Energies/joint_constraint_energy.cpp`](../Solver/Energies/joint_constraint_energy.cpp)
+
+Supported joint types:
+
+- Fixed joint
+- Prismatic joint
+- Revolute joint
+
+Current implementation uses a **body-local rest relation**:
+
+- Positional rest target is stored as body-A local `rest_position_delta` and enforced as `A * rest_position_delta`.
+- Fixed/prismatic orientation rest target is stored as `rest_rot_col*_a_to_b` and enforced as `B = A * R_ab0`.
+- Revolute uses body-local axis consistency `A * axis_a_local = B * axis_b_local` (free twist around hinge axis).
+
+Detailed note: [`Document/Energies/JointConstraintEnergies.md`](./Energies/JointConstraintEnergies.md)
+
+Behavior test: [`PythonBindings/tests/test_rigid_joint_animation.py`](../PythonBindings/tests/test_rigid_joint_animation.py)
+
+---
+
 ## Affine Body Dynamics (ABD)
 
 The simulator uses Affine Body Dynamics for efficient rigid body simulation.

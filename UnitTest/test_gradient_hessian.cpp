@@ -802,6 +802,9 @@ int main(int argc, char** argv)
 			const float3 anchor_a = luisa::make_float3(0.1f, -0.05f, 0.03f);
 			const float3 anchor_b = luisa::make_float3(-0.02f, 0.08f, -0.04f);
 			const float3 rest_position_delta = luisa::make_float3(0.03f, -0.01f, 0.02f);
+			const float3 rest_rot_col0 = luisa::make_float3(0.98f, 0.05f, 0.00f);
+			const float3 rest_rot_col1 = luisa::make_float3(-0.05f, 0.98f, 0.01f);
+			const float3 rest_rot_col2 = luisa::make_float3(0.00f, -0.01f, 1.00f);
 
 			std::function<float(const EigenVec&)> fixed_joint_func = [&](const EigenVec& xv) -> float
 			{
@@ -811,7 +814,16 @@ int main(int argc, char** argv)
 					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
 				}
 				return detail::fixed_joint_constaint::compute_energy(
-					q, anchor_a, anchor_b, rest_position_delta, k_pos, k_rot, luisa::make_float3x3(1.0f));
+					q,
+					anchor_a,
+					anchor_b,
+					rest_position_delta,
+					rest_rot_col0,
+					rest_rot_col1,
+					rest_rot_col2,
+					k_pos,
+					k_rot,
+					luisa::make_float3x3(1.0f));
 			};
 
 			EigenVec x0(24);
@@ -834,7 +846,16 @@ int main(int argc, char** argv)
 				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
 			}
 			auto eval = detail::fixed_joint_constaint::evaluate(
-				q, anchor_a, anchor_b, rest_position_delta, k_pos, k_rot, luisa::make_float3x3(1.0f));
+				q,
+				anchor_a,
+				anchor_b,
+				rest_position_delta,
+				rest_rot_col0,
+				rest_rot_col1,
+				rest_rot_col2,
+				k_pos,
+				k_rot,
+				luisa::make_float3x3(1.0f));
 
 			Eigen::VectorXf g_ana(24);
 			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
@@ -856,6 +877,9 @@ int main(int argc, char** argv)
 			const float3 anchor_a = luisa::make_float3(0.0f, 0.05f, -0.02f);
 			const float3 anchor_b = luisa::make_float3(0.0f, -0.03f, 0.01f);
 			const float3 rest_position_delta = luisa::make_float3(-0.02f, 0.04f, -0.01f);
+			const float3 rest_rot_col0 = luisa::make_float3(1.00f, 0.02f, 0.00f);
+			const float3 rest_rot_col1 = luisa::make_float3(-0.02f, 1.00f, 0.01f);
+			const float3 rest_rot_col2 = luisa::make_float3(0.00f, -0.01f, 1.00f);
 			const float3 axis_world = luisa::make_float3(1.0f, 0.0f, 0.0f);
 
 			std::function<float(const EigenVec&)> prismatic_joint_func = [&](const EigenVec& xv) -> float
@@ -866,7 +890,17 @@ int main(int argc, char** argv)
 					q[i] = luisa::make_float3(xv[3 * i + 0], xv[3 * i + 1], xv[3 * i + 2]);
 				}
 				return detail::prismatic_joint_constaint::compute_energy(
-					q, anchor_a, anchor_b, rest_position_delta, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+					q,
+					anchor_a,
+					anchor_b,
+					rest_position_delta,
+					rest_rot_col0,
+					rest_rot_col1,
+					rest_rot_col2,
+					axis_world,
+					k_pos,
+					k_rot,
+					luisa::make_float3x3(1.0f));
 			};
 
 			EigenVec x0(24);
@@ -889,7 +923,17 @@ int main(int argc, char** argv)
 				q[i] = luisa::make_float3(x0[3 * i + 0], x0[3 * i + 1], x0[3 * i + 2]);
 			}
 			auto eval = detail::prismatic_joint_constaint::evaluate(
-				q, anchor_a, anchor_b, rest_position_delta, axis_world, k_pos, k_rot, luisa::make_float3x3(1.0f));
+				q,
+				anchor_a,
+				anchor_b,
+				rest_position_delta,
+				rest_rot_col0,
+				rest_rot_col1,
+				rest_rot_col2,
+				axis_world,
+				k_pos,
+				k_rot,
+				luisa::make_float3x3(1.0f));
 
 			Eigen::VectorXf g_ana(24);
 			Eigen::MatrixXf H_ana = Eigen::MatrixXf::Zero(24, 24);
@@ -911,7 +955,6 @@ int main(int argc, char** argv)
 			const float3 anchor_a = luisa::make_float3(0.02f, -0.01f, 0.0f);
 			const float3 anchor_b = luisa::make_float3(-0.01f, 0.02f, 0.0f);
 			const float3 rest_position_delta = luisa::make_float3(0.01f, -0.03f, 0.02f);
-			const float3 axis_world = luisa::make_float3(0.0f, 0.0f, 1.0f);
 			const float3 axis_a_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
 			const float3 axis_b_local = luisa::make_float3(0.0f, 0.0f, 1.0f);
 
@@ -927,7 +970,6 @@ int main(int argc, char** argv)
 					anchor_a,
 					anchor_b,
 					rest_position_delta,
-					axis_world,
 					axis_a_local,
 					axis_b_local,
 					k_pos,
@@ -959,7 +1001,6 @@ int main(int argc, char** argv)
 				anchor_a,
 				anchor_b,
 				rest_position_delta,
-				axis_world,
 				axis_a_local,
 				axis_b_local,
 				k_pos,

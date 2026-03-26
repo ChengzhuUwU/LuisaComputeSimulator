@@ -1178,38 +1178,29 @@ namespace lcs::Initializer
 			auto&				joint_data = sim_data->get_joint_constraint_data();
 			const luisa::float3 default_axis{ 1.f, 0.f, 0.f };
 			const auto&			rest_q = sim_data->sa_rest_q;
-			auto compute_rest_position_delta = [&](const uint4& idx_a, const uint4& idx_b, const float3& anchor_a, const float3& anchor_b)
+
+			auto make_rest_A = [&](const uint4& idx_a)
+			{
+				return luisa::make_float3x3(rest_q[idx_a.y], rest_q[idx_a.z], rest_q[idx_a.w]);
+			};
+			auto make_rest_B = [&](const uint4& idx_b)
+			{
+				return luisa::make_float3x3(rest_q[idx_b.y], rest_q[idx_b.z], rest_q[idx_b.w]);
+			};
+			auto compute_rest_position_delta_local_a = [&](const uint4& idx_a, const uint4& idx_b, const float3& anchor_a, const float3& anchor_b)
 			{
 				const float3 p_a = rest_q[idx_a.x] + rest_q[idx_a.y] * anchor_a.x + rest_q[idx_a.z] * anchor_a.y + rest_q[idx_a.w] * anchor_a.z;
 				const float3 p_b = rest_q[idx_b.x] + rest_q[idx_b.y] * anchor_b.x + rest_q[idx_b.z] * anchor_b.y + rest_q[idx_b.w] * anchor_b.z;
-				return p_b - p_a;
+				const float3 d_world = p_b - p_a;
+				const auto   A_inv = luisa::inverse(make_rest_A(idx_a));
+				return A_inv * d_world;
 			};
-			auto try_get_rest_anchor_world = [&](uint registration_id, const float3& anchor_local, float3& out_pos) -> bool
+			auto compute_rest_rotation_a_to_b = [&](const uint4& idx_a, const uint4& idx_b)
 			{
-				if (registration_id >= mesh_data->input_to_sorted_mesh_id.size())
-				{
-					return false;
-				}
-				const uint sorted_idx = mesh_data->input_to_sorted_mesh_id[registration_id];
-				if (sorted_idx >= world_data.size() || !world_data[sorted_idx].holds<lcs::Material::RigidMaterial>())
-				{
-					return false;
-				}
-				const auto& wd = world_data[sorted_idx];
-				// Keep scale as 1 to match affine-body q representation used by joint energy terms.
-				const float4x4 rest_transform = lcs::make_model_matrix(wd.translation, wd.rotation, luisa::make_float3(1.0f));
-				out_pos = lcs::affine_position(rest_transform, anchor_local);
-				return true;
-			};
-			auto compute_rest_position_delta_from_world = [&](uint reg_a, uint reg_b, const float3& anchor_a, const float3& anchor_b, const uint4& idx_a, const uint4& idx_b)
-			{
-				float3 p_a{};
-				float3 p_b{};
-				if (try_get_rest_anchor_world(reg_a, anchor_a, p_a) && try_get_rest_anchor_world(reg_b, anchor_b, p_b))
-				{
-					return p_b - p_a;
-				}
-				return compute_rest_position_delta(idx_a, idx_b, anchor_a, anchor_b);
+				const auto A_inv = luisa::inverse(make_rest_A(idx_a));
+				const auto B = make_rest_B(idx_b);
+				const auto R_ab = A_inv * B;
+				return std::array<float3, 3>{ R_ab[0], R_ab[1], R_ab[2] };
 			};
 
 				using uint8 = std::array<uint, 8>;
@@ -1223,12 +1214,16 @@ namespace lcs::Initializer
 					{
 						continue;
 					}
+					const auto rest_pos_local_a = compute_rest_position_delta_local_a(idx_a, idx_b, desc.anchor_a_local, desc.anchor_b_local);
+					const auto rest_rot_a_to_b = compute_rest_rotation_a_to_b(idx_a, idx_b);
 					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
 					joint_data.constraint_indices.push_back(idx_ext);
 					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
 					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
-						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.rest_position_delta.push_back(rest_pos_local_a);
+					joint_data.rest_rot_col0_a_to_b.push_back(rest_rot_a_to_b[0]);
+					joint_data.rest_rot_col1_a_to_b.push_back(rest_rot_a_to_b[1]);
+					joint_data.rest_rot_col2_a_to_b.push_back(rest_rot_a_to_b[2]);
 					joint_data.axis_world.push_back(default_axis);
 					joint_data.axis_a_local.push_back(default_axis);
 					joint_data.axis_b_local.push_back(default_axis);
@@ -1245,12 +1240,16 @@ namespace lcs::Initializer
 					{
 						continue;
 					}
+					const auto rest_pos_local_a = compute_rest_position_delta_local_a(idx_a, idx_b, desc.anchor_a_local, desc.anchor_b_local);
+					const auto rest_rot_a_to_b = compute_rest_rotation_a_to_b(idx_a, idx_b);
 					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
 					joint_data.constraint_indices.push_back(idx_ext);
 					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
 					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
-						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.rest_position_delta.push_back(rest_pos_local_a);
+					joint_data.rest_rot_col0_a_to_b.push_back(rest_rot_a_to_b[0]);
+					joint_data.rest_rot_col1_a_to_b.push_back(rest_rot_a_to_b[1]);
+					joint_data.rest_rot_col2_a_to_b.push_back(rest_rot_a_to_b[2]);
 					joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
 					joint_data.axis_a_local.push_back(default_axis);
 					joint_data.axis_b_local.push_back(default_axis);
@@ -1267,13 +1266,17 @@ namespace lcs::Initializer
 					{
 						continue;
 					}
+					const auto rest_pos_local_a = compute_rest_position_delta_local_a(idx_a, idx_b, desc.anchor_a_local, desc.anchor_b_local);
+					const auto rest_rot_a_to_b = compute_rest_rotation_a_to_b(idx_a, idx_b);
 
 					uint8 idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
 					joint_data.constraint_indices.push_back(idx_ext);
 					joint_data.anchor_a_local.push_back(desc.anchor_a_local);
 					joint_data.anchor_b_local.push_back(desc.anchor_b_local);
-					joint_data.rest_position_delta.push_back(compute_rest_position_delta_from_world(
-						desc.body_a_registration, desc.body_b_registration, desc.anchor_a_local, desc.anchor_b_local, idx_a, idx_b));
+					joint_data.rest_position_delta.push_back(rest_pos_local_a);
+					joint_data.rest_rot_col0_a_to_b.push_back(rest_rot_a_to_b[0]);
+					joint_data.rest_rot_col1_a_to_b.push_back(rest_rot_a_to_b[1]);
+					joint_data.rest_rot_col2_a_to_b.push_back(rest_rot_a_to_b[2]);
 					joint_data.axis_world.push_back(normalize_axis(desc.axis_world));
 					joint_data.axis_a_local.push_back(normalize_axis(desc.axis_a_local));
 					joint_data.axis_b_local.push_back(normalize_axis(desc.axis_b_local));
@@ -1723,6 +1726,9 @@ namespace lcs::Initializer
 				<< upload_buffer(device, joint_O.anchor_a_local, joint_I.anchor_a_local)
 				<< upload_buffer(device, joint_O.anchor_b_local, joint_I.anchor_b_local)
 				<< upload_buffer(device, joint_O.rest_position_delta, joint_I.rest_position_delta)
+				<< upload_buffer(device, joint_O.rest_rot_col0_a_to_b, joint_I.rest_rot_col0_a_to_b)
+				<< upload_buffer(device, joint_O.rest_rot_col1_a_to_b, joint_I.rest_rot_col1_a_to_b)
+				<< upload_buffer(device, joint_O.rest_rot_col2_a_to_b, joint_I.rest_rot_col2_a_to_b)
 				<< upload_buffer(device, joint_O.axis_world, joint_I.axis_world)
 				<< upload_buffer(device, joint_O.axis_a_local, joint_I.axis_a_local)
 				<< upload_buffer(device, joint_O.axis_b_local, joint_I.axis_b_local)

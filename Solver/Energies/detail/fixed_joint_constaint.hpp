@@ -15,7 +15,10 @@ namespace lcs::detail::fixed_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
-		const Vec3T&  rest_position_delta,
+		const Vec3T&  rest_position_delta_local_a,
+		const Vec3T&  rest_rot_col0_a_to_b,
+		const Vec3T&  rest_rot_col1_a_to_b,
+		const Vec3T&  rest_rot_col2_a_to_b,
 		const ScalarT stiffness_pos,
 		const ScalarT stiffness_rot,
 		const Mat3T&  identity)
@@ -52,24 +55,28 @@ namespace lcs::detail::fixed_joint_constaint
 		const Mat3T Z = zero3x3;
 
 		// Anchor coincidence: (pB + B * rb) - (pA + A * ra) = 0
+		// with body-local rest relation: (pB - pA) - A * d0_local = 0.
 		{
 			Mat3T coeff[8] = { (-1.0f) * I,
-				-anchor_a_local.x * I,
-				-anchor_a_local.y * I,
-				-anchor_a_local.z * I,
+				-(anchor_a_local.x + rest_position_delta_local_a.x) * I,
+				-(anchor_a_local.y + rest_position_delta_local_a.y) * I,
+				-(anchor_a_local.z + rest_position_delta_local_a.z) * I,
 				I,
 				anchor_b_local.x * I,
 				anchor_b_local.y * I,
 				anchor_b_local.z * I };
-			add_linear_term(coeff, (-1.0f) * rest_position_delta, stiffness_pos);
+			add_linear_term(coeff, zero3, stiffness_pos);
 		}
 
-		// Orientation lock: A_i - B_i = 0 (i = 0..2)
-		for (int row = 0; row < 3; ++row)
+		// Orientation lock in body-local rest frame: B - A * R_ab0 = 0.
+		const Vec3T rest_cols[3] = { rest_rot_col0_a_to_b, rest_rot_col1_a_to_b, rest_rot_col2_a_to_b };
+		for (int col = 0; col < 3; ++col)
 		{
 			Mat3T coeff[8] = { Z, Z, Z, Z, Z, Z, Z, Z };
-			coeff[1 + row] = I;
-			coeff[5 + row] = (-1.0f) * I;
+			coeff[1] = (-rest_cols[col].x) * I;
+			coeff[2] = (-rest_cols[col].y) * I;
+			coeff[3] = (-rest_cols[col].z) * I;
+			coeff[5 + col] = I;
 			add_linear_term(coeff, zero3, stiffness_rot);
 		}
 
@@ -81,7 +88,10 @@ namespace lcs::detail::fixed_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
-		const Vec3T&  rest_position_delta,
+		const Vec3T&  rest_position_delta_local_a,
+		const Vec3T&  rest_rot_col0_a_to_b,
+		const Vec3T&  rest_rot_col1_a_to_b,
+		const Vec3T&  rest_rot_col2_a_to_b,
 		const ScalarT stiffness_pos,
 		const ScalarT stiffness_rot,
 		const Mat3T&  identity)
@@ -90,12 +100,15 @@ namespace lcs::detail::fixed_joint_constaint
 
 		Vec3T p_a = q[0] + q[1] * anchor_a_local.x + q[2] * anchor_a_local.y + q[3] * anchor_a_local.z;
 		Vec3T p_b = q[4] + q[5] * anchor_b_local.x + q[6] * anchor_b_local.y + q[7] * anchor_b_local.z;
-		Vec3T r_pos = (p_b - p_a) - rest_position_delta;
+		Vec3T target_delta = q[1] * rest_position_delta_local_a.x + q[2] * rest_position_delta_local_a.y + q[3] * rest_position_delta_local_a.z;
+		Vec3T r_pos = (p_b - p_a) - target_delta;
 		energy += 0.5f * stiffness_pos * dot(r_pos, r_pos);
 
-		for (int row = 0; row < 3; ++row)
+		const Vec3T rest_cols[3] = { rest_rot_col0_a_to_b, rest_rot_col1_a_to_b, rest_rot_col2_a_to_b };
+		for (int col = 0; col < 3; ++col)
 		{
-			Vec3T r_rot = q[1 + row] - q[5 + row];
+			Vec3T target_col = q[1] * rest_cols[col].x + q[2] * rest_cols[col].y + q[3] * rest_cols[col].z;
+			Vec3T r_rot = q[5 + col] - target_col;
 			energy += 0.5f * stiffness_rot * dot(r_rot, r_rot);
 		}
 

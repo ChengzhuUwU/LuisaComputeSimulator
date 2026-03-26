@@ -21,7 +21,12 @@ Key conventions:
 
 Reference implementations:
 - [`hookean_spring_energy.hpp`](/Solver/Energies/detail/hookean_spring_energy.hpp) — spring between two vertices; $6 \times 1$ gradient (2 `Float3`) and $6 \times 6$ hessian (4 `Float3x3`).
-- [`fixed_joint_constraint.hpp`](/Solver/Energies/detail/fixed_joint_constaint.hpp) — fixed joint between two rigid (affine) bodies; $24 \times 1$ gradient (8 `Float3`) and $24 \times 24$ hessian (64 `Float3x3`), since each affine body has 12 DOF.
+- [`fixed_joint_constaint.hpp`](/Solver/Energies/detail/fixed_joint_constaint.hpp) — fixed joint between two rigid (affine) bodies; $24 \times 1$ gradient (8 `Float3`) and $24 \times 24$ hessian (64 `Float3x3`), since each affine body has 12 DOF.
+
+For joint-like rigid constraints, follow the current body-local convention:
+- Store positional rest relation in body-A local frame (`rest_position_delta`), then enforce runtime target as `A * rest_position_delta`.
+- If relative orientation is locked (fixed/prismatic), store rest relative rotation columns (`rest_rot_col0/1/2_a_to_b`) and use `B - A * R_ab0` residuals.
+- Keep `compute_energy(...)` and `evaluate(...)` mathematically consistent (same residual definition) across device and host paths.
 
 ---
 
@@ -192,6 +197,12 @@ if (my_I.is_valid()) {
         << upload_buffer(device, my_O.vert_adj_constraints_csr, my_I.vert_adj_constraints_csr);
 }
 ```
+
+For joint constraints specifically, ensure all body-local rest fields are uploaded:
+- `rest_position_delta`
+- `rest_rot_col0_a_to_b`
+- `rest_rot_col1_a_to_b`
+- `rest_rot_col2_a_to_b`
 
 ---
 

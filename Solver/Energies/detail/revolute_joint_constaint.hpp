@@ -10,25 +10,12 @@ namespace lcs::detail::revolute_joint_constaint
 	template <typename ScalarT, typename Vec3T, typename Mat3T>
 	using RevoluteJointEvalResult = EnergyEvalResult<8, 64, Vec3T, Mat3T>;
 
-	template <typename Vec3T>
-	[[nodiscard]] inline Vec3T safe_normalize_axis(const Vec3T& axis)
-	{
-		// auto n2 = dot(axis, axis);
-		// if (n2 < 1.0e-12f)
-		// {
-		// 	return Vec3T(1.0f, 0.0f, 0.0f);
-		// }
-		// return axis / sqrt_scalar(n2);
-		return normalize_vec(axis);
-	}
-
 	template <typename ScalarT, typename Vec3T, typename Mat3T>
 	[[nodiscard]] inline auto evaluate(
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
-		const Vec3T&  rest_position_delta,
-		const Vec3T&  axis_world,
+		const Vec3T&  rest_position_delta_local_a,
 		const Vec3T&  axis_a_local,
 		const Vec3T&  axis_b_local,
 		const ScalarT stiffness_pos,
@@ -65,45 +52,32 @@ namespace lcs::detail::revolute_joint_constaint
 
 		const Mat3T I = identity;
 		const Mat3T Z = 0.0f * identity;
-		const Vec3T n = safe_normalize_axis(axis_world);
-		const Mat3T P = I - outer_product(n, n);
 
 		// Anchor coincidence.
+		// Position target is body-local rest relation: A * d0_local.
 		{
 			Mat3T coeff[8] = { (-1.0f) * I,
-				-anchor_a_local.x * I,
-				-anchor_a_local.y * I,
-				-anchor_a_local.z * I,
+				-(anchor_a_local.x + rest_position_delta_local_a.x) * I,
+				-(anchor_a_local.y + rest_position_delta_local_a.y) * I,
+				-(anchor_a_local.z + rest_position_delta_local_a.z) * I,
 				I,
 				anchor_b_local.x * I,
 				anchor_b_local.y * I,
 				anchor_b_local.z * I };
-			add_linear_term(coeff, (-1.0f) * rest_position_delta, stiffness_pos);
+			add_linear_term(coeff, zero3, stiffness_pos);
 		}
 
-		// Body A hinge axis must align with world hinge axis.
+		// Hinge axis consistency in body-local form:
+		// A * axis_a_local - B * axis_b_local = 0.
 		{
 			Mat3T coeff[8] = { Z,
-				axis_a_local.x * P,
-				axis_a_local.y * P,
-				axis_a_local.z * P,
+				axis_a_local.x * I,
+				axis_a_local.y * I,
+				axis_a_local.z * I,
 				Z,
-				Z,
-				Z,
-				Z };
-			add_linear_term(coeff, zero3, stiffness_axis);
-		}
-
-		// Body B hinge axis must align with world hinge axis.
-		{
-			Mat3T coeff[8] = { Z,
-				Z,
-				Z,
-				Z,
-				Z,
-				axis_b_local.x * P,
-				axis_b_local.y * P,
-				axis_b_local.z * P };
+				-axis_b_local.x * I,
+				-axis_b_local.y * I,
+				-axis_b_local.z * I };
 			add_linear_term(coeff, zero3, stiffness_axis);
 		}
 
@@ -115,29 +89,24 @@ namespace lcs::detail::revolute_joint_constaint
 		const Vec3T (&q)[8],
 		const Vec3T&  anchor_a_local,
 		const Vec3T&  anchor_b_local,
-		const Vec3T&  rest_position_delta,
-		const Vec3T&  axis_world,
+		const Vec3T&  rest_position_delta_local_a,
 		const Vec3T&  axis_a_local,
 		const Vec3T&  axis_b_local,
 		const ScalarT stiffness_pos,
 		const ScalarT stiffness_axis,
 		const Mat3T&  identity)
 	{
-		const Vec3T n = safe_normalize_axis(axis_world);
-		const Mat3T P = identity - outer_product(n, n);
-
 		Vec3T p_a = q[0] + q[1] * anchor_a_local.x + q[2] * anchor_a_local.y + q[3] * anchor_a_local.z;
 		Vec3T p_b = q[4] + q[5] * anchor_b_local.x + q[6] * anchor_b_local.y + q[7] * anchor_b_local.z;
-		Vec3T r_pos = (p_b - p_a) - rest_position_delta;
+		Vec3T target_delta = q[1] * rest_position_delta_local_a.x + q[2] * rest_position_delta_local_a.y + q[3] * rest_position_delta_local_a.z;
+		Vec3T r_pos = (p_b - p_a) - target_delta;
 
 		Vec3T axis_a_world = q[1] * axis_a_local.x + q[2] * axis_a_local.y + q[3] * axis_a_local.z;
 		Vec3T axis_b_world = q[5] * axis_b_local.x + q[6] * axis_b_local.y + q[7] * axis_b_local.z;
-		Vec3T r_axis_a = P * axis_a_world;
-		Vec3T r_axis_b = P * axis_b_world;
+		Vec3T r_axis = axis_a_world - axis_b_world;
 
 		ScalarT energy = 0.5f * stiffness_pos * dot(r_pos, r_pos);
-		energy += 0.5f * stiffness_axis * dot(r_axis_a, r_axis_a);
-		energy += 0.5f * stiffness_axis * dot(r_axis_b, r_axis_b);
+		energy += 0.5f * stiffness_axis * dot(r_axis, r_axis);
 		return energy;
 	}
 
