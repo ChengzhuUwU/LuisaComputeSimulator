@@ -524,6 +524,34 @@ struct PyNewtonBuilder
 		solver_ptr->update_per_body_animation(mesh_idx, tt, tr);
 	}
 
+	std::array<float, 3> get_rigid_body_translation(uint registration_id) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		return solver_ptr->get_rigid_body_translation(registration_id);
+	}
+
+	std::array<float, 3> get_rigid_body_scaling(uint registration_id) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		return solver_ptr->get_rigid_body_scaling(registration_id);
+	}
+
+	std::array<float, 4> get_rigid_body_rotation_quaternion(uint registration_id) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		return solver_ptr->get_rigid_body_rotation_quaternion(registration_id);
+	}
+
+	std::array<float, 3> get_rigid_body_rotation_axis_angle(uint registration_id) const
+	{
+		if (!solver_ptr)
+			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
+		return solver_ptr->get_rigid_body_rotation_axis_angle(registration_id);
+	}
+
 	void add_fixed_joint(const unsigned int							  body_a_registration,
 		const unsigned int											  body_b_registration,
 		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_a_local,
@@ -943,6 +971,14 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
 		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
 		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"))
+		.def("get_rigid_body_translation", &PyNewtonBuilder::get_rigid_body_translation, py::arg("registration_id"),
+			"Return rigid body translation as (tx, ty, tz).")
+		.def("get_rigid_body_scaling", &PyNewtonBuilder::get_rigid_body_scaling, py::arg("registration_id"),
+			"Return rigid body scaling extracted from ABD affine matrix as (sx, sy, sz).")
+		.def("get_rigid_body_rotation_quaternion", &PyNewtonBuilder::get_rigid_body_rotation_quaternion, py::arg("registration_id"),
+			"Return rigid body rotation quaternion as (qx, qy, qz, qw).")
+		.def("get_rigid_body_rotation_axis_angle", &PyNewtonBuilder::get_rigid_body_rotation_axis_angle, py::arg("registration_id"),
+			"Return rigid body rotation vector (axis * angle_rad) as (rx, ry, rz).")
 		.def("get_sim_result", &PyNewtonBuilder::get_sim_result, "Return simulation results as a tuple (vertices_list, faces_list) of numpy arrays")
 		.def("add_fixed_joint",
 			&PyNewtonBuilder::add_fixed_joint,
