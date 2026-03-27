@@ -580,7 +580,9 @@ struct PyNewtonBuilder
 		py::array_t<float, py::array::c_style | py::array::forcecast> anchor_b_local,
 		py::array_t<float, py::array::c_style | py::array::forcecast> axis_world,
 		float														  stiffness_pos,
-		float														  stiffness_rot)
+		float														  stiffness_rot,
+		float														  slide_min,
+		float														  slide_max)
 	{
 		if (anchor_a_local.ndim() != 1 || anchor_a_local.shape(0) != 3 || anchor_b_local.ndim() != 1 || anchor_b_local.shape(0) != 3 || axis_world.ndim() != 1 || axis_world.shape(0) != 3)
 			throw std::runtime_error("anchor_a_local/anchor_b_local/axis_world must be 1-D arrays of length 3.");
@@ -594,8 +596,11 @@ struct PyNewtonBuilder
 		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
 		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
 		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
+		desc.axis_world = luisa::normalize(desc.axis_world);
 		desc.stiffness_pos = stiffness_pos;
 		desc.stiffness_rot = stiffness_rot;
+		desc.slide_min = slide_min;
+		desc.slide_max = slide_max;
 		solver_ptr->add_prismatic_joint(desc);
 	}
 
@@ -623,6 +628,7 @@ struct PyNewtonBuilder
 		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
 		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
 		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
+		desc.axis_world = luisa::normalize(desc.axis_world);
 		desc.axis_a_local = luisa::make_float3(ua(0), ua(1), ua(2));
 		desc.axis_b_local = luisa::make_float3(ub(0), ub(1), ub(2));
 		desc.stiffness_pos = stiffness_pos;
@@ -996,7 +1002,9 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("anchor_b_local"),
 			py::arg("axis_world"),
 			py::arg("stiffness_pos") = 1.0e4f,
-			py::arg("stiffness_rot") = 1.0e3f)
+			py::arg("stiffness_rot") = 1.0e3f,
+			py::arg("slide_min") = -std::numeric_limits<float>::infinity(),
+			py::arg("slide_max") = std::numeric_limits<float>::infinity())
 		.def("add_revolute_joint",
 			&PyNewtonBuilder::add_revolute_joint,
 			py::arg("body_a_registration"),

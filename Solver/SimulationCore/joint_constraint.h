@@ -3,6 +3,7 @@
 #include <luisa/core/basic_types.h>
 #include <cstdint>
 #include <cstddef>
+#include <limits>
 
 namespace lcs
 {
@@ -67,6 +68,9 @@ namespace lcs
 		luisa::float3 axis_world = luisa::make_float3(1.0f, 0.0f, 0.0f);
 		float		  stiffness_pos = 1.0e4f;
 		float		  stiffness_rot = 1.0e3f;
+		// Sliding distance limits along the free axis (in world units). Use ±FLT_MAX to disable.
+		float slide_min = -std::numeric_limits<float>::max();
+		float slide_max = std::numeric_limits<float>::max();
 	};
 
 	struct RevoluteJointConstraintDesc

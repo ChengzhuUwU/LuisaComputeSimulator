@@ -430,6 +430,11 @@ namespace lcs
 		// constraint_gradients : 8 float3  per joint (pre-computed by eval shader)
 		// constraint_hessians  : 64 float3x3 per joint (pre-computed by eval shader)
 		// constraint_offsets_in_adjlist : 56 uints per joint (off-diagonal hessian triplet offsets)
+		//
+		// Prismatic limits (float2 = (slide_min, slide_max)):
+		//   slide_limits.x = min slide distance along axis (±FLT_MAX = disabled)
+		//   slide_limits.y = max slide distance along axis
+		//
 		template <template <typename...> typename BufferType>
 		struct JointConstraint : ConstitutionInterface<BufferType, JointConstraint<BufferType>>
 		{
@@ -446,6 +451,8 @@ namespace lcs
 			BufferType<float3> axis_b_local;
 			BufferType<float2> stiffness;
 			BufferType<uint>   joint_type; // JointConstraintType as uint32
+			// Limit data
+			BufferType<float2> slide_limits; // Prismatic: (slide_min, slide_max)
 
 			static constexpr ConstraintType constraint_type() { return ConstraintType::JointConstraint; }
 			// N=8: each joint has 8 nodes (4 from body A + 4 from body B).
@@ -687,7 +694,8 @@ LUISA_BINDING_GROUP(lcs::Constitutions::JointConstraint<luisa::compute::Buffer>,
 	axis_a_local,
 	axis_b_local,
 	stiffness,
-	joint_type){};
+	joint_type,
+	slide_limits){};
 
 /*
 struct BaseSimulationData

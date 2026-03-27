@@ -75,7 +75,8 @@ namespace lcs
 				{
 					Float3 target_delta = q[1] * rest_pos_delta.x + q[2] * rest_pos_delta.y + q[3] * rest_pos_delta.z;
 					Float3 d = (p_b - p_a) - target_delta;
-					Float3 r_pos = d - axis * dot(axis, d);
+					Float3 ax = q[1] * axis_a.x + q[2] * axis_a.y + q[3] * axis_a.z;
+					Float3 r_pos = cross(d, ax);
 					energy = 0.5f * stiff.x * dot(r_pos, r_pos);
 					Float3 rest_rot_cols[3] = { rest_rot_c0, rest_rot_c1, rest_rot_c2 };
 					for (int col = 0; col < 3; ++col)
@@ -84,6 +85,17 @@ namespace lcs
 						Float3 r_rot = q[5 + col] - target_col;
 						energy += 0.5f * stiff.y * dot(r_rot, r_rot);
 					}
+					// Slide limit energy.
+					const Float2 slims = joint.slide_limits->read(joint_idx);
+					const Float	 s = dot(d, ax);
+					$if(s < slims.x)
+					{
+						energy += 0.5f * stiff.x * (s - slims.x) * (s - slims.x);
+					};
+					$if(s > slims.y)
+					{
+						energy += 0.5f * stiff.x * (s - slims.y) * (s - slims.y);
+					};
 				}
 				$else
 				{
@@ -151,8 +163,10 @@ namespace lcs
 				}
 				$elif(jtype == static_cast<uint>(JointConstraintType::Prismatic))
 				{
+					const Float2 slims = joint.slide_limits->read(joint_idx);
+
 					auto eval = detail::prismatic_joint_constaint::evaluate<Float, Float3, Float3x3>(
-						q, anchor_a, anchor_b, rest_pos_delta, rest_rot_c0, rest_rot_c1, rest_rot_c2, axis, stiff.x, stiff.y, I);
+						q, anchor_a, anchor_b, rest_pos_delta, rest_rot_c0, rest_rot_c1, rest_rot_c2, axis_a, stiff.x, stiff.y, slims.x, slims.y, I);
 					for (uint i = 0; i < 8; ++i)
 						joint.constraint_gradients->write(joint_idx * 8u + i, eval.gradients[i]);
 					for (uint i = 0; i < 8; ++i)
@@ -220,8 +234,10 @@ namespace lcs
 					}
 					else if (jtype == static_cast<uint>(JointConstraintType::Prismatic))
 					{
+						const float2 slims = joint_data.slide_limits[joint_idx];
+
 						auto eval = detail::prismatic_joint_constaint::evaluate<float, float3, float3x3>(
-							q, anchor_a, anchor_b, rest_pos_delta, rest_rot_c0, rest_rot_c1, rest_rot_c2, axis, stiff.x, stiff.y, I);
+							q, anchor_a, anchor_b, rest_pos_delta, rest_rot_c0, rest_rot_c1, rest_rot_c2, axis_a, stiff.x, stiff.y, slims.x, slims.y, I);
 						for (uint i = 0; i < 8; ++i)
 							joint_data.constraint_gradients[joint_idx * 8u + i] = eval.gradients[i];
 						for (uint i = 0; i < 8; ++i)

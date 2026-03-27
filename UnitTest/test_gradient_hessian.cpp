@@ -870,7 +870,7 @@ int main(int argc, char** argv)
 			print_diff("JointFixed", g_num, g_ana, H_num, H_ana, 1e-3f);
 		}
 
-		// 8) Prismatic joint (slide axis in world-x)
+		// 8) Prismatic joint (slide axis in body-A local x)
 		{
 			const float	 k_pos = 12.0f;
 			const float	 k_rot = 3.5f;
@@ -880,7 +880,7 @@ int main(int argc, char** argv)
 			const float3 rest_rot_col0 = luisa::make_float3(1.00f, 0.02f, 0.00f);
 			const float3 rest_rot_col1 = luisa::make_float3(-0.02f, 1.00f, 0.01f);
 			const float3 rest_rot_col2 = luisa::make_float3(0.00f, -0.01f, 1.00f);
-			const float3 axis_world = luisa::make_float3(1.0f, 0.0f, 0.0f);
+			const float3 axis_a_local = luisa::make_float3(1.0f, 0.0f, 0.0f);
 
 			std::function<float(const EigenVec&)> prismatic_joint_func = [&](const EigenVec& xv) -> float
 			{
@@ -897,9 +897,10 @@ int main(int argc, char** argv)
 					rest_rot_col0,
 					rest_rot_col1,
 					rest_rot_col2,
-					axis_world,
+					axis_a_local,
 					k_pos,
 					k_rot,
+					-std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
 					luisa::make_float3x3(1.0f));
 			};
 
@@ -930,9 +931,10 @@ int main(int argc, char** argv)
 				rest_rot_col0,
 				rest_rot_col1,
 				rest_rot_col2,
-				axis_world,
+				axis_a_local,
 				k_pos,
 				k_rot,
+				-std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
 				luisa::make_float3x3(1.0f));
 
 			Eigen::VectorXf g_ana(24);

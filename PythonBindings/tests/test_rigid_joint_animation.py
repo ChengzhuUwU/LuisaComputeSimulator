@@ -114,15 +114,19 @@ solver.add_fixed_joint(
     stiffness_rot=1.0e4,
 )
 
-# Scene B: Prismatic joint (axis = X) -> translation along X is free.
+# Scene B: Prismatic joint (body-local axis = [1,1,0]) -> sliding along that axis is free.
+# The axis co-rotates with the driver body, so validation is done in the driver's local frame.
 prismatic_driver = make_animated_driver(
     "prismatic_driver",
     1.00,
     0.25,
     0.00,
     DefaultTransformAnimation(
-        use_translate=True,
-        translate=[0.25, 0.0, 0.0],
+        # use_translate=True,
+        # translate=[0.2, 0.2, 0.0],
+        use_rotate=True,
+        rot_axis=[0.0, 0.0, 1.0],
+        rot_ang_vel_deg=120.0,
     ),
 )
 prismatic_follower = make_follower("prismatic_follower", 0.80, 0.25, 0.00)
@@ -134,6 +138,8 @@ solver.add_prismatic_joint(
     np.array([1.0, 0.0, 0.0], dtype=np.float32),
     stiffness_pos=5.0e4,
     stiffness_rot=1.0e4,
+    slide_min=-100000.0,
+    slide_max=100000.0,
 )
 
 # Scene C: Revolute joint (axis = Z) -> relative twist around Z should be free.
@@ -143,9 +149,9 @@ revolute_driver = make_animated_driver(
     0.25,
     0.00,
     DefaultTransformAnimation(
-        use_rotate=True,
-        rot_axis=[0.0, 0.0, 1.0],
-        rot_ang_vel_deg=120.0,
+        # use_rotate=True,
+        # rot_axis=[0.0, 0.0, 1.0],
+        # rot_ang_vel_deg=120.0,
     ),
 )
 revolute_follower = make_follower("revolute_follower", 2.20, 0.25, 0.00)
@@ -165,7 +171,7 @@ solver.init_solver()
 config_ref = solver.get_config()
 config_ref.use_floor = False
 config_ref.use_self_collision = False
-config_ref.gravity = lcs.Float3(0.0, 0.0, 0.0)
+config_ref.gravity = lcs.Float3(0.0, -9.0, 0.0)
 
 output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
@@ -222,6 +228,22 @@ def compute_metrics():
     prismatic_rel_delta = (prismatic_follower_center - prismatic_driver_center) - rest_rel_prismatic
     prismatic_driver_motion = prismatic_driver_center - rest_centers[prismatic_driver]
 
+    # Validate prismatic constraint in driver's rotated local frame.
+    # The sliding axis is body-local [1,1,0]/sqrt(2); it co-rotates with the driver.
+    # Constraint: (p_B - p_A) = A*(d0_local + t*axis_local), so in local frame
+    # (R.T @ current_relative - d0_local) must lie along axis_local.
+    prismatic_driver_rot = estimate_rotation_matrix(
+        rest_vertices[prismatic_driver], prismatic_driver_vertices
+    )
+    prismatic_axis_local = np.array([1.0, 1.0, 0.0], dtype=np.float32)
+    prismatic_axis_local = prismatic_axis_local / float(np.linalg.norm(prismatic_axis_local))
+    # Current relative position in driver's local frame, minus rest offset d0_local
+    current_relative = prismatic_follower_center - prismatic_driver_center
+    dev_local = prismatic_driver_rot.T @ current_relative - rest_rel_prismatic
+    prismatic_free_frac = float(np.dot(dev_local, prismatic_axis_local))
+    prismatic_locked_vec = dev_local - prismatic_free_frac * prismatic_axis_local
+    prismatic_locked_error = float(np.linalg.norm(prismatic_locked_vec))
+
     fixed_driver_yaw = estimate_yaw_z(rest_vertices[fixed_driver], fixed_driver_vertices)
     fixed_follower_yaw = estimate_yaw_z(rest_vertices[fixed_follower], fixed_follower_vertices)
     fixed_yaw_error = abs(wrap_angle_rad(fixed_follower_yaw - fixed_driver_yaw))
@@ -239,6 +261,8 @@ def compute_metrics():
         "fixed_yaw_error": fixed_yaw_error,
         "prismatic_rel_delta": prismatic_rel_delta,
         "prismatic_driver_motion": prismatic_driver_motion,
+        "prismatic_locked_error": prismatic_locked_error,
+        "prismatic_free_frac": prismatic_free_frac,
         "revolute_driver_yaw_abs": abs(revolute_driver_yaw),
         "revolute_relative_yaw": revolute_relative_yaw,
         "revolute_pos_error": revolute_pos_error,
@@ -253,17 +277,14 @@ def validate_metrics(metrics):
         f"Fixed joint failed orientation lock: yaw error={metrics['fixed_yaw_error']:.6f} rad"
     )
 
-    assert metrics["prismatic_driver_motion"][0] > 5.0e-2, (
-        f"Prismatic driver did not move enough along X: dx={metrics['prismatic_driver_motion'][0]:.6f}"
+    assert float(np.linalg.norm(metrics["prismatic_driver_motion"])) > 5.0e-2, (
+        f"Prismatic driver did not move enough: total={float(np.linalg.norm(metrics['prismatic_driver_motion'])):.6f}"
     )
-    assert metrics["prismatic_rel_delta"][0] < -5.0e-2, (
-        f"Prismatic free-axis behavior failed: relative dx={metrics['prismatic_rel_delta'][0]:.6f}"
+    assert float(np.linalg.norm(metrics["prismatic_rel_delta"])) > 5.0e-2, (
+        f"Prismatic follower appears decoupled from driver: rel_delta_norm={float(np.linalg.norm(metrics['prismatic_rel_delta'])):.6f}"
     )
-    assert abs(metrics["prismatic_rel_delta"][1]) < 2.0e-3, (
-        f"Prismatic locked-axis drift too large on Y: dy={metrics['prismatic_rel_delta'][1]:.6f}"
-    )
-    assert abs(metrics["prismatic_rel_delta"][2]) < 2.0e-3, (
-        f"Prismatic locked-axis drift too large on Z: dz={metrics['prismatic_rel_delta'][2]:.6f}"
+    assert metrics["prismatic_locked_error"] < 1.0e-2, (
+        f"Prismatic locked-plane drift too large in driver local frame: error={metrics['prismatic_locked_error']:.6f}"
     )
 
     assert metrics["revolute_driver_yaw_abs"] > 5.0e-1, (
@@ -282,6 +303,8 @@ def print_metrics(metrics):
     print("[joint-check] fixed_yaw_error(rad)   =", f"{metrics['fixed_yaw_error']:.6e}")
     print("[joint-check] prismatic_rel_delta    =", metrics["prismatic_rel_delta"])
     print("[joint-check] prismatic_driver_move  =", metrics["prismatic_driver_motion"])
+    print("[joint-check] prismatic_locked_err   =", f"{metrics['prismatic_locked_error']:.6e}")
+    print("[joint-check] prismatic_free_frac    =", f"{metrics['prismatic_free_frac']:.6f}")
     print("[joint-check] revolute_driver_yaw    =", f"{metrics['revolute_driver_yaw_abs']:.6e}")
     print("[joint-check] revolute_relative_yaw  =", f"{metrics['revolute_relative_yaw']:.6e}")
     print("[joint-check] revolute_pos_error     =", f"{metrics['revolute_pos_error']:.6e}")

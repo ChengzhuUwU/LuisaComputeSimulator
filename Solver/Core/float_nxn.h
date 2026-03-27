@@ -579,6 +579,13 @@ namespace lcs
 		return makeFloat4x4(left * right[0], left * right[1], left * right[2], left * right[3]);
 	}
 
+	inline float3x3 skew(const float3& vec)
+	{
+		return luisa::make_float3x3(
+			luisa::make_float3(0.0f, vec.z, -vec.y), // Since we use column-major
+			luisa::make_float3(-vec.z, 0.0f, vec.x),
+			luisa::make_float3(vec.y, -vec.x, 0.0f));
+	}
 	inline auto skew(const Var<float3>& vec)
 	{
 		return makeFloat3x3(luisa::compute::make_float3(0.0f, vec.z, -vec.y), // Since we use column-major
