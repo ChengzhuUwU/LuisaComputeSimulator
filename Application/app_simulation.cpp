@@ -1,6 +1,7 @@
 #include <iostream>
 #include <luisa/luisa-compute.h>
 #include <string>
+#include <format>
 
 #include "CollisionDetector/lbvh.h"
 #include "CollisionDetector/narrow_phase.h"

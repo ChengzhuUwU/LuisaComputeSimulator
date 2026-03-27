@@ -87,6 +87,11 @@ if cfg_bool(false, "lcs_enable_gui") then
     if is_host("windows") then
         add_defines("_GLFW_WIN32")
         add_syslinks("User32", "Gdi32", "Shell32")
+    elseif is_host("macosx") then
+        add_defines("_GLFW_COCOA")
+        add_files("LuisaCompute/src/ext/glfw/src/**.m")
+        add_mflags("-fno-objc-arc")
+        add_frameworks("Cocoa", "IOKit", "CoreVideo", "CoreFoundation", "QuartzCore", {public = true})
     end
     target_end()
 
@@ -116,6 +121,9 @@ if cfg_bool(false, "lcs_enable_gui") then
     })
     add_defines("GLAD_GLAPI_EXPORT_BUILD", "POLYSCOPE_BACKEND_OPENGL3_GLFW_ENABLED", "POLYSCOPE_BACKEND_OPENGL3_ENABLED")
     add_deps("glm", "implot", "stb-image", "nlohmann_json", "glad", "glfw")
+    if is_host("macosx") then
+        add_frameworks("OpenGL", {public = true})
+    end
     set_pcxxheader("polyscope_pch.h")
     target_end()
 
@@ -157,15 +165,20 @@ if cfg_bool(false, "lcs_enable_gui") then
 
     target("imgui")
     set_kind("static")
+    add_deps("glfw")
     add_includedirs("LuisaCompute/src/ext/imgui", {
         public = true
     })
+    add_includedirs("LuisaCompute/src/ext/imgui/backends")
     add_files(
         "LuisaCompute/src/ext/imgui/imgui.cpp",
         "LuisaCompute/src/ext/imgui/imgui_draw.cpp",
         "LuisaCompute/src/ext/imgui/imgui_tables.cpp",
-        "LuisaCompute/src/ext/imgui/imgui_widgets.cpp"
+        "LuisaCompute/src/ext/imgui/imgui_widgets.cpp",
+        "LuisaCompute/src/ext/imgui/backends/imgui_impl_glfw.cpp",
+        "LuisaCompute/src/ext/imgui/backends/imgui_impl_opengl3.cpp"
     )
     target_end()
+    add_defines("SIMULATION_APP_USE_GUI")
 
 end

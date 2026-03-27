@@ -200,10 +200,11 @@ if cfg_bool(false, "lcs_build_pybindings") then
             project_kind = "shared",
             enable_exception = true
         })
-        add_files("PythonBindings/src/python_bindings.cpp", "Application/app_simulation_demo_config.cpp")
-        add_includedirs("Application")
-        add_deps("luisa-compute-solver-lib", "lc-yyjson")
-        set_extension(".pyd")
+        if is_plat("windows") then
+            set_filename("lcs_py.pyd")
+        else
+            set_filename("lcs_py.so")
+        end
 
         on_load(function(target)
             local pyexe = get_config("lcs_python_executable")
