@@ -7,6 +7,7 @@
 #include <string>
 #include <luisa/luisa-compute.h>
 #include <Utils/async_compiler.h>
+#include <lcpp/device/device_radix_sort.h>
 
 namespace lcs
 {
@@ -238,6 +239,15 @@ namespace lcs
 
 	public:
 		LbvhData<luisa::compute::Buffer>* lbvh_data;
+		
+		// lcpp device radix sort for construct_tree
+		luisa::parallel_primitive::DeviceRadixSort<> device_radix_sort_;
+		luisa::compute::Buffer<uint> d_values_in_;
+		luisa::compute::Buffer<uint> d_values_out_;
+		luisa::compute::Device* device_ptr_{nullptr};
+		bool lcpp_sort_initialized_{false};
+		
+		void init_lcpp_sort(luisa::compute::Device& device, uint num_leaves);
 
 	private:
 		// Compute Morton

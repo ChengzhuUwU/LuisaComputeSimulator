@@ -2,6 +2,7 @@
 #include "CollisionDetector/aabb.h"
 #include "Utils/cpu_parallel.h"
 #include "Utils/reduce_helper.h"
+#include "lcpp/parallel_primitive.h"
 
 namespace lcs
 {
@@ -356,11 +357,26 @@ namespace lcs
 			};
 		};
 	};
+	void LBVH::init_lcpp_sort(luisa::compute::Device& device, uint num_leaves)
+	{
+		if (!lcpp_sort_initialized_)
+		{
+			device_ptr_ = &device;
+			device_radix_sort_.create(device);
+			d_values_in_ = device.create_buffer<uint>(num_leaves);
+			d_values_out_ = device.create_buffer<uint>(num_leaves);
+			lcpp_sort_initialized_ = true;
+		}
+	}
+
 	void LBVH::compile(AsyncCompiler& compiler)
 	{
 		using namespace luisa::compute;
 
-		// Construct
+		// Store device pointer for lcpp sort
+		device_ptr_ = &compiler.device();
+
+// Construct
 
 		// Should capture by value in asynchronous JIT environment
 		auto reduce_aabb_1_pass_template =
@@ -1017,22 +1033,38 @@ namespace lcs
 		const uint num_inner_nodes = lbvh_data->num_inner_nodes;
 		const uint num_nodes = lbvh_data->num_nodes;
 
-		auto& host_morton64 = lbvh_data->host_morton64;
-		auto& host_sorted_get_original = lbvh_data->host_sorted_get_original;
+		// Initialize lcpp radix sort if not already done
+		if (!lcpp_sort_initialized_)
+		{
+			if (device_ptr_)
+			{
+				LUISA_WARNING("LBVH::init_lcpp_sort() not called before construct_tree(), initializing now...");
+				init_lcpp_sort(*device_ptr_, num_leaves);
+			}
+			else
+			{
+				LUISA_ERROR("LBVH::device_ptr_ is null, cannot initialize lcpp sort");
+			}
+		}
 
-		stream << fn_reset_tree().dispatch(num_nodes) << fn_compute_mortons().dispatch(num_leaves)
-			   << lbvh_data->sa_morton.copy_to(host_morton64.data())
-			   << lbvh_data->sa_sorted_get_original.copy_to(host_sorted_get_original.data())
+		// Step 1: Reset tree and compute morton codes
+		stream << fn_reset_tree().dispatch(num_nodes) 
+			   << fn_compute_mortons().dispatch(num_leaves)
 			   << luisa::compute::synchronize();
 
-		CpuParallel::parallel_sort(host_sorted_get_original.data(),
-			host_sorted_get_original.data() + num_leaves,
-			[&](const uint idx1, const uint idx2) -> bool
-			{ return host_morton64[idx1] < host_morton64[idx2]; });
+		// Step 2: Use lcpp device radix sort instead of CPU sort
+		// Sort morton64 keys with original indices as values
+		luisa::compute::CommandList cmdlist;
+		device_radix_sort_.SortPairs(cmdlist, stream,
+			lbvh_data->sa_morton.view(),
+			lbvh_data->sa_morton_sorted.view(),
+			lbvh_data->sa_sorted_get_original.view(),
+			lbvh_data->sa_sorted_get_original.view(),
+			num_leaves);
 
-		stream << lbvh_data->sa_sorted_get_original.copy_from(host_sorted_get_original.data())
-			   << fn_apply_sorted().dispatch(num_leaves) << fn_build_inner_nodes().dispatch(num_inner_nodes)
-
+		// Step 3: Apply sorted indices and build inner nodes
+		stream << fn_apply_sorted().dispatch(num_leaves) 
+			   << fn_build_inner_nodes().dispatch(num_inner_nodes)
 			   << fn_check_construction().dispatch(num_inner_nodes)
 			   << lbvh_data->sa_is_healthy.copy_to(lbvh_data->host_is_healthy.data());
 	}
