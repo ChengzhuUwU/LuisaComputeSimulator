@@ -2,14 +2,18 @@ set(FETCHCONTENT_QUIET OFF)
 set(FETCHCONTENT_VERBOSE ON)
 include(FetchContent)
 
+#
+# LuisaCompute
+#
 if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG 0e641eb8667c3d3ce0e3c9ecb709de9f22363d4e
+        GIT_TAG ba723cc001da99cbcbe248e451f1a860da8c61f0
         # GIT_TAG next
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
+        GIT_SHALLOW TRUE
     )
     FetchContent_Populate(luisa_compute)
     set(LuisaCompute_SOURCE_DIR ${luisa_compute_SOURCE_DIR})
@@ -28,6 +32,7 @@ if (NOT TARGET luisa::compute)
 endif ()
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
+message(STATUS "Use LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN : ${LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN} ")
 
 #
 # lcpp
@@ -45,6 +50,12 @@ if (NOT TARGET lcpp)
 endif ()
 target_link_libraries(luisa-compute-solver-lib PUBLIC lcpp)
 
+message(STATUS "Use LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN : ${LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN} ")
+
+
+#
+# Eigen3
+#
 find_package(Eigen3 QUIET)
 if (NOT TARGET Eigen3::Eigen)
     message(STATUS "Can not find eigen3 package, download...")
@@ -53,6 +64,7 @@ if (NOT TARGET Eigen3::Eigen)
         GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
         GIT_TAG 3.4.0
         SOURCE_DIR ${EXT_PATH}/eigen
+        GIT_SHALLOW TRUE
     )
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -68,7 +80,9 @@ else()
 endif()
 target_link_libraries(luisa-compute-solver-lib PUBLIC Eigen3::Eigen)
 
-
+#
+# Polyscope
+#
 if(LCS_ENABLE_GUI)
     if (NOT TARGET polyscope)
         FetchContent_Declare(
@@ -77,6 +91,7 @@ if(LCS_ENABLE_GUI)
             # https://gitee.com/celeste-huohuo/polyscope.git
             GIT_REPOSITORY https://gitee.com/celeste-huohuo/polyscope.git
             SOURCE_DIR ${EXT_PATH}/polyscope
+            GIT_SHALLOW TRUE
         )
         set(POLYSCOPE_USE_EXTERNAL_GLFW ON CACHE BOOL "" FORCE)
         set(POLYSCOPE_BACKEND_OPENGL3_GLFW ON CACHE BOOL "" FORCE)
@@ -86,6 +101,10 @@ if(LCS_ENABLE_GUI)
     endif()
 endif()
 
+
+#
+# TBB or libdispatch
+#
 
 if (LCS_BUILD_PYBINDINGS)
 
@@ -169,8 +188,9 @@ endif()
 # endif()
 
 
-
-# # yyjson
+#
+# yyjson
+#
 if (NOT TARGET yyjson)
     find_package(yyjson QUIET)
     if (yyjson_FOUND)
