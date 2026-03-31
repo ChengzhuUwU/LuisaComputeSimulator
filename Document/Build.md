@@ -95,6 +95,7 @@ xmake build
 | `-D LCS_BUILD_PYBINDINGS`        | Build Python bindings         | `OFF`          |
 | `-D LCS_PYTHON_EXECUTABLE`       | Python interpreter path       |                |
 | `-D LCS_ENABLE_GUI`              | Enable GUI (Polyscope)        | `OFF`          |
+| `-D LCS_ENABLE_TEST`             | Enable Unit Test              | `OFF`          |
 
 ### Xmake Flags
 
