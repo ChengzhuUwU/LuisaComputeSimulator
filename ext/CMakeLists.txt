@@ -28,6 +28,23 @@ if (NOT TARGET luisa::compute)
 endif ()
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 
+
+#
+# lcpp
+#
+if (NOT TARGET lcpp)
+    FetchContent_Declare(
+        lcpp
+        GIT_REPOSITORY https://github.com/Ligo04/lc_parallel_primitive.git
+        GIT_TAG ef9c3d7b74c2b2b490e941c6dd5562eabef0479b
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/lcpp
+    )
+    set(LCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Populate(lcpp)
+    add_subdirectory(${EXT_PATH}/lcpp)
+endif ()
+target_link_libraries(luisa-compute-solver-lib PUBLIC lcpp)
+
 find_package(Eigen3 QUIET)
 if (NOT TARGET Eigen3::Eigen)
     message(STATUS "Can not find eigen3 package, download...")
@@ -95,6 +112,9 @@ if (LCS_BUILD_PYBINDINGS)
     # endif()
 endif()
 
+#
+# TBB or libdispatch
+#
 if (LCS_USE_SYSTEM_PARALLEL_FOR)
     target_compile_definitions(luisa-compute-solver-lib PRIVATE LCS_USE_SYSTEM_PARALLEL_FOR=1)
     find_package(TBB CONFIG QUIET)
