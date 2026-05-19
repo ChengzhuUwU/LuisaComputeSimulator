@@ -192,6 +192,50 @@ if cfg_bool(false, "lcs_enable_test") then
         add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
         add_files("UnitTest/test_gradient_hessian.cpp")
         add_deps("luisa-compute-solver-lib")
+
+    target("test_newton_solver_integration")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_newton_solver_integration.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_profiling")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_profiling.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    -- ===========================================================================
+    -- New modular unit tests (IPC framework testing suite)
+    -- ===========================================================================
+
+    target("test_lbvh")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_lbvh.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_narrow_phase")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_narrow_phase.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_energy_assembly")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_energy_assembly.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_pcg_solver")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_pcg_solver.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_ccd")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_ccd.cpp")
+        add_deps("luisa-compute-solver-lib")
+
+    target("test_integration")
+        add_rules("lc_basic_settings", {project_kind = "binary", enable_exception = true})
+        add_files("UnitTest/test_integration.cpp")
+        add_deps("luisa-compute-solver-lib")
 end
 
 if cfg_bool(false, "lcs_build_pybindings") then

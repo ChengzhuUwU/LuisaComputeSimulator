@@ -16,3 +16,13 @@ luisa_compute_solver_add_test(test_gradient_hessian test_gradient_hessian.cpp)
 luisa_compute_solver_add_test(test_newton_solver_integration test_newton_solver_integration.cpp)
 luisa_compute_solver_add_test(test_profiling test_profiling.cpp)
 luisa_compute_solver_add_test(test_lcpp test_lcpp.cpp)
+
+# -----------------------------------------------------------------------------
+# New modular unit tests (IPC framework testing suite)
+# -----------------------------------------------------------------------------
+luisa_compute_solver_add_test(test_lbvh               test_lbvh.cpp)
+luisa_compute_solver_add_test(test_narrow_phase       test_narrow_phase.cpp)
+luisa_compute_solver_add_test(test_energy_assembly     test_energy_assembly.cpp)
+luisa_compute_solver_add_test(test_pcg_solver         test_pcg_solver.cpp)
+luisa_compute_solver_add_test(test_ccd                 test_ccd.cpp)
+luisa_compute_solver_add_test(test_integration         test_integration.cpp)
