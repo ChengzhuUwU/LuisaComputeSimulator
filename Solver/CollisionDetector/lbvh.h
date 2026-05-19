@@ -82,17 +82,20 @@ namespace lcs
 		BufferType<aabbData>	   sa_block_aabb;
 		BufferType<morton64>	   sa_morton;
 		BufferType<morton64>	   sa_morton_sorted;
-		BufferType<uint>		   sa_sorted_get_original;
 		BufferType<uint>		   sa_parrent;
 		BufferType<uint2>		   sa_children;
 		BufferType<uint>		   sa_object_idx;
 		BufferType<CompressedAABB> sa_node_aabb_v2;
 		BufferType<uint>		   sa_is_healthy;
 		BufferType<uint>		   sa_num_leaves;
+
+		// Radix sort double-buffer and temp storage (owned here so lifetime matches the tree data)
+		BufferType<uint> sa_sort_values_in;
+		BufferType<uint> sa_sort_values_out;
+		BufferType<uint> sa_sort_temp_storage;
 		// BufferType<AabbData> sa_node_aabb_model_position;
 
 		std::vector<morton64>		host_morton64;
-		std::vector<uint>			host_sorted_get_original;
 		std::vector<uint>			host_parrent;
 		std::vector<uint2>			host_children;
 		std::vector<aabbData>		host_node_aabb;
@@ -130,7 +133,6 @@ namespace lcs
 			resize_buffer(device, this->sa_block_aabb, get_dispatch_block(num_leaves, 256));
 			resize_buffer(device, this->sa_morton, num_leaves);
 			resize_buffer(device, this->sa_morton_sorted, num_leaves);
-			resize_buffer(device, this->sa_sorted_get_original, num_leaves);
 			resize_buffer(device, this->sa_parrent, num_nodes);
 			resize_buffer(device, this->sa_children, num_nodes);
 			resize_buffer(device, this->sa_object_idx, num_nodes);
@@ -139,8 +141,12 @@ namespace lcs
 			resize_buffer(device, this->sa_node_aabb_v2, num_nodes);
 			resize_buffer(device, this->sa_is_healthy, 1);
 
+			// Radix sort double-buffer (values side)
+			resize_buffer(device, this->sa_sort_values_in, num_leaves);
+			resize_buffer(device, this->sa_sort_values_out, num_leaves);
+			// sa_sort_temp_storage size depends on lcpp internals; allocated in LBVH::init_lcpp_sort()
+
 			this->host_morton64.resize(num_leaves);
-			this->host_sorted_get_original.resize(num_leaves);
 			this->host_parrent.resize(num_nodes);
 			this->host_children.resize(num_nodes);
 			this->host_apply_flag.resize(num_nodes);
@@ -242,12 +248,9 @@ namespace lcs
 		
 		// lcpp device radix sort for construct_tree
 		luisa::parallel_primitive::DeviceRadixSort<> device_radix_sort_;
-		luisa::compute::Buffer<uint> d_values_in_;
-		luisa::compute::Buffer<uint> d_values_out_;
-		luisa::compute::Device* device_ptr_{nullptr};
 		bool lcpp_sort_initialized_{false};
 		
-		void init_lcpp_sort(luisa::compute::Device& device, uint num_leaves);
+		void init_lcpp_sort(luisa::compute::Device& device);
 
 	private:
 		// Compute Morton

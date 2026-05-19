@@ -357,14 +357,17 @@ namespace lcs
 			};
 		};
 	};
-	void LBVH::init_lcpp_sort(luisa::compute::Device& device, uint num_leaves)
+	void LBVH::init_lcpp_sort(luisa::compute::Device& device)
 	{
 		if (!lcpp_sort_initialized_)
 		{
-			device_ptr_ = &device;
 			device_radix_sort_.create(device);
-			d_values_in_ = device.create_buffer<uint>(num_leaves);
-			d_values_out_ = device.create_buffer<uint>(num_leaves);
+			// Allocate temp storage into lbvh_data (size depends on lcpp internals)
+			const uint num_leaves = lbvh_data->num_leaves;
+			size_t	   temp_bytes = luisa::parallel_primitive::DeviceRadixSort<>::GetSortPairsTempStorageBytes<morton64, uint>(num_leaves);
+			size_t	   temp_uint_count = (temp_bytes + sizeof(uint) - 1) / sizeof(uint);
+			using Initializer::resize_buffer;
+			resize_buffer(device, lbvh_data->sa_sort_temp_storage, static_cast<uint>(temp_uint_count));
 			lcpp_sort_initialized_ = true;
 		}
 	}
@@ -373,10 +376,10 @@ namespace lcs
 	{
 		using namespace luisa::compute;
 
-		// Store device pointer for lcpp sort
-		device_ptr_ = &compiler.device();
+		// Initialize lcpp radix sort now that we have the device and lbvh_data is already set
+		init_lcpp_sort(compiler.device());
 
-// Construct
+		// Construct
 
 		// Should capture by value in asynchronous JIT environment
 		auto reduce_aabb_1_pass_template =
@@ -521,8 +524,7 @@ namespace lcs
 		compiler.compile(fn_compute_mortons,
 			[sa_block_aabb = lbvh_data->sa_block_aabb.view(),
 				sa_leaf_center = lbvh_data->sa_leaf_center.view(),
-				sa_morton = lbvh_data->sa_morton.view(),
-				sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view()]()
+				sa_morton = lbvh_data->sa_morton.view()]()
 			{
 				const Uint lid = luisa::compute::dispatch_id().x;
 
@@ -533,11 +535,10 @@ namespace lcs
 				sa_leaf_center->write(lid, norm_position);
 				auto mc64 = make_morton64(norm_position, lid);
 				sa_morton->write(lid, mc64);
-				sa_sorted_get_original->write(lid, lid);
 			});
 
 		compiler.compile<1>(fn_apply_sorted,
-			[sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+			[sa_sort_values_out = lbvh_data->sa_sort_values_out.view(),
 				sa_morton = lbvh_data->sa_morton.view(),
 				sa_morton_sorted = lbvh_data->sa_morton_sorted.view(),
 				sa_children = lbvh_data->sa_children.view(),
@@ -545,7 +546,7 @@ namespace lcs
 				fn_get_num_leaves]()
 			{
 				const Uint lid = dispatch_id().x;
-				const Uint orig_vid = sa_sorted_get_original->read(lid);
+				const Uint orig_vid = sa_sort_values_out->read(lid);
 				sa_morton_sorted->write(lid, sa_morton->read(orig_vid));
 				const Uint num_inner_nodes = fn_get_num_leaves() - 1;
 				sa_children->write(num_inner_nodes + lid, make_uint2((orig_vid), (orig_vid)));
@@ -628,14 +629,14 @@ namespace lcs
 
 		// Refit
 		compiler.compile(fn_update_vert_tree_leave_aabb_v2,
-			[fn_get_num_leaves](Var<Buffer<uint>> sa_sorted_get_original,
+			[fn_get_num_leaves](Var<Buffer<uint>> sa_sort_values_out,
 				Var<Buffer<CompressedAABB>>		  sa_node_aabb,
 				Var<Buffer<float3>>				  sa_x_start,
 				Var<Buffer<float3>>				  sa_x_end,
 				Var<Buffer<float>>				  thickness)
 			{
 				const Uint lid = dispatch_id().x;
-				Uint	   vid = sa_sorted_get_original->read(lid);
+				Uint	   vid = sa_sort_values_out->read(lid);
 				Float2x3   aabb = AABB::make_aabb(sa_x_start->read(vid), sa_x_end->read(vid));
 				aabb = AABB::add_thickness(aabb, thickness->read(vid));
 				const Uint num_inner_nodes = fn_get_num_leaves() - 1;
@@ -646,7 +647,7 @@ namespace lcs
 
 		compiler.compile<1>(
 			fn_update_edge_tree_leave_aabb_v2,
-			[fn_get_num_leaves](Var<Buffer<uint>> sa_sorted_get_original,
+			[fn_get_num_leaves](Var<Buffer<uint>> sa_sort_values_out,
 				Var<Buffer<CompressedAABB>>		  sa_node_aabb,
 				Var<Buffer<float3>>				  sa_x_start,
 				Var<Buffer<float3>>				  sa_x_end,
@@ -654,7 +655,7 @@ namespace lcs
 				Var<Buffer<float>>				  thickness)
 			{
 				const Uint lid = dispatch_id().x;
-				Uint	   eid = sa_sorted_get_original->read(lid);
+				Uint	   eid = sa_sort_values_out->read(lid);
 				UInt2	   edge = input_edge->read(eid);
 				Float3	   start_positions[2] = { sa_x_start->read(edge[0]), sa_x_start->read(edge[1]) };
 				Float3	   end_positions[2] = { sa_x_end->read(edge[0]), sa_x_end->read(edge[1]) };
@@ -669,7 +670,7 @@ namespace lcs
 
 		compiler.compile<1>(
 			fn_update_face_tree_leave_aabb_v2,
-			[fn_get_num_leaves](Var<Buffer<uint>> sa_sorted_get_original,
+			[fn_get_num_leaves](Var<Buffer<uint>> sa_sort_values_out,
 				Var<Buffer<CompressedAABB>>		  sa_node_aabb,
 				Var<Buffer<float3>>				  sa_x_start,
 				Var<Buffer<float3>>				  sa_x_end,
@@ -677,7 +678,7 @@ namespace lcs
 				Var<Buffer<float>>				  thickness)
 			{
 				const Uint lid = dispatch_id().x;
-				Uint	   fid = sa_sorted_get_original->read(lid);
+				Uint	   fid = sa_sort_values_out->read(lid);
 				UInt3	   face = input_face->read(fid);
 				Float3	   start_positions[3] = {
 					sa_x_start->read(face[0]), sa_x_start->read(face[1]), sa_x_start->read(face[2])
@@ -1033,37 +1034,58 @@ namespace lcs
 		const uint num_inner_nodes = lbvh_data->num_inner_nodes;
 		const uint num_nodes = lbvh_data->num_nodes;
 
-		// Initialize lcpp radix sort if not already done
-		if (!lcpp_sort_initialized_)
-		{
-			if (device_ptr_)
-			{
-				LUISA_WARNING("LBVH::init_lcpp_sort() not called before construct_tree(), initializing now...");
-				init_lcpp_sort(*device_ptr_, num_leaves);
-			}
-			else
-			{
-				LUISA_ERROR("LBVH::device_ptr_ is null, cannot initialize lcpp sort");
-			}
-		}
+		LUISA_ASSERT(lcpp_sort_initialized_, "LBVH::construct_tree() called before compile()");
 
 		// Step 1: Reset tree and compute morton codes
-		stream << fn_reset_tree().dispatch(num_nodes) 
+		stream << fn_reset_tree().dispatch(num_nodes)
 			   << fn_compute_mortons().dispatch(num_leaves)
 			   << luisa::compute::synchronize();
+
+		// Initialize sa_sort_values_in to [0, 1, 2, ..., N-1] for SortPairs
+		{
+			std::vector<uint> host_sort_values_in(num_leaves);
+			std::iota(host_sort_values_in.begin(), host_sort_values_in.end(), 0);
+			stream << lbvh_data->sa_sort_values_in.copy_from(host_sort_values_in.data()) << luisa::compute::synchronize();
+		}
 
 		// Step 2: Use lcpp device radix sort instead of CPU sort
 		// Sort morton64 keys with original indices as values
 		luisa::compute::CommandList cmdlist;
-		device_radix_sort_.SortPairs(cmdlist, stream,
+		device_radix_sort_.SortPairs(cmdlist,
+			lbvh_data->sa_sort_temp_storage.view(),
 			lbvh_data->sa_morton.view(),
 			lbvh_data->sa_morton_sorted.view(),
-			lbvh_data->sa_sorted_get_original.view(),
-			lbvh_data->sa_sorted_get_original.view(),
+			lbvh_data->sa_sort_values_in.view(),
+			lbvh_data->sa_sort_values_out.view(),
 			num_leaves);
+		stream << cmdlist.commit();
+
+		// {
+		// 	std::vector<morton64> host_sort_key_in(num_leaves);
+		// 	std::vector<uint>	  host_sort_values(num_leaves);
+		// 	std::vector<uint>	  device_sort_values(num_leaves);
+		// 	std::iota(host_sort_values.begin(), host_sort_values.end(), 0);
+		// 	stream
+		// 		<< lbvh_data->sa_morton.copy_to(host_sort_key_in.data())
+		// 		<< lbvh_data->sa_sort_values_out.copy_to(device_sort_values.data())
+		// 		<< luisa::compute::synchronize();
+		// 	std::sort(host_sort_values.begin(), host_sort_values.end(),
+		// 		[&](const uint idx1, const uint idx2)
+		// 		{
+		// 			return host_sort_key_in[idx1] < host_sort_key_in[idx2];
+		// 		});
+		// 	for (uint i = 0; i < num_leaves; i++)
+		// 	{
+		// 		if (device_sort_values[i] != host_sort_values[i])
+		// 		{
+		// 			LUISA_ERROR("Radix sort failed at index {}: got {}, expected {}", i, device_sort_values[i], host_sort_values[i]);
+		// 			exit(0);
+		// 		}
+		// 	}
+		// }
 
 		// Step 3: Apply sorted indices and build inner nodes
-		stream << fn_apply_sorted().dispatch(num_leaves) 
+		stream << fn_apply_sorted().dispatch(num_leaves)
 			   << fn_build_inner_nodes().dispatch(num_inner_nodes)
 			   << fn_check_construction().dispatch(num_inner_nodes)
 			   << lbvh_data->sa_is_healthy.copy_to(lbvh_data->host_is_healthy.data());
@@ -1075,10 +1097,10 @@ namespace lcs
 		const Buffer<float3>&					   start_position,
 		const Buffer<float3>&					   end_position)
 	{
-		//     sa_sorted_get_original = lbvh_data->sa_sorted_get_original.view(),
+		//     sa_sort_values_out = lbvh_data->sa_sort_values_out.view(),
 		//   sa_node_aabb           = lbvh_data->sa_node_aabb.view(),
 		stream << fn_update_vert_tree_leave_aabb_v2(
-			lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, thickness)
+			lbvh_data->sa_sort_values_out, lbvh_data->sa_node_aabb_v2, start_position, end_position, thickness)
 					  .dispatch(start_position.size());
 	}
 	void LBVH::update_edge_tree_leave_aabb(Stream& stream,
@@ -1088,7 +1110,7 @@ namespace lcs
 		const Buffer<uint2>&					   input_edges)
 	{
 		stream << fn_update_edge_tree_leave_aabb_v2(
-			lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_edges, thickness)
+			lbvh_data->sa_sort_values_out, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_edges, thickness)
 					  .dispatch(input_edges.size());
 	}
 	void LBVH::update_face_tree_leave_aabb(Stream& stream,
@@ -1098,7 +1120,7 @@ namespace lcs
 		const Buffer<uint3>&					   input_faces)
 	{
 		stream << fn_update_face_tree_leave_aabb_v2(
-			lbvh_data->sa_sorted_get_original, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_faces, thickness)
+			lbvh_data->sa_sort_values_out, lbvh_data->sa_node_aabb_v2, start_position, end_position, input_faces, thickness)
 					  .dispatch(input_faces.size());
 	}
 

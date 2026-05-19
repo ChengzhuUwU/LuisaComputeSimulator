@@ -9,7 +9,7 @@ if (NOT TARGET luisa::compute)
     FetchContent_Declare(
         luisa_compute
         GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git # https://gitee.com/celeste-huohuo/LuisaCompute.git
-        GIT_TAG ba723cc001da99cbcbe248e451f1a860da8c61f0
+        GIT_TAG 8fda2e0268c09bc3051cde913a612836036397d9
         # GIT_TAG next
         # GIT_SUBMODULES ""
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/luisaCompute
@@ -41,7 +41,7 @@ if (NOT TARGET lcpp)
     FetchContent_Declare(
         lcpp
         GIT_REPOSITORY https://github.com/Ligo04/lc_parallel_primitive.git
-        GIT_TAG ef9c3d7b74c2b2b490e941c6dd5562eabef0479b
+        GIT_TAG 346650626098ba236297df152d2974f2c0618f44
         SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/lcpp
     )
     set(LCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)

@@ -1,5 +1,6 @@
 
 #include <luisa/luisa-compute.h>
+#include <numeric>
 
 struct CompressedAABB
 {
@@ -345,23 +346,23 @@ int main(int argc, char** argv)
 
 	struct LBVH_DATA
 	{
-		Buffer<uint>   sa_sorted_get_original;
+		Buffer<uint>   sa_sort_values_out;
 		Buffer<float3> sa_positions;
 	};
 	LBVH_DATA lbvh_data;
-	lbvh_data.sa_sorted_get_original = device.create_buffer<uint>(1000);
+	lbvh_data.sa_sort_values_out = device.create_buffer<uint>(1000);
 	lbvh_data.sa_positions = device.create_buffer<float3>(1000);
 
 	auto fn_test_compile_refit = [&](const uint depth)
 	{
 		auto fn_update_vert_tree_leave_aabb = device.compile<1>(
-			[sa_sorted_get_original =
-					lbvh_data.sa_sorted_get_original.view()](const Var<luisa::compute::BufferView<float3>> sa_x_start,
+			[sa_sort_values_out =
+					lbvh_data.sa_sort_values_out.view()](const Var<luisa::compute::BufferView<float3>> sa_x_start,
 				const Var<luisa::compute::BufferView<float3>>											   sa_x_end,
 				const Float																				   thickness)
 			{
 				const Uint lid = dispatch_id().x;
-				Uint	   vid = sa_sorted_get_original->read(lid);
+				Uint	   vid = sa_sort_values_out->read(lid);
 			});
 
 		stream << fn_update_vert_tree_leave_aabb(lbvh_data.sa_positions, lbvh_data.sa_positions, 0.0f).dispatch(1000)

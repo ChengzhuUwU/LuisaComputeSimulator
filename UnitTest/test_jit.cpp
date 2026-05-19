@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <numeric>
 #include <luisa/luisa-compute.h>
 
 int main(int argc, char** argv)
@@ -32,17 +33,18 @@ int main(int argc, char** argv)
 
 	struct LBVH_DATA
 	{
-		Buffer<uint>   sa_sorted_get_original;
+		Buffer<uint>   sa_sort_values_out;
 		Buffer<float3> sa_positions;
 	};
 	LBVH_DATA lbvh_data;
-	lbvh_data.sa_sorted_get_original = device.create_buffer<uint>(1000);
+	lbvh_data.sa_sort_values_out = device.create_buffer<uint>(1000);
 	lbvh_data.sa_positions = device.create_buffer<float3>(1000);
 
-	std::vector<uint>	host_sorted_get_original(1000, 0u);
+	std::vector<uint>	host_sort_values_out(1000);
+	std::iota(host_sort_values_out.begin(), host_sort_values_out.end(), 0u);
 	std::vector<float3> host_positions(1000, float3(0.0f, 0.0f, 0.0f));
 
-	stream << lbvh_data.sa_sorted_get_original.copy_from(host_sorted_get_original.data())
+	stream << lbvh_data.sa_sort_values_out.copy_from(host_sort_values_out.data())
 		   << lbvh_data.sa_positions.copy_from(host_positions.data()) << synchronize();
 
 	// Some operations preventing data un-prepared
@@ -73,11 +75,11 @@ int main(int argc, char** argv)
 		//        << synchronize();
 
 		auto fn_update_vert_tree_leave_aabb = device.compile<1>(
-			[sa_sorted_get_original = lbvh_data.sa_sorted_get_original.view()](
+			[sa_sort_values_out = lbvh_data.sa_sort_values_out.view()](
 				const Var<Buffer<float3>> sa_x_start, const Var<Buffer<float3>> sa_x_end, const Float thickness)
 			{
 				const UInt lid = dispatch_id().x;
-				UInt	   vid = sa_sorted_get_original->read(lid);
+				UInt	   vid = sa_sort_values_out->read(lid);
 			});
 		stream << fn_update_vert_tree_leave_aabb(lbvh_data.sa_positions, lbvh_data.sa_positions, 0.001f).dispatch(1000)
 			   << synchronize();
