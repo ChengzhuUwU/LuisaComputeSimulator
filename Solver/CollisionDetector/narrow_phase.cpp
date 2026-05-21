@@ -282,7 +282,8 @@ namespace lcs // Data IO
 	}
 	float NarrowPhasesDetector::get_global_toi(Stream& stream)
 	{
-		stream << luisa::compute::synchronize();
+		stream << collision_data->toi_per_vert.view(0, 1).copy_to(host_collision_data->toi_per_vert.data())
+			   << luisa::compute::synchronize();
 
 		auto& host_toi = host_collision_data->toi_per_vert[0];
 		// if (host_toi != host_accd::line_search_max_t) LUISA_INFO("             CCD linesearch toi = {}", host_toi);

@@ -25,95 +25,91 @@ using namespace lcs::test;
 namespace
 {
 
-/**
- * Analytical VF CCD: check if a moving point hits a triangle
- * Returns TOI in [0, 1] (parametric time along [x_begin, x_end])
- * Returns -1 if no collision
- *
- * Simplified version using the triangle's normal plane
- */
-float analytical_vf_ccd(float3 p_begin, float3 p_end,
-						float3 v0, float3 v1, float3 v2,
-						float thickness = 0.0f)
-{
-	float3 edge0 = v1 - v0;
-	float3 edge1 = v2 - v0;
-	float3 n = luisa::normalize(luisa::cross(edge0, edge1));
-
-	float d0 = luisa::dot(v0 - p_begin, n);
-	float d1 = luisa::dot(v0 - p_end, n);
-
-	// Thickness envelope
-	float d0_thick = d0 - thickness;
-	float d1_thick = d1 - thickness;
-
-	// Both above (or at) the plane: no collision
-	if (d0_thick > 0.0f && d1_thick > 0.0f)
-		return -1.0f;
-
-	// Both below the plane: inside
-	if (d0_thick <= 0.0f && d1_thick <= 0.0f)
-		return 0.0f;
-
-	// Interpolate
-	float toi = d0_thick / (d0_thick - d1_thick);
-	return luisa::clamp(toi, 0.0f, 1.0f);
-}
-
-/**
- * Analytical EE CCD using parametric swept segment intersection
- * Returns TOI in [0, 1], -1 if no collision
- */
-float analytical_ee_ccd(float3 p0_begin, float3 p1_begin,
-						float3 p0_end, float3 p1_end,
-						float thickness = 0.0f)
-{
-	float3 d1 = p1_begin - p0_begin; // Segment S direction
-	float3 d2 = p0_end - p0_begin;  // Segment T direction at t=0
-	float3 d3 = p1_end - p0_end;    // Segment T direction at t=1
-
-	// Simplified: check closest approach
-	float min_dist = 1e9f;
-	float best_toi = -1.0f;
-
-	for (int i = 0; i <= 10; ++i)
+	/**
+	 * Analytical VF CCD: check if a moving point hits a triangle
+	 * Returns TOI in [0, 1] (parametric time along [x_begin, x_end])
+	 * Returns -1 if no collision
+	 *
+	 * Simplified version using the triangle's normal plane
+	 */
+	float analytical_vf_ccd(float3 p_begin, float3 p_end,
+		float3 v0, float3 v1, float3 v2,
+		float thickness = 0.0f)
 	{
-		float t = float(i) / 10.0f;
-		float3 q0 = p0_begin + t * d2;
-		float3 q1 = p0_end + t * d3;
+		float3 edge0 = v1 - v0;
+		float3 edge1 = v2 - v0;
+		float3 n = luisa::normalize(luisa::cross(edge0, edge1));
 
-		// Distance from p0 to line segment [q0, q1]
-		float3 v = q1 - q0;
-		float3 w = p0_begin + (t * 0.5f) * (d2 + d3) - q0;
-		float  c1 = luisa::dot(v, v);
-		float  c2 = luisa::dot(d1, v);
-		float  c3 = luisa::dot(d1, d1);
-		float  denom = c1 * c3 - c2 * c2;
+		float d0 = luisa::dot(p_begin - v0, n);
+		float d1 = luisa::dot(p_end - v0, n);
 
-		if (denom < 1e-8f)
-			continue;
+		if (luisa::abs(d0) <= thickness)
+			return 0.0f;
 
-		float s = (c1 * luisa::dot(d1, w) + c2 * luisa::dot(v, w)) / denom;
-		float tt = -(c2 * luisa::dot(d1, w) + c3 * luisa::dot(v, w)) / denom;
+		bool separated_begin = d0 > thickness || d0 < -thickness;
+		bool separated_end = d1 > thickness || d1 < -thickness;
+		if (separated_begin && separated_end && d0 * d1 > 0.0f)
+			return -1.0f;
 
-		s = luisa::clamp(s, 0.0f, 1.0f);
-		tt = luisa::clamp(tt, 0.0f, 1.0f);
-
-		float3 closest_p = p0_begin + tt * d1;
-		float3 closest_q = q0 + s * v;
-		float  dist = luisa::length(closest_p - closest_q);
-
-		if (dist < min_dist)
-		{
-			min_dist = dist;
-			best_toi = t;
-		}
+		float target = d0 >= 0.0f ? thickness : -thickness;
+		float toi = (d0 - target) / (d0 - d1);
+		return luisa::clamp(toi, 0.0f, 1.0f);
 	}
 
-	if (min_dist < thickness)
-		return best_toi;
-	return -1.0f;
-}
+	/**
+	 * Analytical EE CCD using parametric swept segment intersection
+	 * Returns TOI in [0, 1], -1 if no collision
+	 */
+	float analytical_ee_ccd(float3 p0_begin, float3 p1_begin,
+		float3 p0_end, float3 p1_end,
+		float thickness = 0.0f)
+	{
+		float3 d1 = p1_begin - p0_begin; // Segment S direction
+		float3 d2 = p0_end - p0_begin;	 // Segment T direction at t=0
+		float3 d3 = p1_end - p0_end;	 // Segment T direction at t=1
+
+		// Simplified: check closest approach
+		float min_dist = 1e9f;
+		float best_toi = -1.0f;
+
+		for (int i = 0; i <= 10; ++i)
+		{
+			float  t = float(i) / 10.0f;
+			float3 q0 = p0_begin + t * d2;
+			float3 q1 = p0_end + t * d3;
+
+			// Distance from p0 to line segment [q0, q1]
+			float3 v = q1 - q0;
+			float3 w = p0_begin + (t * 0.5f) * (d2 + d3) - q0;
+			float  c1 = luisa::dot(v, v);
+			float  c2 = luisa::dot(d1, v);
+			float  c3 = luisa::dot(d1, d1);
+			float  denom = c1 * c3 - c2 * c2;
+
+			if (denom < 1e-8f)
+				continue;
+
+			float s = (c1 * luisa::dot(d1, w) + c2 * luisa::dot(v, w)) / denom;
+			float tt = -(c2 * luisa::dot(d1, w) + c3 * luisa::dot(v, w)) / denom;
+
+			s = luisa::clamp(s, 0.0f, 1.0f);
+			tt = luisa::clamp(tt, 0.0f, 1.0f);
+
+			float3 closest_p = p0_begin + tt * d1;
+			float3 closest_q = q0 + s * v;
+			float  dist = luisa::length(closest_p - closest_q);
+
+			if (dist < min_dist)
+			{
+				min_dist = dist;
+				best_toi = t;
+			}
+		}
+
+		if (min_dist < thickness)
+			return best_toi;
+		return -1.0f;
+	}
 
 } // anonymous namespace
 
@@ -137,10 +133,11 @@ public:
 
 		// Bottom triangle
 		std::vector<std::array<float, 3>> verts_bottom = {
-			{0.0f, 0.0f, 0.0f},
-			{1.0f, 0.0f, 0.0f},
-			{0.5f, 1.0f, 0.0f}};
-		std::vector<std::array<uint, 3>> faces_bottom = {{0, 1, 2}};
+			{ 0.0f, 0.0f, 0.0f },
+			{ 1.0f, 0.0f, 0.0f },
+			{ 0.5f, 1.0f, 0.0f }
+		};
+		std::vector<std::array<uint, 3>> faces_bottom = { { 0, 1, 2 } };
 		world.load_mesh_from_array(verts_bottom, faces_bottom);
 		world.set_material_type(Material::MaterialType::Cloth);
 		Material::ClothMaterial m;
@@ -155,7 +152,6 @@ public:
 		params.use_self_collision = false;
 		params.simulate_cloth = true;
 
-		init_device();
 		init_solver();
 
 		auto* np = get_narrow_phase();
@@ -199,7 +195,7 @@ public:
 		// Point moving away
 		float3 p_begin_away = luisa::make_float3(0.5f, 0.5f, 0.1f);
 		float3 p_end_away = luisa::make_float3(0.5f, 0.5f, 0.2f);
-		float toi_away = analytical_vf_ccd(p_begin_away, p_end_away, v0, v1, v2, 0.0f);
+		float  toi_away = analytical_vf_ccd(p_begin_away, p_end_away, v0, v1, v2, 0.0f);
 
 		std::cout << "    Away TOI: " << toi_away << "\n";
 		TEST_ASSERT(toi_away < 0.0f, "Point moving away should not collide");
@@ -229,7 +225,7 @@ public:
 		float3 p1_b2 = luisa::make_float3(1.0f, 0.0f, -1.0f);
 		float3 p0_e2 = luisa::make_float3(0.0f, 0.0f, 1.0f);
 		float3 p1_e2 = luisa::make_float3(1.0f, 0.0f, 1.0f);
-		float toi2 = analytical_ee_ccd(p0_b2, p1_b2, p0_e2, p1_e2, 0.0f);
+		float  toi2 = analytical_ee_ccd(p0_b2, p1_b2, p0_e2, p1_e2, 0.0f);
 		std::cout << "    EE TOI (separated): " << toi2 << "\n";
 		TEST_ASSERT(toi2 < 0.0f, "Parallel separated segments should not collide");
 
@@ -258,7 +254,7 @@ public:
 		}
 
 		auto* sim = get_host_sim_data();
-		auto positions = sim->sa_q;
+		auto  positions = sim->sa_q;
 
 		// Verify positions are valid (no NaN)
 		bool has_nan = false;
@@ -288,12 +284,13 @@ public:
 		world.set_name("fast_motion");
 
 		// Create two triangles with small gap
-		float gap = 0.01f;
+		float							  gap = 0.01f;
 		std::vector<std::array<float, 3>> verts_a = {
-			{0.0f, 0.0f, 0.0f},
-			{1.0f, 0.0f, 0.0f},
-			{0.5f, 1.0f, 0.0f}};
-		std::vector<std::array<uint, 3>> faces = {{0, 1, 2}};
+			{ 0.0f, 0.0f, 0.0f },
+			{ 1.0f, 0.0f, 0.0f },
+			{ 0.5f, 1.0f, 0.0f }
+		};
+		std::vector<std::array<uint, 3>> faces = { { 0, 1, 2 } };
 
 		world.load_mesh_from_array(verts_a, faces);
 		world.set_material_type(Material::MaterialType::Cloth);
@@ -308,7 +305,6 @@ public:
 		params.use_self_collision = false;
 		params.simulate_cloth = true;
 
-		init_device();
 		init_solver();
 
 		auto* np = get_narrow_phase();
@@ -398,7 +394,8 @@ int main(int argc, char** argv)
 	{
 		total++;
 		TestCCD test;
-		auto result = run_test(name, [&] { return (test.*fn)(); });
+		auto	result = run_test(name, [&]
+			   { return (test.*fn)(); });
 		suite.add(result);
 		if (result.passed)
 			passed++;
@@ -411,7 +408,8 @@ int main(int argc, char** argv)
 		try
 		{
 			test.init_device();
-			auto result = run_test(name, [&] { return (test.*fn)(); });
+			auto result = run_test(name, [&]
+				{ return (test.*fn)(); });
 			suite.add(result);
 			if (result.passed)
 				passed++;
@@ -440,7 +438,7 @@ int main(int argc, char** argv)
 	std::cout << "╔═══════════════════════════════════════════════════════════════╗\n";
 	auto pass_str = std::to_string(passed);
 	auto total_str = std::to_string(total);
-	int padding = std::max(0, 38 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
+	int	 padding = std::max(0, 38 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
 	std::cout << "║  CCD Tests: " << passed << "/" << total << " passed"
 			  << std::string(padding, ' ') << "║\n";
 	std::cout << "╚═══════════════════════════════════════════════════════════════╝\n";

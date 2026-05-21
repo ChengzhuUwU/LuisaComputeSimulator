@@ -224,6 +224,52 @@ protected:
 		params.simulate_cloth = true;
 	}
 
+	void upload_host_positions_to_device()
+	{
+		auto& s = stream();
+		s << sim_data->sa_x_step_start.copy_from(host_sim_data->sa_x_step_start.data())
+		  << sim_data->sa_x.copy_from(host_sim_data->sa_x.data())
+		  << luisa::compute::synchronize();
+	}
+
+	void refresh_face_lbvh_host_state()
+	{
+		auto& s = stream();
+		s << lbvh_data_face->sa_parrent.copy_to(lbvh_data_face->host_parrent.data())
+		  << lbvh_data_face->sa_children.copy_to(lbvh_data_face->host_children.data())
+		  << lbvh_data_face->sa_node_aabb_v2.copy_to(lbvh_data_face->host_node_aabb_v2.data())
+		  << lbvh_data_face->sa_is_healthy.copy_to(lbvh_data_face->host_is_healthy.data())
+		  << luisa::compute::synchronize();
+	}
+
+	void construct_face_lbvh_at_current_state()
+	{
+		host_sim_data->sa_x_step_start = host_sim_data->sa_x_outer;
+		host_sim_data->sa_x = host_sim_data->sa_x_outer;
+		upload_host_positions_to_device();
+		lbvh_face->reduce_face_tree_aabb(stream(), sim_data->sa_x_step_start, sim_data->sa_contact_active_faces);
+		lbvh_face->construct_tree(stream());
+		lbvh_face->update_face_tree_leave_aabb(stream(),
+			sim_data->sa_contact_active_verts_offset,
+			sim_data->sa_x_step_start,
+			sim_data->sa_x,
+			sim_data->sa_contact_active_faces);
+		lbvh_face->refit(stream());
+		refresh_face_lbvh_host_state();
+	}
+
+	void refit_face_lbvh_at_current_state()
+	{
+		upload_host_positions_to_device();
+		lbvh_face->update_face_tree_leave_aabb(stream(),
+			sim_data->sa_contact_active_verts_offset,
+			sim_data->sa_x_step_start,
+			sim_data->sa_x,
+			sim_data->sa_contact_active_faces);
+		lbvh_face->refit(stream());
+		refresh_face_lbvh_host_state();
+	}
+
 	// =============================================================================
 	// Accessors (mirrors existing TestNewtonSolver in test_newton_solver_integration.cpp)
 	// =============================================================================

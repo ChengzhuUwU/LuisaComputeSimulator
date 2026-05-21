@@ -2027,7 +2027,7 @@ namespace lcs
 	{
 		PROFILE_FRAME("physics_step_CPU_" + std::to_string(get_scene_params().current_frame));
 		PROFILE_PUSH("total_step");
-		
+
 		luisa::compute::Device& device = *device_state.device;
 		luisa::compute::Stream& stream = *device_state.stream;
 		// Input
@@ -2236,7 +2236,7 @@ namespace lcs
 				narrow_phase_detector->resize_buffers(device, stream); // Pre-allocatation
 
 				PROFILE_POP(); // End of nonlinear iteration
-				
+
 				if (iter == 99)
 					LUISA_WARNING("Solver is not converged in 100 iters");
 			}
@@ -2247,11 +2247,11 @@ namespace lcs
 		}
 
 		PROFILE_POP(); // End total_step
-		
+
 		// Save profiling results
-		std::string profile_filename = "profile_cpu_" + std::to_string(get_scene_params().current_frame) + ".json";
+		std::string profile_filename = "output/profile_cpu_" + std::to_string(get_scene_params().current_frame) + ".json";
 		Profiler::instance().save_to_file(profile_filename);
-		
+
 		// Output
 		lcs::SolverInterface::physics_step_post_operation();
 	}
@@ -2259,7 +2259,7 @@ namespace lcs
 	{
 		PROFILE_FRAME("physics_step_GPU_" + std::to_string(get_scene_params().current_frame));
 		PROFILE_PUSH("total_step");
-		
+
 		luisa::compute::Device& device = *device_state.device;
 		luisa::compute::Stream& stream = *device_state.stream;
 		// Read frame start position and velocity
@@ -2516,7 +2516,7 @@ namespace lcs
 				narrow_phase_detector->resize_buffers(device, stream); // Pre-allocatation
 
 				PROFILE_POP(); // End nonlinear iteration
-				
+
 				if (iter == 99)
 					LUISA_WARNING("Solver is not converged in 100 iters");
 			}
@@ -2531,7 +2531,7 @@ namespace lcs
 		stream << luisa::compute::synchronize();
 
 		PROFILE_POP(); // End total_step
-		
+
 		// Save profiling results
 		std::string profile_filename = "profile_gpu_" + std::to_string(get_scene_params().current_frame) + ".json";
 		Profiler::instance().save_to_file(profile_filename);

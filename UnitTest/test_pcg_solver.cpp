@@ -36,7 +36,7 @@ public:
 		// Solve: A * x = b where A = [[4, 1], [1, 3]] (2x2)
 		Eigen::Matrix2f A;
 		A << 4, 1,
-			 1, 3;
+			1, 3;
 
 		Eigen::Vector2f b;
 		b << 1, 2;
@@ -49,7 +49,7 @@ public:
 
 		// Verify solution
 		Eigen::Vector2f residual = A * x - b;
-		float residual_norm = residual.norm();
+		float			residual_norm = residual.norm();
 
 		std::cout << "    Solution: [" << x[0] << ", " << x[1] << "]\n";
 		std::cout << "    Residual norm: " << residual_norm << "\n";
@@ -70,8 +70,8 @@ public:
 		// Simple SPD matrix (positive definite, symmetric)
 		Eigen::Matrix3f A;
 		A << 4, 1, 0,
-			 1, 4, 1,
-			 0, 1, 4;
+			1, 4, 1,
+			0, 1, 4;
 
 		// Check symmetry
 		float asymmetry = (A - A.transpose()).cwiseAbs().maxCoeff();
@@ -100,9 +100,9 @@ public:
 		// Diagonal dominant SPD matrix (well-conditioned)
 		Eigen::Matrix4f A;
 		A << 4, 0, 0, 0,
-			 0, 4, 0, 0,
-			 0, 0, 4, 0,
-			 0, 0, 0, 4;
+			0, 4, 0, 0,
+			0, 0, 4, 0,
+			0, 0, 0, 4;
 
 		Eigen::Vector4f b;
 		b << 1, 2, 3, 4;
@@ -111,10 +111,11 @@ public:
 
 		Eigen::ConjugateGradient<Eigen::Matrix4f> cg;
 		cg.setMaxIterations(10);
+		cg.compute(A);
 		Eigen::Vector4f x = cg.solve(b);
 
 		float error = (x - x_true).norm();
-		int iterations = cg.iterations();
+		int	  iterations = cg.iterations();
 
 		std::cout << "    Iterations: " << iterations << "\n";
 		std::cout << "    Error norm: " << error << "\n";
@@ -134,7 +135,7 @@ public:
 		std::cout << "\n  [Test] Sparse matrix construction and solve...\n";
 
 		// Create sparse tridiagonal matrix
-		const int n = 10;
+		const int				   n = 10;
 		Eigen::SparseMatrix<float> A(n, n);
 
 		// Reserve space for tridiagonal
@@ -160,7 +161,7 @@ public:
 
 		// Verify
 		Eigen::VectorXf residual = A * x - b;
-		float residual_norm = residual.norm();
+		float			residual_norm = residual.norm();
 
 		std::cout << "    Sparse matrix size: " << A.rows() << "x" << A.cols() << "\n";
 		std::cout << "    Non-zeros: " << A.nonZeros() << "\n";
@@ -182,10 +183,10 @@ public:
 		// Simple 5x5 SPD matrix
 		Eigen::Matrix<float, 5, 5> A;
 		A << 10, 1, 0, 0, 0,
-			 1, 10, 1, 0, 0,
-			 0, 1, 10, 1, 0,
-			 0, 0, 1, 10, 1,
-			 0, 0, 0, 1, 10;
+			1, 10, 1, 0, 0,
+			0, 1, 10, 1, 0,
+			0, 0, 1, 10, 1,
+			0, 0, 0, 1, 10;
 
 		Eigen::Matrix<float, 5, 1> b;
 		b << 1, 2, 3, 4, 5;
@@ -197,6 +198,7 @@ public:
 		Eigen::ConjugateGradient<Eigen::Matrix<float, 5, 5>> cg;
 		cg.setMaxIterations(50);
 		cg.setTolerance(1e-10f);
+		cg.compute(A);
 		Eigen::Matrix<float, 5, 1> x_cg = cg.solve(b);
 
 		float diff = (x_direct - x_cg).norm();
@@ -221,8 +223,8 @@ public:
 		// Ill-conditioned matrix
 		Eigen::Matrix3f A;
 		A << 100, 1, 1,
-			 1, 100, 1,
-			 1, 1, 100;
+			1, 100, 1,
+			1, 1, 100;
 
 		Eigen::Vector3f b;
 		b << 1, 1, 1;
@@ -230,14 +232,16 @@ public:
 		// Without preconditioner (using default)
 		Eigen::ConjugateGradient<Eigen::Matrix3f> cg_default;
 		cg_default.setMaxIterations(100);
+		cg_default.compute(A);
 		Eigen::Vector3f x_default = cg_default.solve(b);
-		int iter_default = cg_default.iterations();
+		int				iter_default = cg_default.iterations();
 
 		// With Diagonal preconditioner (using identity - CG's default)
 		Eigen::ConjugateGradient<Eigen::Matrix3f, Eigen::Lower, Eigen::DiagonalPreconditioner<float>> cg_diag;
 		cg_diag.setMaxIterations(100);
+		cg_diag.compute(A);
 		Eigen::Vector3f x_diag = cg_diag.solve(b);
-		int iter_diag = cg_diag.iterations();
+		int				iter_diag = cg_diag.iterations();
 
 		std::cout << "    Iterations (default): " << iter_default << "\n";
 		std::cout << "    Iterations (DiagonalPrec): " << iter_diag << "\n";
@@ -338,7 +342,7 @@ int main(int argc, char** argv)
 	std::cout << "╔═══════════════════════════════════════════════════════════════╗\n";
 	auto pass_str = std::to_string(passed);
 	auto total_str = std::to_string(total);
-	int padding = std::max(0, 32 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
+	int	 padding = std::max(0, 32 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
 	std::cout << "║  PCG Solver Tests: " << passed << "/" << total << " passed"
 			  << std::string(padding, ' ') << "║\n";
 	std::cout << "╚═══════════════════════════════════════════════════════════════╝\n";

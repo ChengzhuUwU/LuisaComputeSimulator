@@ -40,7 +40,7 @@ public:
 
 		// Initial positions
 		const auto& rest_x = sim->sa_rest_x;
-		float initial_avg_y = 0.0f;
+		float		initial_avg_y = 0.0f;
 		for (const auto& p : rest_x)
 			initial_avg_y += p.y;
 		initial_avg_y /= rest_x.size();
@@ -51,7 +51,7 @@ public:
 		physics_step_CPU();
 
 		const auto& curr_x = sim->sa_q_outer;
-		float new_avg_y = 0.0f;
+		float		new_avg_y = 0.0f;
 		for (const auto& p : curr_x)
 			new_avg_y += p.y;
 		new_avg_y /= curr_x.size();
@@ -63,7 +63,7 @@ public:
 		physics_step_GPU();
 
 		const auto& gpu_x = sim->sa_q_outer;
-		float gpu_avg_y = 0.0f;
+		float		gpu_avg_y = 0.0f;
 		for (const auto& p : gpu_x)
 			gpu_avg_y += p.y;
 		gpu_avg_y /= gpu_x.size();
@@ -112,7 +112,7 @@ public:
 		// CPU and GPU should give similar results
 		// (Tolerance is higher because of floating point differences)
 		TEST_ASSERT(max_diff < 1e-2f,
-					"CPU and GPU results should be close (within 1e-2)");
+			"CPU and GPU results should be close (within 1e-2)");
 
 		std::cout << "    PASSED\n";
 		return true;
@@ -128,19 +128,18 @@ public:
 		setup_cloth_scene(3);
 		init_solver();
 
-		auto* sim = get_host_sim_data();
-
 		// Run step 1
+		auto* sim = get_host_sim_data();
 		physics_step_CPU();
 		auto step1_positions = sim->sa_q;
 
-		// Restart with same scene
-		setup_cloth_scene(3);
-		init_solver();
-
-		// Run step 1 again
+		// Reset to the registered rest state and rerun the same first step.
+		restart_system();
 		physics_step_CPU();
 		auto step1b_positions = sim->sa_q;
+
+		TEST_ASSERT(step1_positions.size() == step1b_positions.size(),
+			"Repeated runs should have the same number of simulated vertices");
 
 		// Compare
 		float max_diff = 0.0f;
@@ -182,9 +181,9 @@ public:
 
 		float tol = 1e-3f;
 		TEST_ASSERT_VEC3_NEAR(curr_q[0], rest_x[0], tol,
-							  "Fixed vertex 0 should remain at rest position");
+			"Fixed vertex 0 should remain at rest position");
 		TEST_ASSERT_VEC3_NEAR(curr_q[2], rest_x[2], tol,
-							  "Fixed vertex 2 should remain at rest position");
+			"Fixed vertex 2 should remain at rest position");
 
 		std::cout << "    Fixed vertex 0: " << vec3_str(curr_q[0])
 				  << " (rest: " << vec3_str(rest_x[0]) << ")\n";
@@ -321,7 +320,7 @@ public:
 		auto* sim = get_host_sim_data();
 
 		const auto& rest_x = sim->sa_rest_x;
-		float initial_avg_y = 0.0f;
+		float		initial_avg_y = 0.0f;
 		for (const auto& p : rest_x)
 			initial_avg_y += p.y;
 		initial_avg_y /= rest_x.size();
@@ -329,7 +328,7 @@ public:
 		physics_step_CPU();
 
 		const auto& curr_x = sim->sa_q_outer;
-		float new_avg_y = 0.0f;
+		float		new_avg_y = 0.0f;
 		for (const auto& p : curr_x)
 			new_avg_y += p.y;
 		new_avg_y /= curr_x.size();
@@ -365,7 +364,8 @@ int main(int argc, char** argv)
 		try
 		{
 			test.init_device();
-			auto result = run_test(name, [&] { return (test.*fn)(); });
+			auto result = run_test(name, [&]
+				{ return (test.*fn)(); });
 			suite.add(result);
 			if (result.passed)
 				passed++;
@@ -392,7 +392,7 @@ int main(int argc, char** argv)
 	std::cout << "╔═══════════════════════════════════════════════════════════════╗\n";
 	auto pass_str = std::to_string(passed);
 	auto total_str = std::to_string(total);
-	int padding = std::max(0, 32 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
+	int	 padding = std::max(0, 32 - static_cast<int>(pass_str.size()) - static_cast<int>(total_str.size()));
 	std::cout << "║  Integration Tests: " << passed << "/" << total << " passed"
 			  << std::string(padding, ' ') << "║\n";
 	std::cout << "╚═══════════════════════════════════════════════════════════════╝\n";
