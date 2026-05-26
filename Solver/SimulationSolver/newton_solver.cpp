@@ -2248,10 +2248,6 @@ namespace lcs
 
 		PROFILE_POP(); // End total_step
 
-		// Save profiling results
-		std::string profile_filename = "output/profile_cpu_" + std::to_string(get_scene_params().current_frame) + ".json";
-		Profiler::instance().save_to_file(profile_filename);
-
 		// Output
 		lcs::SolverInterface::physics_step_post_operation();
 	}
@@ -2531,10 +2527,6 @@ namespace lcs
 		stream << luisa::compute::synchronize();
 
 		PROFILE_POP(); // End total_step
-
-		// Save profiling results
-		std::string profile_filename = "profile_gpu_" + std::to_string(get_scene_params().current_frame) + ".json";
-		Profiler::instance().save_to_file(profile_filename);
 
 		// Copy to host
 		{

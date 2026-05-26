@@ -47,7 +47,6 @@ namespace lcs
 				const Float3 rest_rot_c0 = joint.rest_rot_col0_a_to_b->read(joint_idx);
 				const Float3 rest_rot_c1 = joint.rest_rot_col1_a_to_b->read(joint_idx);
 				const Float3 rest_rot_c2 = joint.rest_rot_col2_a_to_b->read(joint_idx);
-				const Float3 axis = joint.axis_world->read(joint_idx);
 				const Float3 axis_a = joint.axis_a_local->read(joint_idx);
 				const Float3 axis_b = joint.axis_b_local->read(joint_idx);
 				const Float2 stiff = joint.stiffness->read(joint_idx);
@@ -144,7 +143,6 @@ namespace lcs
 				const Float3   rest_rot_c0 = joint.rest_rot_col0_a_to_b->read(joint_idx);
 				const Float3   rest_rot_c1 = joint.rest_rot_col1_a_to_b->read(joint_idx);
 				const Float3   rest_rot_c2 = joint.rest_rot_col2_a_to_b->read(joint_idx);
-				const Float3   axis = joint.axis_world->read(joint_idx);
 				const Float3   axis_a = joint.axis_a_local->read(joint_idx);
 				const Float3   axis_b = joint.axis_b_local->read(joint_idx);
 				const Float2   stiff = joint.stiffness->read(joint_idx);
@@ -215,7 +213,6 @@ namespace lcs
 					const float3   rest_rot_c0 = joint_data.rest_rot_col0_a_to_b[joint_idx];
 					const float3   rest_rot_c1 = joint_data.rest_rot_col1_a_to_b[joint_idx];
 					const float3   rest_rot_c2 = joint_data.rest_rot_col2_a_to_b[joint_idx];
-					const float3   axis = joint_data.axis_world[joint_idx];
 					const float3   axis_a = joint_data.axis_a_local[joint_idx];
 					const float3   axis_b = joint_data.axis_b_local[joint_idx];
 					const float2   stiff = joint_data.stiffness[joint_idx];

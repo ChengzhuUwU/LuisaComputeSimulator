@@ -29,7 +29,6 @@ sudo apt-get install -y \
 ```
 
 #### macOS
-- Xcode 15+ (for Metal backend)
 - Homebrew dependencies:
 ```bash
 brew install cmake eigen

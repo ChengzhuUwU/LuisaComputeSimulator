@@ -71,16 +71,16 @@ This locks full relative pose in body-local rest sense.
 
 ## 4. Prismatic Joint
 
-Let $n=\text{normalize}(axis_{world})$, and
+Let $a = A\,\text{axis\_a\_local}$ be the sliding axis expressed in world space (co-rotates with body A), and define the displacement deviation:
 
 $$
-P = I - nn^T.
+d = \bigl(p_B(r_b)-p_A(r_a)\bigr) - A\,d_0^A.
 $$
 
 Residuals:
 
 $$
-r_{pos} = P\Bigl(\bigl(p_B(r_b)-p_A(r_a)\bigr)-A d_0^A\Bigr),
+r_{pos} = d \times a,
 $$
 
 $$
@@ -90,16 +90,34 @@ $$
 Energy:
 
 $$
-E_{prismatic} = \frac{k_{pos}}{2}\|r_{pos}\|^2 + \frac{k_{rot}}{2}\sum_{j=0}^2 \|r_{rot,j}\|^2.
+E_{prismatic} = \frac{k_{pos}}{2}\|r_{pos}\|^2 + \frac{k_{rot}}{2}\sum_{j=0}^2 \|r_{rot,j}\|^2 + E_{limit}.
 $$
 
 Interpretation:
 
-- translation perpendicular to $n$ is locked,
-- translation along $n$ is free,
-- relative orientation is locked to rest.
+- When $d$ is parallel to $a$, $d \times a = 0$: translation along the body-local axis is free.
+- Translation perpendicular to $a$ produces a non-zero cross product and is penalized.
+- Relative orientation is locked to rest.
 
-So prismatic is **not** fixed: it keeps one translational DOF (along axis).
+### 4.1 Slide Limits
+
+The scalar slide coordinate is:
+
+$$
+s = \text{dot}(d + A\,d_0^A,\; a) = \text{dot}\bigl(p_B(r_b)-p_A(r_a),\; a\bigr).
+$$
+
+When $s < s_{min}$ or $s > s_{max}$:
+
+$$
+E_{limit} = \frac{k_{pos}}{2}(s - s_{bound})^2,
+$$
+
+where $s_{bound}$ is the violated limit. Parameters: `slide_limits = (slide_min, slide_max)`.
+
+### 4.2 Hessian Note
+
+Unlike Fixed and Revolute, the Prismatic positional term ($d \times a$) is **not** linear in ABD unknowns because both $d$ and $a$ depend on $q$. The Hessian therefore depends on the current state and includes skew-symmetric correction terms. The slide-limit Hessian similarly has state-dependent outer-product contributions. See `prismatic_joint_constaint.hpp` for the full derivation.
 
 ## 5. Revolute Joint
 
@@ -131,13 +149,15 @@ Note: `axis_world` is not used in the revolute energy expression; revolute uses 
 
 ## 6. Gradient and Hessian Structure
 
-All residuals are linear in ABD unknowns, so each term has exact quadratic form:
+For Fixed and Revolute joints, all residuals are linear in ABD unknowns, so each term has exact quadratic form:
 
 $$
 E=\frac{s}{2}\|Cq+b\|^2,\quad \nabla E=sC^T(Cq+b),\quad \nabla^2E=sC^TC.
 $$
 
-Therefore joint gradient/Hessian are exact analytic results from linear coefficients (constant Hessian for each constraint term).
+Therefore their gradient/Hessian are exact analytic results from linear coefficients (constant Hessian for each constraint term).
+
+**Exception — Prismatic positional term:** The cross-product residual $r_{pos} = d \times a$ is bilinear in $q$ (both $d$ and $a$ depend on ABD unknowns), so its Hessian is state-dependent and includes skew-symmetric correction terms. The orientation term and slide-limit term also have state-dependent Hessian contributions. See Section 4.2.
 
 ## 7. Parameter Mapping
 
@@ -148,7 +168,7 @@ Therefore joint gradient/Hessian are exact analytic results from linear coeffici
 ## 8. DOF Summary
 
 - Fixed: lock 6, free 0
-- Prismatic: lock 5, free 1 (translation along `axis_world`)
+- Prismatic: lock 5, free 1 (translation along body-local `axis_a_local`, co-rotates with body A)
 - Revolute: lock 5, free 1 (rotation around hinge axis)
 
 ## 9. Validation
@@ -160,10 +180,19 @@ Behavior validation script:
 Headless run example:
 
 ```bash
-<LCS_PYTHON_EXECUTABLE> PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+<LCS_PYTHON_EXECUTABLE> PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 200
 ```
 
-The script checks fixed lock, prismatic free-axis translation, and revolute free twist numerically.
+The script checks 6 scenes (2 per joint type):
+
+| Scene | Joint | Driver Motion | Validates |
+|-------|-------|---------------|-----------|
+| A | Fixed | Z-axis rotation | Position + orientation lock under rotation |
+| B | Prismatic (X-axis slide) | Z-axis rotation | Locked-plane drift, slide within limits [0.1, 0.3] |
+| C | Revolute (Z hinge) | Z-axis rotation | Position coupling + free Z-twist |
+| D | Fixed | X-axis translation | Position + orientation lock under pure translation |
+| E | Prismatic (Y-axis slide) | X-axis translation | Locked-plane drift, gravity-driven slide along Y |
+| F | Revolute (Z hinge) | X-axis rotation | Position coupling + free Z-twist under orthogonal driver rotation |
 
 ## 10. Migration Guide (World-Space -> Body-Local)
 
@@ -194,7 +223,7 @@ New idea (body-local target):
 | Joint | Old-style residual (typical) | New residual (implemented) | Effect |
 |---|---|---|---|
 | Fixed | $r_{pos}=p_B(r_b)-p_A(r_a)$, $r_{rot,j}=q_{5+j}-q_{1+j}$ | $r_{pos}=(p_B(r_b)-p_A(r_a)) - A d_0^A$, $r_{rot,j}=q_{5+j}-A c_j$ | Locks full relative pose around non-identity rest relation |
-| Prismatic | $r_{pos}=P(p_B-p_A)$, $r_{rot,j}=q_{5+j}-q_{1+j}$ | $r_{pos}=P((p_B(r_b)-p_A(r_a))-A d_0^A)$, $r_{rot,j}=q_{5+j}-A c_j$ | Preserves 1 translational DOF along axis while respecting rest relative pose |
+| Prismatic | $r_{pos}=P(p_B-p_A)$, $r_{rot,j}=q_{5+j}-q_{1+j}$ | $r_{pos}=(p_B(r_b)-p_A(r_a)-A d_0^A)\times(A\,\text{axis\_a\_local})$, $r_{rot,j}=q_{5+j}-A c_j$, + slide limits | Preserves 1 translational DOF along body-local axis while respecting rest relative pose |
 | Revolute | Often world-axis projection/alignment form | $r_{pos}=(p_B(r_b)-p_A(r_a)) - A d_0^A$, $r_{axis}=A a_{local}-B b_{local}$ | Preserves 1 rotational DOF (twist) with body-local hinge-axis consistency |
 
 Here $c_j$ is column $j$ of $R_{ab}^0$.
@@ -216,8 +245,11 @@ Here $c_j$ is column $j$ of $R_{ab}^0$.
 - Energy-only path (`joint_constraint_energy.cpp`):
   - fixed/prismatic use `target_delta = A * d0_local`
   - fixed/prismatic orientation use `B - A * R_ab0`
+  - prismatic positional uses cross-product: `(d) × (A * axis_a_local)`
+  - prismatic slide limits: penalty when `dot(p_B - p_A, A * axis_a_local)` exceeds bounds
   - revolute uses `A * axis_a_local - B * axis_b_local`
 - Eval path (`detail/*joint*_constaint.hpp` + host eval):
   - `compute_energy(...)` and `evaluate(...)` use identical residual definitions
+  - prismatic `evaluate()` includes state-dependent Hessian with skew-symmetric terms
 - Behavior test:
-  - run `PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30`
+  - run `PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 200`

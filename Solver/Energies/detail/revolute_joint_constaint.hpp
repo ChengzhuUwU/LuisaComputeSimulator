@@ -53,8 +53,10 @@ namespace lcs::detail::revolute_joint_constaint
 		const Mat3T I = identity;
 		const Mat3T Z = 0.0f * identity;
 
-		// Anchor coincidence.
-		// Position target is body-local rest relation: A * d0_local.
+		// Anchor delta preservation: (p_B - p_A) - A*d0_local = 0.
+		// This preserves the initial relative anchor offset expressed in body A's local frame.
+		// If both anchors were initialized at the same world position, d0_local = 0 and
+		// this reduces to strict anchor coincidence.
 		{
 			Mat3T coeff[8] = { (-1.0f) * I,
 				-(anchor_a_local.x + rest_position_delta_local_a.x) * I,

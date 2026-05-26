@@ -39,7 +39,7 @@ LuisaComputeSimulator is a **high-performance cross-platform physics simulator**
 - ✅ Continuous Collision Detection (CCD)
 - ✅ Fixed Point / Pinned Constraints
 - ✅ Tetrahedral Mesh (In Development)
-- 🔄 Joint Constraints (Planned)
+- ✅ Joint Constraints (Fixed, Prismatic, Revolute)
 - 🔄 OpenUSD Scene Support
 
 ## Usage
@@ -308,10 +308,10 @@ More compiling details can be found at [BUILD.md](/Document/Build.md)
 - [x] Affine Body Dynamics
 - [x] Frictional Modeling
 - [x] C++ Integration API
+- [x] Joint Constraints (Fixed, Prismatic, Revolute)
 
 ### In Progress 🔄
 - [ ] Tetrahedral Mesh Support
-- [ ] Joint Constraints
 
 ### Planned 📋
 - [ ] UV Mapping Package

@@ -54,8 +54,8 @@ namespace lcs::detail::fixed_joint_constaint
 		const Mat3T I = identity;
 		const Mat3T Z = zero3x3;
 
-		// Anchor coincidence: (pB + B * rb) - (pA + A * ra) = 0
-		// with body-local rest relation: (pB - pA) - A * d0_local = 0.
+		// Anchor delta preservation: (p_B - p_A) - A*d0_local = 0.
+		// This preserves the initial relative anchor offset expressed in body A's local frame.
 		{
 			Mat3T coeff[8] = { (-1.0f) * I,
 				-(anchor_a_local.x + rest_position_delta_local_a.x) * I,

@@ -58,7 +58,7 @@ namespace lcs::detail::prismatic_joint_constaint
 		const Mat3T Z = 0.0f * identity;
 
 		// Translational constraint: cross-product formulation with body-local axis.
-		// d = (p_B - p_A) - A * d0_local  (linear in q)
+		// Anchor delta preservation: d = (p_B - p_A) - A*d0_local  (linear in q)
 		// a = A * axis_a_local             (linear in q)
 		// r = d x a                        (zero when d is parallel to a)
 		// E_pos = k/2 * ||r||^2

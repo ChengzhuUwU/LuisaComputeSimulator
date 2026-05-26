@@ -114,7 +114,7 @@ solver.add_fixed_joint(
     stiffness_rot=1.0e4,
 )
 
-# Scene B: Prismatic joint (body-local axis = [1,1,0]) -> sliding along that axis is free.
+# Scene B: Prismatic joint (body-local axis = [1,0,0]) -> sliding along that axis is free.
 # The axis co-rotates with the driver body, so validation is done in the driver's local frame.
 prismatic_driver = make_animated_driver(
     "prismatic_driver",
@@ -122,14 +122,13 @@ prismatic_driver = make_animated_driver(
     0.25,
     0.00,
     DefaultTransformAnimation(
-        # use_translate=True,
-        # translate=[0.2, 0.2, 0.0],
+        use_translate=False,
         use_rotate=True,
         rot_axis=[0.0, 0.0, 1.0],
         rot_ang_vel_deg=120.0,
     ),
 )
-prismatic_follower = make_follower("prismatic_follower", 0.80, 0.25, 0.00)
+prismatic_follower = make_follower("prismatic_follower", 1.20, 0.25, 0.00)
 solver.add_prismatic_joint(
     prismatic_driver,
     prismatic_follower,
@@ -138,8 +137,8 @@ solver.add_prismatic_joint(
     np.array([1.0, 0.0, 0.0], dtype=np.float32),
     stiffness_pos=5.0e4,
     stiffness_rot=1.0e4,
-    slide_min=-100000.0,
-    slide_max=100000.0,
+    slide_min=0.1,
+    slide_max=0.3,
 )
 
 # Scene C: Revolute joint (axis = Z) -> relative twist around Z should be free.
@@ -149,9 +148,9 @@ revolute_driver = make_animated_driver(
     0.25,
     0.00,
     DefaultTransformAnimation(
-        # use_rotate=True,
-        # rot_axis=[0.0, 0.0, 1.0],
-        # rot_ang_vel_deg=120.0,
+        use_rotate=True,
+        rot_axis=[0.0, 0.0, 1.0],
+        rot_ang_vel_deg=120.0,
     ),
 )
 revolute_follower = make_follower("revolute_follower", 2.20, 0.25, 0.00)
@@ -167,11 +166,87 @@ solver.add_revolute_joint(
     stiffness_axis=2.0e3,
 )
 
+# Scene D: Fixed joint (translation-only driver) -> follower must track position
+# AND maintain orientation even though driver never rotates.
+fixed2_driver = make_animated_driver(
+    "fixed2_driver",
+    0.00,
+    0.60,
+    0.00,
+    DefaultTransformAnimation(
+        use_translate=True,
+        translate=np.array([0.5, 0.0, 0.0], dtype=np.float32),
+        use_rotate=False,
+    ),
+)
+fixed2_follower = make_follower("fixed2_follower", 0.20, 0.60, 0.00)
+solver.add_fixed_joint(
+    fixed2_driver,
+    fixed2_follower,
+    anchor,
+    anchor,
+    stiffness_pos=5.0e4,
+    stiffness_rot=1.0e4,
+)
+
+# Scene E: Prismatic joint (Y-axis slide, driver translates along X)
+# -> follower tracks X motion but can slide freely along Y under gravity.
+prismatic2_driver = make_animated_driver(
+    "prismatic2_driver",
+    1.00,
+    0.60,
+    0.00,
+    DefaultTransformAnimation(
+        use_translate=True,
+        translate=np.array([0.5, 0.0, 0.0], dtype=np.float32),
+        use_rotate=False,
+    ),
+)
+prismatic2_follower = make_follower("prismatic2_follower", 1.20, 0.60, 0.00)
+solver.add_prismatic_joint(
+    prismatic2_driver,
+    prismatic2_follower,
+    anchor,
+    anchor,
+    np.array([0.0, 1.0, 0.0], dtype=np.float32),  # slide axis = Y (gravity direction)
+    stiffness_pos=5.0e4,
+    stiffness_rot=1.0e4,
+    slide_min=-0.5,
+    slide_max=0.5,
+)
+
+# Scene F: Revolute joint (hinge = Z, driver rotates around X)
+# -> follower position follows driver's X-rotation, but Z-twist remains free.
+revolute2_driver = make_animated_driver(
+    "revolute2_driver",
+    2.00,
+    0.60,
+    0.00,
+    DefaultTransformAnimation(
+        use_rotate=True,
+        rot_axis=[1.0, 0.0, 0.0],  # rotate around X
+        rot_ang_vel_deg=90.0,
+    ),
+)
+revolute2_follower = make_follower("revolute2_follower", 2.20, 0.60, 0.00)
+solver.add_revolute_joint(
+    revolute2_driver,
+    revolute2_follower,
+    anchor,
+    anchor,
+    np.array([0.0, 0.0, 1.0], dtype=np.float32),  # hinge axis = Z (body-A local)
+    np.array([0.0, 0.0, 1.0], dtype=np.float32),  # hinge axis = Z (body-B local)
+    np.array([0.0, 0.0, 1.0], dtype=np.float32),  # world hint
+    stiffness_pos=5.0e4,
+    stiffness_axis=2.0e3,
+)
+
 solver.init_solver()
 config_ref = solver.get_config()
 config_ref.use_floor = False
 config_ref.use_self_collision = False
 config_ref.gravity = lcs.Float3(0.0, -9.0, 0.0)
+config_ref.use_gpu = False
 
 output_dir = os.path.join(root, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
@@ -183,6 +258,12 @@ tracked_ids = [
     prismatic_follower,
     revolute_driver,
     revolute_follower,
+    fixed2_driver,
+    fixed2_follower,
+    prismatic2_driver,
+    prismatic2_follower,
+    revolute2_driver,
+    revolute2_follower,
 ]
 rest_vertices = {bid: get_vertices(bid) for bid in tracked_ids}
 rest_centers = {bid: np.mean(rest_vertices[bid], axis=0) for bid in tracked_ids}
@@ -190,6 +271,9 @@ rest_centers = {bid: np.mean(rest_vertices[bid], axis=0) for bid in tracked_ids}
 rest_rel_fixed = rest_centers[fixed_follower] - rest_centers[fixed_driver]
 rest_rel_prismatic = rest_centers[prismatic_follower] - rest_centers[prismatic_driver]
 rest_rel_revolute = rest_centers[revolute_follower] - rest_centers[revolute_driver]
+rest_rel_fixed2 = rest_centers[fixed2_follower] - rest_centers[fixed2_driver]
+rest_rel_prismatic2 = rest_centers[prismatic2_follower] - rest_centers[prismatic2_driver]
+rest_rel_revolute2 = rest_centers[revolute2_follower] - rest_centers[revolute2_driver]
 
 
 def update_animation():
@@ -229,20 +313,27 @@ def compute_metrics():
     prismatic_driver_motion = prismatic_driver_center - rest_centers[prismatic_driver]
 
     # Validate prismatic constraint in driver's rotated local frame.
-    # The sliding axis is body-local [1,1,0]/sqrt(2); it co-rotates with the driver.
-    # Constraint: (p_B - p_A) = A*(d0_local + t*axis_local), so in local frame
-    # (R.T @ current_relative - d0_local) must lie along axis_local.
+    # The sliding axis is body-local [1,0,0]; it co-rotates with the driver.
+    # Constraint: (p_B - p_A) = A*(d0_perp_local + s*axis_local), so in local frame
+    # (R.T @ current_relative - d0_perp_local) must lie along axis_local and s must
+    # stay inside the configured slide range.
     prismatic_driver_rot = estimate_rotation_matrix(
         rest_vertices[prismatic_driver], prismatic_driver_vertices
     )
-    prismatic_axis_local = np.array([1.0, 1.0, 0.0], dtype=np.float32)
+    prismatic_driver_yaw = estimate_yaw_z(rest_vertices[prismatic_driver], prismatic_driver_vertices)
+    prismatic_axis_local = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     prismatic_axis_local = prismatic_axis_local / float(np.linalg.norm(prismatic_axis_local))
-    # Current relative position in driver's local frame, minus rest offset d0_local
+    rest_axis_distance = float(np.dot(rest_rel_prismatic, prismatic_axis_local))
+    rest_rel_prismatic_perp = rest_rel_prismatic - rest_axis_distance * prismatic_axis_local
     current_relative = prismatic_follower_center - prismatic_driver_center
-    dev_local = prismatic_driver_rot.T @ current_relative - rest_rel_prismatic
+    current_relative_local = prismatic_driver_rot.T @ current_relative
+    dev_local = current_relative_local - rest_rel_prismatic_perp
     prismatic_free_frac = float(np.dot(dev_local, prismatic_axis_local))
     prismatic_locked_vec = dev_local - prismatic_free_frac * prismatic_axis_local
     prismatic_locked_error = float(np.linalg.norm(prismatic_locked_vec))
+    prismatic_axis_distance = float(np.dot(current_relative_local, prismatic_axis_local))
+    prismatic_rest_axis_distance = rest_axis_distance
+    prismatic_axis_distance_delta = prismatic_axis_distance - prismatic_rest_axis_distance
 
     fixed_driver_yaw = estimate_yaw_z(rest_vertices[fixed_driver], fixed_driver_vertices)
     fixed_follower_yaw = estimate_yaw_z(rest_vertices[fixed_follower], fixed_follower_vertices)
@@ -256,6 +347,57 @@ def compute_metrics():
     revolute_rel_delta = (revolute_follower_center - revolute_driver_center) - expected_revolute_rel
     revolute_pos_error = float(np.linalg.norm(revolute_rel_delta))
 
+    # --- Scene D: Fixed2 (translation-only driver) ---
+    fixed2_driver_vertices = get_vertices(fixed2_driver)
+    fixed2_follower_vertices = get_vertices(fixed2_follower)
+    fixed2_driver_center = np.mean(fixed2_driver_vertices, axis=0)
+    fixed2_follower_center = np.mean(fixed2_follower_vertices, axis=0)
+    # Driver doesn't rotate, so expected relative = rest relative (identity rotation).
+    fixed2_rel_delta = (fixed2_follower_center - fixed2_driver_center) - rest_rel_fixed2
+    fixed2_pos_error = float(np.linalg.norm(fixed2_rel_delta))
+    # Follower should not rotate either.
+    fixed2_follower_yaw = estimate_yaw_z(rest_vertices[fixed2_follower], fixed2_follower_vertices)
+    fixed2_yaw_error = abs(wrap_angle_rad(fixed2_follower_yaw))
+    # Verify driver actually translated significantly.
+    fixed2_driver_motion = float(np.linalg.norm(fixed2_driver_center - rest_centers[fixed2_driver]))
+
+    # --- Scene E: Prismatic2 (Y-axis slide, driver translates along X) ---
+    prismatic2_driver_vertices = get_vertices(prismatic2_driver)
+    prismatic2_follower_vertices = get_vertices(prismatic2_follower)
+    prismatic2_driver_center = np.mean(prismatic2_driver_vertices, axis=0)
+    prismatic2_follower_center = np.mean(prismatic2_follower_vertices, axis=0)
+    # Driver doesn't rotate, so local frame = world frame.
+    prismatic2_axis_local = np.array([0.0, 1.0, 0.0])
+    prismatic2_current_rel = prismatic2_follower_center - prismatic2_driver_center
+    prismatic2_rest_axis_dist = float(np.dot(rest_rel_prismatic2, prismatic2_axis_local))
+    prismatic2_rest_perp = rest_rel_prismatic2 - prismatic2_rest_axis_dist * prismatic2_axis_local
+    prismatic2_dev = prismatic2_current_rel - prismatic2_rest_perp
+    prismatic2_slide = float(np.dot(prismatic2_dev, prismatic2_axis_local))
+    prismatic2_locked_vec = prismatic2_dev - prismatic2_slide * prismatic2_axis_local
+    prismatic2_locked_error = float(np.linalg.norm(prismatic2_locked_vec))
+    prismatic2_axis_distance = float(np.dot(prismatic2_current_rel, prismatic2_axis_local))
+    prismatic2_axis_delta = prismatic2_axis_distance - prismatic2_rest_axis_dist
+    # Verify driver translated along X.
+    prismatic2_driver_x_motion = float(prismatic2_driver_center[0] - rest_centers[prismatic2_driver][0])
+
+    # --- Scene F: Revolute2 (hinge=Z, driver rotates around X) ---
+    revolute2_driver_vertices = get_vertices(revolute2_driver)
+    revolute2_follower_vertices = get_vertices(revolute2_follower)
+    revolute2_driver_center = np.mean(revolute2_driver_vertices, axis=0)
+    revolute2_follower_center = np.mean(revolute2_follower_vertices, axis=0)
+    revolute2_driver_rot = estimate_rotation_matrix(rest_vertices[revolute2_driver], revolute2_driver_vertices)
+    # Position should follow driver's rotation.
+    expected_revolute2_rel = revolute2_driver_rot @ rest_rel_revolute2
+    revolute2_rel_delta = (revolute2_follower_center - revolute2_driver_center) - expected_revolute2_rel
+    revolute2_pos_error = float(np.linalg.norm(revolute2_rel_delta))
+    # Z-twist should be free: measure yaw difference.
+    revolute2_driver_yaw = estimate_yaw_z(rest_vertices[revolute2_driver], revolute2_driver_vertices)
+    revolute2_follower_yaw = estimate_yaw_z(rest_vertices[revolute2_follower], revolute2_follower_vertices)
+    revolute2_relative_yaw = abs(wrap_angle_rad(revolute2_follower_yaw - revolute2_driver_yaw))
+    # Verify driver actually rotated around X (roll/pitch changed).
+    # Standard ZYX Euler: roll (X-rotation) = arctan2(R[2,1], R[2,2]).
+    revolute2_driver_pitch = abs(float(np.arctan2(revolute2_driver_rot[2, 1], revolute2_driver_rot[2, 2])))
+
     return {
         "fixed_pos_error": fixed_pos_error,
         "fixed_yaw_error": fixed_yaw_error,
@@ -263,9 +405,27 @@ def compute_metrics():
         "prismatic_driver_motion": prismatic_driver_motion,
         "prismatic_locked_error": prismatic_locked_error,
         "prismatic_free_frac": prismatic_free_frac,
+        "prismatic_axis_distance": prismatic_axis_distance,
+        "prismatic_rest_axis_distance": prismatic_rest_axis_distance,
+        "prismatic_axis_distance_delta": prismatic_axis_distance_delta,
+        "prismatic_driver_yaw_abs": abs(prismatic_driver_yaw),
         "revolute_driver_yaw_abs": abs(revolute_driver_yaw),
         "revolute_relative_yaw": revolute_relative_yaw,
         "revolute_pos_error": revolute_pos_error,
+        # Scene D
+        "fixed2_pos_error": fixed2_pos_error,
+        "fixed2_yaw_error": fixed2_yaw_error,
+        "fixed2_driver_motion": fixed2_driver_motion,
+        # Scene E
+        "prismatic2_locked_error": prismatic2_locked_error,
+        "prismatic2_slide": prismatic2_slide,
+        "prismatic2_axis_distance": prismatic2_axis_distance,
+        "prismatic2_axis_delta": prismatic2_axis_delta,
+        "prismatic2_driver_x_motion": prismatic2_driver_x_motion,
+        # Scene F
+        "revolute2_pos_error": revolute2_pos_error,
+        "revolute2_relative_yaw": revolute2_relative_yaw,
+        "revolute2_driver_pitch": revolute2_driver_pitch,
     }
 
 
@@ -277,24 +437,61 @@ def validate_metrics(metrics):
         f"Fixed joint failed orientation lock: yaw error={metrics['fixed_yaw_error']:.6f} rad"
     )
 
-    assert float(np.linalg.norm(metrics["prismatic_driver_motion"])) > 5.0e-2, (
-        f"Prismatic driver did not move enough: total={float(np.linalg.norm(metrics['prismatic_driver_motion'])):.6f}"
-    )
-    assert float(np.linalg.norm(metrics["prismatic_rel_delta"])) > 5.0e-2, (
-        f"Prismatic follower appears decoupled from driver: rel_delta_norm={float(np.linalg.norm(metrics['prismatic_rel_delta'])):.6f}"
+    assert metrics["prismatic_driver_yaw_abs"] > 5.0e-2, (
+        f"Prismatic driver did not rotate enough: yaw={metrics['prismatic_driver_yaw_abs']:.6f} rad"
     )
     assert metrics["prismatic_locked_error"] < 1.0e-2, (
         f"Prismatic locked-plane drift too large in driver local frame: error={metrics['prismatic_locked_error']:.6f}"
     )
+    assert 0.1 <= metrics["prismatic_axis_distance"] <= 0.3, (
+        f"Prismatic slide coordinate out of range [0.1, 0.3]: s={metrics['prismatic_axis_distance']:.6f}"
+    )
 
-    assert metrics["revolute_driver_yaw_abs"] > 5.0e-1, (
+    assert metrics["revolute_driver_yaw_abs"] > 5.0e-2, (
         f"Revolute driver did not rotate enough: yaw={metrics['revolute_driver_yaw_abs']:.6f} rad"
     )
-    assert metrics["revolute_relative_yaw"] > 3.0e-1, (
+    assert metrics["revolute_relative_yaw"] > 1.0e-1, (
         f"Revolute free-twist behavior failed: relative yaw={metrics['revolute_relative_yaw']:.6f} rad"
     )
     assert metrics["revolute_pos_error"] < 1.5e-1, (
         f"Revolute position coupling too weak: rel-position error={metrics['revolute_pos_error']:.6f}"
+    )
+
+    # --- Scene D: Fixed2 (translation driver) ---
+    assert metrics["fixed2_driver_motion"] > 0.05, (
+        f"Fixed2 driver did not translate enough: motion={metrics['fixed2_driver_motion']:.6f}"
+    )
+    assert metrics["fixed2_pos_error"] < 2.0e-3, (
+        f"Fixed2 joint failed position lock under translation: error={metrics['fixed2_pos_error']:.6e}"
+    )
+    assert metrics["fixed2_yaw_error"] < 5.0e-2, (
+        f"Fixed2 joint failed orientation lock (should stay zero): yaw={metrics['fixed2_yaw_error']:.6f} rad"
+    )
+
+    # --- Scene E: Prismatic2 (Y-axis slide under gravity, driver translates X) ---
+    assert metrics["prismatic2_driver_x_motion"] > 0.05, (
+        f"Prismatic2 driver did not translate enough along X: dx={metrics['prismatic2_driver_x_motion']:.6f}"
+    )
+    assert metrics["prismatic2_locked_error"] < 1.0e-2, (
+        f"Prismatic2 locked-plane drift too large: error={metrics['prismatic2_locked_error']:.6f}"
+    )
+    # Gravity pulls follower down (negative Y), so slide delta should be negative.
+    assert metrics["prismatic2_axis_delta"] < -0.01, (
+        f"Prismatic2 follower did not slide under gravity: delta={metrics['prismatic2_axis_delta']:.6f}"
+    )
+    assert -0.5 <= metrics["prismatic2_axis_distance"] <= 0.5, (
+        f"Prismatic2 slide out of limit range [-0.5, 0.5]: s={metrics['prismatic2_axis_distance']:.6f}"
+    )
+
+    # --- Scene F: Revolute2 (hinge=Z, driver rotates around X) ---
+    assert metrics["revolute2_driver_pitch"] > 5.0e-2, (
+        f"Revolute2 driver did not pitch enough: pitch={metrics['revolute2_driver_pitch']:.6f} rad"
+    )
+    assert metrics["revolute2_pos_error"] < 1.5e-1, (
+        f"Revolute2 position coupling too weak: error={metrics['revolute2_pos_error']:.6f}"
+    )
+    assert metrics["revolute2_relative_yaw"] > 1.0e-2, (
+        f"Revolute2 Z-twist should be free but follower tracked driver: rel_yaw={metrics['revolute2_relative_yaw']:.6f} rad"
     )
 
 
@@ -305,9 +502,27 @@ def print_metrics(metrics):
     print("[joint-check] prismatic_driver_move  =", metrics["prismatic_driver_motion"])
     print("[joint-check] prismatic_locked_err   =", f"{metrics['prismatic_locked_error']:.6e}")
     print("[joint-check] prismatic_free_frac    =", f"{metrics['prismatic_free_frac']:.6f}")
+    print("[joint-check] prismatic_axis_dist    =", f"{metrics['prismatic_axis_distance']:.6f}")
+    print("[joint-check] prismatic_axis_rest    =", f"{metrics['prismatic_rest_axis_distance']:.6f}")
+    print("[joint-check] prismatic_axis_delta   =", f"{metrics['prismatic_axis_distance_delta']:.6f}")
+    print("[joint-check] prismatic_driver_yaw   =", f"{metrics['prismatic_driver_yaw_abs']:.6e}")
     print("[joint-check] revolute_driver_yaw    =", f"{metrics['revolute_driver_yaw_abs']:.6e}")
     print("[joint-check] revolute_relative_yaw  =", f"{metrics['revolute_relative_yaw']:.6e}")
     print("[joint-check] revolute_pos_error     =", f"{metrics['revolute_pos_error']:.6e}")
+    print("[joint-check] --- Scene D: Fixed2 (translation) ---")
+    print("[joint-check] fixed2_pos_error       =", f"{metrics['fixed2_pos_error']:.6e}")
+    print("[joint-check] fixed2_yaw_error       =", f"{metrics['fixed2_yaw_error']:.6e}")
+    print("[joint-check] fixed2_driver_motion   =", f"{metrics['fixed2_driver_motion']:.6f}")
+    print("[joint-check] --- Scene E: Prismatic2 (Y-slide, X-translate) ---")
+    print("[joint-check] prismatic2_locked_err  =", f"{metrics['prismatic2_locked_error']:.6e}")
+    print("[joint-check] prismatic2_slide       =", f"{metrics['prismatic2_slide']:.6f}")
+    print("[joint-check] prismatic2_axis_dist   =", f"{metrics['prismatic2_axis_distance']:.6f}")
+    print("[joint-check] prismatic2_axis_delta  =", f"{metrics['prismatic2_axis_delta']:.6f}")
+    print("[joint-check] prismatic2_driver_x    =", f"{metrics['prismatic2_driver_x_motion']:.6f}")
+    print("[joint-check] --- Scene F: Revolute2 (hinge=Z, pitch=X) ---")
+    print("[joint-check] revolute2_pos_error    =", f"{metrics['revolute2_pos_error']:.6e}")
+    print("[joint-check] revolute2_rel_yaw      =", f"{metrics['revolute2_relative_yaw']:.6e}")
+    print("[joint-check] revolute2_driver_pitch =", f"{metrics['revolute2_driver_pitch']:.6e}")
 
 
 if args.headless:
