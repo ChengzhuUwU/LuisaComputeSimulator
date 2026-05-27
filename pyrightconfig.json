@@ -1,0 +1,11 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.13",
+  "extraPaths": [
+    "PythonBindings/python",
+    ".venv/lib/python3.13/site-packages"
+  ],
+  "stubPath": "PythonBindings/python",
+  "typeCheckingMode": "basic"
+}

@@ -22,13 +22,30 @@ if (NOT TARGET luisa::compute)
 
     set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_DOWNLOAD_NVCOMP OFF CACHE BOOL "" FORCE)
+    # Use the system STL on every path (plain cmake build, scikit-build wheel,
+    # editable install). The previous SKBUILD-only override forced embedded STL
+    # for `pip install -e .`, which produced a Metal backend that loaded but
+    # failed device probing on macOS. Keeping a single setting means dev and
+    # wheel builds share the same ABI as the C++ application.
     set(LUISA_COMPUTE_USE_SYSTEM_STL ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_RUST OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_REMOTE OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_WAYLAND ON CACHE BOOL "" FORCE)
     set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${LuisaCompute_SOURCE_DIR})
+    if (LCS_BUILD_PYBINDINGS)
+        # scikit-build-core defines SKBUILD for the top-level project, but the
+        # embedded LuisaCompute project also treats SKBUILD as a request to build
+        # and install its own Python package. We only need LuisaCompute as a C++
+        # dependency for lcs_py here, so hide SKBUILD while adding that subproject.
+        set(_LCS_SAVED_SKBUILD ${SKBUILD})
+        set(SKBUILD OFF)
+        add_subdirectory(${LuisaCompute_SOURCE_DIR})
+        set(SKBUILD ${_LCS_SAVED_SKBUILD})
+        unset(_LCS_SAVED_SKBUILD)
+    else()
+        add_subdirectory(${LuisaCompute_SOURCE_DIR})
+    endif()
 endif ()
 target_link_libraries(luisa-compute-solver-lib PUBLIC luisa::compute) #  ipc::toolkit
 

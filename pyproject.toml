@@ -1,0 +1,35 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.9",
+    "pybind11>=2.11",
+    "ninja",
+    "numpy",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "luisa-compute-simulator"
+version = "0.1.0"
+description = "Python bindings for LuisaComputeSimulator"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "trimesh",
+]
+
+[project.optional-dependencies]
+# Tooling needed to (re)generate PythonBindings/python/lcs_py/__init__.pyi via
+# the `stubs` cmake target.  Install with `pip install -e .[dev]`.
+dev = [
+    "pybind11-stubgen>=2.5",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.26"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["PythonBindings/python/lcs"]
+
+[tool.scikit-build.cmake.define]
+LCS_BUILD_PYBINDINGS = "ON"
+LCS_BUILD_MAIN_APPLICATION = "OFF"
+LCS_ENABLE_TEST = "OFF"

@@ -754,7 +754,14 @@ struct PyNewtonBuilder
 			{
 				py::module_ self = py::module_::import("lcs_py");
 				if (py::hasattr(self, "__file__"))
+				{
 					binary_path = self.attr("__file__").cast<std::string>();
+					auto parent = std::filesystem::path(binary_path).parent_path();
+					if (std::filesystem::exists(parent / "bin"))
+						binary_path = (parent / "bin").string();
+					else
+						binary_path = parent.string();
+				}
 			}
 			catch (...)
 			{
@@ -849,14 +856,43 @@ PYBIND11_MODULE(lcs_py, m)
 	// 	.def_readwrite("d_hat", &RodMaterial::d_hat)
 	// 	.def_readwrite("friction_mu", &RodMaterial::friction_mu);
 
+	// Expose FixedPointsType so MakeFixedPointsInterface.method has a real
+	// type in the generated stubs (pybind11-stubgen otherwise prints `...`,
+	// which costs editor completion). Names mirror parse_fixed_method_py().
+	py::enum_<FixedPointsType>(m, "FixedPointsType")
+		.value("None_", FixedPointsType::None)
+		.value("FromIndices", FixedPointsType::FromIndices)
+		.value("FromFunction", FixedPointsType::FromFunction)
+		.value("Left", FixedPointsType::Left)
+		.value("Right", FixedPointsType::Right)
+		.value("Front", FixedPointsType::Front)
+		.value("Back", FixedPointsType::Back)
+		.value("Up", FixedPointsType::Up)
+		.value("Down", FixedPointsType::Down)
+		.value("LeftUp", FixedPointsType::LeftUp)
+		.value("LeftDown", FixedPointsType::LeftDown)
+		.value("LeftFront", FixedPointsType::LeftFront)
+		.value("LeftBack", FixedPointsType::LeftBack)
+		.value("RightUp", FixedPointsType::RightUp)
+		.value("RightDown", FixedPointsType::RightDown)
+		.value("RightFront", FixedPointsType::RightFront)
+		.value("RightBack", FixedPointsType::RightBack)
+		.value("FrontUp", FixedPointsType::FrontUp)
+		.value("FrontDown", FixedPointsType::FrontDown)
+		.value("BackUp", FixedPointsType::BackUp)
+		.value("BackDown", FixedPointsType::BackDown)
+		.value("All", FixedPointsType::All);
+
 	py::class_<MakeFixedPointsInterface>(m, "MakeFixedPointsInterface")
 		.def(py::init<>())
-		.def_readwrite("method", &MakeFixedPointsInterface::method)
-		.def_readwrite("range", &MakeFixedPointsInterface::range);
+		.def_readwrite("method", &MakeFixedPointsInterface::method,
+			"Region selector for fixed points (FixedPointsType enum).")
+		.def_readwrite("range", &MakeFixedPointsInterface::range,
+			"Tolerance used by region-based selectors (e.g. Left/Right).");
 
 	py::class_<WorldDataWrapper>(m, "WorldData")
-		.def("set_name", &WorldDataWrapper::set_name)
-		.def("set_simulation_type", &WorldDataWrapper::set_simulation_type)
+		.def("set_name", &WorldDataWrapper::set_name, py::arg("name"), "Set the object name used in solver logs and exported results.")
+		.def("set_simulation_type", &WorldDataWrapper::set_simulation_type, py::arg("material_type"), "Set the object simulation/material category.")
 		.def("set_physics_material_cloth",
 			&WorldDataWrapper::set_physics_material_cloth,
 			py::arg("stretch_model") = std::string(cloth_stretch_model_to_string(ClothMaterial::default_stretch_model())),
@@ -897,30 +933,30 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("contact_offset") = ClothMaterial::default_contact_offset())
 		.def("add_fixed_point_by_method", &WorldDataWrapper::add_fixed_point_by_method, py::arg("method"), py::arg("range") = 0.001f)
 		.def("add_fixed_point_by_indices", &WorldDataWrapper::add_fixed_point_by_indices, py::arg("indices"))
-		.def("set_translation", &WorldDataWrapper::set_translation)
-		.def("set_rotation", &WorldDataWrapper::set_rotation)
-		.def("set_scale", &WorldDataWrapper::set_scale)
-		.def("get_rest_translation", &WorldDataWrapper::get_rest_translation)
-		.def("get_rest_rotation", &WorldDataWrapper::get_rest_rotation)
-		.def("get_rest_scale", &WorldDataWrapper::get_rest_scale)
-		.def("get_name", &WorldDataWrapper::get_name)
-		.def("get_id", &WorldDataWrapper::get_registration_index)
-		.def("get_registration_index", &WorldDataWrapper::get_registration_index)
+		.def("set_translation", &WorldDataWrapper::set_translation, py::arg("x"), py::arg("y"), py::arg("z"), "Set rest translation in world coordinates.")
+		.def("set_rotation", &WorldDataWrapper::set_rotation, py::arg("x"), py::arg("y"), py::arg("z"), "Set rest Euler rotation in radians.")
+		.def("set_scale", &WorldDataWrapper::set_scale, py::arg("scale"), "Set uniform rest scale.")
+		.def("get_rest_translation", &WorldDataWrapper::get_rest_translation, "Return rest translation as [x, y, z].")
+		.def("get_rest_rotation", &WorldDataWrapper::get_rest_rotation, "Return rest Euler rotation as [x, y, z].")
+		.def("get_rest_scale", &WorldDataWrapper::get_rest_scale, "Return rest scale as [x, y, z].")
+		.def("get_name", &WorldDataWrapper::get_name, "Return object name.")
+		.def("get_id", &WorldDataWrapper::get_registration_index, "Return object registration id.")
+		.def("get_registration_index", &WorldDataWrapper::get_registration_index, "Return object registration id.")
 		.def("get_fixed_point_indices", &WorldDataWrapper::get_fixed_point_indices,
 			"Return currently registered fixed-point local vertex indices as a Python list")
 		.def("get_rest_positions", &WorldDataWrapper::get_rest_positions,
 			"Return rest positions (after object transform) as an (N,3) float32 numpy array");
 
 	py::class_<ConstWorldDataWrapper>(m, "ConstWorldData")
-		.def("get_name", &ConstWorldDataWrapper::get_name)
-		.def("get_registration_index", &ConstWorldDataWrapper::get_registration_index)
+		.def("get_name", &ConstWorldDataWrapper::get_name, "Return object name.")
+		.def("get_registration_index", &ConstWorldDataWrapper::get_registration_index, "Return object registration id.")
 		.def("get_fixed_point_indices", &ConstWorldDataWrapper::get_fixed_point_indices,
 			"Return currently registered fixed-point local vertex indices as a Python list")
 		.def("get_rest_positions", &ConstWorldDataWrapper::get_rest_positions,
 			"Return rest positions (after object transform) as an (N,3) float32 numpy array")
-		.def("get_rest_translation", &ConstWorldDataWrapper::get_rest_translation)
-		.def("get_rest_rotation", &ConstWorldDataWrapper::get_rest_rotation)
-		.def("get_rest_scale", &ConstWorldDataWrapper::get_rest_scale);
+		.def("get_rest_translation", &ConstWorldDataWrapper::get_rest_translation, "Return rest translation as [x, y, z].")
+		.def("get_rest_rotation", &ConstWorldDataWrapper::get_rest_rotation, "Return rest Euler rotation as [x, y, z].")
+		.def("get_rest_scale", &ConstWorldDataWrapper::get_rest_scale, "Return rest scale as [x, y, z].");
 
 	// disambiguate overloaded world_data creation signatures
 	using VertArr = py::array_t<double, py::array::c_style | py::array::forcecast>;
@@ -946,8 +982,8 @@ PYBIND11_MODULE(lcs_py, m)
 			&PyNewtonBuilder::load_scene_from_json,
 			py::arg("json_path"),
 			"Load world_data and scene params from a JSON scene file (same format as app_simulation).")
-		.def("num_meshes", &PyNewtonBuilder::num_meshes)
-		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names)
+		.def("num_meshes", &PyNewtonBuilder::num_meshes, "Return the number of registered mesh/world objects.")
+		.def("get_mesh_names", &PyNewtonBuilder::get_mesh_names, "Return registered mesh names ordered by registration id.")
 		.def("print_registered_meshes_info", &PyNewtonBuilder::print_registered_meshes_info, "Print registered meshes info")
 		.def("init_device",
 			&PyNewtonBuilder::init_device,
@@ -972,11 +1008,13 @@ PYBIND11_MODULE(lcs_py, m)
 			py::return_value_policy::reference_internal,
 			"Return reference to solver-owned SceneParams config")
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using the device set via init_device()/set_device()")
-		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu)
-		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu)
+		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu, "Advance one simulation frame using the CPU solver path.")
+		.def("physics_step_gpu", &PyNewtonBuilder::physics_step_gpu, "Advance one simulation frame using the GPU solver path.")
 		.def("restart_system", &PyNewtonBuilder::restart_system, "Reset positions/velocities to initial rest state")
-		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"))
-		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"))
+		.def("update_per_vertex_animation", &PyNewtonBuilder::update_per_vertex_animation, py::arg("mesh_idx"), py::arg("local_vid"), py::arg("target_pos"),
+			"Update one animated vertex target position for a registered object.")
+		.def("update_per_body_animation", &PyNewtonBuilder::update_per_body_animation, py::arg("mesh_idx"), py::arg("target_translation"), py::arg("target_rotation"),
+			"Update animated rigid body target translation and rotation for a registered object.")
 		.def("get_rigid_body_translation", &PyNewtonBuilder::get_rigid_body_translation, py::arg("registration_id"),
 			"Return rigid body translation as (tx, ty, tz).")
 		.def("get_rigid_body_scaling", &PyNewtonBuilder::get_rigid_body_scaling, py::arg("registration_id"),
@@ -993,7 +1031,10 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("anchor_a_local"),
 			py::arg("anchor_b_local"),
 			py::arg("stiffness_pos") = 1.0e4f,
-			py::arg("stiffness_rot") = 1.0e3f)
+			py::arg("stiffness_rot") = 1.0e3f,
+			"Add a fixed joint between two rigid bodies.\n\n"
+			"The local anchors are expressed in each body's rest local frame. The joint constrains\n"
+			"both anchor coincidence and relative orientation.")
 		.def("add_prismatic_joint",
 			&PyNewtonBuilder::add_prismatic_joint,
 			py::arg("body_a_registration"),
@@ -1004,7 +1045,11 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("stiffness_pos") = 1.0e4f,
 			py::arg("stiffness_rot") = 1.0e3f,
 			py::arg("slide_min") = -std::numeric_limits<float>::infinity(),
-			py::arg("slide_max") = std::numeric_limits<float>::infinity())
+			py::arg("slide_max") = std::numeric_limits<float>::infinity(),
+			"Add a prismatic joint between two rigid bodies.\n\n"
+			"axis_world defines the free sliding axis in the rest pose. The joint constrains the\n"
+			"relative offset perpendicular to the axis and locks relative orientation; slide_min\n"
+			"and slide_max bound the scalar coordinate along the axis.")
 		.def("add_revolute_joint",
 			&PyNewtonBuilder::add_revolute_joint,
 			py::arg("body_a_registration"),
@@ -1015,25 +1060,30 @@ PYBIND11_MODULE(lcs_py, m)
 			py::arg("axis_a_local"),
 			py::arg("axis_b_local"),
 			py::arg("stiffness_pos") = 1.0e4f,
-			py::arg("stiffness_axis") = 1.0e3f)
+			py::arg("stiffness_axis") = 1.0e3f,
+			"Add a revolute/hinge joint between two rigid bodies.\n\n"
+			"The anchors are kept coincident while axis_a_local and axis_b_local are aligned,\n"
+			"leaving rotation around the hinge axis free.")
 		.def("query_local_vid_from_global_vid",
 			&PyNewtonBuilder::query_local_vid_from_global_vid,
-			"Return global-vertex-id to local-vertex-id mapping as a 1-D uint32 numpy array")
+			py::arg("global_vid"),
+			"Look up the local vertex index for a given global vertex id.")
 		.def("query_registration_vid_from_global_vid",
 			&PyNewtonBuilder::query_registration_vid_from_global_vid,
-			"Return global-vertex-id to world_data(sorted mesh) index mapping as a 1-D uint32 numpy array")
+			py::arg("global_vid"),
+			"Look up the world_data (mesh) registration index for a given global vertex id.")
 		.def("get_object_sim_result_by_registration_id",
 			&PyNewtonBuilder::get_object_sim_result_by_registration_id,
 			py::arg("registration_id"),
 			"Return one object simulation result as tuple (vertices, faces) by registration id")
 		.def("get_object_by_registration_id", &PyNewtonBuilder::get_object_by_registration_id, py::arg("registration_id"))
 		.def("get_vert_mass", &PyNewtonBuilder::get_vert_mass, py::arg("global_vid"), "Return mass of a vertex by global vertex id")
-		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"));
+		.def("save_sim_result", &PyNewtonBuilder::save_sim_result, py::arg("obj_path"), "Save current simulation result to an OBJ file.");
 
 	// Expose luisa::float3 so Python can access .x/.y/.z on floor, gravity, etc.
 	py::class_<luisa::float3>(m, "Float3")
 		.def(py::init<>())
-		.def(py::init<float, float, float>())
+		.def(py::init<float, float, float>(), py::arg("x"), py::arg("y"), py::arg("z"))
 		.def_readwrite("x", &luisa::float3::x)
 		.def_readwrite("y", &luisa::float3::y)
 		.def_readwrite("z", &luisa::float3::z)
@@ -1042,7 +1092,7 @@ PYBIND11_MODULE(lcs_py, m)
 
 	// Expose SceneParams and accessors so Python can read/modify global scene settings
 	py::class_<lcs::SceneParams>(m, "SceneParams")
-		.def("update_dt", &lcs::SceneParams::update_dt)
+		.def("update_dt", &lcs::SceneParams::update_dt, py::arg("dt"), "Update the frame time step and derived substep time step.")
 		.def_readwrite("use_gpu", &lcs::SceneParams::use_gpu)
 		.def_readwrite("fix_scene", &lcs::SceneParams::fix_scene)
 		.def_readwrite("use_energy_linesearch", &lcs::SceneParams::use_energy_linesearch)
@@ -1074,8 +1124,8 @@ PYBIND11_MODULE(lcs_py, m)
 		.def_readwrite("stiffness_dirichlet", &lcs::SceneParams::stiffness_dirichlet)
 		.def_readwrite("damping_rate", &lcs::SceneParams::damping_rate)
 		.def_readwrite("d_hat", &lcs::SceneParams::d_hat)
-		.def("get_substep_dt", &lcs::SceneParams::get_substep_dt)
-		.def("get_bending_stiffness_scaling", &lcs::SceneParams::get_bending_stiffness_scaling);
+		.def("get_substep_dt", &lcs::SceneParams::get_substep_dt, "Return the current substep time step.")
+		.def("get_bending_stiffness_scaling", &lcs::SceneParams::get_bending_stiffness_scaling, "Return the bending stiffness scaling factor for current settings.");
 
 	m.doc() = "Python bindings for basic NewtonSolver scene building (lightweight)";
 }

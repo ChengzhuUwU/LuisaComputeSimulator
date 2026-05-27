@@ -11,14 +11,13 @@ GUI mode:
 """
 
 import os
-import sys
 
 import numpy as np
 import trimesh
 
+import lcs
+
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, os.path.join(root, "build", "bin"))
-import lcs_py as lcs
 
 import utils.arg_parser
 from utils.animation_transform import DefaultTransformAnimation
