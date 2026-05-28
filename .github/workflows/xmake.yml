@@ -70,7 +70,7 @@ jobs:
           build-cache-key: macos-py
 
       - name: Install pybind11-stubgen
-        run: pip install pybind11-stubgen
+        run: pip3 install pybind11-stubgen
 
       - name: Xmake configure with Python bindings
         run: |
@@ -113,7 +113,7 @@ jobs:
           build-cache-key: windows-py
 
       - name: Install pybind11-stubgen
-        run: pip install pybind11-stubgen
+        run: pip3 install pybind11-stubgen
 
       - name: Xmake configure with Python bindings
         run: |

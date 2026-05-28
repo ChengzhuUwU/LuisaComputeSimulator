@@ -59,8 +59,8 @@ jobs:
       run: |
         python3 -m venv .venv
         source .venv/bin/activate
-        pip install --upgrade pip
-        pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+        pip3 install --upgrade pip
+        pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 
     - name: Configure CMake with Python bindings
       run: |
@@ -76,7 +76,7 @@ jobs:
     - name: Editable install
       run: |
         source .venv/bin/activate
-        pip install -e .
+        pip3 install -e .
 
     - name: Run Python bindings test
       run: |
