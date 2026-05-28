@@ -62,7 +62,7 @@ namespace lcs
 {
 
 	using morton32 = unsigned int;
-	using morton64 = uint64_t;
+	using morton64 = unsigned long long;
 	using Morton32 = luisa::compute::Var<morton32>;
 	using Morton64 = luisa::compute::Var<morton64>;
 	using aabbData = float2x3;

@@ -62,6 +62,9 @@ jobs:
             rm -rf "$dir"
             git clone "$repo" "$dir"
             git -C "$dir" checkout "$ref"
+            # LuisaCompute (and friends) pull in EASTL etc. as git submodules;
+            # without --recursive xmake fails with "unknown target(eastl)".
+            git -C "$dir" submodule update --init --recursive
           }
           clone_ext https://github.com/LuisaGroup/LuisaCompute.git 8fda2e0268c09bc3051cde913a612836036397d9 LuisaCompute
           clone_ext https://github.com/Ligo04/lc_parallel_primitive.git 346650626098ba236297df152d2974f2c0618f44 lcpp
