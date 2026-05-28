@@ -44,3 +44,42 @@ jobs:
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: ctest --build-config ${{ matrix.build_type }}
+
+  python-bindings:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Create venv and install tooling
+      run: |
+        python -m venv .venv
+        .venv\Scripts\activate
+        pip install --upgrade pip
+        pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+
+    - name: Configure CMake with Python bindings
+      run: |
+        cmake -B build `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DLCS_BUILD_PYBINDINGS=ON `
+          -DLCS_PYTHON_EXECUTABLE="${{ github.workspace }}\.venv\Scripts\python.exe" `
+          -S ${{ github.workspace }}
+
+    - name: Build + stubs
+      run: cmake --build build -j --target stubs --config Release
+
+    - name: Editable install
+      run: |
+        .venv\Scripts\activate
+        pip install -e .
+
+    - name: Run Python bindings test
+      run: |
+        .venv\Scripts\activate
+        python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30

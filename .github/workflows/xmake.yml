@@ -1,0 +1,134 @@
+name: xmake
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/xmake.yml"
+      - "Application/**"
+      - "Solver/**"
+      - "PythonBindings/**"
+      - "ext/**"
+      - "xmake.lua"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: branch@master
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: ${{ matrix.os }}
+          package-cache: true
+          package-cache-key: ${{ matrix.os }}
+          build-cache: true
+          build-cache-key: ${{ matrix.os }}
+
+      - name: Xmake configure
+        run: |
+          xmake config --yes
+
+      - name: Build
+        run: |
+          xmake build --verbose luisa-compute-solver-lib
+          xmake --verbose
+
+  python-bindings-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: branch@master
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: macos-py
+          package-cache: true
+          package-cache-key: macos-py
+          build-cache: true
+          build-cache-key: macos-py
+
+      - name: Install pybind11-stubgen
+        run: pip install pybind11-stubgen
+
+      - name: Xmake configure with Python bindings
+        run: |
+          xmake f -c -m release \
+            --lcs_build_pybindings=y \
+            --lcs_python_executable="${{ github.workspace }}/.venv/bin/python" \
+            --lcpp_test=n
+
+      - name: Build lcs_py
+        run: xmake build lcs_py
+
+      - name: Build stubs
+        run: xmake build stubs
+
+      - name: Run Python bindings test
+        run: |
+          PYTHONPATH=build/bin python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+
+  python-bindings-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: branch@master
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: windows-py
+          package-cache: true
+          package-cache-key: windows-py
+          build-cache: true
+          build-cache-key: windows-py
+
+      - name: Install pybind11-stubgen
+        run: pip install pybind11-stubgen
+
+      - name: Xmake configure with Python bindings
+        run: |
+          xmake f -c -m release `
+            --lcs_build_pybindings=y `
+            --lcs_python_executable=python `
+            --lcpp_test=n
+
+      - name: Build lcs_py
+        run: xmake build lcs_py
+
+      - name: Build stubs
+        run: xmake build stubs
+
+      - name: Run Python bindings test
+        run: |
+          $env:PYTHONPATH = "build/bin"
+          python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
