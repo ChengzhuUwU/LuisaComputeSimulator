@@ -133,13 +133,41 @@ cmake -S . -B build \
 cmake --build build -j$(sysctl -n hw.ncpu)
 ```
 
-#### With Python Bindings
+#### With Python Bindings (CMake)
+
+One-time setup:
 ```bash
+# Create project venv
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install build/dev tooling
+pip install --upgrade pip
+pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+```
+
+Configure, build, and install:
+```bash
+# Configure — MUST include -DLCS_BUILD_PYBINDINGS=ON
 cmake -S . -B build \
     -DLCS_BUILD_PYBINDINGS=ON \
-    -DLCS_PYTHON_EXECUTABLE=/usr/bin/python3
+    -DLCS_PYTHON_EXECUTABLE="$(pwd)/.venv/bin/python"
 
-cmake --build build -j
+# Build + regenerate stubs
+cmake --build build -j --target stubs
+
+# Editable install of the lcs package into the venv
+pip install -e .
+```
+
+After C++ binding changes (`PythonBindings/src/python_bindings.cpp`), rerun:
+```bash
+cmake --build build -j --target stubs
+```
+
+Run tests:
+```bash
+python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 #### With Vulkan Backend (Linux)
@@ -163,12 +191,33 @@ xmake f -c -m release \
     --lc_vk_backend=n \
     --lc_fallback_backend=n
 
-xmake build
+xmake build lcs_py
+```
+
+#### Xmake with Python Bindings (macOS example)
+```bash
+xmake f -c -m release \
+    --lcs_build_pybindings=y \
+    --lcs_python_executable=/opt/homebrew/bin/python3 \
+    --lcpp_test=n
+
+xmake build lcs_py
+
+# Verify import
+PYTHONPATH=build/bin python3 -c "import lcs_py; print('OK')"
+
+# Run tests
+PYTHONPATH=build/bin python3 PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 #### Xmake build only Python module
 ```bash
 xmake build lcs_py
+```
+
+#### Xmake generate stubs
+```bash
+xmake build stubs
 ```
 
 ---
@@ -316,8 +365,12 @@ system_profiler SPDisplaysDataType | grep Metal
 Ensure Python path is set correctly:
 
 ```bash
+# For CMake builds (or after pip install -e .)
 export PYTHONPATH=$PYTHONPATH:/path/to/LuisaComputeSimulator/build/bin
 python -c "import lcs_py; print('OK')"
+
+# For Xmake builds
+PYTHONPATH=build/bin python -c "import lcs_py; print('OK')"
 ```
 
 ---
@@ -339,6 +392,7 @@ API docs are included in the `Document/` folder:
 
 If you encounter build issues:
 
+### CMake
 ```bash
 # Remove build directory
 rm -rf build
@@ -355,5 +409,16 @@ rm -rf build .cache
 git clean -fd
 cmake -S . -B build
 cmake --build build -j
+```
+
+### Xmake
+```bash
+# Clean build artifacts
+xmake clean
+
+# Full clean (removes config cache too)
+xmake clean --all
+xmake f -c -m release
+xmake build
 ```
 

@@ -49,6 +49,12 @@ lc_options = {
 }
 includes("LuisaCompute")
 
+-- lcpp: disable tests to avoid pulling in boost_ut/cpptrace
+option("lcpp_test")
+    set_default(false)
+option_end()
+includes("lcpp")
+
 -- target("tbb")
 --     add_rules("lc_basic_settings", {
 --         project_kind = "static"
