@@ -14,8 +14,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install build/dev tooling for the bindings
-pip install --upgrade pip
-pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+pip3 install --upgrade pip
+pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 ```
 
 If `lcs_config.ini` sets `LCS_PYTHON_EXECUTABLE`, point that key to `<repo>/.venv/bin/python` so cmake/xmake configures and installs against the same interpreter.
@@ -38,7 +38,7 @@ cmake -S . -B build \
 cmake --build build -j --target stubs
 
 # Editable install of the lcs package into the venv
-pip install -e .
+pip3 install -e .
 ```
 
 After C++ binding changes (anything in `PythonBindings/src/python_bindings.cpp`), rerun:
@@ -142,7 +142,7 @@ binaries that load but fail device probing with
 | Build System | Path | Used For |
 |------|---------|----------|
 | cmake | `cmake --build build` | Daily dev, stubs |
-| cmake (SKBUILD) | `pip install -e .` | Editable install |
+| cmake (SKBUILD) | `pip3 install -e .` | Editable install |
 | cmake (SKBUILD) | `pip wheel .` | Distribution wheel |
 | xmake | `xmake build lcs_py` | Daily dev |
 | xmake | `xmake build stubs` | Stub generation |
@@ -152,7 +152,7 @@ Both cmake and xmake output to `build/bin/`.
 ## Common Errors
 
 ### "No module named 'lcs'"
-Missing `pip install -e .`. The `lcs` package is only on `sys.path` after editable install.
+Missing `pip3 install -e .`. The `lcs` package is only on `sys.path` after editable install.
 For xmake builds, set `PYTHONPATH=build/bin` instead.
 
 ### "stubs target not found" (cmake)
@@ -164,9 +164,9 @@ Missing `-DLCS_BUILD_PYBINDINGS=ON` in cmake configure. Fix: reconfigure with th
 ### "pybind11_stubgen: command not found" or "No module named pybind11_stubgen"
 Install pybind11-stubgen on the Python used by `LCS_PYTHON_EXECUTABLE`:
 ```bash
-pip install pybind11-stubgen
+pip3 install pybind11-stubgen
 ```
-Or use `pip install -e .[dev]` if `pyproject.toml` has the dev extra.
+Or use `pip3 install -e .[dev]` if `pyproject.toml` has the dev extra.
 
 ### "Eigen/Dense file not found" (xmake)
 Eigen is not cloned. Run:

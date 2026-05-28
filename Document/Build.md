@@ -142,8 +142,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install build/dev tooling
-pip install --upgrade pip
-pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+pip3 install --upgrade pip
+pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 ```
 
 Configure, build, and install:
@@ -157,7 +157,7 @@ cmake -S . -B build \
 cmake --build build -j --target stubs
 
 # Editable install of the lcs package into the venv
-pip install -e .
+pip3 install -e .
 ```
 
 After C++ binding changes (`PythonBindings/src/python_bindings.cpp`), rerun:
@@ -365,7 +365,7 @@ system_profiler SPDisplaysDataType | grep Metal
 Ensure Python path is set correctly:
 
 ```bash
-# For CMake builds (or after pip install -e .)
+# For CMake builds (or after pip3 install -e .)
 export PYTHONPATH=$PYTHONPATH:/path/to/LuisaComputeSimulator/build/bin
 python -c "import lcs_py; print('OK')"
 

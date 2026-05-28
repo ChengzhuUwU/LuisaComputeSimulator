@@ -19,10 +19,6 @@ option(LCS_USE_SYSTEM_PARALLEL_FOR "Enable system parallel_for" OFF)
 option(LCS_BUILD_MAIN_APPLICATION "Build Executable Simulation Application" ON)
 option(LCS_BUILD_PYBINDINGS "Build Python bindings (requires pybind11)" OFF)
 set(LCS_PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to the Python executable to build python bindings for (optional)")
-if(LCS_BUILD_PYBINDINGS AND LCS_PYTHON_EXECUTABLE STREQUAL "")
-    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-    set(LCS_PYTHON_EXECUTABLE "${Python_EXECUTABLE}" CACHE FILEPATH "Path to the Python executable to build python bindings for (optional)" FORCE)
-endif()
 
 # In scikit-build-core (pip install / pip wheel) context, override defaults
 # for Python package builds. This avoids duplicating these settings in
@@ -31,6 +27,11 @@ if(SKBUILD)
     set(LCS_BUILD_PYBINDINGS ON CACHE BOOL "" FORCE)
     set(LCS_BUILD_MAIN_APPLICATION OFF CACHE BOOL "" FORCE)
     set(LCS_ENABLE_TEST OFF CACHE BOOL "" FORCE)
+endif()
+
+if(LCS_BUILD_PYBINDINGS AND LCS_PYTHON_EXECUTABLE STREQUAL "")
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+    set(LCS_PYTHON_EXECUTABLE "${Python_EXECUTABLE}" CACHE FILEPATH "Path to the Python executable to build python bindings for (optional)" FORCE)
 endif()
 
 # LuisaCompute backends

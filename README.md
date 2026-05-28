@@ -233,14 +233,14 @@ With Python bindings (CMake):
 ```bash
 # One-time: create venv and install tooling
 python3 -m venv .venv && source .venv/bin/activate
-pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 
 # Configure + build + stubs
 cmake -S . -B build -DLCS_BUILD_PYBINDINGS=ON -DLCS_PYTHON_EXECUTABLE="$(pwd)/.venv/bin/python"
 cmake --build build -j --target stubs
 
 # Editable install
-pip install -e .
+pip3 install -e .
 
 # Run tests
 python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
