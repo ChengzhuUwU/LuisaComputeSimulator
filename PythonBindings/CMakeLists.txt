@@ -19,10 +19,21 @@ target_link_libraries(lcs_py PRIVATE
 
 # RPATH so lcs_py.so finds libluisa-*.dylib next to it inside the installed
 # wheel (or in the build/bin layout for editable installs).
-set_target_properties(lcs_py PROPERTIES
-    INSTALL_RPATH "@loader_path/lib;@loader_path/bin;@loader_path"
-    BUILD_WITH_INSTALL_RPATH TRUE
-)
+if (APPLE)
+    set(_LCS_PYTHON_ORIGIN_RPATH "@loader_path")
+elseif (UNIX)
+    set(_LCS_PYTHON_ORIGIN_RPATH "$ORIGIN")
+else()
+    set(_LCS_PYTHON_ORIGIN_RPATH "")
+endif()
+if (_LCS_PYTHON_ORIGIN_RPATH)
+    set_target_properties(lcs_py PROPERTIES
+        INSTALL_RPATH
+            "${_LCS_PYTHON_ORIGIN_RPATH}/lib;${_LCS_PYTHON_ORIGIN_RPATH}/bin;${_LCS_PYTHON_ORIGIN_RPATH}"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
+endif()
+unset(_LCS_PYTHON_ORIGIN_RPATH)
 
 install(TARGETS lcs_py
     LIBRARY DESTINATION .

@@ -25,8 +25,6 @@ set(LCS_PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to the Python executable to bu
 # pyproject.toml's [tool.scikit-build.cmake.define].
 if(SKBUILD)
     set(LCS_BUILD_PYBINDINGS ON CACHE BOOL "" FORCE)
-    set(LCS_BUILD_MAIN_APPLICATION OFF CACHE BOOL "" FORCE)
-    set(LCS_ENABLE_TEST OFF CACHE BOOL "" FORCE)
 endif()
 
 if(LCS_BUILD_PYBINDINGS AND LCS_PYTHON_EXECUTABLE STREQUAL "")

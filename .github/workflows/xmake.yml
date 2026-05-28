@@ -69,8 +69,12 @@ jobs:
           build-cache: true
           build-cache-key: macos-py
 
-      - name: Install pybind11-stubgen
-        run: pip3 install pybind11-stubgen
+      - name: Create venv and install tooling
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip3 install --upgrade pip
+          pip3 install pybind11-stubgen numpy trimesh
 
       - name: Xmake configure with Python bindings
         run: |
@@ -87,6 +91,7 @@ jobs:
 
       - name: Run Python bindings test
         run: |
+          source .venv/bin/activate
           PYTHONPATH=build/bin python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 
   python-bindings-windows:
@@ -112,14 +117,17 @@ jobs:
           build-cache: true
           build-cache-key: windows-py
 
-      - name: Install pybind11-stubgen
-        run: pip3 install pybind11-stubgen
+      - name: Create venv and install tooling
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python -m pip install --upgrade pip
+          .\.venv\Scripts\python -m pip install pybind11-stubgen numpy trimesh
 
       - name: Xmake configure with Python bindings
         run: |
           xmake f -c -m release `
             --lcs_build_pybindings=y `
-            --lcs_python_executable=python `
+            --lcs_python_executable="${{ github.workspace }}\.venv\Scripts\python.exe" `
             --lcpp_test=n
 
       - name: Build lcs_py
@@ -131,4 +139,4 @@ jobs:
       - name: Run Python bindings test
         run: |
           $env:PYTHONPATH = "build/bin"
-          python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30

@@ -324,6 +324,21 @@ if cfg_bool(false, "lcs_build_pybindings") then
             local bindir = path.join(os.projectdir(), "build", "bin")
             local stubout = path.join(os.projectdir(), "PythonBindings", "python")
             os.execv(pyexe, {"-m", "pybind11_stubgen", "lcs_py", "-o", stubout}, {envs = {PYTHONPATH = bindir}})
+            local single_stub = path.join(stubout, "lcs_py.pyi")
+            local package_dir = path.join(stubout, "lcs_py")
+            local package_init = path.join(package_dir, "__init__.pyi")
+            if os.isfile(single_stub) then
+                os.mkdir(package_dir)
+                if os.isfile(package_init) then
+                    os.rm(package_init)
+                end
+                os.mv(single_stub, package_init)
+                print("Normalized stub: " .. single_stub .. " -> " .. package_init)
+            elseif os.isfile(package_init) then
+                print("Stub already in package form: " .. package_init)
+            else
+                raise("pybind11_stubgen produced neither " .. single_stub .. " nor " .. package_init)
+            end
             print("Stubs generated to: " .. stubout)
         end)
     target_end()
