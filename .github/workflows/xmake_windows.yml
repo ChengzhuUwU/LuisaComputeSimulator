@@ -1,0 +1,87 @@
+name: xmake-windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/xmake_windows.yml"
+      - "Application/**"
+      - "Solver/**"
+      - "PythonBindings/**"
+      - "ext/**"
+      - "xmake.lua"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: branch@master
+          actions-cache-folder: ".xmake-cache"
+          actions-cache-key: windows-latest
+          package-cache: true
+          package-cache-key: windows-latest
+          build-cache: true
+          build-cache-key: windows-latest
+
+      - name: Create venv and install tooling
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python -m pip install --upgrade pip
+          .\.venv\Scripts\python -m pip install pybind11-stubgen numpy trimesh
+
+      - name: Fetch ext dependencies (LuisaCompute, lcpp, eigen, pybind11)
+        shell: bash
+        run: |
+          set -e
+          clone_ext() {
+            local repo="$1" ref="$2" dir="ext/$3"
+            if [ -d "$dir/.git" ]; then
+              echo "Skipping $dir (already present)"
+              return 0
+            fi
+            rm -rf "$dir"
+            git clone "$repo" "$dir"
+            git -C "$dir" checkout "$ref"
+          }
+          clone_ext https://github.com/LuisaGroup/LuisaCompute.git 8fda2e0268c09bc3051cde913a612836036397d9 LuisaCompute
+          clone_ext https://github.com/Ligo04/lc_parallel_primitive.git 346650626098ba236297df152d2974f2c0618f44 lcpp
+          if [ ! -d ext/eigen/.git ] && [ ! -f ext/eigen/Eigen/Dense ]; then
+            rm -rf ext/eigen
+            git clone --depth 1 --branch 3.4.0 https://gitlab.com/libeigen/eigen.git ext/eigen
+          fi
+          if [ ! -d ext/pybind11/.git ]; then
+            rm -rf ext/pybind11
+            git clone --depth 1 --branch v2.11.1 https://github.com/pybind/pybind11.git ext/pybind11
+          fi
+
+      - name: Xmake configure (with Python bindings)
+        run: |
+          xmake f -c -m release `
+            --lcs_build_pybindings=y `
+            --lcs_python_executable="${{ github.workspace }}\.venv\Scripts\python.exe" `
+            --lcpp_test=n
+
+      - name: Build
+        run: |
+          xmake build --verbose luisa-compute-solver-lib
+          xmake build lcs_py
+          xmake build stubs
+
+      - name: Run Python bindings test
+        run: |
+          $env:PYTHONPATH = "build/bin"
+          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
