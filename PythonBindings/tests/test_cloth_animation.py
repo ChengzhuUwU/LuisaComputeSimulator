@@ -1,7 +1,6 @@
+from utils.test_script_path import PROJECT_ROOT
 import os, sys
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 import utils.arg_parser
@@ -16,7 +15,7 @@ solver.init_device(backend_name=backend)
 from utils.animation_transform import DefaultTransformAnimation
 from utils.vertex_animator import VertexAnimator
 def load_cloth_with_vertex_animation():
-	cloth_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
+	cloth_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'Cylinder', 'cylinder7K.obj')
 	cloth = solver.create_world_data_from_file_path('cylinder7K', cloth_mesh_path)
 	cloth.set_simulation_type(lcs.MaterialType.Cloth)
 	cloth.set_physics_material_cloth(thickness=0.001, youngs_modulus=1e6)
@@ -60,7 +59,7 @@ config_ref.use_floor = False
 # config_ref.contact_energy_type = 0
 
 # Output directory (for optional file saving)
-output_dir = os.path.join(root, "Resources", "OutputMesh")
+output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 # Launch polyscope GUI or run headless

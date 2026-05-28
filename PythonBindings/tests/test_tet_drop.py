@@ -1,3 +1,4 @@
+from utils.test_script_path import PROJECT_ROOT
 """
 test_tet_simulation.py
 ======================
@@ -13,13 +14,10 @@ drops it under gravity onto the floor and runs N frames.
 """
 import argparse
 import os
-import sys
 
 import numpy as np
 
 # -- locate the built lcs_py module ----------------------------------------
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 
@@ -151,7 +149,7 @@ def main():
     )
 
 
-    bowl_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'bowl', 'bowl.obj')
+    bowl_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'bowl', 'bowl.obj')
     bowl = solver.create_world_data_from_file_path('bowl', bowl_mesh_path)
     bowl.set_simulation_type(lcs.MaterialType.Cloth)
     bowl.set_physics_material_cloth(thickness=0.001)
@@ -166,7 +164,7 @@ def main():
     print("Solver initialized.")
 
     # ---- Headless run -------------------------------------------------------
-    output_dir = os.path.join(root, "Resources", "OutputMesh")
+    output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
     os.makedirs(output_dir, exist_ok=True)
 
     if args.headless:

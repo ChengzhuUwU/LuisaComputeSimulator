@@ -1,3 +1,4 @@
+from utils.test_script_path import PROJECT_ROOT
 """
 Joint Constraint Showcase: Articulated Crane System.
 
@@ -32,13 +33,10 @@ Usage:
 """
 
 import os
-import sys
 
 import numpy as np
 import trimesh
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, os.path.join(root, "build", "bin"))
 import lcs_py as lcs
 
 import utils.arg_parser
@@ -50,7 +48,7 @@ args = utils.arg_parser.parse_args()
 solver = lcs.NewtonSolver()
 solver.init_device(backend_name=args.backend)
 
-cube_mesh_path = os.path.join(root, "Resources", "InputMesh", "cube.obj")
+cube_mesh_path = os.path.join(PROJECT_ROOT, "Resources", "InputMesh", "cube.obj")
 cube_mesh = trimesh.load(cube_mesh_path, process=False)
 
 animators = []
@@ -194,7 +192,7 @@ config_ref.use_self_collision = False
 config_ref.gravity = lcs.Float3(0.0, -9.8, 0.0)
 config_ref.use_gpu = False
 
-output_dir = os.path.join(root, "Resources", "OutputMesh")
+output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 # ============================================================

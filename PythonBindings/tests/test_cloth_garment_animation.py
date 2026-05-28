@@ -1,14 +1,12 @@
+from utils.test_script_path import PROJECT_ROOT
 import inspect
 import os
 import pickle
-import sys
 import tempfile
 import urllib.request
 
 import numpy as np
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 def parse_args2():
@@ -54,25 +52,25 @@ solver = lcs.NewtonSolver()
 solver.init_device(backend_name=backend)
 
 # Output directory (for optional file saving)
-output_dir = os.path.join(root, "Resources", "OutputMesh")
+output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 
 # Load a mesh by providing the path to the obj file
 def load_garment():
-	tshirt_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
+	tshirt_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'SMPL', 'tshirt.obj')
 	tshirt = solver.create_world_data_from_file_path('tshirt', tshirt_mesh_path)
 	tshirt.set_simulation_type(lcs.MaterialType.Cloth)
 	tshirt.set_physics_material_cloth(stretch_model="Spring")
 	solver.register_world_data(tshirt)
 
-	pants_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'pants.obj')
+	pants_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'SMPL', 'pants.obj')
 	pants = solver.create_world_data_from_file_path('pants', pants_mesh_path)
 	pants.set_simulation_type(lcs.MaterialType.Cloth)
 	pants.set_physics_material_cloth(stretch_model="Spring")
 	solver.register_world_data(pants)
 
-	# smpl2_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'SMPL', 'smpl.obj')
+	# smpl2_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'SMPL', 'smpl.obj')
 	# smpl2 = solver.create_world_data_from_file_path('smpl', smpl2_mesh_path)
 	# smpl2.set_simulation_type(lcs.MaterialType.Cloth)
 	# solver.register_world_data(smpl2)
@@ -91,9 +89,9 @@ def load_smpl():
 	smpl_model_path = args.smpl_model_path
 	sequence_path = args.sequence_path
 	if not smpl_model_path:
-		smpl_model_path = os.path.join(root, "build", "models", "SMPL_FEMALE.pkl")
+		smpl_model_path = os.path.join(PROJECT_ROOT, "build", "models", "SMPL_FEMALE.pkl")
 	if not sequence_path:
-		sequence_path = os.path.join(root, "build", "models", "SEQUENCE.npz")
+		sequence_path = os.path.join(PROJECT_ROOT, "build", "models", "SEQUENCE.npz")
 	if not os.path.isfile(smpl_model_path):
 		_maybe_download_smpl_model(smpl_model_path)
 	if not os.path.isfile(sequence_path):

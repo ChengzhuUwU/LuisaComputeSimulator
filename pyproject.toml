@@ -27,9 +27,3 @@ dev = [
 [tool.scikit-build]
 cmake.version = ">=3.26"
 build-dir = "build/{wheel_tag}"
-wheel.packages = ["PythonBindings/python/lcs"]
-
-[tool.scikit-build.cmake.define]
-LCS_BUILD_PYBINDINGS = "ON"
-LCS_BUILD_MAIN_APPLICATION = "OFF"
-LCS_ENABLE_TEST = "OFF"

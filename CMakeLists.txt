@@ -24,6 +24,15 @@ if(LCS_BUILD_PYBINDINGS AND LCS_PYTHON_EXECUTABLE STREQUAL "")
     set(LCS_PYTHON_EXECUTABLE "${Python_EXECUTABLE}" CACHE FILEPATH "Path to the Python executable to build python bindings for (optional)" FORCE)
 endif()
 
+# In scikit-build-core (pip install / pip wheel) context, override defaults
+# for Python package builds. This avoids duplicating these settings in
+# pyproject.toml's [tool.scikit-build.cmake.define].
+if(SKBUILD)
+    set(LCS_BUILD_PYBINDINGS ON CACHE BOOL "" FORCE)
+    set(LCS_BUILD_MAIN_APPLICATION OFF CACHE BOOL "" FORCE)
+    set(LCS_ENABLE_TEST OFF CACHE BOOL "" FORCE)
+endif()
+
 # LuisaCompute backends
 option(LUISA_COMPUTE_ENABLE_CUDA "Enable CUDA backend" ON)
 option(LUISA_COMPUTE_ENABLE_METAL "Enable Metal backend" ON)

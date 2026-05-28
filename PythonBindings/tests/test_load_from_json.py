@@ -1,9 +1,8 @@
+from utils.test_script_path import PROJECT_ROOT
 import trimesh
 import numpy as np
 import os, sys
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 # import utils.arg_parser
@@ -21,7 +20,7 @@ solver = lcs.NewtonSolver()
 solver.init_device(backend_name=backend)
 
 # Register meshes
-input_dir = os.path.join(root, "Resources", "Scenes", "default_scene.json")
+input_dir = os.path.join(PROJECT_ROOT, "Resources", "Scenes", "default_scene.json")
 solver.load_scene_from_json(input_dir)
 
 # Initialize the solver (builds internal data structures, compiles shaders, etc.)
@@ -34,7 +33,7 @@ solver.print_registered_meshes_info()
 config_ref = solver.get_config()
 
 # Output directory (for optional file saving)
-output_dir = os.path.join(root, "Resources", "OutputMesh")
+output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 # Launch polyscope GUI or run headless

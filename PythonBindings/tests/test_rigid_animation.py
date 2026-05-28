@@ -1,7 +1,6 @@
+from utils.test_script_path import PROJECT_ROOT
 import os, sys
 
-root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(root, 'build', 'bin'))
 import lcs_py as lcs
 
 import utils.arg_parser
@@ -17,7 +16,7 @@ solver.init_device(backend_name=backend)
 
 # Load a mesh by providing the path to the obj file
 import trimesh
-cube_mesh_path = os.path.join(root, 'Resources', 'InputMesh', 'cube.obj')
+cube_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'cube.obj')
 cube_mesh = trimesh.load(cube_mesh_path, process=False)
 
 def load_top_cube():
@@ -82,7 +81,7 @@ config_ref = solver.get_config()
 # config_ref.use_self_collision = False
 
 # Output directory (for optional file saving)
-output_dir = os.path.join(root, "Resources", "OutputMesh")
+output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 def update_animation():
