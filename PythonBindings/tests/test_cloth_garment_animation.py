@@ -16,7 +16,7 @@ def parse_args2():
 		"--backend",
 		type=str,
 		default="metal",
-		choices=["cuda", "dx", "vk", "metal"],
+		choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"],
 		help="Compute backend to use (default: metal)",
 	)
 	parser.add_argument(

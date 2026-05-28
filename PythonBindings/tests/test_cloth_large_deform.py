@@ -18,7 +18,7 @@ import lcs_py as lcs
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Cloth stretch model comparison test")
-    parser.add_argument("--backend", type=str, default="metal", choices=["metal", "cuda", "dx", "vk"])
+    parser.add_argument("--backend", type=str, default="metal", choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"])
     parser.add_argument("--advance_frames", type=int, default=40)
     parser.add_argument("--headless", action="store_true")
     return parser.parse_args()

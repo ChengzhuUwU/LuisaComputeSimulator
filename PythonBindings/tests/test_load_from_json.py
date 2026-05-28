@@ -9,7 +9,7 @@ import lcs_py as lcs
 # args = utils.arg_parser.parse_args()
 import argparse
 parser = argparse.ArgumentParser(description="Load from json example")
-parser.add_argument("--backend", type=str, default="metal", choices=["cuda", "dx", "vk", "metal"], help="Compute backend to use (default: metal)")
+parser.add_argument("--backend", type=str, default="metal", choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"], help="Compute backend to use (default: metal)")
 parser.add_argument("--headless", action="store_true", help="Run without GUI")
 parser.add_argument("--advance_frames", type=int, default=1, help="Number of simulation frames to advance in headless mode (default: 30)")
 args = parser.parse_args()

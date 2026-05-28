@@ -29,7 +29,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Tet simulation smoke test")
     default_backend = "metal" if platform.system() == "Darwin" else "cuda"
     p.add_argument("--backend", default=default_backend,
-                   choices=["cuda", "dx", "vk", "metal"])
+                   choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"])
     p.add_argument("--advance_frames", type=int, default=30)
     p.add_argument("--headless", action="store_true")
     return p.parse_args()
