@@ -470,22 +470,16 @@ struct PyNewtonBuilder
 
 	void physics_step_cpu()
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		solver_ptr->physics_step_CPU();
 	}
 
 	void physics_step_gpu()
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		solver_ptr->physics_step_GPU();
 	}
 
 	void restart_system()
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		solver_ptr->lcs::SolverInterface::restart_system();
 	}
 
@@ -494,9 +488,6 @@ struct PyNewtonBuilder
 		const unsigned int											  local_vid,
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_pos)
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		if (target_pos.ndim() != 1 || target_pos.shape(0) != 3)
 			throw std::runtime_error("target_pos must be a 1-D array of length 3 (x,y,z)");
 
@@ -510,8 +501,6 @@ struct PyNewtonBuilder
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_translation,
 		py::array_t<float, py::array::c_style | py::array::forcecast> target_rotation)
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		if (target_translation.ndim() != 1 || target_translation.shape(0) != 3)
 			throw std::runtime_error("target_translation must be a 1-D array of length 3 (x,y,z)");
 		if (target_rotation.ndim() != 1 || target_rotation.shape(0) != 3)
@@ -526,29 +515,21 @@ struct PyNewtonBuilder
 
 	std::array<float, 3> get_rigid_body_translation(uint registration_id) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		return solver_ptr->get_rigid_body_translation(registration_id);
 	}
 
 	std::array<float, 3> get_rigid_body_scaling(uint registration_id) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		return solver_ptr->get_rigid_body_scaling(registration_id);
 	}
 
 	std::array<float, 4> get_rigid_body_rotation_quaternion(uint registration_id) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		return solver_ptr->get_rigid_body_rotation_quaternion(registration_id);
 	}
 
 	std::array<float, 3> get_rigid_body_rotation_axis_angle(uint registration_id) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
 		return solver_ptr->get_rigid_body_rotation_axis_angle(registration_id);
 	}
 
@@ -640,9 +621,6 @@ struct PyNewtonBuilder
 	// Uses memcpy for efficient data transfer.
 	py::tuple get_sim_result()
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		const uint num_meshes = solver_ptr->get_host_mesh_data().num_meshes;
 
 		std::vector<std::vector<std::array<float, 3>>> sa_rendering_vertices(num_meshes);
@@ -671,18 +649,12 @@ struct PyNewtonBuilder
 
 	uint query_local_vid_from_global_vid(const uint global_vid) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		const auto& mapping = solver_ptr->get_host_mesh_data().sa_global_vid_to_local_vid;
 		return (global_vid < mapping.size()) ? mapping[global_vid] : std::numeric_limits<uint>::max();
 	}
 
 	uint query_registration_vid_from_global_vid(const uint global_vid) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		const std::vector<uint>& mapping1 = solver_ptr->get_host_mesh_data().sa_vert_mesh_id;
 		const uint				 sorted_idx = (global_vid < mapping1.size()) ? mapping1[global_vid] : std::numeric_limits<uint>::max();
 		const uint				 registration_id = solver_ptr->query_registration_id_by_sorted_index(sorted_idx);
@@ -691,9 +663,6 @@ struct PyNewtonBuilder
 
 	py::tuple get_object_sim_result_by_registration_id(uint registration_id)
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		std::vector<std::array<float, 3>> object_vertices;
 		std::vector<std::array<uint, 3>>  object_triangles;
 		solver_ptr->get_object_sim_result_by_registration_id(registration_id, object_vertices, object_triangles);
@@ -716,17 +685,11 @@ struct PyNewtonBuilder
 
 	void save_sim_result(const std::string_view& full_path)
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		solver_ptr->save_mesh_to_obj(full_path);
 	}
 
 	float get_vert_mass(uint global_vid) const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized. Call init_solver() first.");
-
 		const auto& mesh_data = solver_ptr->get_host_mesh_data();
 		const auto& src_masses = mesh_data.sa_vert_mass;
 
@@ -802,8 +765,6 @@ struct PyNewtonBuilder
 
 	lcs::SceneParams& get_config() const
 	{
-		if (!solver_ptr)
-			throw std::runtime_error("Solver not initialized.");
 		return solver_ptr->get_config();
 	}
 };
