@@ -524,6 +524,7 @@ namespace lcs
 		compiler.compile(fn_compute_mortons,
 			[sa_block_aabb = lbvh_data->sa_block_aabb.view(),
 				sa_leaf_center = lbvh_data->sa_leaf_center.view(),
+				sa_sort_values_in = lbvh_data->sa_sort_values_in.view(),
 				sa_morton = lbvh_data->sa_morton.view()]()
 			{
 				const Uint lid = luisa::compute::dispatch_id().x;
@@ -535,6 +536,7 @@ namespace lcs
 				sa_leaf_center->write(lid, norm_position);
 				auto mc64 = make_morton64(norm_position, lid);
 				sa_morton->write(lid, mc64);
+				sa_sort_values_in->write(lid, lid);
 			});
 
 		compiler.compile<1>(fn_apply_sorted,
@@ -1038,15 +1040,8 @@ namespace lcs
 
 		// Step 1: Reset tree and compute morton codes
 		stream << fn_reset_tree().dispatch(num_nodes)
-			   << fn_compute_mortons().dispatch(num_leaves)
-			   << luisa::compute::synchronize();
-
-		// Initialize sa_sort_values_in to [0, 1, 2, ..., N-1] for SortPairs
-		{
-			std::vector<uint> host_sort_values_in(num_leaves);
-			std::iota(host_sort_values_in.begin(), host_sort_values_in.end(), 0);
-			stream << lbvh_data->sa_sort_values_in.copy_from(host_sort_values_in.data()) << luisa::compute::synchronize();
-		}
+			   << fn_compute_mortons().dispatch(num_leaves);
+		//    << luisa::compute::synchronize();
 
 		// Step 2: Use lcpp device radix sort instead of CPU sort
 		// Sort morton64 keys with original indices as values

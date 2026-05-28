@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/float_nxn.h"
+#include "Core/scalar.h"
 #include "Energies/detail/energy_detail_common.hpp"
 #include "luisa/core/mathematics.h"
 #include <type_traits>

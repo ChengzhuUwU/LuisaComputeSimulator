@@ -134,6 +134,8 @@ def print_tree(node, indent=0, total_time=None, file=sys.stdout):
 
 def generate_markdown_report(profiles, output_file="profile_report.md"):
     """Generate a markdown report from profile data"""
+    if os.path.dirname(output_file):
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w') as f:
         f.write("# Performance Profiling Report\n\n")
         f.write(f"Generated from {len(profiles)} profile files\n\n")

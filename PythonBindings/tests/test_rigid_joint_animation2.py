@@ -113,9 +113,9 @@ solver.add_revolute_joint(
     boom_id,
     anchor,  # anchor at turntable center
     anchor,  # anchor at boom center
+    np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_world hint
     np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_a_local (turntable)
     np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_b_local (boom)
-    np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_world hint
     stiffness_pos=8.0e4,
     stiffness_axis=5.0e3,
 )
@@ -174,9 +174,9 @@ solver.add_revolute_joint(
     payload_id,
     anchor,
     anchor,
+    np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_world hint
     np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_a_local (hook)
     np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_b_local (payload)
-    np.array([1.0, 0.0, 0.0], dtype=np.float32),  # axis_world hint
     stiffness_pos=5.0e4,
     stiffness_axis=1.0e3,
 )

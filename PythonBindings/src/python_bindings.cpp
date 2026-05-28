@@ -577,7 +577,7 @@ struct PyNewtonBuilder
 		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
 		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
 		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
-		desc.axis_world = luisa::normalize(desc.axis_world);
+		// desc.axis_world = luisa::normalize(desc.axis_world);
 		desc.stiffness_pos = stiffness_pos;
 		desc.stiffness_rot = stiffness_rot;
 		desc.slide_min = slide_min;
@@ -609,7 +609,7 @@ struct PyNewtonBuilder
 		desc.anchor_a_local = luisa::make_float3(a(0), a(1), a(2));
 		desc.anchor_b_local = luisa::make_float3(b(0), b(1), b(2));
 		desc.axis_world = luisa::make_float3(w(0), w(1), w(2));
-		desc.axis_world = luisa::normalize(desc.axis_world);
+		// desc.axis_world = luisa::normalize(desc.axis_world);
 		desc.axis_a_local = luisa::make_float3(ua(0), ua(1), ua(2));
 		desc.axis_b_local = luisa::make_float3(ub(0), ub(1), ub(2));
 		desc.stiffness_pos = stiffness_pos;

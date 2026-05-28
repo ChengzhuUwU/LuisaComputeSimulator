@@ -233,9 +233,9 @@ solver.add_revolute_joint(
     revolute2_follower,
     anchor,
     anchor,
+    np.array([0.0, 0.0, 1.0], dtype=np.float32),  # world hint
     np.array([0.0, 0.0, 1.0], dtype=np.float32),  # hinge axis = Z (body-A local)
     np.array([0.0, 0.0, 1.0], dtype=np.float32),  # hinge axis = Z (body-B local)
-    np.array([0.0, 0.0, 1.0], dtype=np.float32),  # world hint
     stiffness_pos=5.0e4,
     stiffness_axis=2.0e3,
 )

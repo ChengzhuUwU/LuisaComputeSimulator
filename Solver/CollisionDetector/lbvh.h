@@ -111,6 +111,10 @@ namespace lcs
 
 		void allocate(luisa::compute::Device& device, const uint input_num, const LBVHTreeType input_tree_type)
 		{
+			if (input_num == 0)
+			{
+				LUISA_ERROR("Cannot allocate LBVH with zero leaves.");
+			}
 			const uint num_leaves = input_num;
 			const uint num_inner_nodes = num_leaves - 1;
 			const uint num_nodes = num_leaves + num_inner_nodes;
@@ -245,11 +249,10 @@ namespace lcs
 
 	public:
 		LbvhData<luisa::compute::Buffer>* lbvh_data;
-		
 		// lcpp device radix sort for construct_tree
 		luisa::parallel_primitive::DeviceRadixSort<> device_radix_sort_;
-		bool lcpp_sort_initialized_{false};
-		
+		bool										 lcpp_sort_initialized_{ false };
+
 		void init_lcpp_sort(luisa::compute::Device& device);
 
 	private:
