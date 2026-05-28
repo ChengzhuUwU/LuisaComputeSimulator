@@ -1246,12 +1246,12 @@ namespace lcs::Initializer
 				// For a prismatic joint, only the rest offset perpendicular to the sliding
 				// axis should be constrained. The component along the axis is the slide
 				// coordinate and is governed only by slide_limits.
-				const auto rest_pos_local_a = compute_rest_position_delta_local_a(idx_a, idx_b, desc.anchor_a_local, desc.anchor_b_local);
-				const auto A0_inv_prismatic = luisa::inverse(make_rest_A(idx_a));
-				const auto axis_a_local_prismatic = normalize_axis(A0_inv_prismatic * normalize_axis(desc.axis_world));
+				const auto	rest_pos_local_a = compute_rest_position_delta_local_a(idx_a, idx_b, desc.anchor_a_local, desc.anchor_b_local);
+				const auto	A0_inv_prismatic = luisa::inverse(make_rest_A(idx_a));
+				const auto	axis_a_local_prismatic = normalize_axis(A0_inv_prismatic * normalize_axis(desc.axis_world));
 				const float rest_slide = luisa::dot(rest_pos_local_a, axis_a_local_prismatic);
-				const auto rest_pos_perp_local_a = rest_pos_local_a - rest_slide * axis_a_local_prismatic;
-				uint8	   idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
+				const auto	rest_pos_perp_local_a = rest_pos_local_a - rest_slide * axis_a_local_prismatic;
+				uint8		idx_ext = { idx_a[0], idx_a[1], idx_a[2], idx_a[3], idx_b[0], idx_b[1], idx_b[2], idx_b[3] };
 				joint_data.constraint_indices.push_back(idx_ext);
 				joint_data.anchor_a_local.push_back(desc.anchor_a_local);
 				joint_data.anchor_b_local.push_back(desc.anchor_b_local);
