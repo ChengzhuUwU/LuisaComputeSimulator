@@ -30,12 +30,8 @@ jobs:
         uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: branch@master
-          actions-cache-folder: ".xmake-cache"
-          actions-cache-key: windows-latest
-          package-cache: true
-          package-cache-key: windows-latest
-          build-cache: true
-          build-cache-key: windows-latest
+          build-cache: false
+          package-cache: false
 
       - name: Create venv and install tooling
         run: |

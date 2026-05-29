@@ -82,7 +82,6 @@ jobs:
           xmake f -c -m release \
             --lc_cuda_backend=n \
             --lc_metal_backend=n \
-            --lc_fallback_backend=y \
             --lcs_build_pybindings=y \
             --lcs_python_executable="${{ github.workspace }}/.venv/bin/python" \
             --lcpp_test=n
