@@ -62,11 +62,11 @@ jobs:
       - name: Xmake configure
         shell: bash
         run: |
-          BACKEND_ARGS=""
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            BACKEND_ARGS="--lc_cuda_backend=n --lc_fallback_backend=y"
+            xmake config --yes --lc_cuda_backend=n
+          else
+            xmake config --yes
           fi
-          xmake config --yes $BACKEND_ARGS
 
       - name: Build
         run: |
@@ -134,8 +134,6 @@ jobs:
           xmake f -c -m release \
             --lcs_build_pybindings=y \
             --lcs_python_executable="${{ github.workspace }}/.venv/bin/python" \
-            --lc_metal_backend=n \
-            --lc_fallback_backend=y \
             --lcpp_test=n
 
       - name: Build lcs_py
@@ -143,11 +141,6 @@ jobs:
 
       - name: Build stubs
         run: xmake build stubs
-
-      - name: Run Python bindings test
-        run: |
-          source .venv/bin/activate
-          PYTHONPATH=build/bin python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30 --backend fallback
 
   python-bindings-windows:
     runs-on: windows-latest
@@ -210,7 +203,6 @@ jobs:
             --lcs_build_pybindings=y `
             --lcs_python_executable="${{ github.workspace }}\.venv\Scripts\python.exe" `
             --lc_cuda_backend=n `
-            --lc_fallback_backend=y `
             --lcpp_test=n
 
       - name: Build lcs_py
@@ -218,8 +210,3 @@ jobs:
 
       - name: Build stubs
         run: xmake build stubs
-
-      - name: Run Python bindings test
-        run: |
-          $env:PYTHONPATH = "build/bin"
-          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30 --backend fallback

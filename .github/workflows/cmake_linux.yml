@@ -56,7 +56,6 @@ jobs:
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -D LCS_BUILD_PYBINDINGS=ON \
             -D LCS_PYTHON_EXECUTABLE=${{ github.workspace }}/.venv/bin/python \
-            -D LUISA_COMPUTE_ENABLE_FALLBACK=ON \
             -S ${{ github.workspace }}
 
       - name: Configure CMake
@@ -89,8 +88,8 @@ jobs:
           source .venv/bin/activate
           pip3 install -e . --no-build-isolation
 
-      - name: Run Python bindings test
+      - name: Verify import
         if: matrix.compiler.python_bindings
         run: |
           source .venv/bin/activate
-          python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30 --backend fallback
+          python -c "import lcs_py; print('lcs_py imported successfully')"

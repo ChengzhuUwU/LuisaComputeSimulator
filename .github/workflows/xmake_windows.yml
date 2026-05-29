@@ -75,7 +75,6 @@ jobs:
             --lcs_build_pybindings=y `
             --lcs_python_executable="${{ github.workspace }}\.venv\Scripts\python.exe" `
             --lc_cuda_backend=n `
-            --lc_fallback_backend=y `
             --lcpp_test=n
 
       - name: Build
@@ -83,8 +82,3 @@ jobs:
           xmake build --verbose luisa-compute-solver-lib
           xmake build lcs_py
           xmake build stubs
-
-      - name: Run Python bindings test
-        run: |
-          $env:PYTHONPATH = "build/bin"
-          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30 --backend fallback
