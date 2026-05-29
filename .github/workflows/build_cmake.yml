@@ -28,7 +28,7 @@ jobs:
       - name: Install package dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install build-essential uuid-dev ccache
+          sudo apt-get -y install build-essential uuid-dev ccache ninja-build
 
       - name: Setup ccache
         uses: actions/cache@v4
@@ -63,6 +63,7 @@ jobs:
         if: matrix.compiler.python_bindings
         run: |
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -G Ninja \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
             -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -76,6 +77,7 @@ jobs:
         if: ${{ !matrix.compiler.python_bindings }}
         run: |
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -G Ninja \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
             -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -130,7 +132,7 @@ jobs:
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
       - name: Install ccache
-        run: brew install ccache
+        run: brew install ccache ninja
 
       - name: Setup ccache
         uses: actions/cache@v4
@@ -165,6 +167,7 @@ jobs:
         if: matrix.compiler.python_bindings
         run: |
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -G Ninja \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
             -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
