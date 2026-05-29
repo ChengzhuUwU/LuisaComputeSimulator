@@ -276,13 +276,15 @@ if cfg_bool(false, "lcs_build_pybindings") then
                 target:set("filename", "lcs_py" .. ext_suffix)
             end
 
-            -- RPATH for macOS so lcs_py.so finds dylibs next to it
-            -- Do not link libpython on macOS (undefined symbols resolved at import time)
+            -- RPATH so lcs_py.so finds runtime libs next to it (build/lib, build/bin)
             if target:is_plat("macosx") then
                 target:add("shflags", "-Wl,-rpath,@loader_path/lib", "-Wl,-rpath,@loader_path/bin", "-Wl,-rpath,@loader_path", {force = true})
                 target:add("shflags", "-undefined", "dynamic_lookup", {force = true})
                 target:add("ldflags", "-Wl,-rpath,@loader_path/lib", "-Wl,-rpath,@loader_path/bin", "-Wl,-rpath,@loader_path", {force = true})
                 target:add("ldflags", "-undefined", "dynamic_lookup", {force = true})
+            elseif target:is_plat("linux") then
+                target:add("shflags", "-Wl,-rpath,$ORIGIN/lib", "-Wl,-rpath,$ORIGIN/bin", "-Wl,-rpath,$ORIGIN", {force = true})
+                target:add("ldflags", "-Wl,-rpath,$ORIGIN/lib", "-Wl,-rpath,$ORIGIN/bin", "-Wl,-rpath,$ORIGIN", {force = true})
             end
 
             local probe = [[import sys,sysconfig,pathlib;v=f"{sys.version_info[0]}{sys.version_info[1]}";inc=sysconfig.get_path("include") or "";platinc=sysconfig.get_path("platinclude") or "";base=pathlib.Path(sys.base_prefix);libdir=(base/"libs");print("INCLUDE="+inc);print("PLATINCLUDE="+platinc);print("LIBDIR="+str(libdir));print("LIB=python"+v)]]
