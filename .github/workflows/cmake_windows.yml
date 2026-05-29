@@ -51,6 +51,7 @@ jobs:
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -D LCS_BUILD_PYBINDINGS=ON `
             -D LCS_PYTHON_EXECUTABLE="${{ github.workspace }}\.venv\Scripts\python.exe" `
+            -D LUISA_COMPUTE_ENABLE_FALLBACK=ON `
             -S ${{ github.workspace }}
 
       - name: Configure CMake
@@ -84,4 +85,4 @@ jobs:
         if: matrix.compiler.python_bindings
         run: |
           $env:PYTHONPATH = "build/bin"
-          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+          .\.venv\Scripts\python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30 --backend fallback
