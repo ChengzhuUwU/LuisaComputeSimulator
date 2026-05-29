@@ -1,0 +1,316 @@
+name: cmake-build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release]
+        compiler:
+          - { cpp_compiler: g++, c_compiler: gcc, python_bindings: true }
+          - { cpp_compiler: clang++, c_compiler: clang, python_bindings: false }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install package dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install build-essential uuid-dev ccache
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-linux-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-linux-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-
+            ccache-linux-${{ matrix.compiler.cpp_compiler }}-main-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=500M
+          ccache --zero-stats
+
+      - name: Setup Python
+        if: matrix.compiler.python_bindings
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create venv and install tooling
+        if: matrix.compiler.python_bindings
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip3 install --upgrade pip
+          pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+
+      - name: Configure CMake (with Python bindings)
+        if: matrix.compiler.python_bindings
+        run: |
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
+            -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -D LCS_BUILD_PYBINDINGS=ON \
+            -D LCS_PYTHON_EXECUTABLE=${{ github.workspace }}/.venv/bin/python \
+            -S ${{ github.workspace }}
+
+      - name: Configure CMake
+        if: ${{ !matrix.compiler.python_bindings }}
+        run: |
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
+            -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -D LCS_BUILD_PYBINDINGS=OFF \
+            -S ${{ github.workspace }}
+
+      - name: Build
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 4 --config ${{ matrix.build_type }}
+
+      - name: Build stubs
+        if: matrix.compiler.python_bindings
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 4 --config ${{ matrix.build_type }} --target stubs
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Test
+        working-directory: ${{ steps.strings.outputs.build-output-dir }}
+        run: ctest --build-config ${{ matrix.build_type }}
+
+      - name: Editable install
+        if: matrix.compiler.python_bindings
+        run: |
+          source .venv/bin/activate
+          pip3 install -e . --no-build-isolation -C build-dir=build
+
+      - name: Verify import
+        if: matrix.compiler.python_bindings
+        run: |
+          source .venv/bin/activate
+          python -c "import lcs_py; print('lcs_py imported successfully')"
+
+  macos:
+    runs-on: macos-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release]
+        compiler:
+          - { cpp_compiler: clang++, c_compiler: clang, python_bindings: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install ccache
+        run: brew install ccache
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-macos-clang-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-macos-clang-${{ github.ref_name }}-
+            ccache-macos-clang-main-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=500M
+          ccache --zero-stats
+
+      - name: Setup Python
+        if: matrix.compiler.python_bindings
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create venv and install tooling
+        if: matrix.compiler.python_bindings
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip3 install --upgrade pip
+          pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+
+      - name: Configure CMake (with Python bindings)
+        if: matrix.compiler.python_bindings
+        run: |
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
+            -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -D LCS_BUILD_PYBINDINGS=ON \
+            -D LCS_PYTHON_EXECUTABLE=${{ github.workspace }}/.venv/bin/python \
+            -S ${{ github.workspace }}
+
+      - name: Build
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+      - name: Build stubs
+        if: matrix.compiler.python_bindings
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --target stubs
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Test
+        working-directory: ${{ steps.strings.outputs.build-output-dir }}
+        run: ctest --build-config ${{ matrix.build_type }}
+
+      - name: Editable install
+        if: matrix.compiler.python_bindings
+        run: |
+          source .venv/bin/activate
+          pip3 install -e . --no-build-isolation -C build-dir=build
+
+      - name: Verify import
+        if: matrix.compiler.python_bindings
+        run: |
+          source .venv/bin/activate
+          python -c "import lcs_py; print('lcs_py imported successfully')"
+
+  windows:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release]
+        compiler:
+          - { cpp_compiler: cl, c_compiler: cl, python_bindings: true }
+          - { cpp_compiler: clang++, c_compiler: clang, python_bindings: false }
+          - { cpp_compiler: g++, c_compiler: gcc, python_bindings: false }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        run: |
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install ccache
+        run: choco install ccache --no-progress
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-windows-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-windows-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-
+            ccache-windows-${{ matrix.compiler.cpp_compiler }}-main-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=500M
+          ccache --set-config=cache_dir=${{ github.workspace }}/.ccache
+          ccache --zero-stats
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: Setup Python
+        if: matrix.compiler.python_bindings
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create venv and install tooling
+        if: matrix.compiler.python_bindings
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python -m pip install --upgrade pip
+          .\.venv\Scripts\python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+
+      - name: Configure CMake (with Python bindings)
+        if: matrix.compiler.python_bindings
+        run: |
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} `
+            -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} `
+            -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} `
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache `
+            -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -D LCS_BUILD_PYBINDINGS=ON `
+            -D LCS_PYTHON_EXECUTABLE="${{ github.workspace }}\.venv\Scripts\python.exe" `
+            -S ${{ github.workspace }}
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: Configure CMake
+        if: ${{ !matrix.compiler.python_bindings }}
+        run: |
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} `
+            -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} `
+            -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} `
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache `
+            -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -D LCS_BUILD_PYBINDINGS=OFF `
+            -S ${{ github.workspace }}
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: Build
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: Build stubs
+        if: matrix.compiler.python_bindings
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --target stubs
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: ccache stats
+        run: ccache -s
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      - name: Test
+        working-directory: ${{ steps.strings.outputs.build-output-dir }}
+        run: ctest --build-config ${{ matrix.build_type }}
+
+      - name: Editable install
+        if: matrix.compiler.python_bindings
+        run: |
+          .\.venv\Scripts\python -m pip install -e . --no-build-isolation -C build-dir=build
+
+      - name: Verify import
+        if: matrix.compiler.python_bindings
+        run: |
+          $env:PYTHONPATH = "build/bin"
+          .\.venv\Scripts\python -c "import lcs_py; print('lcs_py imported successfully')"
