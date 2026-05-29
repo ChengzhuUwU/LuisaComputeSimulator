@@ -9,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
 
     strategy:
       fail-fast: false
@@ -18,7 +17,6 @@ jobs:
         build_type: [Release]
         compiler:
           - { cpp_compiler: clang++, c_compiler: clang, python_bindings: true }
-          - { cpp_compiler: g++-14, c_compiler: gcc-14, python_bindings: false }
 
     steps:
       - uses: actions/checkout@v4
@@ -29,9 +27,23 @@ jobs:
         run: |
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-      - name: Install Homebrew GCC
-        if: matrix.compiler.cpp_compiler == 'g++-14'
-        run: brew install gcc@14
+      - name: Install ccache
+        run: brew install ccache
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-macos-clang-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-macos-clang-${{ github.ref_name }}-
+            ccache-macos-clang-main-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=500M
+          ccache --zero-stats
 
       - name: Setup Python
         if: matrix.compiler.python_bindings
@@ -53,6 +65,8 @@ jobs:
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -D LCS_BUILD_PYBINDINGS=ON \
             -D LCS_PYTHON_EXECUTABLE=${{ github.workspace }}/.venv/bin/python \
@@ -64,17 +78,21 @@ jobs:
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -D LCS_BUILD_PYBINDINGS=OFF \
             -S ${{ github.workspace }}
 
+      - name: Build
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
       - name: Build stubs
         if: matrix.compiler.python_bindings
-        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j --config ${{ matrix.build_type }} --target stubs
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --target stubs
 
-      - name: Build
-        if: ${{ !matrix.compiler.python_bindings }}
-        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j --config ${{ matrix.build_type }}
+      - name: ccache stats
+        run: ccache -s
 
       - name: Test
         working-directory: ${{ steps.strings.outputs.build-output-dir }}

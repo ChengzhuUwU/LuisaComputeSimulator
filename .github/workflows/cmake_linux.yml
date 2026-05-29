@@ -31,7 +31,22 @@ jobs:
       - name: Install Package Dependencies (Ubuntu)
         run: |
           sudo apt-get update
-          sudo apt-get -y install build-essential uuid-dev
+          sudo apt-get -y install build-essential uuid-dev ccache
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-linux-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-linux-${{ matrix.compiler.cpp_compiler }}-${{ github.ref_name }}-
+            ccache-linux-${{ matrix.compiler.cpp_compiler }}-main-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=500M
+          ccache --zero-stats
 
       - name: Setup Python
         if: matrix.compiler.python_bindings
@@ -53,6 +68,8 @@ jobs:
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -D LCS_BUILD_PYBINDINGS=ON \
             -D LCS_PYTHON_EXECUTABLE=${{ github.workspace }}/.venv/bin/python \
@@ -64,19 +81,21 @@ jobs:
           cmake -B ${{ steps.strings.outputs.build-output-dir }} \
             -D CMAKE_CXX_COMPILER=${{ matrix.compiler.cpp_compiler }} \
             -D CMAKE_C_COMPILER=${{ matrix.compiler.c_compiler }} \
+            -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -D CMAKE_C_COMPILER_LAUNCHER=ccache \
             -D CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -D LCS_BUILD_PYBINDINGS=OFF \
             -S ${{ github.workspace }}
 
+      - name: Build
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 4 --config ${{ matrix.build_type }}
+
       - name: Build stubs
         if: matrix.compiler.python_bindings
-        # Limit parallelism: full -j on the 7 GB Ubuntu runner OOM-kills the LuisaCompute XIR build (exit 143).
-        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 2 --config ${{ matrix.build_type }} --target stubs
+        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 4 --config ${{ matrix.build_type }} --target stubs
 
-      - name: Build
-        if: ${{ !matrix.compiler.python_bindings }}
-        # Limit parallelism: full -j on the 7 GB Ubuntu runner OOM-kills the LuisaCompute XIR build (exit 143).
-        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} -j 2 --config ${{ matrix.build_type }}
+      - name: ccache stats
+        run: ccache -s
 
       - name: Test
         working-directory: ${{ steps.strings.outputs.build-output-dir }}
