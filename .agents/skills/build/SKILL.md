@@ -11,11 +11,10 @@ The Python bindings (`lcs` / `lcs_py`) are built and installed against a project
 ```bash
 # Create the project venv (only once; reuse afterwards)
 python3 -m venv .venv
-source .venv/bin/activate
 
 # Install build/dev tooling for the bindings
-pip3 install --upgrade pip
-pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 ```
 
 If `lcs_config.ini` sets `LCS_PYTHON_EXECUTABLE`, point that key to `<repo>/.venv/bin/python` so cmake/xmake configures and installs against the same interpreter.
@@ -38,7 +37,7 @@ cmake -S . -B build \
 cmake --build build -j --target stubs
 
 # Editable install of the lcs package into the venv
-pip3 install -e .
+.venv/bin/python -m pip install -e .
 ```
 
 After C++ binding changes (anything in `PythonBindings/src/python_bindings.cpp`), rerun:
@@ -116,10 +115,10 @@ xmake run test_narrow_phase
 
 ## Running tests (general)
 
-For python tests, most of the time you need to add the launching param `--headless`. With the venv active you can call the interpreter directly:
+For python tests, most of the time you need to add the launching param `--headless`. With the venv you can call the interpreter directly:
 
 ```bash
-python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+.venv/bin/python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 If you need to invoke the venv interpreter from outside the activated shell, use `<repo>/.venv/bin/python` (this matches `LCS_PYTHON_EXECUTABLE`).
@@ -142,7 +141,7 @@ binaries that load but fail device probing with
 | Build System | Path | Used For |
 |------|---------|----------|
 | cmake | `cmake --build build` | Daily dev, stubs |
-| cmake (SKBUILD) | `pip3 install -e .` | Editable install |
+| cmake (SKBUILD) | `.venv/bin/python -m pip install -e .` | Editable install |
 | cmake (SKBUILD) | `pip wheel .` | Distribution wheel |
 | xmake | `xmake build lcs_py` | Daily dev |
 | xmake | `xmake build stubs` | Stub generation |
@@ -152,7 +151,7 @@ Both cmake and xmake output to `build/bin/`.
 ## Common Errors
 
 ### "No module named 'lcs'"
-Missing `pip3 install -e .`. The `lcs` package is only on `sys.path` after editable install.
+Missing `.venv/bin/python -m pip install -e .`. The `lcs` package is only on `sys.path` after editable install.
 For xmake builds, set `PYTHONPATH=build/bin` instead.
 
 ### "stubs target not found" (cmake)
@@ -164,9 +163,9 @@ Missing `-DLCS_BUILD_PYBINDINGS=ON` in cmake configure. Fix: reconfigure with th
 ### "pybind11_stubgen: command not found" or "No module named pybind11_stubgen"
 Install pybind11-stubgen on the Python used by `LCS_PYTHON_EXECUTABLE`:
 ```bash
-pip3 install pybind11-stubgen
+.venv/bin/python -m pip install pybind11-stubgen
 ```
-Or use `pip3 install -e .[dev]` if `pyproject.toml` has the dev extra.
+Or use `.venv/bin/python -m pip install -e .[dev]` if `pyproject.toml` has the dev extra.
 
 ### "Eigen/Dense file not found" (xmake)
 Eigen is not cloned. Run:

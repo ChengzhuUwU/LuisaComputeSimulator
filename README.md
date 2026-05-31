@@ -232,18 +232,18 @@ With Python bindings (CMake):
 
 ```bash
 # One-time: create venv and install tooling
-python3 -m venv .venv && source .venv/bin/activate
-pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+python3 -m venv .venv
+.venv/bin/python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 
 # Configure + build + stubs
 cmake -S . -B build -DLCS_BUILD_PYBINDINGS=ON -DLCS_PYTHON_EXECUTABLE="$(pwd)/.venv/bin/python"
 cmake --build build -j --target stubs
 
 # Editable install
-pip3 install -e .
+.venv/bin/python -m pip install -e .
 
 # Run tests
-python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+.venv/bin/python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 You can also use Xmake:
@@ -263,7 +263,7 @@ xmake f -m release --lcs_build_pybindings=y --lcs_python_executable=/path/to/pyt
 xmake build lcs_py
 
 # Run tests
-PYTHONPATH=build/bin python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+PYTHONPATH=build/bin .venv/bin/python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 ### 2. Run a Demo
@@ -280,10 +280,10 @@ PYTHONPATH=build/bin python PythonBindings/tests/test_rigid_joint_animation.py -
 #### Python Application
 ```bash
 # With GUI (requires polyscope)
-python PythonBindings/example_usage.py --backend cuda
+.venv/bin/python PythonBindings/example_usage.py --backend cuda
 
 # Headless mode (batch processing)
-python PythonBindings/example_usage.py --backend cuda --headless --advance_frames 60
+.venv/bin/python PythonBindings/example_usage.py --backend cuda --headless --advance_frames 60
 ```
 
 > **Note:** Most used backends in LuisaCompute : `cuda`, `dx` (DirectX), `vk` (Vulkan), `metal` (macOS)

@@ -139,11 +139,10 @@ One-time setup:
 ```bash
 # Create project venv
 python3 -m venv .venv
-source .venv/bin/activate
 
 # Install build/dev tooling
-pip3 install --upgrade pip
-pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 ```
 
 Configure, build, and install:
@@ -157,7 +156,7 @@ cmake -S . -B build \
 cmake --build build -j --target stubs
 
 # Editable install of the lcs package into the venv
-pip3 install -e .
+.venv/bin/python -m pip install -e .
 ```
 
 After C++ binding changes (`PythonBindings/src/python_bindings.cpp`), rerun:
@@ -167,7 +166,7 @@ cmake --build build -j --target stubs
 
 Run tests:
 ```bash
-python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
+.venv/bin/python PythonBindings/tests/test_rigid_joint_animation.py --headless --advance_frames 30
 ```
 
 #### With Vulkan Backend (Linux)
@@ -365,7 +364,7 @@ system_profiler SPDisplaysDataType | grep Metal
 Ensure Python path is set correctly:
 
 ```bash
-# For CMake builds (or after pip3 install -e .)
+# For CMake builds (or after .venv/bin/python -m pip install -e .)
 export PYTHONPATH=$PYTHONPATH:/path/to/LuisaComputeSimulator/build/bin
 python -c "import lcs_py; print('OK')"
 
