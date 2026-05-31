@@ -187,10 +187,10 @@ solver.add_revolute_joint(
 
 solver.init_solver()
 config_ref = solver.get_config()
-config_ref.use_floor = False
-config_ref.use_self_collision = False
-config_ref.gravity = lcs.Float3(0.0, -9.8, 0.0)
-config_ref.use_gpu = False
+config_ref.set_use_floor(False)
+config_ref.set_use_self_collision(False)
+config_ref.set_gravity(lcs.Float3(0.0, -9.8, 0.0))
+config_ref.set_use_gpu(False)
 
 output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)

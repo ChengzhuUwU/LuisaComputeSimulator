@@ -128,11 +128,11 @@ solver.init_solver()
 config_ref = solver.get_config()
 
 # config_ref.use_floor = False
-config_ref.floor = lcs.Float3(0.0, 0.0, 0.0) 
+config_ref.set_floor(lcs.Float3(0.0, 0.0, 0.0)) 
 # config_ref.contact_energy_type = 0 # 0: quadratic, 1: barrier
 # config_ref.print_pcg_info = True
 # config_ref.print_collision_info = True
-config_ref.nonlinear_iter_count = 0
+config_ref.set_nonlinear_iter_count(0)
 # config_ref.use_self_collision = False
 
 def update_animation():

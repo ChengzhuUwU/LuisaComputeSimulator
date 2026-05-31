@@ -341,6 +341,19 @@ if cfg_bool(false, "lcs_build_pybindings") then
             else
                 raise("pybind11_stubgen produced neither " .. single_stub .. " nor " .. package_init)
             end
+
+            -- Translate C++ wrapper type names back to Python class names.
+            -- pybind11-stubgen resolves the underlying C++ type (PySceneParams)
+            -- but the Python name registered with py::class_<> is SceneParams.
+            --
+            -- Mirror of PythonBindings/cmake/normalize_stub.cmake lines 38-51.
+            local stub_content = io.readfile(package_init)
+            local fixed, count = stub_content:gsub("PySceneParams", "SceneParams")
+            if count > 0 then
+                io.writefile(package_init, fixed)
+                print(string.format("Replaced PySceneParams -> SceneParams (%d occurrence(s))", count))
+            end
+
             print("Stubs generated to: " .. stubout)
         end)
     target_end()

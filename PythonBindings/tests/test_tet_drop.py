@@ -101,8 +101,8 @@ def main():
     # config.floor = lcs.Float3(0.0, 0.0, 0.0)
     # config.use_ccd_linesearch = True
     # config.use_self_collision = False    # keep it simple for smoke test
-    config.nonlinear_iter_count = 3  # Increased for stability
-    config.use_gpu = False  # Force CPU mode
+    config.set_nonlinear_iter_count(3)  # Increased for stability
+    config.set_use_gpu(False)  # Force CPU mode
 
     # ---- Register random tet bodies (non-overlapping at init) ------------
     num_bodies = 20

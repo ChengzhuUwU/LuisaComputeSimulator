@@ -42,7 +42,7 @@ solver.print_registered_meshes_info()
 
 # Set scene parameters
 config_ref = solver.get_config()
-config_ref.nonlinear_iter_count = 8
+config_ref.set_nonlinear_iter_count(8)
 
 # Output directory (for optional file saving)
 output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")

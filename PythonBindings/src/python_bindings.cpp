@@ -294,6 +294,108 @@ struct ConstWorldDataWrapper
 	}
 };
 
+struct PySceneParams
+{
+	lcs::SceneParams* params_ptr;
+
+	PySceneParams(lcs::SceneParams* ptr)
+		: params_ptr(ptr)
+	{
+	}
+
+	bool get_use_gpu() const { return params_ptr->use_gpu; }
+	void set_use_gpu(bool v) { params_ptr->use_gpu = v; }
+
+	bool get_fix_scene() const { return params_ptr->fix_scene; }
+	void set_fix_scene(bool v) { params_ptr->fix_scene = v; }
+
+	bool get_use_energy_linesearch() const { return params_ptr->use_energy_linesearch; }
+	void set_use_energy_linesearch(bool v) { params_ptr->use_energy_linesearch = v; }
+
+	bool get_use_ccd_linesearch() const { return params_ptr->use_ccd_linesearch; }
+	void set_use_ccd_linesearch(bool v) { params_ptr->use_ccd_linesearch = v; }
+
+	bool get_print_system_energy() const { return params_ptr->print_system_energy; }
+	void set_print_system_energy(bool v) { params_ptr->print_system_energy = v; }
+
+	bool get_print_pcg_info() const { return params_ptr->print_pcg_info; }
+	void set_print_pcg_info(bool v) { params_ptr->print_pcg_info = v; }
+
+	bool get_print_collision_info() const { return params_ptr->print_collision_info; }
+	void set_print_collision_info(bool v) { params_ptr->print_collision_info = v; }
+
+	bool get_use_floor() const { return params_ptr->use_floor; }
+	void set_use_floor(bool v) { params_ptr->use_floor = v; }
+
+	bool get_use_self_collision() const { return params_ptr->use_self_collision; }
+	void set_use_self_collision(bool v) { params_ptr->use_self_collision = v; }
+
+	bool get_output_per_frame() const { return params_ptr->output_per_frame; }
+	void set_output_per_frame(bool v) { params_ptr->output_per_frame = v; }
+
+	bool get_output_per_iteration() const { return params_ptr->output_per_iteration; }
+	void set_output_per_iteration(bool v) { params_ptr->output_per_iteration = v; }
+
+	uint get_scene_id() const { return params_ptr->scene_id; }
+	void set_scene_id(uint v) { params_ptr->scene_id = v; }
+
+	uint get_num_substep() const { return params_ptr->num_substep; }
+
+	uint get_nonlinear_iter_count() const { return params_ptr->nonlinear_iter_count; }
+	void set_nonlinear_iter_count(uint v) { params_ptr->nonlinear_iter_count = v; }
+
+	uint get_pcg_iter_count() const { return params_ptr->pcg_iter_count; }
+	void set_pcg_iter_count(uint v) { params_ptr->pcg_iter_count = v; }
+
+	uint get_current_frame() const { return params_ptr->current_frame; }
+	void set_current_frame(uint v) { params_ptr->current_frame = v; }
+
+	uint get_current_nonlinear_iter() const { return params_ptr->current_nonlinear_iter; }
+
+	uint get_current_pcg_it() const { return params_ptr->current_pcg_it; }
+
+	uint get_current_substep() const { return params_ptr->current_substep; }
+
+	uint get_collision_detection_frequece() const { return params_ptr->collision_detection_frequece; }
+	void set_collision_detection_frequece(uint v) { params_ptr->collision_detection_frequece = v; }
+
+	uint get_contact_energy_type() const { return params_ptr->contact_energy_type; }
+	void set_contact_energy_type(uint v) { params_ptr->contact_energy_type = v; }
+
+	float get_implicit_dt() const { return params_ptr->implicit_dt; }
+	void  set_implicit_dt(float v) { params_ptr->implicit_dt = v; }
+
+	float get_explicit_dt() const { return params_ptr->explicit_dt; }
+	void  set_explicit_dt(float v) { params_ptr->explicit_dt = v; }
+
+	float get_dt() const { return params_ptr->dt; }
+
+	luisa::float3 get_floor() const { return params_ptr->floor; }
+	void		  set_floor(const luisa::float3& v) { params_ptr->floor = v; }
+
+	luisa::float3 get_gravity() const { return params_ptr->gravity; }
+	void		  set_gravity(const luisa::float3& v) { params_ptr->gravity = v; }
+
+	float get_stiffness_bending_ui() const { return params_ptr->stiffness_bending_ui; }
+	void  set_stiffness_bending_ui(float v) { params_ptr->stiffness_bending_ui = v; }
+
+	float get_stiffness_collision() const { return params_ptr->stiffness_collision; }
+	void  set_stiffness_collision(float v) { params_ptr->stiffness_collision = v; }
+
+	float get_stiffness_dirichlet() const { return params_ptr->stiffness_dirichlet; }
+	void  set_stiffness_dirichlet(float v) { params_ptr->stiffness_dirichlet = v; }
+
+	float get_damping_rate() const { return params_ptr->damping_rate; }
+	void  set_damping_rate(float v) { params_ptr->damping_rate = v; }
+
+	float get_d_hat() const { return params_ptr->d_hat; }
+	void  set_d_hat(float v) { params_ptr->d_hat = v; }
+
+	void  update_dt(float dt) { params_ptr->update_dt(dt); }
+	float get_substep_dt() const { return params_ptr->get_substep_dt(); }
+	float get_bending_stiffness_scaling() const { return params_ptr->get_bending_stiffness_scaling(); }
+};
+
 // Python-facing Newton-like builder that stores a vector<WorldData>
 struct PyNewtonBuilder
 {
@@ -763,9 +865,9 @@ struct PyNewtonBuilder
 		return solver_ptr->get_stream_ptr();
 	}
 
-	lcs::SceneParams& get_config() const
+	PySceneParams get_config() const
 	{
-		return solver_ptr->get_config();
+		return PySceneParams(&solver_ptr->get_config());
 	}
 };
 
@@ -966,7 +1068,6 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("get_stream_ptr", &PyNewtonBuilder::get_stream_ptr, "Return the raw pointer (as int) to the active luisa::compute::Stream.")
 		.def("get_config",
 			&PyNewtonBuilder::get_config,
-			py::return_value_policy::reference_internal,
 			"Return reference to solver-owned SceneParams config")
 		.def("init_solver", &PyNewtonBuilder::init_solver, "Initialize the underlying solver using the device set via init_device()/set_device()")
 		.def("physics_step_cpu", &PyNewtonBuilder::physics_step_cpu, "Advance one simulation frame using the CPU solver path.")
@@ -1051,42 +1152,67 @@ PYBIND11_MODULE(lcs_py, m)
 		.def("__repr__", [](const luisa::float3& v)
 			{ return "Float3(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ")"; });
 
-	// Expose SceneParams and accessors so Python can read/modify global scene settings
-	py::class_<lcs::SceneParams>(m, "SceneParams")
-		.def("update_dt", &lcs::SceneParams::update_dt, py::arg("dt"), "Update the frame time step and derived substep time step.")
-		.def_readwrite("use_gpu", &lcs::SceneParams::use_gpu)
-		.def_readwrite("fix_scene", &lcs::SceneParams::fix_scene)
-		.def_readwrite("use_energy_linesearch", &lcs::SceneParams::use_energy_linesearch)
-		.def_readwrite("use_ccd_linesearch", &lcs::SceneParams::use_ccd_linesearch)
-		.def_readwrite("print_system_energy", &lcs::SceneParams::print_system_energy)
-		.def_readwrite("print_pcg_info", &lcs::SceneParams::print_pcg_info)
-		.def_readwrite("print_collision_info", &lcs::SceneParams::print_collision_info)
-		.def_readwrite("use_floor", &lcs::SceneParams::use_floor)
-		.def_readwrite("use_self_collision", &lcs::SceneParams::use_self_collision)
-		.def_readwrite("output_per_frame", &lcs::SceneParams::output_per_frame)
-		.def_readwrite("output_per_iteration", &lcs::SceneParams::output_per_iteration)
-		.def_readwrite("scene_id", &lcs::SceneParams::scene_id)
-		.def_readonly("num_substep", &lcs::SceneParams::num_substep)
-		.def_readwrite("nonlinear_iter_count", &lcs::SceneParams::nonlinear_iter_count)
-		.def_readwrite("pcg_iter_count", &lcs::SceneParams::pcg_iter_count)
-		.def_readwrite("current_frame", &lcs::SceneParams::current_frame)
-		.def_readonly("current_nonlinear_iter", &lcs::SceneParams::current_nonlinear_iter)
-		.def_readonly("current_pcg_it", &lcs::SceneParams::current_pcg_it)
-		.def_readonly("current_substep", &lcs::SceneParams::current_substep)
-		.def_readwrite("collision_detection_frequece", &lcs::SceneParams::collision_detection_frequece)
-		.def_readwrite("contact_energy_type", &lcs::SceneParams::contact_energy_type)
-		.def_readwrite("implicit_dt", &lcs::SceneParams::implicit_dt)
-		.def_readwrite("explicit_dt", &lcs::SceneParams::explicit_dt)
-		.def_readonly("dt", &lcs::SceneParams::dt)
-		.def_readwrite("floor", &lcs::SceneParams::floor)
-		.def_readwrite("gravity", &lcs::SceneParams::gravity)
-		.def_readwrite("stiffness_bending_ui", &lcs::SceneParams::stiffness_bending_ui)
-		.def_readwrite("stiffness_collision", &lcs::SceneParams::stiffness_collision)
-		.def_readwrite("stiffness_dirichlet", &lcs::SceneParams::stiffness_dirichlet)
-		.def_readwrite("damping_rate", &lcs::SceneParams::damping_rate)
-		.def_readwrite("d_hat", &lcs::SceneParams::d_hat)
-		.def("get_substep_dt", &lcs::SceneParams::get_substep_dt, "Return the current substep time step.")
-		.def("get_bending_stiffness_scaling", &lcs::SceneParams::get_bending_stiffness_scaling, "Return the bending stiffness scaling factor for current settings.");
+	py::class_<PySceneParams>(m, "SceneParams")
+		.def("set_use_gpu", &PySceneParams::set_use_gpu, py::arg("v"))
+		.def("get_use_gpu", &PySceneParams::get_use_gpu)
+		.def("set_fix_scene", &PySceneParams::set_fix_scene, py::arg("v"))
+		.def("get_fix_scene", &PySceneParams::get_fix_scene)
+		.def("set_use_energy_linesearch", &PySceneParams::set_use_energy_linesearch, py::arg("v"))
+		.def("get_use_energy_linesearch", &PySceneParams::get_use_energy_linesearch)
+		.def("set_use_ccd_linesearch", &PySceneParams::set_use_ccd_linesearch, py::arg("v"))
+		.def("get_use_ccd_linesearch", &PySceneParams::get_use_ccd_linesearch)
+		.def("set_print_system_energy", &PySceneParams::set_print_system_energy, py::arg("v"))
+		.def("get_print_system_energy", &PySceneParams::get_print_system_energy)
+		.def("set_print_pcg_info", &PySceneParams::set_print_pcg_info, py::arg("v"))
+		.def("get_print_pcg_info", &PySceneParams::get_print_pcg_info)
+		.def("set_print_collision_info", &PySceneParams::set_print_collision_info, py::arg("v"))
+		.def("get_print_collision_info", &PySceneParams::get_print_collision_info)
+		.def("set_use_floor", &PySceneParams::set_use_floor, py::arg("v"))
+		.def("get_use_floor", &PySceneParams::get_use_floor)
+		.def("set_use_self_collision", &PySceneParams::set_use_self_collision, py::arg("v"))
+		.def("get_use_self_collision", &PySceneParams::get_use_self_collision)
+		.def("set_output_per_frame", &PySceneParams::set_output_per_frame, py::arg("v"))
+		.def("get_output_per_frame", &PySceneParams::get_output_per_frame)
+		.def("set_output_per_iteration", &PySceneParams::set_output_per_iteration, py::arg("v"))
+		.def("get_output_per_iteration", &PySceneParams::get_output_per_iteration)
+		.def("set_scene_id", &PySceneParams::set_scene_id, py::arg("v"))
+		.def("get_scene_id", &PySceneParams::get_scene_id)
+		.def("set_nonlinear_iter_count", &PySceneParams::set_nonlinear_iter_count, py::arg("v"))
+		.def("get_nonlinear_iter_count", &PySceneParams::get_nonlinear_iter_count)
+		.def("set_pcg_iter_count", &PySceneParams::set_pcg_iter_count, py::arg("v"))
+		.def("get_pcg_iter_count", &PySceneParams::get_pcg_iter_count)
+		.def("set_current_frame", &PySceneParams::set_current_frame, py::arg("v"))
+		.def("get_current_frame", &PySceneParams::get_current_frame)
+		.def("set_collision_detection_frequece", &PySceneParams::set_collision_detection_frequece, py::arg("v"))
+		.def("get_collision_detection_frequece", &PySceneParams::get_collision_detection_frequece)
+		.def("set_contact_energy_type", &PySceneParams::set_contact_energy_type, py::arg("v"))
+		.def("get_contact_energy_type", &PySceneParams::get_contact_energy_type)
+		.def("set_implicit_dt", &PySceneParams::set_implicit_dt, py::arg("v"))
+		.def("get_implicit_dt", &PySceneParams::get_implicit_dt)
+		.def("set_explicit_dt", &PySceneParams::set_explicit_dt, py::arg("v"))
+		.def("get_explicit_dt", &PySceneParams::get_explicit_dt)
+		.def("set_floor", &PySceneParams::set_floor, py::arg("v"))
+		.def("get_floor", &PySceneParams::get_floor)
+		.def("set_gravity", &PySceneParams::set_gravity, py::arg("v"))
+		.def("get_gravity", &PySceneParams::get_gravity)
+		.def("set_stiffness_bending_ui", &PySceneParams::set_stiffness_bending_ui, py::arg("v"))
+		.def("get_stiffness_bending_ui", &PySceneParams::get_stiffness_bending_ui)
+		.def("set_stiffness_collision", &PySceneParams::set_stiffness_collision, py::arg("v"))
+		.def("get_stiffness_collision", &PySceneParams::get_stiffness_collision)
+		.def("set_stiffness_dirichlet", &PySceneParams::set_stiffness_dirichlet, py::arg("v"))
+		.def("get_stiffness_dirichlet", &PySceneParams::get_stiffness_dirichlet)
+		.def("set_damping_rate", &PySceneParams::set_damping_rate, py::arg("v"))
+		.def("get_damping_rate", &PySceneParams::get_damping_rate)
+		.def("set_d_hat", &PySceneParams::set_d_hat, py::arg("v"))
+		.def("get_d_hat", &PySceneParams::get_d_hat)
+		.def("get_num_substep", &PySceneParams::get_num_substep)
+		.def("get_current_nonlinear_iter", &PySceneParams::get_current_nonlinear_iter)
+		.def("get_current_pcg_it", &PySceneParams::get_current_pcg_it)
+		.def("get_current_substep", &PySceneParams::get_current_substep)
+		.def("get_dt", &PySceneParams::get_dt)
+		.def("update_dt", &PySceneParams::update_dt, py::arg("dt"), "Update the frame time step and derived substep time step.")
+		.def("get_substep_dt", &PySceneParams::get_substep_dt, "Return the current substep time step.")
+		.def("get_bending_stiffness_scaling", &PySceneParams::get_bending_stiffness_scaling, "Return the bending stiffness scaling factor for current settings.");
 
 	m.doc() = "Python bindings for basic NewtonSolver scene building (lightweight)";
 }

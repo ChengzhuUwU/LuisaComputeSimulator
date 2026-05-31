@@ -157,12 +157,12 @@ def main():
     solver.init_device(backend_name=args.backend)
 
     config = solver.get_config()
-    config.use_floor = False
-    config.floor = lcs.Float3(0.0, 0.0, 0.0)
-    config.use_ccd_linesearch = False
-    config.use_self_collision = True    # keep it simple for smoke test
-    config.nonlinear_iter_count = 1  # Increased for stability
-    config.use_gpu = args.use_gpu  # Use GPU if requested
+    config.set_use_floor(False)
+    config.set_floor(lcs.Float3(0.0, 0.0, 0.0))
+    config.set_use_ccd_linesearch(False)
+    config.set_use_self_collision(True)    # keep it simple for smoke test
+    config.set_nonlinear_iter_count(1)  # Increased for stability
+    config.set_use_gpu(args.use_gpu)  # Use GPU if requested
 
     # ---- Register tet body -----------------------------------------------
     if args.mesh == "cube":

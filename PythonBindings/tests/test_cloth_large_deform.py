@@ -214,14 +214,14 @@ def test_cloth_stretching_models(backend: str = "metal", advance_frames: int = 4
     spring_id, spring_rest = register_cloth_object(solver, "cloth_spring", "Spring", z_offset=0.25)
 
     config = solver.get_config()
-    config.use_floor = False
-    config.use_self_collision = False
-    config.nonlinear_iter_count = 1
-    config.pcg_iter_count = 50
-    config.use_ccd_linesearch = False
-    config.use_gpu = False
-    config.gravity = lcs.Float3(0.0, 0.0, 0.0)
-    config.implicit_dt = 0.01
+    config.set_use_floor(False)
+    config.set_use_self_collision(False)
+    config.set_nonlinear_iter_count(1)
+    config.set_pcg_iter_count(50)
+    config.set_use_ccd_linesearch(False)
+    config.set_use_gpu(False)
+    config.set_gravity(lcs.Float3(0.0, 0.0, 0.0))
+    config.set_implicit_dt(0.01)
 
     output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
     os.makedirs(output_dir, exist_ok=True)

@@ -61,7 +61,7 @@ solver.print_registered_meshes_info()
 
 # Set scene parameters
 config_ref = solver.get_config()
-config_ref.use_floor = False
+config_ref.set_use_floor(False)
 
 # Output directory (for optional file saving)
 output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
