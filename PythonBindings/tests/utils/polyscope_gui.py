@@ -2,19 +2,41 @@
 Polyscope-based GUI for LuisaComputeSimulator.
 
 Encapsulates all polyscope initialisation, mesh registration, ImGui panels,
-and the continuous-simulation callback.  Usage:
+and the continuous-simulation callback.  Usage::
 
-    from polyscope_gui import SimulationGUI
+    from lcs_gui import SimulationGUI
     gui = SimulationGUI(solver, config_ref, output_dir)
     gui.show()   # blocking – opens the polyscope window
 """
 
 import os
 import numpy as np
-import polyscope as ps
-import polyscope.imgui as psim
+
+# ---------------------------------------------------------------------------
+# Lazy polyscope import – only resolved when the user constructs a
+# SimulationGUI instance, so ``import lcs_gui`` doesn't require polyscope.
+# ---------------------------------------------------------------------------
+ps = None
+psim = None
 
 
+def _ensure_polyscope():
+    global ps, psim
+    if ps is not None:
+        return
+    try:
+        import polyscope as _ps
+        import polyscope.imgui as _psim
+    except ImportError:
+        raise ImportError(
+            "The GUI requires 'polyscope'. Install it with:\n"
+            "  pip install polyscope"
+        )
+    ps = _ps
+    psim = _psim
+
+
+# ---------------------------------------------------------------------------
 class SimulationGUI:
     """Thin wrapper around polyscope that mirrors the C++ Polyscope GUI."""
 
@@ -31,6 +53,8 @@ class SimulationGUI:
         output_dir : str
             Directory used when saving OBJ files from the GUI.
         """
+        _ensure_polyscope()  # check polyscope on construction
+
         self._solver = solver
         self._config = config_ref
         self._output_dir = output_dir
@@ -194,7 +218,7 @@ class SimulationGUI:
 
     def _physics_step(self):
         """Run one simulation step (GPU or CPU depending on config)."""
-        if self._config.use_gpu:
+        if self._config.get_use_gpu():
             self._solver.physics_step_gpu()
         else:
             self._solver.physics_step_cpu()
@@ -228,31 +252,47 @@ class SimulationGUI:
     def _panel_parameters(self):
         cfg = self._config
         if psim.TreeNode("Parameters"):
-            _, cfg.nonlinear_iter_count = psim.InputInt(
-                "Num Nonlinear-Iteration", cfg.nonlinear_iter_count
+            _, val = psim.InputInt(
+                "Num Nonlinear-Iteration", cfg.get_nonlinear_iter_count()
             )
-            _, cfg.pcg_iter_count = psim.InputInt(
-                "Num PCG-Iteration", cfg.pcg_iter_count
+            cfg.set_nonlinear_iter_count(val)
+
+            _, val = psim.InputInt(
+                "Num PCG-Iteration", cfg.get_pcg_iter_count()
             )
-            _, cfg.implicit_dt = psim.SliderFloat(
-                "Implicit Timestep", cfg.implicit_dt, v_min=0.0001, v_max=0.2
+            cfg.set_pcg_iter_count(val)
+
+            _, val = psim.SliderFloat(
+                "Implicit Timestep", cfg.get_implicit_dt(), v_min=0.0001, v_max=0.2
             )
-            _, cfg.use_energy_linesearch = psim.Checkbox(
-                "Use Energy LineSearch", cfg.use_energy_linesearch
+            cfg.set_implicit_dt(val)
+
+            _, val = psim.Checkbox(
+                "Use Energy LineSearch", cfg.get_use_energy_linesearch()
             )
-            _, cfg.use_ccd_linesearch = psim.Checkbox(
-                "Use CCD LineSearch", cfg.use_ccd_linesearch
+            cfg.set_use_energy_linesearch(val)
+
+            _, val = psim.Checkbox(
+                "Use CCD LineSearch", cfg.get_use_ccd_linesearch()
             )
-            _, cfg.print_system_energy = psim.Checkbox(
-                "Print Energy", cfg.print_system_energy
+            cfg.set_use_ccd_linesearch(val)
+
+            _, val = psim.Checkbox(
+                "Print Energy", cfg.get_print_system_energy()
             )
-            _, cfg.use_gpu = psim.Checkbox("Use GPU Solver", cfg.use_gpu)
-            _, cfg.use_self_collision = psim.Checkbox(
-                "Use Self-Collision", cfg.use_self_collision
+            cfg.set_print_system_energy(val)
+
+            _, val = psim.Checkbox("Use GPU Solver", cfg.get_use_gpu())
+            cfg.set_use_gpu(val)
+
+            _, val = psim.Checkbox(
+                "Use Self-Collision", cfg.get_use_self_collision()
             )
+            cfg.set_use_self_collision(val)
+
             psim.TreePop()
-        if cfg.print_system_energy:
-            cfg.use_energy_linesearch = True 
+        if cfg.get_print_system_energy():
+            cfg.set_use_energy_linesearch(True)
             # energy = self._solver.get_system_energy()
             # psim.TextUnformatted(f"System Energy: {energy:.6e}")
 
@@ -272,10 +312,10 @@ class SimulationGUI:
             is_open = psim.TreeNode("Simulation")
 
         if is_open:
-            psim.TextUnformatted(f"Frame {cfg.current_frame}")
+            psim.TextUnformatted(f"Frame {cfg.get_current_frame()}")
 
             if psim.Button("Reset"):
-                cfg.current_frame = 0
+                cfg.set_current_frame(0)
                 self._solver.restart_system()
                 self._update_gui_vertices()
 
@@ -321,23 +361,24 @@ class SimulationGUI:
 
     def _panel_collision(self):
         cfg = self._config
-        if cfg.use_floor:
+        if cfg.get_use_floor():
             ps.set_ground_plane_mode("tile_reflection")
             ps.set_ground_plane_height_mode("manual")
-            ps.set_ground_plane_height(cfg.floor.y)
+            ps.set_ground_plane_height(cfg.get_floor().y)
         else:
             ps.set_ground_plane_mode("none")
 
         if psim.TreeNode("Collision"):
-            _, cfg.use_floor = psim.Checkbox("Use Ground Collision", cfg.use_floor)
-            if cfg.use_floor:
+            _, val = psim.Checkbox("Use Ground Collision", cfg.get_use_floor())
+            cfg.set_use_floor(val)
+            if cfg.get_use_floor():
                 changed, new_floor_y = psim.SliderFloat(
-                    "Floor Y", cfg.floor.y, v_min=-1.0, v_max=1.0
+                    "Floor Y", cfg.get_floor().y, v_min=-1.0, v_max=1.0
                 )
                 if changed:
-                    floor_vec = cfg.floor
+                    floor_vec = cfg.get_floor()
                     floor_vec.y = new_floor_y
-                    cfg.floor = floor_vec
+                    cfg.set_floor(floor_vec)
             psim.TreePop()
 
     # ---- Data IO panel ---------------------------------------------------
@@ -346,25 +387,30 @@ class SimulationGUI:
         cfg = self._config
         if psim.TreeNode("Data IO"):
             if psim.Button("Save mesh combined"):
-                obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}_combined.obj")
+                obj_path = os.path.join(self._output_dir, f"frame_{cfg.get_current_frame()}_combined.obj")
                 self._solver.save_sim_result(obj_path=obj_path)
                 print(f"Saved combined mesh to {obj_path}")
             if psim.Button("Save mesh separate"):
-                from utils.mesh_proc import write_obj
+                # Lazy import with dual-path fallback for test vs. wheel contexts.
+                try:
+                    from lcs_gui.mesh_proc import write_obj
+                except ImportError:
+                    from utils.mesh_proc import write_obj
                 v_list, f_list = self._solver.get_sim_result()
                 for idx in range(len(v_list)):
                     verts = np.asarray(v_list[idx])
                     faces = np.asarray(f_list[idx], dtype=np.int32)
-                    obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}_mesh{idx}.obj")
+                    obj_path = os.path.join(self._output_dir, f"frame_{cfg.get_current_frame()}_mesh{idx}.obj")
                     write_obj(
                         obj_path,
                         verts,
                         faces,
                     )
                     print(f"Saved mesh {idx} to {obj_path}")
-            _, cfg.output_per_frame = psim.Checkbox(
-                "Output Each Frame", cfg.output_per_frame
+            _, val = psim.Checkbox(
+                "Output Each Frame", cfg.get_output_per_frame()
             )
+            cfg.set_output_per_frame(val)
             psim.TreePop()
 
     # ---- Continuous simulation loop --------------------------------------
@@ -375,16 +421,16 @@ class SimulationGUI:
 
         cfg = self._config
 
-        if cfg.output_per_frame and cfg.current_frame == 0:
+        if cfg.get_output_per_frame() and cfg.get_current_frame() == 0:
             obj_path = os.path.join(self._output_dir, f"frame_0_init.obj")
             self._solver.save_sim_result(obj_path=obj_path)
 
         self._physics_step()
         self._update_gui_vertices()
 
-        if cfg.output_per_frame:
+        if cfg.get_output_per_frame():
             animation_fps = 60.0
-            output_freq = max(1, int((1.0 / animation_fps) / cfg.implicit_dt))
-            if cfg.current_frame % output_freq == 0:
-                obj_path = os.path.join(self._output_dir, f"frame_{cfg.current_frame}.obj")
+            output_freq = max(1, int((1.0 / animation_fps) / cfg.get_implicit_dt()))
+            if cfg.get_current_frame() % output_freq == 0:
+                obj_path = os.path.join(self._output_dir, f"frame_{cfg.get_current_frame()}.obj")
                 self._solver.save_sim_result(obj_path=obj_path)

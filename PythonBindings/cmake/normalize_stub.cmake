@@ -34,3 +34,18 @@ else()
         "Check that pybind11-stubgen is installed in LCS_PYTHON_EXECUTABLE."
     )
 endif()
+
+# ---------------------------------------------------------------------------
+# Translate C++ wrapper type names back to their Python class names.
+# pybind11-stubgen resolves the underlying C++ type for method return values
+# (e.g. PySceneParams) which don't match the Python name registered with
+# py::class_<> (e.g. SceneParams).  This replacement keeps the stubs
+# consistent so that IDE type-checkers correctly resolve the types.
+# ---------------------------------------------------------------------------
+file(READ "${_pkg_init}" _stub_content)
+string(REGEX REPLACE
+    "PySceneParams"
+    "SceneParams"
+    _stub_content "${_stub_content}"
+)
+file(WRITE "${_pkg_init}" "${_stub_content}")

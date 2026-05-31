@@ -51,10 +51,10 @@ solver.init_solver()
 
 # Set scene parameters
 config_ref = solver.get_config()
-config_ref.nonlinear_iter_count = 1
-config_ref.pcg_iter_count = 50
-config_ref.gravity = lcs.Float3(0.0, 0.0, 0.0)
-config_ref.use_floor = False
+config_ref.set_nonlinear_iter_count(1)
+config_ref.set_pcg_iter_count(50)
+config_ref.set_gravity(lcs.Float3(0.0, 0.0, 0.0))
+config_ref.set_use_floor(False)
 # config_ref.use_self_collision = False
 # config_ref.contact_energy_type = 0
 
