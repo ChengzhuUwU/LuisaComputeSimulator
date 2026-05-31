@@ -19,8 +19,7 @@ solver.init_device(backend_name=backend)
 
 # Load a mesh by providing vertices and triangles array directly
 rigid_mesh_path = os.path.join(PROJECT_ROOT, 'Resources', 'InputMesh', 'sphere63.obj')
-rigid_mesh = trimesh.load(rigid_mesh_path, process=False)
-rigid = solver.create_world_data_from_array('cube', rigid_mesh.vertices, rigid_mesh.faces)
+rigid = solver.create_world_data_from_file_path('cube', rigid_mesh_path)
 rigid.set_simulation_type(lcs.MaterialType.Rigid)
 rigid.set_translation(0.0, 0.34, 0.0)
 rigid.set_rotation(0.5235988, 0.0, 0.5235988)
