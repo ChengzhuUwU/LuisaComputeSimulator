@@ -1,0 +1,143 @@
+name: build-wheels
+
+on:
+  push:
+    branches:
+      - stable
+      - stable-staging
+  pull_request:
+    branches:
+      - stable
+      - stable-staging
+
+env:
+  CIBW_ARCHS: auto64
+  CIBW_BUILD_VERBOSITY: 2
+
+jobs:
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+    name: ${{ matrix.os }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        env:
+          CIBW_BUILD: "*manylinux*"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_BEFORE_ALL: |
+            cat /etc/os-release
+            ARCH=$(uname -m)
+            dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+            dnf update -y
+            dnf install -y vulkan-devel libuuid-devel libXinerama-devel libXcursor-devel libXi-devel libXrandr-devel libxkbcommon-devel wayland-devel zlib-devel patchelf
+            if [[ "$ARCH" == "x86_64" ]]; then
+              dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
+              dnf clean expire-cache
+              dnf install -y cuda-toolkit-12-4
+            fi
+          CIBW_REPAIR_WHEEL_COMMAND: "auditwheel show {wheel} && auditwheel repair -w {dest_dir} {wheel} --exclude libcuda.so.1 --exclude libvulkan.so.1"
+          CMAKE_ARGS: >-
+            -D LUISA_COMPUTE_ENABLE_CUDA=ON
+            -D LUISA_COMPUTE_ENABLE_VULKAN=ON
+            -D LUISA_COMPUTE_ENABLE_METAL=OFF
+            -D LUISA_COMPUTE_ENABLE_DX=OFF
+            -D LUISA_COMPUTE_ENABLE_FALLBACK=OFF
+        run: |
+          python -m pip install -U cibuildwheel
+          python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+          path: ./wheelhouse/*.whl
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [15]
+    name: macos-${{ matrix.os }}
+    runs-on: macos-${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup LLVM
+        run: |
+          brew install --overwrite python@3.12
+          brew install --overwrite llvm molten-vk
+
+      - name: Build wheels
+        run: |
+          export CC=/opt/homebrew/opt/llvm/bin/clang
+          export CXX=/opt/homebrew/opt/llvm/bin/clang++
+          export CMAKE_ARGS="-D LUISA_COMPUTE_ENABLE_CUDA=OFF -D LUISA_COMPUTE_ENABLE_VULKAN=OFF -D LUISA_COMPUTE_ENABLE_METAL=ON -D LUISA_COMPUTE_ENABLE_DX=OFF -D LUISA_COMPUTE_ENABLE_FALLBACK=OFF"
+          python3 -m pip install -U cibuildwheel --break-system-packages
+          for dep_target in {14..${{ matrix.os }}}; do
+            export MACOSX_DEPLOYMENT_TARGET=${dep_target}.0
+            python3 -m cibuildwheel --output-dir wheelhouse
+          done
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macOS-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  build-windows:
+    name: windows-2025
+    runs-on: windows-2025
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vulkan SDK
+        uses: johnnynunez/setup-vulkan-sdk@v1
+        with:
+          vulkan-query-version: 1.4.304.1
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Setup CUDA
+        uses: Jimver/cuda-toolkit@v0.2.22
+        with:
+          cuda: 12.4.1
+          sub-packages: '[ "cudart", "nvrtc", "nvrtc_dev", "nvjitlink", "nvcc", "nvtx" ]'
+
+      - name: Setup Ninja
+        uses: ashutoshvarma/setup-ninja@master
+        with:
+          version: 1.11.1
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build wheels
+        shell: cmd
+        env:
+          CMAKE_ARGS: >-
+            -D LUISA_COMPUTE_ENABLE_CUDA=ON
+            -D LUISA_COMPUTE_ENABLE_VULKAN=ON
+            -D LUISA_COMPUTE_ENABLE_DX=ON
+            -D LUISA_COMPUTE_ENABLE_METAL=OFF
+            -D LUISA_COMPUTE_ENABLE_FALLBACK=OFF
+        run: |
+          python -m pip install -U cibuildwheel
+          python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows
+          path: ./wheelhouse/*.whl
