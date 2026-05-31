@@ -18,12 +18,12 @@ import trimesh
 import lcs_py as lcs
 
 
-import utils.arg_parser
+from run_tests import create_default_parser
 from utils.animation_transform import DefaultTransformAnimation
 from utils.body_animator import BodyAnimator
 from utils.test_script_path import PROJECT_ROOT
 
-args = utils.arg_parser.parse_args()
+args = create_default_parser().parse_args()
 
 solver = lcs.NewtonSolver()
 solver.init_device(backend_name=args.backend)
@@ -277,15 +277,7 @@ rest_rel_revolute2 = rest_centers[revolute2_follower] - rest_centers[revolute2_d
 
 def update_animation():
     for animator in animators:
-        animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
-
-
-def physics_step():
-    update_animation()
-    if config_ref.use_gpu:
-        solver.physics_step_gpu()
-    else:
-        solver.physics_step_cpu()
+        animator.update_animation(solver, config_ref.get_current_frame(), config_ref.get_implicit_dt())
 
 
 def compute_metrics():
@@ -524,26 +516,30 @@ def print_metrics(metrics):
     print("[joint-check] revolute2_driver_pitch =", f"{metrics['revolute2_driver_pitch']:.6e}")
 
 
-if args.headless:
-    solver.save_sim_result(os.path.join(output_dir, "joint_constraint_test_init.obj"))
-    for _ in range(args.advance_frames):
-        physics_step()
-    solver.save_sim_result(os.path.join(output_dir, "joint_constraint_test_result.obj"))
+from utils.test_runner import TestRunner
 
-    metrics = compute_metrics()
-    print_metrics(metrics)
-    validate_metrics(metrics)
-    print("[joint-check] PASS")
-else:
-    import utils.polyscope_gui
 
-    class JointCheckGUI(utils.polyscope_gui.SimulationGUI):
-        def _physics_step(self):
-            physics_step()
+class JointCheckTest(TestRunner):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def on_pre_step(self, _frame_idx):
+        update_animation()
+
+    def on_post_step(self, _frame_idx):
+        metrics = compute_metrics()
+        print_metrics(metrics)
+
+    def run(self, advance_frames):
+        super().run(advance_frames)
+        if self.headless:
             metrics = compute_metrics()
             print_metrics(metrics)
+            validate_metrics(metrics)
+            print("[joint-check] PASS")
 
-    gui = JointCheckGUI(solver, config_ref, output_dir)
-    gui.show()
+
+runner = JointCheckTest(solver, config_ref, output_dir, headless=args.headless)
+runner.run(advance_frames=args.advance_frames)
 
 solver.cleanup_device()

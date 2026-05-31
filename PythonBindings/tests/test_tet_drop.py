@@ -12,7 +12,6 @@ Usage:
 The script creates a small tet cube (2x2x2 = 8 vertices, 5 tets),
 drops it under gravity onto the floor and runs N frames.
 """
-import argparse
 import os
 
 import numpy as np
@@ -24,15 +23,11 @@ import lcs_py as lcs
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
+from run_tests import create_default_parser
+
+
 def parse_args():
-    import platform
-    p = argparse.ArgumentParser(description="Tet simulation smoke test")
-    default_backend = "metal" if platform.system() == "Darwin" else "cuda"
-    p.add_argument("--backend", default=default_backend,
-                   choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"])
-    p.add_argument("--advance_frames", type=int, default=30)
-    p.add_argument("--headless", action="store_true")
-    return p.parse_args()
+    return create_default_parser().parse_args()
 
 
 # --------------------------------------------------------------------------
@@ -167,29 +162,11 @@ def main():
     output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
     os.makedirs(output_dir, exist_ok=True)
 
-    if args.headless:
-        solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_init.obj"))
-        for frame in range(args.advance_frames):
-            if config.use_gpu:
-                solver.physics_step_gpu()
-            else:
-                solver.physics_step_cpu()
-                
-        solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_result.obj"))
-        print(f"Saved result to {output_dir}")
-    else:
-        # Interactive GUI
-        try:
-            import utils.polyscope_gui
-            gui = utils.polyscope_gui.SimulationGUI(solver, config, output_dir)
-            gui.show()
-        except ImportError:
-            print("polyscope_gui not available, running headless instead.")
-            for _ in range(args.advance_frames):
-                if config.use_gpu:
-                    solver.physics_step_gpu()
-                else:
-                    solver.physics_step_cpu()
+    from utils.test_runner import TestRunner
+    runner = TestRunner(
+        solver, config, output_dir, headless=args.headless
+    )
+    runner.run(advance_frames=args.advance_frames)
 
     solver.cleanup_device()
     print("Done.")

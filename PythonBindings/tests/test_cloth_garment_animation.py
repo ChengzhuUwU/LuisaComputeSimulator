@@ -9,39 +9,23 @@ import numpy as np
 
 import lcs_py as lcs
 
-def parse_args2():
-	import argparse
-	parser = argparse.ArgumentParser(description="LuisaCompute Python example")
-	parser.add_argument(
-		"--backend",
-		type=str,
-		default="metal",
-		choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"],
-		help="Compute backend to use (default: metal)",
-	)
-	parser.add_argument(
-		"--headless",
-		action="store_true",
-		help="Run without GUI",
-	)
-	parser.add_argument(
-		"--advance_frames",
-		type=int,
-		default=30,
-		help="Number of simulation frames to advance in headless mode (default: 30)",
-	)
-	parser.add_argument(
-		"--smpl_model_path",
-		type=str,
-		help="Path to the SMPL model file (pickle format)",
-	)
-	parser.add_argument(
-		"--sequence_path",
-		type=str,
-		help="Path to the SMPL sequence file (pickle format)",
-	)
-	return parser.parse_args()
-args = parse_args2()
+from run_tests import create_default_parser
+
+
+def parse_args():
+    parser = create_default_parser()
+    parser.add_argument(
+        "--smpl_model_path",
+        type=str,
+        help="Path to the SMPL model file (pickle format)",
+    )
+    parser.add_argument(
+        "--sequence_path",
+        type=str,
+        help="Path to the SMPL sequence file (pickle format)",
+    )
+    return parser.parse_args()
+args = parse_args()
 
 from utils.vertex_animator import VertexAnimator
 from utils.body_animator import BodyAnimator
@@ -135,35 +119,19 @@ config_ref.set_floor(lcs.Float3(0.0, 0.0, 0.0))
 config_ref.set_nonlinear_iter_count(0)
 # config_ref.use_self_collision = False
 
-def update_animation():
-	for animator in animators:
-		if animator is not None:
-			if isinstance(animator, VertexAnimator):
-				animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
-			elif isinstance(animator, BodyAnimator):
-				animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
-			elif isinstance(animator, SMPLSequenceAnimator):
-				animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+from utils.test_runner import TestRunner
 
-# Launch polyscope GUI or run headless
-if args.headless:
-	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
-	for _ in range(0, args.advance_frames):
-		update_animation()
-		if config_ref.use_gpu:
-			solver.physics_step_gpu()
-		else:
-			solver.physics_step_cpu()
-	solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
-else:
-	import utils.polyscope_gui
 
-	class AnimatedSimulationGUI(utils.polyscope_gui.SimulationGUI):
-		def _physics_step(self):
-			update_animation()
-			super()._physics_step()
-		
-	gui = AnimatedSimulationGUI(solver, config_ref, output_dir)
-	gui.show()
+class GarmentAnimationTest(TestRunner):
+    def on_pre_step(self, _frame_idx):
+        for animator in animators:
+            if isinstance(animator, (SMPLAnimator, BodyAnimator)):
+                animator.update_animation(self.solver, self.config.get_current_frame(), self.config.get_implicit_dt())
+            elif isinstance(animator, SMPLSequenceAnimator):
+                animator.update_animation(self.solver, self.config.get_current_frame(), self.config.get_implicit_dt())
+
+
+runner = GarmentAnimationTest(solver, config_ref, output_dir, headless=args.headless)
+runner.run(advance_frames=args.advance_frames)
 
 solver.cleanup_device()

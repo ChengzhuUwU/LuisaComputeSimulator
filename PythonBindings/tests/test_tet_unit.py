@@ -12,7 +12,6 @@ Usage:
 The script creates a small tet cube (2x2x2 = 8 vertices, 5 tets),
 drops it under gravity onto the floor and runs N frames.
 """
-import argparse
 import os
 
 import numpy as np
@@ -21,8 +20,12 @@ import numpy as np
 import lcs_py as lcs
 
 
+from run_tests import create_default_parser
+
+
 def parse_grid_resolution(text):
     """Parse resolution string like '10,10,20' into a positive integer triplet."""
+    import argparse
     try:
         parts = [int(v.strip()) for v in text.split(',')]
     except ValueError as e:
@@ -41,29 +44,21 @@ def parse_grid_resolution(text):
     return tuple(parts)
 
 
-# --------------------------------------------------------------------------
-# CLI
-# --------------------------------------------------------------------------
 def parse_args():
-    import platform
-    p = argparse.ArgumentParser(description="Tet simulation smoke test")
-    default_backend = "metal" if platform.system() == "Darwin" else "cuda"
-    p.add_argument("--backend", default=default_backend,
-                   choices=["cuda", "dx", "metal", "vk", "fallback", "cpu", "remote"])
-    p.add_argument("--advance_frames", type=int, default=30)
-    p.add_argument("--mesh", default="grid_10x10x20", choices=["single", "cube", "grid_10x10x20"],
-                   help="Tet mesh to test: a single tetrahedron or a 5-tet cube")
-    p.add_argument(
+    parser = create_default_parser()
+    parser.add_argument("--mesh", default="grid_10x10x20", choices=["single", "cube", "grid_10x10x20"],
+                        help="Tet mesh to test: a single tetrahedron or a 5-tet cube")
+    parser.add_argument(
         "--grid_resolution",
         type=parse_grid_resolution,
         default=(2, 2, 2),
         help="Resolution for grid mesh as 'nx,ny,nz' (default: 10,10,20)",
     )
-    p.add_argument("--no_floor", default=False, action="store_true",
-                   help="Disable floor collision for debugging")
-    p.add_argument("--headless", default=False, action="store_true")
-    p.add_argument("--use_gpu", default=False, action="store_true", help="Force GPU mode for testing")
-    return p.parse_args()
+    parser.add_argument("--no_floor", default=False, action="store_true",
+                        help="Disable floor collision for debugging")
+    parser.add_argument("--use_gpu", default=False, action="store_true", help="Force GPU mode for testing")
+    return parser.parse_args()
+
 
 
 # --------------------------------------------------------------------------
@@ -222,21 +217,22 @@ def main():
     output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
     os.makedirs(output_dir, exist_ok=True)
 
-    if args.headless:
-        solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_init.obj"))
-        avg_y_diff = []
-        for frame in range(args.advance_frames):
-            if config.use_gpu:
-                solver.physics_step_gpu()
-            else:
-                solver.physics_step_cpu()
+    from utils.test_runner import TestRunner
+
+    avg_y_diff = []
+
+    class TetUnitTest(TestRunner):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def on_post_step(self, _frame_idx):
             spring_out, _ = solver.get_object_sim_result_by_registration_id(reg_spring)
             arap_out, _ = solver.get_object_sim_result_by_registration_id(reg_arap)
 
             if len(spring_out):
-                report_runtime_tet_stats(np.asarray(spring_out), tets, frame)
+                report_runtime_tet_stats(np.asarray(spring_out), tets, _frame_idx)
             if len(arap_out):
-                report_runtime_tet_stats(np.asarray(arap_out), tets, frame)
+                report_runtime_tet_stats(np.asarray(arap_out), tets, _frame_idx)
 
             if len(spring_out) and len(arap_out):
                 spring_y = np.asarray(spring_out)[:, 1].mean()
@@ -246,8 +242,7 @@ def main():
                 print(f"    compare spring_vs_arap: avg_y_diff={diff:.6f}")
 
             all_verts = []
-            reg_ids = [reg_spring, reg_arap]
-            for rid in reg_ids:
+            for rid in [reg_spring, reg_arap]:
                 verts_out, _ = solver.get_object_sim_result_by_registration_id(rid)
                 if len(verts_out):
                     all_verts.append(verts_out)
@@ -263,39 +258,29 @@ def main():
                 avg_y = float('nan')
 
             print(
-                f"  frame {frame+1:3d}: bodies={len(reg_ids)}, min_y={min_y:.4f}, "
+                f"  frame {_frame_idx + 1:3d}: bodies=2, min_y={min_y:.4f}, "
                 f"max_y={max_y:.4f}, avg_y={avg_y:.4f}"
             )
 
-        solver.save_sim_result(obj_path=os.path.join(output_dir, "tet_result.obj"))
-
-        if avg_y_diff:
-            final_diff = avg_y_diff[-1]
-            mean_diff = float(np.mean(avg_y_diff))
-            early_window = min(len(avg_y_diff), 10)
-            early_mean = float(np.mean(avg_y_diff[:early_window]))
-            print(
-                f"Spring/ARAP trajectory diff: final={final_diff:.6f}, mean={mean_diff:.6f}, "
-                f"early_mean={early_mean:.6f}"
-            )
-            if early_mean > 0.08 or final_diff > 5.0:
-                raise RuntimeError(
-                    "ARAP deviates too much from Spring benchmark: "
-                    f"early_mean={early_mean:.6f}, final={final_diff:.6f}"
+        def run(self, advance_frames):
+            super().run(advance_frames)
+            if self.headless and avg_y_diff:
+                final_diff = avg_y_diff[-1]
+                mean_diff = float(np.mean(avg_y_diff))
+                early_window = min(len(avg_y_diff), 10)
+                early_mean = float(np.mean(avg_y_diff[:early_window]))
+                print(
+                    f"Spring/ARAP trajectory diff: final={final_diff:.6f}, mean={mean_diff:.6f}, "
+                    f"early_mean={early_mean:.6f}"
                 )
-    else:
-        # Interactive GUI
-        try:
-            import utils.polyscope_gui
-            gui = utils.polyscope_gui.SimulationGUI(solver, config, output_dir)
-            gui.show()
-        except ImportError:
-            print("polyscope_gui not available, running headless instead.")
-            for _ in range(args.advance_frames):
-                if config.use_gpu:
-                    solver.physics_step_gpu()
-                else:
-                    solver.physics_step_cpu()
+                if early_mean > 0.08 or final_diff > 5.0:
+                    raise RuntimeError(
+                        "ARAP deviates too much from Spring benchmark: "
+                        f"early_mean={early_mean:.6f}, final={final_diff:.6f}"
+                    )
+
+    runner = TetUnitTest(solver, config, output_dir, headless=args.headless)
+    runner.run(advance_frames=args.advance_frames)
 
     solver.cleanup_device()
     print("Done.")

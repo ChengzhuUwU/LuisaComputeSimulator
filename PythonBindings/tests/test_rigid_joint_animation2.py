@@ -39,11 +39,11 @@ import trimesh
 
 import lcs_py as lcs
 
-import utils.arg_parser
+from run_tests import create_default_parser
 from utils.animation_transform import DefaultTransformAnimation
 from utils.body_animator import BodyAnimator
 
-args = utils.arg_parser.parse_args()
+args = create_default_parser().parse_args()
 
 solver = lcs.NewtonSolver()
 solver.init_device(backend_name=args.backend)
@@ -220,49 +220,59 @@ def get_center(registration_id):
 rest_centers = {name: get_center(bid) for name, bid in body_ids.items()}
 
 
+from utils.test_runner import TestRunner
+
+
 def update_animation():
     for animator in animators:
-        animator.update_animation(solver, config_ref.current_frame, config_ref.implicit_dt)
+        animator.update_animation(solver, config_ref.get_current_frame(), config_ref.get_implicit_dt())
 
 
-def physics_step():
-    update_animation()
-    if config_ref.use_gpu:
-        solver.physics_step_gpu()
-    else:
-        solver.physics_step_cpu()
+class CraneShowcaseTest(TestRunner):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("init_output_name", "crane_showcase_init.obj")
+        kwargs.setdefault("result_output_name", "crane_showcase_result.obj")
+        super().__init__(*args, **kwargs)
+
+    def on_pre_step(self, _frame_idx):
+        update_animation()
+
+    def on_post_step(self, frame_idx):
+        if (frame_idx + 1) % 50 == 0:
+            m = compute_showcase_metrics()
+            print(f"\n--- Frame {frame_idx + 1} ---")
+            print_showcase_metrics(m)
+
+    def run(self, advance_frames):
+        if self.headless:
+            print(f"Running crane showcase for {advance_frames} frames...")
+            super().run(advance_frames)
+            print("\n--- FINAL STATE ---")
+            metrics = compute_showcase_metrics()
+            print_showcase_metrics(metrics)
+            validate_showcase(metrics)
+            print("[crane-showcase] PASS")
+        else:
+            super().run(advance_frames)
 
 
 def compute_showcase_metrics():
     """Compute metrics that demonstrate the system is behaving as a coupled mechanism."""
     centers = {name: get_center(bid) for name, bid in body_ids.items()}
 
-    # Turntable rotation (should be driven).
     turntable_motion = np.linalg.norm(centers["turntable"] - rest_centers["turntable"])
-
-    # Boom tilt: Y-displacement from rest (gravity pulls it down).
     boom_y_drop = rest_centers["boom"][1] - centers["boom"][1]
-
-    # Trolley slide: distance from boom center along the boom's current forward direction.
     trolley_to_boom = centers["trolley"] - centers["boom"]
     trolley_distance = float(np.linalg.norm(trolley_to_boom))
-
-    # Hook should track trolley rigidly (fixed joint).
-    # Compare distance (magnitude) since the pair rotates together.
     hook_to_trolley = centers["hook"] - centers["trolley"]
     hook_rest_offset = rest_centers["hook"] - rest_centers["trolley"]
     rest_distance = float(np.linalg.norm(hook_rest_offset))
     current_distance = float(np.linalg.norm(hook_to_trolley))
     hook_distance_drift = abs(current_distance - rest_distance)
-
-    # Payload pendulum: angular deviation from vertical.
     payload_to_hook = centers["payload"] - centers["hook"]
-    payload_vertical_component = payload_to_hook[1]  # should be negative (hanging)
+    payload_vertical_component = payload_to_hook[1]
     payload_horizontal = np.sqrt(payload_to_hook[0] ** 2 + payload_to_hook[2] ** 2)
     payload_swing_angle = float(np.arctan2(payload_horizontal, abs(payload_vertical_component)))
-
-    # Overall chain connectivity: turntable -> boom -> trolley -> hook -> payload
-    # All should have moved from rest (system is coupled).
     all_moved = all(
         np.linalg.norm(centers[name] - rest_centers[name]) > 1e-4
         for name in ["boom", "trolley", "hook", "payload"]
@@ -290,8 +300,6 @@ def print_showcase_metrics(metrics):
     print(f"  Payload swing angle           : {np.degrees(metrics['payload_swing_angle_rad']):.2f} deg")
     print(f"  All downstream bodies moved   : {metrics['all_bodies_moved']}")
     print("=" * 60)
-
-    # Print body positions for visualization reference.
     print("\n  Body positions (world):")
     for name, center in metrics["centers"].items():
         print(f"    {name:12s}: ({center[0]:+.4f}, {center[1]:+.4f}, {center[2]:+.4f})")
@@ -300,57 +308,19 @@ def print_showcase_metrics(metrics):
 
 def validate_showcase(metrics):
     """Sanity checks: the system should behave as a coupled mechanism."""
-    # Turntable must have moved (it's animated).
     assert metrics["turntable_motion"] > 0.01, (
         f"Turntable did not move: {metrics['turntable_motion']:.6f}"
     )
-    # All downstream bodies should have moved from rest (coupled chain).
     assert metrics["all_bodies_moved"], "Not all bodies moved — chain coupling broken"
-    # Hook should stay close to trolley (fixed joint integrity).
     assert metrics["hook_drift_from_trolley"] < 5.0e-2, (
         f"Hook drifted from trolley (fixed joint broken): {metrics['hook_drift_from_trolley']:.6f}"
     )
-    # Payload should be hanging (swing angle < 90 deg means it hasn't flipped).
     assert metrics["payload_swing_angle_rad"] < np.pi / 2, (
         f"Payload flipped above horizontal: angle={np.degrees(metrics['payload_swing_angle_rad']):.1f} deg"
     )
 
 
-# ============================================================
-# Main execution
-# ============================================================
-
-if args.headless:
-    solver.save_sim_result(os.path.join(output_dir, "crane_showcase_init.obj"))
-
-    print(f"Running crane showcase for {args.advance_frames} frames...")
-    for frame_idx in range(args.advance_frames):
-        physics_step()
-        # Print progress every 50 frames.
-        if (frame_idx + 1) % 50 == 0:
-            m = compute_showcase_metrics()
-            print(f"\n--- Frame {frame_idx + 1} ---")
-            print_showcase_metrics(m)
-
-    solver.save_sim_result(os.path.join(output_dir, "crane_showcase_result.obj"))
-
-    print("\n--- FINAL STATE ---")
-    metrics = compute_showcase_metrics()
-    print_showcase_metrics(metrics)
-    validate_showcase(metrics)
-    print("[crane-showcase] PASS")
-
-else:
-    import utils.polyscope_gui
-
-    class CraneShowcaseGUI(utils.polyscope_gui.SimulationGUI):
-        def _physics_step(self):
-            physics_step()
-            if config_ref.current_frame % 10 == 0:
-                metrics = compute_showcase_metrics()
-                print_showcase_metrics(metrics)
-
-    gui = CraneShowcaseGUI(solver, config_ref, output_dir)
-    gui.show()
+runner = CraneShowcaseTest(solver, config_ref, output_dir, headless=args.headless)
+runner.run(advance_frames=args.advance_frames)
 
 solver.cleanup_device()

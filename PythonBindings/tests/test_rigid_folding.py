@@ -5,8 +5,8 @@ import os, sys
 
 import lcs_py as lcs
 
-import utils.arg_parser
-args = utils.arg_parser.parse_args()
+from run_tests import create_default_parser
+args = create_default_parser().parse_args()
 
 # Initialize LuisaCompute device
 backend = args.backend  # backends: cuda, dx, vk, metal (if supported on the platform)
@@ -43,14 +43,8 @@ output_dir = os.path.join(PROJECT_ROOT, "Resources", "OutputMesh")
 os.makedirs(output_dir, exist_ok=True)
 
 # Launch polyscope GUI or run headless
-if args.headless:
-	solver.save_sim_result(obj_path=os.path.join(output_dir, "init.obj"))
-	for frame in range(0, args.advance_frames):
-		solver.physics_step_gpu()
-	solver.save_sim_result(obj_path=os.path.join(output_dir, "result.obj"))
-else:
-	import utils.polyscope_gui 
-	gui = utils.polyscope_gui.SimulationGUI(solver, config_ref, output_dir)
-	gui.show()
+from utils.test_runner import TestRunner
+runner = TestRunner(solver, config_ref, output_dir, headless=args.headless)
+runner.run(advance_frames=args.advance_frames)
 
 solver.cleanup_device()
