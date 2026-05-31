@@ -36,9 +36,8 @@ jobs:
       - name: Create venv and install tooling
         run: |
           python3 -m venv .venv
-          source .venv/bin/activate
-          pip3 install --upgrade pip
-          pip3 install pybind11-stubgen numpy trimesh
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install pybind11-stubgen numpy trimesh
 
       - name: Fetch ext dependencies
         shell: bash
@@ -107,9 +106,8 @@ jobs:
       - name: Create venv and install tooling
         run: |
           python3 -m venv .venv
-          source .venv/bin/activate
-          pip3 install --upgrade pip
-          pip3 install pybind11-stubgen numpy trimesh
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install pybind11-stubgen numpy trimesh
 
       - name: Fetch ext dependencies
         shell: bash

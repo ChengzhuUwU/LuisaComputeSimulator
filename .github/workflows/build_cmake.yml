@@ -55,9 +55,8 @@ jobs:
         if: matrix.compiler.python_bindings
         run: |
           python3 -m venv .venv
-          source .venv/bin/activate
-          pip3 install --upgrade pip
-          pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 
       - name: Configure CMake (with Python bindings)
         if: matrix.compiler.python_bindings
@@ -102,15 +101,11 @@ jobs:
 
       - name: Editable install
         if: matrix.compiler.python_bindings
-        run: |
-          source .venv/bin/activate
-          pip3 install -e . --no-build-isolation -C build-dir=build
+        run: .venv/bin/python -m pip install -e . --no-build-isolation -C build-dir=build
 
       - name: Verify import
         if: matrix.compiler.python_bindings
-        run: |
-          source .venv/bin/activate
-          python -c "import lcs_py; print('lcs_py imported successfully')"
+        run: .venv/bin/python -c "import lcs_py; print('lcs_py imported successfully')"
 
   macos:
     runs-on: macos-latest
@@ -159,9 +154,8 @@ jobs:
         if: matrix.compiler.python_bindings
         run: |
           python3 -m venv .venv
-          source .venv/bin/activate
-          pip3 install --upgrade pip
-          pip3 install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install scikit-build-core pybind11 ninja numpy pybind11-stubgen trimesh
 
       - name: Configure CMake (with Python bindings)
         if: matrix.compiler.python_bindings
@@ -193,15 +187,11 @@ jobs:
 
       - name: Editable install
         if: matrix.compiler.python_bindings
-        run: |
-          source .venv/bin/activate
-          pip3 install -e . --no-build-isolation -C build-dir=build
+        run: .venv/bin/python -m pip install -e . --no-build-isolation -C build-dir=build
 
       - name: Verify import
         if: matrix.compiler.python_bindings
-        run: |
-          source .venv/bin/activate
-          python -c "import lcs_py; print('lcs_py imported successfully')"
+        run: .venv/bin/python -c "import lcs_py; print('lcs_py imported successfully')"
 
   windows:
     runs-on: windows-latest
