@@ -23,6 +23,9 @@ dependencies = [
 dev = [
     "pybind11-stubgen>=2.5",
 ]
+gui = [
+    "polyscope",
+]
 
 [tool.scikit-build]
 cmake.version = ">=3.26"

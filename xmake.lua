@@ -312,6 +312,19 @@ if cfg_bool(false, "lcs_build_pybindings") then
                 end
             end
         end)
+
+        after_build(function(target)
+            local bindir = path.join(os.projectdir(), "build", "bin")
+            local gui_dir = path.join(bindir, "lcs_gui")
+            os.mkdir(gui_dir)
+
+            local src_dir = path.join(os.projectdir(), "PythonBindings")
+
+            os.cp(path.join(src_dir, "python", "lcs_gui", "__init__.py"), gui_dir)
+            os.cp(path.join(src_dir, "tests", "utils", "polyscope_gui.py"), gui_dir)
+
+            cprint("${bright green}lcs_gui Python files copied to: ${bright cyan}%s", gui_dir)
+        end)
     target_end()
 
     -- Stub generation target (equivalent to cmake --build build --target stubs)
